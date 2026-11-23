@@ -31,7 +31,8 @@ let displayService: import('./displays').DisplayService | null = null;
 async function displays(): Promise<import('./displays').DisplayService> {
   if (!displayService) {
     const d = await import('./displays');
-    displayService = d.createTauriDisplayService(d.detectPlatformFamily(navigator.userAgent));
+    // `npm run bench` opens the renderer benchmark instead of the table view.
+    displayService = d.createTauriDisplayService(d.detectPlatformFamily(navigator.userAgent), import.meta.env.VITE_BENCH === '1' ? 'bench.html' : 'table.html');
   }
   return displayService;
 }

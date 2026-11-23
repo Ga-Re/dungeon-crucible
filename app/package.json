@@ -8,7 +8,9 @@
     "build": "tsc -p tsconfig.json && vite build && node scripts/check-table-bundle.mjs",
     "test": "vitest run",
     "lint:types": "tsc -b --noEmit",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "bench": "VITE_BENCH=1 tauri dev",
+    "bench:video": "bash bench/make-video.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.5",

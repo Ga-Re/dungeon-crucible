@@ -20,6 +20,13 @@ vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidungen st
 | Sprache | Englisch als Standard, Deutsch zusätzlich |
 | Spieler-Vorschau | Dockbar wie jedes Panel; Knopf „Auf anderen Bildschirm verschieben“ für die Tisch-Ausgabe |
 | Signierung | Keine; Installer bleiben unsigniert (Betriebssystem warnt beim ersten Start) |
+| Tischfenster | Platzierung wie Dungeon-Manager (`tauri-displays.ts`): versteckt anlegen, logische Position auf macOS, „simple fullscreen“ |
+| Nebel-Engine | Aus Dungeon-Manager übernommen (ADR-0019 dort): Polygone, PixiJS-Renderer, Ausbreitung mit Geschwindigkeit, Living Fog mit 8 Biomen |
+| Renderer | Komplett PixiJS 8.22 (Karte, Raster, Tokens, Nebel) für DM-Fenster und TV |
+| Token-Sicht | Deckt automatisch auf; Verlassenes wird Erinnerungsnebel; SL-Werkzeuge zusätzlich |
+| Nebelwerkzeuge | Rechteck, Ellipse/Kreis, Polygon, Lasso, Raum (wie Dungeon-Manager) + Pinsel; „Nebel ausblenden“ (N) nur im DM-Fenster |
+| Nebel-Einstellungen | NEBEL-Ribbon + dockbares Panel „Nebel-Engine“ |
+| Benchmark | Aus Dungeon-Manager übernommen (`npm run bench`) |
 | Design-Demo | Grundsätzlich abgenommen |
 
 ---

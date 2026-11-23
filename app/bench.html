@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- Renderer benchmark (T-105d): opened instead of table.html by `npm run bench` (ported from Dungeon-Manager). -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Renderer benchmark</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        cursor: none;
+      }
+      /* As in the player window: the video map (absolute, from the renderer) under the canvas
+         (absolute too, later in the stage), the report on top (ADR-0010). */
+      #stage {
+        position: fixed;
+        inset: 0;
+      }
+      #stage canvas {
+        position: absolute;
+        inset: 0;
+      }
+      #report {
+        position: fixed;
+        inset: 2rem auto auto 2rem;
+        z-index: 1;
+        max-width: 60rem;
+        padding: 1rem 1.5rem;
+        background: rgb(0 0 0 / 80%);
+        color: #fff;
+        font:
+          1.25rem/1.5 ui-monospace,
+          monospace;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <pre id="report"></pre>
+    <script type="module" src="/src/bench/main.ts"></script>
+  </body>
+</html>

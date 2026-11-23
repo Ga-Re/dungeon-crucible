@@ -1,3 +1,6 @@
+// The desktop app's CSP forbids `eval`; this import makes PixiJS use precompiled shaders instead
+// (Dungeon-Manager: packages/renderer/src/index.ts).
+import "pixi.js/unsafe-eval";
 import type { Polygon } from "../../core/poly/types";
 import {
   Application,

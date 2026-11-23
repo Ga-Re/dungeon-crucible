@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { de } from './de';
 import { en, type MessageKey } from './en';
 
@@ -48,6 +48,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     }
     document.documentElement.lang = l;
   }, []);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
   const t = useCallback<Translate>((key, params) => translate(locale, key, params), [locale]);
   const value = useMemo(() => ({ locale, setLocale, t }), [locale, setLocale, t]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

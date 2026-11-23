@@ -25,7 +25,7 @@ import {
   savingThrowBonus,
 } from './rules/rules2024';
 import { buildPlayerFrame, MAX_FRAME_AGE_MS, parsePlayerFrame } from './projection';
-import { updateVision } from './vision';
+import { tokensVisibleToPlayers, updateVision } from './vision';
 import { createSampleScene } from '../sample/crypt';
 import { CreatureSchema, MapSidecarSchema, parseSidecar, resourcePathForSidecar, sidecarPathFor } from './sidecar';
 
@@ -247,5 +247,60 @@ describe('sidecars', () => {
     const bad = parseSidecar(CreatureSchema, JSON.stringify({ kind: 'creature', schemaVersion: 1, name: '' }));
     expect(bad.ok).toBe(false);
     expect(parseSidecar(MapSidecarSchema, '{').ok).toBe(false);
+  });
+});
+
+describe('light and sight (2024)', () => {
+  // Empty map without walls: 70 px per 5 ft cell.
+  const open = () => {
+    const s = createSampleScene();
+    s.walls = [];
+    s.lights = [];
+    s.tokens = [];
+    return s;
+  };
+  const pc = (o: Partial<ReturnType<typeof createSampleScene>['tokens'][number]>) => ({
+    id: 'p', name: 'P', label: 'P', kind: 'pc' as const, x: 1000, y: 800, size: 1, ringColor: '#ffffff', visionFt: 0, hp: 10, maxHp: 10, ac: 10, initiative: 10, conditions: [], ...o,
+  });
+  const ftRight = (ft: number): [number, number] => [1000 + (ft / 5) * 70, 800];
+
+  it('a human without darkvision sees only what light reaches', () => {
+    const s = open();
+    s.tokens = [pc({ lightFt: 20 })]; // torch: bright 20 ft, dim 40 ft
+    const v = visiblePolygons(updateVision(s));
+    expect(isInside(v, ftRight(35))).toBe(true);
+    expect(isInside(v, ftRight(45))).toBe(false);
+  });
+  it('darkvision sees darkness within its range', () => {
+    const s = open();
+    s.tokens = [pc({ visionFt: 60 })];
+    const v = visiblePolygons(updateVision(s));
+    expect(isInside(v, ftRight(55))).toBe(true);
+    expect(isInside(v, ftRight(65))).toBe(false);
+  });
+  it('a distant lit area in line of sight is visible, monsters there too', () => {
+    const s = open();
+    s.tokens = [pc({ visionFt: 0 }), { ...pc({}), id: 'm', kind: 'monster' as const, x: ftRight(100)[0], y: 800 }];
+    s.lights = [{ id: 'l', x: ftRight(100)[0], y: 800, brightFt: 10, dimFt: 20, color: '#ffaa00', on: true }];
+    const v = visiblePolygons(updateVision(s));
+    expect(isInside(v, ftRight(100))).toBe(true);
+    expect(isInside(v, ftRight(50))).toBe(false);
+    expect(tokensVisibleToPlayers(s.tokens, s.fog, v).map((t) => t.id)).toContain('m');
+    s.lights[0].on = false;
+    expect(isInside(visiblePolygons(updateVision(s)), ftRight(100))).toBe(false);
+  });
+  it('light does not pass walls', () => {
+    const s = open();
+    s.tokens = [pc({ visionFt: 0 })];
+    s.lights = [{ id: 'l', x: ftRight(30)[0], y: 800, brightFt: 20, dimFt: 40, color: '#ffaa00', on: true }];
+    s.walls = [{ id: 'w', kind: 'wall', x1: ftRight(15)[0], y1: 0, x2: ftRight(15)[0], y2: 2000 }];
+    const v = visiblePolygons(updateVision(s));
+    expect(isInside(v, ftRight(30))).toBe(false);
+  });
+  it('on a lit map line of sight is enough', () => {
+    const s = open();
+    s.ambient = 'lit';
+    s.tokens = [pc({ visionFt: 0 })];
+    expect(isInside(visiblePolygons(updateVision(s)), ftRight(150))).toBe(true);
   });
 });

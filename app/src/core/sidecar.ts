@@ -62,6 +62,10 @@ export const MapSidecarSchema = z.object({
     }),
   ).default([]),
   pois: z.array(z.object({ id, name: z.string(), x: z.number(), y: z.number(), icon: z.string().default('flag') })).default([]),
+  /** Placed light sources; whether each is on is per scene. */
+  lights: z.array(z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color })).default([]),
+  /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */
+  ambient: z.enum(['dark', 'lit']).default('dark'),
   assets: z.array(z.object({ id, assetPath: z.string(), variant: z.string().optional(), x: z.number(), y: z.number(), rotation: z.number().default(0), scale: z.number().positive().default(1) })).default([]),
 });
 export type MapSidecar = z.infer<typeof MapSidecarSchema>;
@@ -143,6 +147,7 @@ const tokenSchema = z.object({
   initiative: z.number(),
   conditions: z.array(z.enum(CONDITIONS)).default([]),
   exhaustion: z.number().int().min(0).max(6).optional(),
+  lightFt: z.number().min(0).optional(),
   hidden: z.boolean().optional(),
   creatureId: z.string().optional(),
 });
@@ -159,6 +164,8 @@ export const SceneOverrideSchema = z.object({
   /** Live change of the map's biome/strength in this scene; none uses the map's. */
   fogEffect: fogEffectSchema.optional(),
   doors: z.record(z.string(), z.boolean()).default({}),
+  /** Light id → on. Lights not listed are on. */
+  lights: z.record(z.string(), z.boolean()).default({}),
   discoveredZones: z.array(z.string()).default([]),
   tokens: z.array(tokenSchema).default([]),
   templates: z.array(z.object({ id, shape: z.enum(['cone', 'sphere', 'line', 'cube']), x: z.number(), y: z.number(), angle: z.number(), sizeFt: z.number().positive(), color })).default([]),

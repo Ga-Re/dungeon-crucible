@@ -146,6 +146,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
               { id: 'walls:undo', icon: 'undo', label: 'tool.undoWall' },
             ],
           },
+          { label: 'group.light', buttons: [{ id: 'tool:light', icon: 'light', label: 'tool.light', tool: 'light' }] },
         ],
       },
       fogTools,

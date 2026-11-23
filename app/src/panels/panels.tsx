@@ -10,11 +10,12 @@ import { FADE_MAX_SECONDS, FADE_STEP_SECONDS, FOG_EDGE, FOG_MOTION, FOG_QUALITIE
 import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
-  changeHp, discoverZone, emit, initiativeOrder, markDirty, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
+  addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, removeLight, removeToken, setAmbient, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
   resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, setGridType, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { switchScene } from '../app/campaign';
+import { CREATURE_DRAG } from './MapView';
 
 /* ---------- Browser ---------- */
 
@@ -97,6 +98,19 @@ export function BrowserPanel() {
         </li>
       </ul>
       {selZone && <ZoneActions id={selZone} />}
+      <div className="sec" style={{ marginTop: 12 }}>{t('browser.creatures')}</div>
+      <ul className="tree">
+        {creatures.map((c, i) => (
+          <li key={i}>
+            <div className="tn" draggable onDragStart={(e) => { e.dataTransfer.setData(CREATURE_DRAG, String(i)); e.dataTransfer.effectAllowed = 'copy'; }} style={{ cursor: 'grab' }}>
+              <span className="swatch" style={{ background: c.token.ringColor, borderRadius: '50%' }} />
+              <span className="nm">{c.name}</span>
+              <span className="meta">{c.role === 'pc' ? t('init.pc') : `${t('creature.cr')} ${c.cr ?? '–'}`}</span>
+              <button className="ab-btn" title={t('creature.addToMap')} onClick={() => addCreatureToken(i)}><Icon name="plus" /></button>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -124,6 +138,9 @@ export function PropertiesPanel() {
   const selZone = useStore((s) => s.selectedZoneId);
   const cal = useStore((s) => s.lastCalibration);
   const file = useStore((s) => s.mapFileName);
+  const ambient = useStore((s) => s.scene.ambient);
+  const selLight = useStore((s) => s.selectedLightId);
+  const light = useStore((s) => s.scene.lights.find((l) => l.id === selLight));
   const zone = state.scene.zones.find((z) => z.id === selZone);
   return (
     <div className="panel-body">
@@ -147,6 +164,22 @@ export function PropertiesPanel() {
       </div>
       <div className="row"><label /><span className="hint mono">{map.widthPx}×{map.heightPx} px · {tileCount(map.widthPx, map.heightPx)} GPU tiles</span></div>
       {cal && <div className="row"><label /><span className="hint">{t('props.calibrated', { w: cal.w.toFixed(1), h: cal.h.toFixed(1), r: cal.r.toFixed(2) })}</span></div>}
+      <div className="row"><label htmlFor="p-amb">{t('map.ambient')}</label>
+        <select id="p-amb" value={ambient} onChange={(e) => setAmbient(e.target.value as 'dark' | 'lit')}>
+          <option value="dark">{t('ambient.dark')}</option>
+          <option value="lit">{t('ambient.lit')}</option>
+        </select>
+      </div>
+      {light && (
+        <>
+          <div className="sec">{t('light.title')}</div>
+          <div className="row"><label htmlFor="l-b">{t('light.bright')}</label><input id="l-b" type="number" min={0} step={5} value={light.brightFt} onChange={(e) => updateLight(light.id, { brightFt: Math.max(0, Number(e.target.value)) })} /></div>
+          <div className="row"><label htmlFor="l-d">{t('light.dim')}</label><input id="l-d" type="number" min={0} step={5} value={light.dimFt} onChange={(e) => updateLight(light.id, { dimFt: Math.max(0, Number(e.target.value)) })} /></div>
+          <div className="row"><label htmlFor="l-c">{t('light.color')}</label><input id="l-c" type="color" value={light.color} onChange={(e) => updateLight(light.id, { color: e.target.value })} /></div>
+          <div className="row"><label>{t('light.on')}</label><input type="checkbox" checked={light.on} onChange={() => toggleLight(light.id)} /></div>
+          <button className="btn sm danger" onClick={() => removeLight(light.id)}><Icon name="trash" />{t('light.remove')}</button>
+        </>
+      )}
       <div className="sec">{t('props.selection')}</div>
       {zone ? (
         <>
@@ -284,6 +317,7 @@ export function InitiativePanel() {
                   <button className="btn sm" aria-label="damage" onClick={() => changeHp(k.id, -amount)}><Icon name="minus" /></button>
                   <input type="number" min={0} value={amount} aria-label={t('init.damageHeal')} onChange={(e) => setAmount(Math.max(0, Number(e.target.value)))} />
                   <button className="btn sm" aria-label="heal" onClick={() => changeHp(k.id, amount)}><Icon name="plus" /></button>
+                  <button className="btn sm danger" title={t('token.remove')} aria-label={t('token.remove')} onClick={() => removeToken(k.id)}><Icon name="trash" /></button>
                 </>
               )}
               {condFor === k.id && (
@@ -544,6 +578,7 @@ export function CreaturePanel() {
             {a.damage && <button className="chip" style={{ marginLeft: 4 }} onClick={() => roll(a.damage!)}>{a.damage}</button>}
           </p>
         ))}
+        <button className="btn pri" style={{ marginBottom: 8 }} onClick={() => addCreatureToken(idx)}><Icon name="plus" />{t('creature.addToMap')}</button>
         <p className="hint">{t('creature.manual')}</p>
       </div>
     </div>

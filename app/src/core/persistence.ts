@@ -45,6 +45,8 @@ export function mapSidecarFromScene(scene: Scene, resource: string): MapSidecar 
     zones: scene.zones.map((z) => ({ id: z.id, name: z.name, kind: z.kind, rect: { ...z.rect }, color: z.color, ...(z.biome ? { biome: z.biome } : {}) })),
     pois: [],
     assets: [],
+    lights: scene.lights.map((l) => ({ id: l.id, x: l.x, y: l.y, brightFt: l.brightFt, dimFt: l.dimFt, color: l.color })),
+    ambient: scene.ambient,
   };
 }
 
@@ -57,6 +59,7 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     fog: copyFog(scene.fog),
     ...(scene.fogEffect ? { fogEffect: { ...scene.fogEffect } } : {}),
     doors: Object.fromEntries(scene.walls.filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])),
+    lights: Object.fromEntries(scene.lights.map((l) => [l.id, l.on])),
     discoveredZones: scene.zones.filter((z) => z.kind === 'secret' && z.discovered).map((z) => z.id),
     tokens: scene.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: scene.templates.map((t) => ({ ...t })),
@@ -95,6 +98,8 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     },
     walls: map.walls.map((w) => ({ ...w, open: w.kind === 'door' || w.kind === 'secret-door' ? (doors[w.id] ?? false) : undefined })),
     zones,
+    lights: map.lights.map((l) => ({ ...l, on: override?.lights?.[l.id] ?? true })),
+    ambient: map.ambient,
     tokens: (override?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: (override?.templates ?? []).map((t) => ({ ...t })),
     pings: [],

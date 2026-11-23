@@ -191,7 +191,7 @@ export async function importMapIntoCampaign(): Promise<boolean> {
   const name = f.relPath.split('/').pop()!.replace(/\.[^.]+$/, '');
   const map: MapSidecar = {
     kind: 'map', schemaVersion: 1, name, resource: f.relPath, isVideo, widthPx: w, heightPx: h,
-    tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, walls: [], zones: [], pois: [], assets: [],
+    tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark',
   };
   await saveCampaign();
   const scene = sceneFromDocuments(map, null, url, state.scene.table);

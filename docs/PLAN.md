@@ -191,7 +191,12 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 - Rückgängig/Wiederholen (Strg+Z / Strg+Umschalt+Z) für alle Karten-, Nebel-, Token- und Kampfänderungen
 - Tests: 36 im Frontend, 3 in Rust
 
-**Phase 1 ist damit abgeschlossen.** Nächster Schritt: Phase 2 (Spielen) – Lichtquellen, Feinschliff am Tisch-Workflow, Token aus Kreaturen auf die Karte ziehen.
+**Phase 1 ist damit abgeschlossen.**
+
+**Phase 2 (Spielen) – begonnen:**
+- Licht und Sicht nach 2024: Lichtquellen (hell/dämmrig, Farbe, an/aus), Licht getragener Tokens (Fackel), Dunkelsicht; Spieler sehen, was in Sichtlinie liegt und beleuchtet oder in Dunkelsichtweite ist; Umgebungslicht pro Karte (dunkel/hell)
+- Tokens aus der Kreaturen-Bibliothek per Drag & Drop oder Knopf auf die Karte; Werte, Größe, Sicht, Licht werden übernommen, Initiative gewürfelt; Token entfernen (Entf)
+- Messung: Benchmark erfüllt (59,9 FPS, 0,2 % verpasst, 4K-Video, Living Fog) Nächster Schritt: Phase 2 (Spielen) – Lichtquellen, Feinschliff am Tisch-Workflow, Token aus Kreaturen auf die Karte ziehen.
 
 ## 10. Offene Fragen
 Derzeit keine.

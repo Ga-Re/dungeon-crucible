@@ -90,9 +90,9 @@ export function createSampleScene(): Scene {
   const fog = revealIn(EMPTY_LEVEL_FOG, rectPolygon(0, 9 * CELL, 10 * CELL, 16 * CELL), []);
 
   const tokens: Token[] = [
-    token({ id: 'thorin', name: 'Thorin Ironbeard', label: 'TH', kind: 'pc', ringColor: '#e2a03c', visionFt: 60, hp: 44, maxHp: 44, ac: 18, initiative: 14, creatureId: 'thorin' }, 4, 12),
-    token({ id: 'lyra', name: 'Lyra Moonfeather', label: 'LY', kind: 'pc', ringColor: '#7fb2d9', visionFt: 60, hp: 26, maxHp: 26, ac: 13, initiative: 19, creatureId: 'lyra' }, 6, 11),
-    token({ id: 'bram', name: 'Bram Hollow', label: 'BR', kind: 'pc', ringColor: '#8fd98f', visionFt: 40, hp: 31, maxHp: 33, ac: 16, initiative: 8, creatureId: 'bram' }, 5, 14),
+    token({ id: 'thorin', name: 'Thorin Ironbeard', label: 'TH', kind: 'pc', ringColor: '#e2a03c', visionFt: 120, hp: 44, maxHp: 44, ac: 18, initiative: 14, creatureId: 'thorin-ironbeard' }, 4, 12),
+    token({ id: 'lyra', name: 'Lyra Moonfeather', label: 'LY', kind: 'pc', ringColor: '#7fb2d9', visionFt: 60, hp: 26, maxHp: 26, ac: 13, initiative: 19, creatureId: 'lyra-moonfeather' }, 6, 11),
+    token({ id: 'bram', name: 'Bram Hollow', label: 'BR', kind: 'pc', ringColor: '#8fd98f', visionFt: 0, lightFt: 20, hp: 31, maxHp: 33, ac: 16, initiative: 8 }, 5, 14),
     token({ id: 'skel1', name: 'Skeleton A', label: 'S1', kind: 'monster', hp: 13, maxHp: 13, ac: 14, initiative: 12 }, 15, 4),
     token({ id: 'skel2', name: 'Skeleton B', label: 'S2', kind: 'monster', hp: 13, maxHp: 13, ac: 14, initiative: 12 }, 18, 6),
     token({ id: 'ghoul', name: 'Ghoul', label: 'GH', kind: 'monster', ringColor: '#b8c27a', hp: 22, maxHp: 22, ac: 12, initiative: 15 }, 20, 15),
@@ -116,6 +116,12 @@ export function createSampleScene(): Scene {
     tokens,
     templates: [],
     pings: [],
+    // Two braziers light the throne room.
+    lights: [
+      { id: 'brazier-w', x: 14.5 * CELL, y: 18.5 * CELL, brightFt: 10, dimFt: 20, color: '#ffb14a', on: true },
+      { id: 'brazier-e', x: 22.5 * CELL, y: 18.5 * CELL, brightFt: 10, dimFt: 20, color: '#ffb14a', on: true },
+    ],
+    ambient: 'dark',
     fog,
     fogEffect: null,
     table: { ...DEFAULT_TABLE, centerX: 9 * CELL, centerY: 12 * CELL },

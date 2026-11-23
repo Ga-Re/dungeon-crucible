@@ -289,6 +289,8 @@ export const en = {
   'panels.expand': 'Expand',
   'panels.float': 'Float',
   'panels.dock': 'Dock',
+  'panels.floatHint': 'Float over the map (or drag a tab with Shift held)',
+  'panels.dockHint': 'Dock again (or drag the tab onto a dock area)',
   'campaign.openShort': 'Open or create campaign …',
   'soon.title': 'Coming in a later phase',
   'soon.atlas': 'The campaign atlas (acts, sessions, quests, timeline) follows in phase 4. The design demo shows the planned layout.',

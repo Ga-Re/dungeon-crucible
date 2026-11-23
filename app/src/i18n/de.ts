@@ -289,6 +289,8 @@ export const de: Partial<Record<MessageKey, string>> = {
   'panels.expand': 'Ausklappen',
   'panels.float': 'Abdocken',
   'panels.dock': 'Andocken',
+  'panels.floatHint': 'Frei schweben lassen (oder Tab mit gedrückter Umschalttaste ziehen)',
+  'panels.dockHint': 'Wieder andocken (oder Tab auf einen Dock-Bereich ziehen)',
   'campaign.openShort': 'Kampagne öffnen oder anlegen …',
   'soon.title': 'Folgt in einer späteren Phase',
   'soon.atlas': 'Der Kampagnen-Atlas (Akte, Sessions, Quests, Zeitleiste) folgt in Phase 4. Die Design-Demo zeigt das geplante Layout.',

@@ -33,6 +33,8 @@ const PATHS = {
   next: 'M5 4l10 8-10 8z M19 4v16',
   lock: 'M6 11h12v10H6z M8.5 11V7.5a3.5 3.5 0 0 1 7 0V11',
   monitor: 'M3 4h18v12H3z M8 21h8M12 16v5',
+  float: 'M9 9h12v12H9z M5 15H3V3h12v2',
+  dock: 'M3 4h18v16H3z M15 4v16',
   monmove: 'M3 4h12v9H3z M6 17h6 M9 13v4 M15 16h7 M19 13l3 3-3 3',
   table: 'M3 8h18v5H3z M5 13v8 M19 13v8 M7 8V5h10v3',
   rotate: 'M20 12a8 8 0 1 1-2.6-5.9 M20 3v5h-5',

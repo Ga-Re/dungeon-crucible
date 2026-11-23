@@ -338,14 +338,14 @@ function HeaderActions(props: IDockviewHeaderActionsProps) {
       </button>
       <button
         className="ab-btn"
-        title={floating ? t('panels.dock') : t('panels.float')}
+        title={floating ? t('panels.dockHint') : t('panels.floatHint')}
         aria-label={floating ? t('panels.dock') : t('panels.float')}
         onClick={() => {
           if (floating) props.api.moveTo({ position: 'right' });
           else props.containerApi.addFloatingGroup(props.group, { width: 360, height: 300 });
         }}
       >
-        <Icon name={floating ? 'map' : 'box'} />
+        <Icon name={floating ? 'dock' : 'float'} />
       </button>
       {props.panels.some((p) => p.id === 'preview') && (
         <button className="ab-btn" title={t('tool.moveMonitor')} onClick={() => focusPanel('table')}><Icon name="monmove" /></button>

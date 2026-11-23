@@ -11,7 +11,10 @@ import {
   ppiCorrectionFromMeasurement,
   tableZoomForPhysicalGrid,
 } from './grid';
-import { FogState, rle, unrle } from './fog';
+import { EMPTY_LEVEL_FOG, hideIn, mapPolygon, openArea, rectPolygon, rememberSeen, revealAll, revealIn, seenNow, sightPolygon } from './fogModel';
+import { isInside } from './poly/fog';
+import { lockedAreas } from './persistence';
+import { visiblePolygons } from './vision';
 import { d20Test, parseDice, rollDice } from './rules/dice';
 import {
   abilityModifier,
@@ -103,28 +106,47 @@ describe('cell addressing', () => {
   });
 });
 
-describe('fog', () => {
-  it('marks only seen cells and never locked ones', () => {
-    const fog = new FogState({ cols: 10, rows: 1, cellSize: 10 });
-    fog.setLocked([[8, 0]], true);
-    const o = { x: 5, y: 5 };
-    const poly = visibilityPolygon(o, 200, [{ x1: 60, y1: -10, x2: 60, y2: 20 }]);
-    fog.markVisible(o, 200, poly);
-    expect(fog.isExplored(0, 0)).toBe(true);
-    expect(fog.isExplored(5, 0)).toBe(true);
-    expect(fog.isExplored(7, 0)).toBe(false);
-    fog.revealAll();
-    expect(fog.isExplored(8, 0)).toBe(false);
-    fog.brush({ x: 85, y: 5 }, 4, 'reveal');
-    expect(fog.isExplored(8, 0)).toBe(true);
+describe('polygon fog with token sight', () => {
+  const look = { softEdges: true, fadeSeconds: 0.65, quality: 'medium' as const, edge: 1.2, motion: 1, speed: 5, coverFrom: 'middle' as const };
+  it('reveals what a token sees, blocked by walls, and remembers it after leaving', () => {
+    const o = { x: 50, y: 50 };
+    const sight = sightPolygon(o, 300, visibilityPolygon(o, 300, [{ x1: 150, y1: -1000, x2: 150, y2: 1000 }]));
+    expect(isInside(sight, [100, 50])).toBe(true);
+    expect(isInside(sight, [200, 50])).toBe(false);
+    expect(isInside(sight, [50, 360])).toBe(false);
+    const fog = rememberSeen(EMPTY_LEVEL_FOG, sight);
+    expect(isInside(fog.remembered, [100, 50])).toBe(true);
+    // Moved away: memory stays, but nothing is seen now there.
+    expect(seenNow(fog, [], { x: 100, y: 50 })).toBe(false);
+    expect(isInside(openArea(fog, []), [100, 50])).toBe(true);
   });
-  it('encodes and decodes', () => {
-    const buf = new Uint8Array([0, 0, 1, 1, 1, 0]);
-    expect(rle(buf)).toBe('0:2,1:3,0:1');
-    expect([...unrle('0:2,1:3,0:1', 6)]).toEqual([...buf]);
-    expect(() => unrle('0:2,2:3', 5)).toThrow();
-    expect(() => unrle('0:2', 5)).toThrow();
+  it('DM reveal and hide work on polygons; hide-with-remember turns revealed into memory', () => {
+    let fog = revealIn(EMPTY_LEVEL_FOG, rectPolygon(0, 0, 100, 100), []);
+    expect(isInside(fog.revealed, [50, 50])).toBe(true);
+    fog = hideIn(fog, rectPolygon(0, 0, 50, 100), true);
+    expect(isInside(fog.revealed, [25, 50])).toBe(false);
+    expect(isInside(fog.remembered, [25, 50])).toBe(true);
+    expect(isInside(fog.revealed, [75, 50])).toBe(true);
   });
+  it('reveal all leaves undiscovered secret rooms hidden', () => {
+    const scene = createSampleScene();
+    const locked = lockedAreas(scene.zones);
+    expect(locked).toHaveLength(1);
+    const fog = revealAll(EMPTY_LEVEL_FOG, scene.map.widthPx, scene.map.heightPx, locked);
+    const secret = scene.zones.find((z) => z.kind === 'secret')!;
+    expect(isInside(fog.revealed, [secret.rect.x + secret.rect.w / 2, secret.rect.y + secret.rect.h / 2])).toBe(false);
+    expect(isInside(fog.revealed, [100, 100])).toBe(true);
+    // Aimed at on purpose (force), the DM may reveal it.
+    expect(isInside(revealIn(EMPTY_LEVEL_FOG, mapPolygon(10, 10), locked, true).revealed, [5, 5])).toBe(true);
+  });
+  it('keeps the sample hall revealed and sight out of closed rooms', () => {
+    const scene = createSampleScene();
+    const visible = visiblePolygons(updateVision(scene));
+    expect(isInside(scene.fog.revealed, [5 * 70, 12 * 70])).toBe(true);
+    // The throne room lies behind a closed door.
+    expect(isInside(visible, [18 * 70, 15 * 70])).toBe(false);
+  });
+  void look;
 });
 
 describe('dice', () => {
@@ -176,8 +198,8 @@ describe('2024 rules', () => {
 describe('player projection (fail-closed)', () => {
   it('only contains whitelisted data and visible tokens', () => {
     const scene = createSampleScene();
-    const vision = updateVision(scene);
-    const frame = buildPlayerFrame(scene, vision, { seq: 1, now: 1000, showGrid: true, memoryOpacity: 0.6, softness: 0.5, movementLocked: false, zoom: 1 });
+    const visible = visiblePolygons(updateVision(scene));
+    const frame = buildPlayerFrame(scene, frameOpts(1, 1000, visible));
     const json = JSON.stringify(frame);
     expect(json).not.toContain('walls');
     expect(json).not.toContain('zones');
@@ -190,20 +212,28 @@ describe('player projection (fail-closed)', () => {
   });
   it('rejects stale, out-of-order and malformed frames', () => {
     const scene = createSampleScene();
-    const frame = buildPlayerFrame(scene, updateVision(scene), { seq: 5, now: 0, showGrid: true, memoryOpacity: 0.6, softness: 0.5, movementLocked: false, zoom: 1 });
+    const frame = buildPlayerFrame(scene, frameOpts(5, 0, visiblePolygons(updateVision(scene))));
     expect(parsePlayerFrame(frame, MAX_FRAME_AGE_MS + 1, 0)).toEqual({ ok: false, reason: 'stale' });
     expect(parsePlayerFrame(frame, 0, 5)).toEqual({ ok: false, reason: 'out-of-order' });
     expect(parsePlayerFrame({ ...frame, fog: undefined }, 0, 0)).toEqual({ ok: false, reason: 'invalid-frame' });
   });
-  it('keeps secret rooms locked until discovered', () => {
+  it('never sends the secret room: not open, not clear', () => {
     const scene = createSampleScene();
-    scene.fog.revealAll();
+    scene.fog = revealAll(scene.fog, scene.map.widthPx, scene.map.heightPx, lockedAreas(scene.zones));
+    const frame = buildPlayerFrame(scene, frameOpts(1, 0, visiblePolygons(updateVision(scene))));
     const secret = scene.zones.find((z) => z.kind === 'secret')!;
-    const c = Math.floor((secret.rect.x + secret.rect.w / 2) / scene.fog.cellSize);
-    const r = Math.floor((secret.rect.y + secret.rect.h / 2) / scene.fog.cellSize);
-    expect(scene.fog.isExplored(c, r)).toBe(false);
+    const mid: [number, number] = [secret.rect.x + secret.rect.w / 2, secret.rect.y + secret.rect.h / 2];
+    expect(isInside(frame.fog.open, mid)).toBe(false);
+    expect(isInside(frame.fog.clear, mid)).toBe(false);
   });
 });
+
+function frameOpts(seq: number, now: number, visible: ReturnType<typeof visiblePolygons>) {
+  return {
+    seq, now, showGrid: true, memoryOpacity: 0.6, movementLocked: false, zoom: 1, visible, quick: false, activeTokenId: null, seedKey: 'builtin:crypt',
+    look: { softEdges: true, fadeSeconds: 0.65, quality: 'medium' as const, edge: 1.2, motion: 1, speed: 5, coverFrom: 'middle' as const },
+  };
+}
 
 describe('sidecars', () => {
   it('maps resource paths', () => {

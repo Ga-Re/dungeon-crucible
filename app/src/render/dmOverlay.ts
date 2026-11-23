@@ -1,52 +1,45 @@
-/** DM-side map renderer: editor overlays, DM fog (see-through), selection. */
+/**
+ * DM-only overlays drawn on a 2D canvas above the PixiJS view (Dungeon-Manager: "DM overlays
+ * (DM window only)" sit above the fog). Never used for the table.
+ */
 import type { Point } from '../core/geometry';
+import type { Polygon } from '../core/poly/types';
 import type { Scene } from '../core/scene';
 import type { ViewerVision } from '../core/vision';
-import { buildPlayerFrame } from '../core/projection';
-import { buildFogMask } from './frameRenderer';
-import { drawMapSource, getMapSource } from './mapImages';
-import { drawGrid, drawTemplate, drawTokenDisc, hexToRgba } from './shared';
+import { drawTemplate, hexToRgba, type TemplateLike } from './shared';
 
-export interface DmView {
+export interface OverlayView {
   zoom: number;
   x: number;
   y: number;
 }
 
-export interface DmOverlay {
+export interface OverlayState {
   editMode: boolean;
-  showGrid: boolean;
-  dmSeeThrough: boolean;
-  memoryOpacity: number;
-  softness: number;
   selectedTokenId: string | null;
   selectedZoneId: string | null;
-  currentTurnId: string | null;
   measure: { a: Point; b: Point; ft: number } | null;
   dragRect: { a: Point; b: Point } | null;
   wallPreview: { a: Point; b: Point } | null;
   brush: { p: Point; r: number } | null;
   calibPoints: Point[];
-  draftTemplate: Parameters<typeof drawTemplate>[1] | null;
+  draftTemplate: TemplateLike | null;
+  /** Outline of a fog tool's shape while drawing. */
+  fogDraft: { polygon: Polygon | null; path: Point[]; mode: 'reveal' | 'hide' } | null;
 }
 
-export function renderDm(g: CanvasRenderingContext2D, scene: Scene, vision: ViewerVision[], view: DmView, dpr: number, o: DmOverlay, now: number): void {
+export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision: readonly ViewerVision[], view: OverlayView, dpr: number, o: OverlayState, now: number): void {
   const W = scene.map.widthPx;
   const H = scene.map.heightPx;
   const cell = scene.map.grid.cellWidth;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, g.canvas.width, g.canvas.height);
   g.setTransform(dpr * view.zoom, 0, 0, dpr * view.zoom, dpr * view.x, dpr * view.y);
   const px = 1 / view.zoom;
 
-  g.save();
-  g.beginPath();
-  g.rect(0, 0, W, H);
-  g.clip();
-  const src = getMapSource(scene.map.imageUrl, scene.map.isVideo);
-  if (!src || !drawMapSource(g, src, W, H)) {
-    g.fillStyle = '#101113';
-    g.fillRect(0, 0, W, H);
-  }
-  if (o.showGrid) drawGrid(g, scene.map.grid, W, H, 'rgba(255,255,255,.12)', px);
+  g.strokeStyle = 'rgba(255,255,255,.15)';
+  g.lineWidth = px;
+  g.strokeRect(0, 0, W, H);
 
   for (const z of scene.zones) {
     const sel = z.id === o.selectedZoneId;
@@ -94,44 +87,14 @@ export function renderDm(g: CanvasRenderingContext2D, scene: Scene, vision: View
   for (const t of scene.templates) drawTemplate(g, t, scene.map.grid, true);
   if (o.draftTemplate) drawTemplate(g, o.draftTemplate, scene.map.grid, true);
 
-  // DM fog: same mask as the table, drawn translucent so the DM sees the map.
-  const mask = buildFogMask(
-    buildPlayerFrame(scene, vision, { seq: 0, now, showGrid: false, memoryOpacity: o.memoryOpacity, softness: o.softness, movementLocked: false, zoom: 1 }),
-  );
-  if (!o.editMode) {
-    g.globalAlpha = o.dmSeeThrough ? 0.6 : 1;
-    g.drawImage(mask.canvas, mask.sx, mask.sy, mask.sw, mask.sh, 0, 0, W, H);
-    g.globalAlpha = 1;
-  }
-
+  // HP bars under each token (the renderer draws the discs).
   for (const t of scene.tokens) {
-    if (t.id === o.currentTurnId) {
-      g.save();
-      g.strokeStyle = '#e2a03c';
-      g.lineWidth = 4 * px;
-      g.setLineDash([8, 6]);
-      g.lineDashOffset = -now / 40;
-      g.beginPath();
-      g.arc(t.x, t.y, (cell * t.size) / 2 + 6, 0, Math.PI * 2);
-      g.stroke();
-      g.restore();
-    }
-    if (t.id === o.selectedTokenId) {
-      g.strokeStyle = 'rgba(63,157,226,.9)';
-      g.lineWidth = 4 * px;
-      g.beginPath();
-      g.arc(t.x, t.y, (cell * t.size) / 2 + 2, 0, Math.PI * 2);
-      g.stroke();
-    }
-    g.globalAlpha = t.hidden ? 0.45 : 1;
-    drawTokenDisc(g, { x: t.x, y: t.y, size: t.size, ringColor: t.ringColor, label: t.label, cell, down: t.hp <= 0 });
-    g.globalAlpha = 1;
     const r = (cell * t.size) / 2 - 4;
     const p = Math.max(0, Math.min(1, t.hp / t.maxHp));
     g.fillStyle = 'rgba(0,0,0,.7)';
-    g.fillRect(t.x - r, t.y + r + 4, r * 2, 6);
+    g.fillRect(t.x - r, t.y + r + 2, r * 2, 6);
     g.fillStyle = p > 0.5 ? '#5db776' : p > 0.25 ? '#e3b341' : '#e2554c';
-    g.fillRect(t.x - r, t.y + r + 4, r * 2 * p, 6);
+    g.fillRect(t.x - r, t.y + r + 2, r * 2 * p, 6);
   }
 
   const selVision = vision.find((v) => v.tokenId === o.selectedTokenId);
@@ -141,7 +104,7 @@ export function renderDm(g: CanvasRenderingContext2D, scene: Scene, vision: View
     g.setLineDash([5 * px, 5 * px]);
     g.lineWidth = 1.5 * px;
     g.beginPath();
-    selVision.polygon.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+    selVision.outline.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
     g.closePath();
     g.stroke();
     g.restore();
@@ -159,13 +122,31 @@ export function renderDm(g: CanvasRenderingContext2D, scene: Scene, vision: View
       g.stroke();
     }
   }
-  g.restore();
 
-  g.strokeStyle = 'rgba(255,255,255,.15)';
-  g.lineWidth = px;
-  g.strokeRect(0, 0, W, H);
+  if (o.fogDraft) {
+    const col = o.fogDraft.mode === 'reveal' ? '226,160,60' : '120,150,255';
+    g.save();
+    g.lineWidth = 2 * px;
+    g.setLineDash([8 * px, 5 * px]);
+    g.strokeStyle = `rgba(${col},.95)`;
+    g.fillStyle = `rgba(${col},.12)`;
+    if (o.fogDraft.polygon) {
+      g.beginPath();
+      for (const ring of [o.fogDraft.polygon.outer, ...o.fogDraft.polygon.holes]) {
+        ring.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+        g.closePath();
+      }
+      g.fill('evenodd');
+      g.stroke();
+    }
+    if (o.fogDraft.path.length > 1) {
+      g.beginPath();
+      o.fogDraft.path.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+      g.stroke();
+    }
+    g.restore();
+  }
 
-  // Tool overlays
   if (o.measure) {
     const { a, b, ft } = o.measure;
     g.save();

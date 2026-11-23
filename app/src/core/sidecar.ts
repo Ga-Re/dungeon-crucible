@@ -4,6 +4,7 @@
  */
 import { z } from 'zod';
 import { CHALLENGE_RATINGS, CONDITIONS } from './rules/rules2024';
+import { fogEffectSchema, levelFogSchema } from './poly/types';
 
 export const SIDECAR_SUFFIX = '.dm.json';
 export const SCENE_SUFFIX = '.scene.json';
@@ -19,7 +20,7 @@ export function resourcePathForSidecar(sidecarPath: string): string | null {
 
 const id = z.string().min(1).max(64);
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
-const biome = z.enum(['ground', 'blizzard', 'heat', 'embers', 'miasma', 'sea', 'arcane', 'darkness']);
+const biome = z.enum(['nebel', 'schnee', 'wueste', 'asche', 'sumpf', 'kueste', 'arkan', 'dunkel']);
 
 export const GridSchema = z.object({
   type: z.enum(['square', 'hex-pointy', 'hex-flat']),
@@ -43,7 +44,9 @@ export const MapSidecarSchema = z.object({
   tags: z.array(z.string()).default([]),
   biome: z.string().default(''),
   mapType: z.enum(['dungeon', 'building', 'region', 'world', 'arena']).default('dungeon'),
-  fogBiome: biome.default('ground'),
+  fogBiome: biome.default('nebel'),
+  /** Strength of the biome's wind, particles and glow, 0…1 (Dungeon-Manager T-168). */
+  fogStrength: z.number().min(0).max(1).default(1),
   grid: GridSchema,
   walls: z.array(
     z.object({ id, kind: z.enum(['wall', 'door', 'secret-door', 'window']), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(), open: z.boolean().optional() }),
@@ -151,7 +154,10 @@ export const SceneOverrideSchema = z.object({
   name: z.string().min(1),
   /** Path of the map sidecar relative to the campaign folder. */
   mapSidecar: z.string().min(1),
-  fog: z.object({ cols: z.number().int().positive(), rows: z.number().int().positive(), cellSize: z.number().positive(), explored: z.string(), locked: z.string() }),
+  /** Polygon fog in map pixels, as in Dungeon-Manager: revealed and remembered. */
+  fog: levelFogSchema,
+  /** Live change of the map's biome/strength in this scene; none uses the map's. */
+  fogEffect: fogEffectSchema.optional(),
   doors: z.record(z.string(), z.boolean()).default({}),
   discoveredZones: z.array(z.string()).default([]),
   tokens: z.array(tokenSchema).default([]),

@@ -1,14 +1,26 @@
-import { useEffect, useRef } from 'react';
+/**
+ * DM map view. Map, grid, tokens and fog are drawn by the PixiJS renderer ported from
+ * Dungeon-Manager (see-through fog for the DM); DM overlays are a 2D canvas on top. "Player
+ * view" shows the table's frame with the table's own view component.
+ */
+import { useEffect, useMemo, useRef } from 'react';
 import type { Point } from '../core/geometry';
 import { gridDistanceFeet } from '../core/grid';
+import { clearArea, openArea } from '../core/fogModel';
+import { circleArea, ellipseArea, strokeArea } from '../core/poly/shapes';
+import type { Polygon } from '../core/poly/types';
+import { rectPolygon } from '../core/fogModel';
 import type { TemplateShape } from '../core/scene';
 import { useI18n } from '../i18n/i18n';
 import type { MessageKey } from '../i18n/en';
-import { renderPlayerFrame } from '../render/frameRenderer';
-import { renderDm, type DmOverlay, type DmView } from '../render/dmRenderer';
+import { drawDmOverlay, type OverlayState } from '../render/dmOverlay';
+import { fogOptions } from '../render/fogOptions';
+import { bindMap } from '../render/mapBinding';
+import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
+import { TableView, type FrameSource } from '../table/TableView';
 import {
-  addCalibrationPoint, addPing, addTemplate, checkpoint, addWall, addZone, fogBrush, fogRect, initiativeOrder, log, moveToken,
-  revealZone, selectToken, selectZone, snapPoint, state, toggleDoor, useStore, zoneAt,
+  addCalibrationPoint, addPing, addTemplate, addWall, addZone, applyFogArea, checkpoint, getVersion, initiativeOrder, log, moveToken,
+  revealZone, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, useStore, zoneAt,
 } from '../app/store';
 
 /** Commands other UI parts can trigger on the active map view. */
@@ -17,7 +29,8 @@ export const mapCommands: { fit: () => void } = { fit: () => undefined };
 const HINTS: Partial<Record<string, MessageKey>> = {
   select: 'hint.select', pan: 'hint.pan', measure: 'hint.measure', ping: 'hint.ping', calibrate: 'hint.calibrate',
   zone: 'hint.zone', wall: 'hint.wall', door: 'hint.door', 'secret-door': 'hint.secretDoor', window: 'hint.window',
-  reveal: 'hint.revealBrush', hide: 'hint.hideBrush', 'reveal-rect': 'hint.revealRect', 'reveal-room': 'hint.revealRoom',
+  'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
+  'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
 };
 
@@ -25,92 +38,118 @@ type Drag =
   | { kind: 'pan'; sx: number; sy: number; vx: number; vy: number }
   | { kind: 'token'; id: string; ox: number; oy: number; start: Point; moved: boolean }
   | { kind: 'measure'; a: Point; b: Point }
-  | { kind: 'brush' }
   | { kind: 'rect'; a: Point; b: Point }
-  | { kind: 'template'; shape: TemplateShape; a: Point; b: Point };
+  | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
+  | { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; invert: boolean; circle: boolean }
+  | { kind: 'fog-path'; tool: 'fog-lasso' | 'fog-brush'; path: Point[]; invert: boolean };
 
 export function MapView() {
+  const viewAsPlayer = useStore((s) => s.viewAsPlayer);
+  const source = useMemo<FrameSource>(() => ({ current: () => (state.frame ? { frame: state.frame, receivedAt: Date.now() } : null) }), []);
+  return viewAsPlayer ? <TableView source={source} /> : <DmMap />;
+}
+
+function DmMap() {
   const { t } = useI18n();
   const tool = useStore((s) => s.tool);
   const ws = useStore((s) => s.ws);
-  const viewAsPlayer = useStore((s) => s.viewAsPlayer);
   const sceneVersion = useStore((s) => s.sceneVersion);
+  const dmFogHidden = useStore((s) => s.dmFogHidden);
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const view = useRef<DmView>({ zoom: 0.4, x: 20, y: 20 });
+  const overlayRef = useRef<HTMLCanvasElement>(null);
+  const view = useRef({ zoom: 0.4, x: 20, y: 20 });
   const drag = useRef<Drag | null>(null);
+  const polygonDraft = useRef<Point[]>([]);
   const mouse = useRef<Point>({ x: 0, y: 0 });
   const space = useRef(false);
 
   useEffect(() => {
-    const canvas = canvasRef.current!;
     const wrap = wrapRef.current!;
-    const g = canvas.getContext('2d')!;
+    const canvas = canvasRef.current!;
+    const overlay = overlayRef.current!;
+    let renderer: Renderer | null = null;
+    let map: ReturnType<typeof bindMap> | null = null;
+    let disposed = false;
     let raf = 0;
+    let pushed = -1;
+    let lastCam = '';
+    const size = () => ({ width: Math.max(1, wrap.clientWidth), height: Math.max(1, wrap.clientHeight) });
+
     const fit = () => {
-      const r = wrap.getBoundingClientRect();
-      if (!r.width) return;
+      const s = size();
       const m = state.scene.map;
-      const z = Math.min((r.width - 40) / m.widthPx, (r.height - 40) / m.heightPx);
-      view.current = { zoom: z, x: (r.width - m.widthPx * z) / 2, y: (r.height - m.heightPx * z) / 2 };
+      const z = Math.min((s.width - 40) / m.widthPx, (s.height - 40) / m.heightPx);
+      view.current = { zoom: z, x: (s.width - m.widthPx * z) / 2, y: (s.height - m.heightPx * z) / 2 };
     };
     mapCommands.fit = fit;
-    let fitted = false;
-    const ro = new ResizeObserver(() => {
-      if (!fitted) {
-        fit();
-        fitted = true;
-      }
-    });
-    ro.observe(wrap);
+    fit();
 
-    const draw = () => {
-      const dpr = window.devicePixelRatio || 1;
-      const w = Math.round(wrap.clientWidth * dpr);
-      const h = Math.round(wrap.clientHeight * dpr);
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
+    void createRenderer({ canvas, size: size(), resolution: window.devicePixelRatio || 1, background: '#0e0f11' }).then((r) => {
+      if (disposed) {
+        r.destroy();
+        return;
       }
-      const now = Date.now();
-      g.setTransform(1, 0, 0, 1, 0, 0);
-      g.fillStyle = getComputedStyle(wrap).backgroundColor || '#0e0f11';
-      g.fillRect(0, 0, w, h);
-      if (state.viewAsPlayer && state.frame) {
-        try {
-          renderPlayerFrame(g, state.frame, w, h, 0);
-        } catch {
-          g.setTransform(1, 0, 0, 1, 0, 0);
-          g.fillStyle = '#000';
-          g.fillRect(0, 0, w, h);
-        }
-      } else {
-        const d = drag.current;
-        const order = initiativeOrder();
-        const o: DmOverlay = {
-          editMode: state.ws === 'forge',
-          showGrid: state.showGrid,
-          dmSeeThrough: state.dmSeeThrough,
-          memoryOpacity: state.memoryOpacity,
-          softness: state.fogSoftness,
-          selectedTokenId: state.selectedTokenId,
-          selectedZoneId: state.selectedZoneId,
-          currentTurnId: state.ws === 'play' ? order[state.turn]?.id ?? null : null,
-          measure: d?.kind === 'measure' ? { a: d.a, b: d.b, ft: gridDistanceFeet(state.scene.map.grid, d.a, d.b) } : null,
-          dragRect: d?.kind === 'rect' ? { a: d.a, b: d.b } : null,
-          wallPreview: state.wallStart ? { a: state.wallStart, b: snapCorner(mouse.current) } : null,
-          brush: state.tool === 'reveal' || state.tool === 'hide' ? { p: mouse.current, r: state.brushCells * state.scene.map.grid.cellWidth } : null,
-          calibPoints: state.calibPoints,
-          draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
-        };
-        renderDm(g, state.scene, state.vision, view.current, dpr, o, now);
+      renderer = r;
+      map = bindMap(r, wrap, (e) => console.error(e));
+    });
+
+    const push = (r: Renderer) => {
+      const sc = state.scene;
+      const cell = sc.map.grid.cellWidth;
+      void map?.set(sc.map.imageUrl, sc.map.isVideo);
+      r.setGrid(state.showGrid && sc.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: sc.map.grid.originX, offsetYPx: sc.map.grid.originY, alpha: 0.18 } : null);
+      const active = state.ws === 'play' ? initiativeOrder()[state.turn]?.id : undefined;
+      r.setTokens(
+        sc.tokens.map((k): TokenShape => ({
+          id: k.id, name: k.label, x: k.x - (k.size * cell) / 2, y: k.y - (k.size * cell) / 2, width: k.size * cell, height: k.size * cell,
+          color: k.ringColor, selected: k.id === state.selectedTokenId, hidden: k.hidden, active: k.id === active,
+        })),
+      );
+      const editMode = state.ws === 'forge';
+      if (editMode || state.dmFogHidden) {
+        r.setMemory(null);
+        r.setFog(null);
+        return;
       }
-      raf = requestAnimationFrame(draw);
+      const see = state.dmSeeThrough ? 0.55 : 1;
+      const effect = sc.fogEffect ?? { biome: sc.map.biome, strength: sc.map.biomeStrength };
+      r.setMemory(clearArea(sc.fog, state.visible), { opacity: state.memoryOpacity * see, softEdge: state.fogLook.softEdges ? cell * 0.25 : 0 });
+      r.setFog(openArea(sc.fog, state.visible), fogOptions({ look: state.fogLook, cellSizePx: cell, seedKey: state.mapResource, effect, opacity: see, quick: state.fogQuick }));
     };
-    raf = requestAnimationFrame(draw);
+
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const r = renderer;
+      const s = size();
+      if (r) {
+        r.resize(s);
+        const v = getVersion();
+        if (v !== pushed) {
+          pushed = v;
+          push(r);
+        }
+        const v2 = view.current;
+        const camKey = `${v2.zoom}|${v2.x}|${v2.y}|${s.width}|${s.height}`;
+        if (camKey !== lastCam) {
+          lastCam = camKey;
+          r.setCamera({ centerX: (s.width / 2 - v2.x) / v2.zoom, centerY: (s.height / 2 - v2.y) / v2.zoom, zoom: v2.zoom, rotation: 0 });
+        }
+      }
+      const dpr = window.devicePixelRatio || 1;
+      if (overlay.width !== Math.round(s.width * dpr) || overlay.height !== Math.round(s.height * dpr)) {
+        overlay.width = Math.round(s.width * dpr);
+        overlay.height = Math.round(s.height * dpr);
+      }
+      const g = overlay.getContext('2d');
+      if (g) drawDmOverlay(g, state.scene, state.vision, view.current, dpr, overlayState(), Date.now());
+    };
+    raf = requestAnimationFrame(tick);
     return () => {
+      disposed = true;
       cancelAnimationFrame(raf);
-      ro.disconnect();
+      map?.dispose();
+      renderer?.destroy();
     };
   }, []);
 
@@ -120,11 +159,16 @@ export function MapView() {
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !(e.target as HTMLElement).closest('input,textarea,select')) space.current = true;
+      if ((e.target as HTMLElement).closest('input,textarea,select,[contenteditable]')) return;
+      if (e.code === 'Space') space.current = true;
       if (e.key === 'Escape') {
         state.wallStart = null;
         drag.current = null;
+        polygonDraft.current = [];
       }
+      if (e.key === 'Enter') finishPolygon();
+      // "Nebel ausblenden" (N): DM window only; the TV never changes.
+      if (e.key.toLowerCase() === 'n' && !e.ctrlKey && !e.metaKey) toggleDmFog();
     };
     const up = (e: KeyboardEvent) => {
       if (e.code === 'Space') space.current = false;
@@ -137,14 +181,40 @@ export function MapView() {
     };
   }, []);
 
-  const toWorld = (e: React.PointerEvent | React.WheelEvent): Point => {
+  const overlayState = (): OverlayState => {
+    const d = drag.current;
+    const cell = state.scene.map.grid.cellWidth;
+    let fogDraft: OverlayState['fogDraft'] = null;
+    if (d && (d.kind === 'fog-rect' || d.kind === 'fog-ellipse')) fogDraft = { polygon: shapeFor(d), path: [], mode: modeFor(d.invert) };
+    else if (d?.kind === 'fog-path') fogDraft = { polygon: d.tool === 'fog-brush' ? null : null, path: d.path, mode: modeFor(d.invert) };
+    else if (state.tool === 'fog-polygon' && polygonDraft.current.length) fogDraft = { polygon: null, path: [...polygonDraft.current, mouse.current], mode: state.fogMode };
+    return {
+      editMode: state.ws === 'forge',
+      selectedTokenId: state.selectedTokenId,
+      selectedZoneId: state.selectedZoneId,
+      measure: d?.kind === 'measure' ? { a: d.a, b: d.b, ft: gridDistanceFeet(state.scene.map.grid, d.a, d.b) } : null,
+      dragRect: d?.kind === 'rect' ? { a: d.a, b: d.b } : null,
+      wallPreview: state.wallStart ? { a: state.wallStart, b: snapCorner(mouse.current) } : null,
+      brush: state.tool === 'fog-brush' ? { p: mouse.current, r: state.brushCells * cell } : null,
+      calibPoints: state.calibPoints,
+      draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
+      fogDraft,
+    };
+  };
+
+  const toWorld = (e: { clientX: number; clientY: number }): Point => {
     const r = canvasRef.current!.getBoundingClientRect();
     const v = view.current;
     return { x: (e.clientX - r.left - v.x) / v.zoom, y: (e.clientY - r.top - v.y) / v.zoom };
   };
 
+  const finishPolygon = () => {
+    const pts = polygonDraft.current;
+    polygonDraft.current = [];
+    if (pts.length >= 3) applyFogArea({ outer: pts.map((p) => [p.x, p.y] as [number, number]), holes: [] }, state.fogMode);
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
-    if (state.viewAsPlayer) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const p = toWorld(e);
     const r = canvasRef.current!.getBoundingClientRect();
@@ -152,7 +222,7 @@ export function MapView() {
       drag.current = { kind: 'pan', sx: e.clientX - r.left, sy: e.clientY - r.top, vx: view.current.x, vy: view.current.y };
       return;
     }
-    if (e.altKey || state.tool === 'ping') {
+    if ((e.altKey && !state.tool.startsWith('fog-')) || state.tool === 'ping') {
       addPing(p);
       return;
     }
@@ -180,13 +250,21 @@ export function MapView() {
       case 'measure':
         drag.current = { kind: 'measure', a: snapPoint(p), b: p };
         return;
-      case 'reveal':
-      case 'hide':
-        checkpoint();
-        drag.current = { kind: 'brush' };
-        fogBrush(p, state.tool === 'reveal' ? 'reveal' : 'hide');
+      case 'fog-rect':
+      case 'fog-ellipse':
+        drag.current = { kind: state.tool, a: p, b: p, invert: e.altKey, circle: e.shiftKey };
         return;
-      case 'reveal-rect':
+      case 'fog-lasso':
+      case 'fog-brush':
+        drag.current = { kind: 'fog-path', tool: state.tool, path: [p], invert: e.altKey };
+        return;
+      case 'fog-polygon': {
+        const pts = polygonDraft.current;
+        // Clicking the first point again closes the polygon.
+        if (pts.length >= 3 && Math.hypot(pts[0].x - p.x, pts[0].y - p.y) * view.current.zoom < 10) finishPolygon();
+        else pts.push(p);
+        return;
+      }
       case 'zone':
         drag.current = { kind: 'rect', a: snapCorner(p), b: p };
         return;
@@ -230,10 +308,14 @@ export function MapView() {
     } else if (d.kind === 'token') {
       d.moved = true;
       moveToken(d.id, { x: p.x + d.ox, y: p.y + d.oy }, false);
-    } else if (d.kind === 'measure' || d.kind === 'rect' || d.kind === 'template') {
+    } else if (d.kind === 'fog-path') {
+      const last = d.path[d.path.length - 1];
+      if (Math.hypot(last.x - p.x, last.y - p.y) * view.current.zoom > 4) d.path.push(p);
+    } else if (d.kind === 'fog-rect' || d.kind === 'fog-ellipse') {
       d.b = p;
-    } else if (d.kind === 'brush') {
-      fogBrush(p, state.tool === 'reveal' ? 'reveal' : 'hide');
+      d.circle = e.shiftKey;
+    } else {
+      d.b = p;
     }
   };
 
@@ -247,10 +329,15 @@ export function MapView() {
       if (d.moved) log('log.moved', { name: tk.name, ft: gridDistanceFeet(state.scene.map.grid, d.start, tk) });
     } else if (d.kind === 'rect') {
       const b = snapCorner(d.b);
-      if (state.tool === 'zone') addZone(d.a.x, d.a.y, b.x, b.y);
-      else fogRect(d.a.x, d.a.y, b.x, b.y);
+      addZone(d.a.x, d.a.y, b.x, b.y);
     } else if (d.kind === 'template') {
       addTemplate(d.shape, d.a, d.b);
+    } else if (d.kind === 'fog-rect' || d.kind === 'fog-ellipse') {
+      applyFogArea(shapeFor(d), modeFor(d.invert));
+    } else if (d.kind === 'fog-path') {
+      const pts = d.path.map((q) => [q.x, q.y] as [number, number]);
+      if (d.tool === 'fog-brush') applyFogArea(strokeArea(pts, state.brushCells * state.scene.map.grid.cellWidth), modeFor(d.invert));
+      else if (pts.length >= 3) applyFogArea({ outer: pts, holes: [] }, modeFor(d.invert));
     }
   };
 
@@ -259,26 +346,40 @@ export function MapView() {
     const mx = e.clientX - r.left;
     const my = e.clientY - r.top;
     const w = toWorld(e);
-    const zoom = Math.max(0.05, Math.min(6, view.current.zoom * Math.exp(-e.deltaY * 0.0015)));
+    const zoom = Math.max(1 / 64, Math.min(16, view.current.zoom * Math.exp(-e.deltaY * 0.0015)));
     view.current = { zoom, x: mx - w.x * zoom, y: my - w.y * zoom };
   };
 
   const hintKey = HINTS[tool];
   return (
     <div ref={wrapRef} className="map-wrap">
+      <canvas ref={canvasRef} aria-hidden="true" />
       <canvas
-        ref={canvasRef}
+        ref={overlayRef}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onDoubleClick={() => state.tool === 'fog-polygon' && finishPolygon()}
         onWheel={onWheel}
         onContextMenu={(e) => e.preventDefault()}
         aria-label={t('panel.map')}
       />
-      {hintKey && !viewAsPlayer && <div className="map-hint">{t(hintKey)}</div>}
-      <div className={`map-badge ${viewAsPlayer ? 'player' : ''}`}>{viewAsPlayer ? t('tool.playerView') : t(ws === 'forge' ? 'ws.forge' : 'ws.play')}</div>
+      {hintKey && <div className="map-hint">{t(hintKey)}</div>}
+      <div className="map-badge">{dmFogHidden ? t('fog.hiddenInDm') : t(ws === 'forge' ? 'ws.forge' : 'ws.play')}</div>
     </div>
   );
+}
+
+function modeFor(invert: boolean): 'reveal' | 'hide' {
+  return invert ? (state.fogMode === 'reveal' ? 'hide' : 'reveal') : state.fogMode;
+}
+
+function shapeFor(d: { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; circle: boolean }): Polygon | null {
+  if (Math.hypot(d.a.x - d.b.x, d.a.y - d.b.y) < 2) return null;
+  if (d.kind === 'fog-rect') return rectPolygon(d.a.x, d.a.y, d.b.x, d.b.y);
+  // Shift draws a circle around the start point (Dungeon-Manager T-247).
+  if (d.circle) return circleArea([d.a.x, d.a.y], Math.hypot(d.b.x - d.a.x, d.b.y - d.a.y));
+  return ellipseArea([d.a.x, d.a.y], [d.b.x, d.b.y]);
 }
 
 /** Wall/zone/template points snap to grid corners (square) or cell centres (hex). */

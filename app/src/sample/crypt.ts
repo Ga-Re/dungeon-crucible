@@ -2,7 +2,7 @@
  * Sample scene "Crypt of Vhal'Durn" used for the first run and in tests.
  * Pure data: no DOM access, so it works in unit tests.
  */
-import { FogState } from '../core/fog';
+import { EMPTY_LEVEL_FOG, rectPolygon, revealIn } from '../core/fogModel';
 import { DEFAULT_GRID } from '../core/grid';
 import { DEFAULT_TABLE, type Scene, type Token, type Wall, type Zone } from '../core/scene';
 
@@ -84,13 +84,10 @@ export function createSampleScene(): Scene {
     rect: { x: r.r[0] * CELL, y: r.r[1] * CELL, w: r.r[2] * CELL, h: r.r[3] * CELL },
     color: r.color,
     discovered: r.kind !== 'secret',
-    biome: r.id === 'crypt' ? 'miasma' : undefined,
+    biome: r.id === 'crypt' ? 'sumpf' : undefined,
   }));
-  const fog = new FogState({ cols: COLS, rows: ROWS, cellSize: CELL });
-  const secret = ROOMS.find((r) => r.kind === 'secret')!;
-  const lockedCells: [number, number][] = [];
-  for (let y = secret.r[1]; y < secret.r[1] + secret.r[3]; y++) for (let x = secret.r[0]; x < secret.r[0] + secret.r[2]; x++) lockedCells.push([x, y]);
-  fog.setLocked(lockedCells, true);
+  // The entrance hall starts revealed.
+  const fog = revealIn(EMPTY_LEVEL_FOG, rectPolygon(0, 9 * CELL, 10 * CELL, 16 * CELL), []);
 
   const tokens: Token[] = [
     token({ id: 'thorin', name: 'Thorin Ironbeard', label: 'TH', kind: 'pc', ringColor: '#e2a03c', visionFt: 60, hp: 44, maxHp: 44, ac: 18, initiative: 14, creatureId: 'thorin' }, 4, 12),
@@ -111,7 +108,8 @@ export function createSampleScene(): Scene {
       widthPx: COLS * CELL,
       heightPx: ROWS * CELL,
       grid: { ...DEFAULT_GRID, cellWidth: CELL, cellHeight: CELL },
-      biome: 'ground',
+      biome: 'nebel',
+      biomeStrength: 1,
     },
     walls,
     zones,
@@ -119,6 +117,7 @@ export function createSampleScene(): Scene {
     templates: [],
     pings: [],
     fog,
+    fogEffect: null,
     table: { ...DEFAULT_TABLE, centerX: 9 * CELL, centerY: 12 * CELL },
   };
 }

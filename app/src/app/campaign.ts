@@ -137,7 +137,6 @@ export async function switchScene(scenePath: string): Promise<void> {
 async function createCampaign(name: string): Promise<void> {
   const scene = createSampleScene();
   scene.map.imageUrl = 'builtin:crypt';
-  scene.fog.revealRect(0, 9 * 70, 10 * 70, 16 * 70);
   state.creatures = structuredClone(SAMPLE_CREATURES);
   const scenePath = `scenes/${slugify('Session 1')}.scene.json`;
   replaceScene(scene, { resource: 'builtin:crypt', fileName: 'builtin:crypt', scenePath, sceneName: 'Session 1' });
@@ -192,7 +191,7 @@ export async function importMapIntoCampaign(): Promise<boolean> {
   const name = f.relPath.split('/').pop()!.replace(/\.[^.]+$/, '');
   const map: MapSidecar = {
     kind: 'map', schemaVersion: 1, name, resource: f.relPath, isVideo, widthPx: w, heightPx: h,
-    tags: [], biome: '', mapType: 'dungeon', fogBiome: 'ground', grid: { ...DEFAULT_GRID }, walls: [], zones: [], pois: [], assets: [],
+    tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, walls: [], zones: [], pois: [], assets: [],
   };
   await saveCampaign();
   const scene = sceneFromDocuments(map, null, url, state.scene.table);

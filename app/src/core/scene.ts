@@ -1,7 +1,7 @@
 /** Runtime scene model used by the DM window. Never sent to the table as a whole. */
 import type { Segment } from './geometry';
 import type { GridConfig, DisplaySpec } from './grid';
-import type { FogState } from './fog';
+import type { FogEffect, LevelFog } from './poly/types';
 import type { Condition } from './rules/rules2024';
 
 export type WallKind = 'wall' | 'door' | 'secret-door' | 'window';
@@ -73,8 +73,12 @@ export interface Ping {
   at: number;
 }
 
-export type FogBiome = 'ground' | 'blizzard' | 'heat' | 'embers' | 'miasma' | 'sea' | 'arcane' | 'darkness';
-export const FOG_BIOMES: readonly FogBiome[] = ['ground', 'blizzard', 'heat', 'embers', 'miasma', 'sea', 'arcane', 'darkness'];
+/**
+ * Biomes of Dungeon-Manager's living fog (`render/pixi/fog-living.ts`): Bodennebel, Schneesturm,
+ * Hitzeflimmern, Glutasche, Sumpfmiasma, Seenebel, Arkaner Dunst, Finsternis.
+ */
+export type FogBiome = 'nebel' | 'schnee' | 'wueste' | 'asche' | 'sumpf' | 'kueste' | 'arkan' | 'dunkel';
+export const FOG_BIOMES: readonly FogBiome[] = ['nebel', 'schnee', 'wueste', 'asche', 'sumpf', 'kueste', 'arkan', 'dunkel'];
 
 export type TableRotation = 0 | 90 | 180 | 270;
 
@@ -101,7 +105,9 @@ export interface MapInfo {
   widthPx: number;
   heightPx: number;
   grid: GridConfig;
+  /** The map's default fog look (sidecar); a scene may override it live (`Scene.fogEffect`). */
   biome: FogBiome;
+  biomeStrength: number;
 }
 
 export interface Scene {
@@ -111,7 +117,10 @@ export interface Scene {
   tokens: Token[];
   templates: AreaTemplate[];
   pings: Ping[];
-  fog: FogState;
+  /** Polygon fog in map pixels (Dungeon-Manager's model): revealed and remembered. */
+  fog: LevelFog;
+  /** Live change of biome/strength in this scene; `null` uses the map's setting. */
+  fogEffect: FogEffect | null;
   table: TableSettings;
   /** Feet → pixel conversion uses map.grid.cellWidth / feetPerCell. */
 }

@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { History } from './history';
-import { mapSidecarFromScene, mapSidecarPath, manifestFromState, sceneFromDocuments, sceneOverrideFromScene, slugify, tableFromManifest } from './persistence';
+import { lockedAreas, mapSidecarFromScene, mapSidecarPath, manifestFromState, sceneFromDocuments, sceneOverrideFromScene, slugify, tableFromManifest } from './persistence';
 import { CampaignManifestSchema, MapSidecarSchema, SceneOverrideSchema } from './sidecar';
 import { createSampleScene } from '../sample/crypt';
-import { updateVision } from './vision';
+import { updateVision, visiblePolygons } from './vision';
+import { rememberSeen, revealAll } from './fogModel';
+import { isInside } from './poly/fog';
 
 describe('persistence', () => {
   it('round-trips a scene through map sidecar and scene override', () => {
     const scene = createSampleScene();
-    updateVision(scene);
+    scene.fog = rememberSeen(scene.fog, visiblePolygons(updateVision(scene)));
+    scene.fogEffect = { biome: 'schnee', strength: 0.4 };
     scene.walls.find((w) => w.id === 'd-throne')!.open = true;
     scene.tokens[0].hp = 7;
     scene.tokens[0].conditions = ['prone'];
@@ -23,8 +26,9 @@ describe('persistence', () => {
     expect(back.walls.find((w) => w.id === 'd-secret')!.open).toBe(false);
     expect(back.tokens[0]).toMatchObject({ hp: 7, conditions: ['prone'] });
     expect(back.templates).toHaveLength(1);
-    expect(back.fog.encode()).toBe(scene.fog.encode());
-    expect([...back.fog.locked]).toEqual([...scene.fog.locked]);
+    expect(back.fog).toEqual(scene.fog);
+    expect(back.fog.remembered.length).toBeGreaterThan(0);
+    expect(back.fogEffect).toEqual({ biome: 'schnee', strength: 0.4 });
     expect(ov.combat).toEqual({ round: 2, turn: 3 });
   });
 
@@ -34,19 +38,8 @@ describe('persistence', () => {
     const fresh = sceneFromDocuments(map, null, null);
     const secret = fresh.zones.find((z) => z.kind === 'secret')!;
     expect(secret.discovered).toBe(false);
-    fresh.fog.revealAll();
-    const c = Math.floor((secret.rect.x + 10) / fresh.fog.cellSize);
-    const r = Math.floor((secret.rect.y + 10) / fresh.fog.cellSize);
-    expect(fresh.fog.isExplored(c, r)).toBe(false);
-  });
-
-  it('resets fog when the grid changed since saving', () => {
-    const scene = createSampleScene();
-    scene.fog.revealAll();
-    const ov = sceneOverrideFromScene(scene, 'S', 'm', { round: 1, turn: 0 });
-    const map = mapSidecarFromScene(scene, 'builtin:crypt');
-    map.grid.cellWidth = 50;
-    expect(sceneFromDocuments(map, ov, null).fog.exploredCount()).toBe(0);
+    const fog = revealAll(fresh.fog, fresh.map.widthPx, fresh.map.heightPx, lockedAreas(fresh.zones));
+    expect(isInside(fog.revealed, [secret.rect.x + 10, secret.rect.y + 10])).toBe(false);
   });
 
   it('stores the table calibration in the campaign manifest', () => {

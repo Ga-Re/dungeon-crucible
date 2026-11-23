@@ -125,6 +125,8 @@ export interface TokenShape {
   readonly hidden?: boolean | undefined;
   /** Its turn in the initiative (T-111c): drawn with a bright ring, on the TV too. */
   readonly active?: boolean | undefined;
+  /** Dungeon Crucible: the token's own ring colour (`#rrggbb`); the id's colour if none. */
+  readonly color?: string | undefined;
 }
 
 /** A map's grid, in map pixels (the sidecar's calibration), and how its lines look. */
@@ -183,6 +185,12 @@ export interface Renderer {
    * view must never draw a map without its fog (ARCHITECTURE §5.1, ADR-0010).
    */
   setFog(revealed: readonly Polygon[] | null, options?: FogOptions): void;
+  /**
+   * Dungeon Crucible addition – memory fog: darkens everything except `clear` (what players
+   * see right now) by `opacity`, between the tokens and the fog. It only ever darkens, so it
+   * cannot show more than the fog above it. `null` removes it.
+   */
+  setMemory(clear: readonly Polygon[] | null, options?: { opacity: number; softEdge?: number }): void;
   /**
    * Draws grid lines over the map (T-106b), under the fog – hidden areas stay covered, lines
    * included. `null` removes them.
@@ -244,6 +252,11 @@ export async function createRenderer(
   // Tokens (T-107a): above the grid, below the fog.
   const tokenLayer = new Container();
   world.addChild(tokenLayer);
+  // Memory fog (Dungeon Crucible): above the tokens, below the fog (added last).
+  const memoryLayer = new Container();
+  world.addChild(memoryLayer);
+  let memoryInput: { readonly clear: readonly Polygon[]; readonly opacity: number; readonly softEdge: number } | null = null;
+  let memoryBuiltFrom: string | null = null;
   // Per token id: what its look was built from, and the container drawn at its centre.
   const builtTokens = new Map<
     string,
@@ -280,8 +293,8 @@ export async function createRenderer(
     view.addChild(
       new Graphics()
         .circle(0, 0, radius * 0.9)
-        .fill(tokenColor(token.id))
-        .stroke({ width: radius * 0.08, color: TOKEN_RING }),
+        .fill(token.color ? "#2a2620" : tokenColor(token.id))
+        .stroke({ width: radius * (token.color ? 0.14 : 0.08), color: token.color ?? TOKEN_RING }),
     );
     // The turn's token: a bright ring outside its own, with a dark edge on any map.
     if (token.active === true)
@@ -334,6 +347,7 @@ export async function createRenderer(
         token.selected === true,
         token.hidden === true,
         token.active === true,
+        token.color,
       ]);
       let built = builtTokens.get(token.id);
       // Where it is shown now, mid-glide too: a new glide starts from there.
@@ -451,6 +465,17 @@ export async function createRenderer(
   };
   options.canvas.addEventListener("webglcontextlost", onContextLost);
   options.canvas.addEventListener("webglcontextrestored", onContextRestored);
+
+  const drawMemory = () => {
+    const key = JSON.stringify([memoryInput, mapSize]);
+    if (key === memoryBuiltFrom) return;
+    memoryBuiltFrom = key;
+    for (const child of memoryLayer.removeChildren()) disposeFog(child as Container);
+    if (!memoryInput || memoryInput.opacity <= 0) return;
+    memoryLayer.addChild(
+      drawFog(memoryInput.clear, { opacity: Math.min(0.99, memoryInput.opacity), softEdge: memoryInput.softEdge }, mapSize, rootResolution),
+    );
+  };
 
   const drawGrid = () => {
     const key = JSON.stringify([gridInput, mapSize]);
@@ -742,6 +767,7 @@ export async function createRenderer(
       shownFog = null;
       fogBuiltFrom = null;
       if (fogInput) applyFog();
+      drawMemory();
       drawGrid();
       requestDraw();
     },
@@ -772,6 +798,7 @@ export async function createRenderer(
       shownFog = null;
       fogBuiltFrom = null;
       if (fogInput) applyFog();
+      drawMemory();
       drawGrid();
       requestDraw();
     },
@@ -781,6 +808,11 @@ export async function createRenderer(
       fogInput = revealed ? { revealed, options: fogOptions ?? {} } : null;
       applyFog();
       gate.fogSet();
+      requestDraw();
+    },
+    setMemory(clear, memoryOptions) {
+      memoryInput = clear ? { clear, opacity: memoryOptions?.opacity ?? 0.5, softEdge: memoryOptions?.softEdge ?? 0 } : null;
+      drawMemory();
       requestDraw();
     },
     setTokens(next, tokenOptions) {
@@ -823,6 +855,8 @@ export async function createRenderer(
       // The fog's graphics contexts too, as on every rebuild; and the grid's (Pixi keeps a
       // Graphics' own context when destroyed with options).
       replaceFog(null);
+      memoryInput = null;
+      drawMemory();
       world.removeChild(gridLayer);
       gridLayer.destroy({ context: true });
       drawTokens([]);

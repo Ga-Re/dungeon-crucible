@@ -219,7 +219,6 @@ input[type='checkbox'] { accent-color: var(--accent); }
 /* Preview */
 .preview { display: flex; flex-direction: column; height: 100%; }
 .preview-bar { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-bottom: 1px solid var(--line-soft); background: var(--panel); }
-.preview canvas { flex: 1; width: 100%; min-height: 0; display: block; background: #000; }
 .live { display: inline-flex; align-items: center; gap: 4px; color: var(--ok); font-weight: 600; font-size: 10.5px; letter-spacing: 0.08em; }
 .live::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .live.off { color: var(--fg-faint); }

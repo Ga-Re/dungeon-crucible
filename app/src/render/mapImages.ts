@@ -5,57 +5,49 @@
  */
 import { CELL, COLS, ROWS, cryptFloor } from '../sample/cryptLayout';
 
-export type MapSource = HTMLImageElement | HTMLVideoElement | HTMLCanvasElement;
+const images = new Map<string, Promise<HTMLImageElement | HTMLCanvasElement>>();
 
-const cache = new Map<string, MapSource>();
-const TILE = 4096;
-
-export function getMapSource(url: string | null, isVideo: boolean): MapSource | null {
-  if (!url) return null;
-  const hit = cache.get(url);
+/**
+ * Loads an image map for the PixiJS renderer. `builtin:crypt` is drawn procedurally. Campaign
+ * files come through the asset protocol, which answers with CORS headers, so `crossOrigin` keeps
+ * the WebGL texture upload clean.
+ */
+export function loadMapImage(url: string): Promise<HTMLImageElement | HTMLCanvasElement> {
+  const hit = images.get(url);
   if (hit) return hit;
-  let src: MapSource;
-  if (url === 'builtin:crypt') {
-    src = drawCrypt();
-  } else if (isVideo) {
+  const p: Promise<HTMLImageElement | HTMLCanvasElement> =
+    url === 'builtin:crypt'
+      ? Promise.resolve(drawCrypt())
+      : new Promise((resolve, reject) => {
+          const img = new Image();
+          if (!url.startsWith('blob:') && !url.startsWith('data:')) img.crossOrigin = 'anonymous';
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error(`Map image could not be loaded: ${url}`));
+          img.src = url;
+        });
+  images.set(url, p);
+  p.catch(() => images.delete(url));
+  return p;
+}
+
+/** A muted, looping video element for a video map (ADR-0010: a `<video>` under the canvas). */
+export function createMapVideo(url: string): Promise<HTMLVideoElement> {
+  return new Promise((resolve, reject) => {
     const v = document.createElement('video');
-    v.src = url;
+    if (!url.startsWith('blob:')) v.crossOrigin = 'anonymous';
     v.muted = true;
     v.loop = true;
     v.playsInline = true;
-    void v.play().catch(() => undefined);
-    src = v;
-  } else {
-    const img = new Image();
-    img.decoding = 'async';
-    img.src = url;
-    src = img;
-  }
-  cache.set(url, src);
-  return src;
+    v.onloadedmetadata = () => {
+      void v.play().catch(() => undefined);
+      resolve(v);
+    };
+    v.onerror = () => reject(new Error(`Video map could not be loaded: ${url}`));
+    v.src = url;
+  });
 }
 
-export function sourceSize(s: MapSource): { w: number; h: number } {
-  if (s instanceof HTMLVideoElement) return { w: s.videoWidth, h: s.videoHeight };
-  if (s instanceof HTMLImageElement) return { w: s.naturalWidth, h: s.naturalHeight };
-  return { w: s.width, h: s.height };
-}
-
-/** Draws the map source into map space (0,0)-(w,h), split into GPU-friendly tiles. */
-export function drawMapSource(g: CanvasRenderingContext2D, s: MapSource, w: number, h: number): boolean {
-  const { w: iw, h: ih } = sourceSize(s);
-  if (!iw || !ih) return false;
-  const tx = Math.ceil(iw / TILE);
-  const ty = Math.ceil(ih / TILE);
-  for (let j = 0; j < ty; j++) {
-    for (let i = 0; i < tx; i++) {
-      const sw = Math.min(TILE, iw - i * TILE);
-      const sh = Math.min(TILE, ih - j * TILE);
-      g.drawImage(s, i * TILE, j * TILE, sw, sh, (i * TILE * w) / iw, (j * TILE * h) / ih, (sw * w) / iw, (sh * h) / ih);
-    }
-  }
-  return true;
-}
+const TILE = 4096;
 
 export function tileCount(w: number, h: number): string {
   return `${Math.ceil(w / TILE)}×${Math.ceil(h / TILE)}`;

@@ -52,16 +52,26 @@ const view: RibbonGroup = {
   ],
 };
 
+/** Fog tools as in Dungeon-Manager's Nebel ribbon (T-247) plus a brush. */
 const fogTools: RibbonTab = {
   label: 'tab.fog',
   groups: [
     {
       label: 'group.tools',
       buttons: [
-        { id: 'tool:reveal', icon: 'brush', label: 'tool.revealBrush', tool: 'reveal' },
-        { id: 'tool:hide', icon: 'eraser', label: 'tool.hideBrush', tool: 'hide' },
-        { id: 'tool:reveal-rect', icon: 'rect', label: 'tool.revealRect', tool: 'reveal-rect' },
+        { id: 'tool:fog-rect', icon: 'rect', label: 'tool.fogRect', tool: 'fog-rect' },
+        { id: 'tool:fog-ellipse', icon: 'sphere', label: 'tool.fogEllipse', tool: 'fog-ellipse' },
+        { id: 'tool:fog-polygon', icon: 'zone', label: 'tool.fogPolygon', tool: 'fog-polygon' },
+        { id: 'tool:fog-lasso', icon: 'line', label: 'tool.fogLasso', tool: 'fog-lasso' },
+        { id: 'tool:fog-brush', icon: 'brush', label: 'tool.fogBrush', tool: 'fog-brush' },
         { id: 'tool:reveal-room', icon: 'room', label: 'tool.revealRoom', tool: 'reveal-room' },
+      ],
+    },
+    {
+      label: 'group.mode',
+      buttons: [
+        { id: 'fogmode:reveal', icon: 'eye', label: 'fog.reveal' },
+        { id: 'fogmode:hide', icon: 'eyeoff', label: 'fog.hide' },
       ],
     },
     {
@@ -69,6 +79,8 @@ const fogTools: RibbonTab = {
       buttons: [
         { id: 'fog:hideAll', icon: 'eyeoff', label: 'tool.hideAll' },
         { id: 'fog:revealAll', icon: 'eye', label: 'tool.revealAll' },
+        { id: 'fog:dmHide', icon: 'fog', label: 'tool.fogHideDm' },
+        { id: 'panel:fog', icon: 'fog', label: 'panel.fog' },
       ],
     },
   ],

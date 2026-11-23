@@ -13,3 +13,7 @@ export type Point = z.infer<typeof pointSchema>;
 export type Ring = z.infer<typeof ringSchema>;
 export type Polygon = z.infer<typeof polygonSchema>;
 export type LevelFog = z.infer<typeof levelFogSchema>;
+
+/** A fog biome as played (T-168): which biome and how strong its effects are. */
+export const fogEffectSchema = z.looseObject({ biome: z.string().min(1), strength: z.number().min(0).max(1) });
+export type FogEffect = z.infer<typeof fogEffectSchema>;

@@ -9,7 +9,12 @@ import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
-import { updateVision, type ViewerVision } from '../core/vision';
+import { updateVision, visiblePolygons, type ViewerVision } from '../core/vision';
+import { hideAll, hideIn, rectPolygon, rememberSeen, revealAll, revealIn } from '../core/fogModel';
+import { lockedAreas } from '../core/persistence';
+import type { Polygon } from '../core/poly/types';
+import { readFogLook, saveCoverFrom, saveFadeSeconds, saveFogEdge, saveFogMotion, saveFogQuality, saveFogSpeed, saveSoftEdges, type CoverFrom, type FogLook, type FogQuality } from './fog-settings';
+import { lookToWire } from '../render/fogOptions';
 import type { MonitorInfo } from '../platform/bridge';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
@@ -24,7 +29,7 @@ export type WorkspaceId = 'forge' | 'vault' | 'creatures' | 'atlas' | 'play';
 export type ToolId =
   | 'select' | 'pan' | 'measure' | 'ping' | 'calibrate'
   | 'zone' | 'wall' | 'door' | 'secret-door' | 'window'
-  | 'reveal' | 'hide' | 'reveal-rect' | 'reveal-room'
+  | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
   | 'cone' | 'sphere' | 'line' | 'cube';
 
 export interface LogEntry {
@@ -40,9 +45,18 @@ export interface AppState {
   showGrid: boolean;
   viewAsPlayer: boolean;
   dmSeeThrough: boolean;
-  fogSoftness: number;
+  /** The fog's look on this device (Dungeon-Manager's fog settings). */
+  fogLook: FogLook;
   memoryOpacity: number;
   brushCells: number;
+  /** "Nebel ausblenden" (key N): fog hidden in the DM window only; the TV never changes. */
+  dmFogHidden: boolean;
+  /** Whether fog tools reveal or hide (Alt inverts while drawing). */
+  fogMode: 'reveal' | 'hide';
+  /** What players see right now (fog polygons from token sight). */
+  visible: Polygon[];
+  /** The last fog change came from token movement (switches quickly, no ragged spread). */
+  fogQuick: boolean;
   moveLock: boolean;
   selectedTokenId: string | null;
   selectedZoneId: string | null;
@@ -82,7 +96,6 @@ function initial(): AppState {
   const scene = createSampleScene();
   scene.map.imageUrl = 'builtin:crypt';
   // Start with the entrance hall explored.
-  scene.fog.revealRect(0, 9 * 70, 10 * 70, 16 * 70);
   const s: AppState = {
     ws: 'play',
     tool: 'select',
@@ -90,9 +103,13 @@ function initial(): AppState {
     showGrid: true,
     viewAsPlayer: false,
     dmSeeThrough: true,
-    fogSoftness: 0.55,
+    fogLook: readFogLook(typeof localStorage === 'undefined' ? undefined : localStorage),
     memoryOpacity: 0.6,
     brushCells: 1.5,
+    dmFogHidden: false,
+    fogMode: 'reveal',
+    visible: [],
+    fogQuick: false,
     moveLock: false,
     selectedTokenId: null,
     selectedZoneId: null,
@@ -126,12 +143,24 @@ function initial(): AppState {
     sceneVersion: 0,
   };
   s.vision = updateVision(scene);
+  s.visible = visiblePolygons(s.vision);
+  scene.fog = rememberSeen(scene.fog, s.visible);
   return s;
 }
 
 export const state: AppState = initial();
 let version = 0;
 const listeners = new Set<() => void>();
+
+/** Changes with every state change: views compare it to know when to push to the renderer. */
+export function getVersion(): number {
+  return version;
+}
+
+export function setFogMode(m: 'reveal' | 'hide'): void {
+  state.fogMode = m;
+  emit();
+}
 
 export function emit(): void {
   version++;
@@ -253,15 +282,46 @@ export function toggle(key: 'snap' | 'showGrid' | 'viewAsPlayer' | 'dmSeeThrough
   emit();
 }
 
-export function setFogOption(key: 'fogSoftness' | 'memoryOpacity' | 'brushCells', v: number): void {
+export function setFogOption(key: 'memoryOpacity' | 'brushCells', v: number): void {
   state[key] = v;
+  emit();
+}
+
+/** Device fog settings, stored like in Dungeon-Manager (`dm.fog.*` keys in local storage). */
+export function setFogLook(patch: Partial<FogLook>): void {
+  const st = typeof localStorage === 'undefined' ? undefined : localStorage;
+  if (patch.softEdges !== undefined) saveSoftEdges(st, patch.softEdges);
+  if (patch.fadeSeconds !== undefined) saveFadeSeconds(st, patch.fadeSeconds);
+  if (patch.quality !== undefined) saveFogQuality(st, patch.quality as FogQuality);
+  if (patch.edge !== undefined) saveFogEdge(st, patch.edge);
+  if (patch.motion !== undefined) saveFogMotion(st, patch.motion);
+  if (patch.speed !== undefined) saveFogSpeed(st, patch.speed);
+  if (patch.coverFrom !== undefined) saveCoverFrom(st, patch.coverFrom as CoverFrom);
+  state.fogLook = readFogLook(st);
+  emit();
+}
+
+export function toggleDmFog(): void {
+  state.dmFogHidden = !state.dmFogHidden;
   emit();
 }
 
 /* ---------- Scene edits ---------- */
 
-export function recomputeVision(): void {
+let lastRemember = 0;
+/**
+ * Recomputes token sight. What players see becomes memory fog once they leave it; the union is
+ * throttled while dragging and always done for a final position.
+ */
+export function recomputeVision(final = true): void {
   state.vision = updateVision(state.scene);
+  state.visible = visiblePolygons(state.vision);
+  const now = Date.now();
+  if (final || now - lastRemember > 150) {
+    state.scene.fog = rememberSeen(state.scene.fog, state.visible);
+    lastRemember = now;
+  }
+  state.fogQuick = true;
 }
 
 export function snapPoint(p: Point): Point {
@@ -274,7 +334,7 @@ export function moveToken(id: string, p: Point, final: boolean): void {
   const q = final ? snapPoint(p) : p;
   t.x = q.x;
   t.y = q.y;
-  if (t.kind === 'pc') recomputeVision();
+  if (t.kind === 'pc') recomputeVision(final);
   emit();
 }
 
@@ -324,61 +384,78 @@ export function zoneAt(p: Point): string | null {
   return z?.id ?? null;
 }
 
-function zoneCells(id: string): [number, number][] {
+function zoneArea(id: string): Polygon | null {
   const z = state.scene.zones.find((q) => q.id === id);
-  if (!z) return [];
-  const s = state.scene.fog.cellSize;
-  const out: [number, number][] = [];
-  for (let r = Math.floor(z.rect.y / s); r < Math.ceil((z.rect.y + z.rect.h) / s); r++) for (let c = Math.floor(z.rect.x / s); c < Math.ceil((z.rect.x + z.rect.w) / s); c++) out.push([c, r]);
-  return out;
+  return z ? rectPolygon(z.rect.x, z.rect.y, z.rect.x + z.rect.w, z.rect.y + z.rect.h) : null;
+}
+
+function locked(): Polygon[] {
+  return lockedAreas(state.scene.zones);
+}
+
+/** A DM fog tool: reveals or hides `area` (it spreads at the device's speed). */
+export function applyFogArea(area: Polygon | null, mode: 'reveal' | 'hide'): void {
+  if (!area) return;
+  checkpoint();
+  // Aimed on purpose, so it may reveal a secret room too.
+  state.scene.fog = mode === 'reveal' ? revealIn(state.scene.fog, area, locked(), true) : hideIn(state.scene.fog, area, false);
+  state.fogQuick = false;
+  emit();
 }
 
 export function revealZone(id: string): void {
   const z = state.scene.zones.find((q) => q.id === id);
   if (!z || (z.kind === 'secret' && !z.discovered)) return;
-  checkpoint();
-  for (const [c, r] of zoneCells(id)) state.scene.fog.reveal(c, r, true);
-  emit();
+  applyFogArea(zoneArea(id), 'reveal');
 }
 
-/** Discovering a secret zone unlocks its fog cells and opens secret doors touching it. */
+/** Discovering a secret zone unlocks it, opens secret doors touching it and reveals it. */
 export function discoverZone(id: string): void {
   const z = state.scene.zones.find((q) => q.id === id);
   if (!z) return;
   checkpoint();
   z.discovered = true;
-  state.scene.fog.setLocked(zoneCells(id), false);
   for (const w of state.scene.walls) {
     if (w.kind !== 'secret-door') continue;
     const touches = [w.x1, w.x2].some((x) => x >= z.rect.x - 1 && x <= z.rect.x + z.rect.w + 1) && [w.y1, w.y2].some((y) => y >= z.rect.y - 1 && y <= z.rect.y + z.rect.h + 1);
     if (touches) w.open = true;
   }
   recomputeVision();
-  emit();
-}
-
-export function fogBrush(p: Point, mode: 'reveal' | 'hide'): void {
-  state.scene.fog.brush(p, state.brushCells * state.scene.map.grid.cellWidth, mode);
-  emit();
-}
-
-export function fogRect(x0: number, y0: number, x1: number, y1: number): void {
-  checkpoint();
-  state.scene.fog.revealRect(x0, y0, x1, y1);
+  const area = zoneArea(id);
+  if (area) state.scene.fog = revealIn(state.scene.fog, area, [], true);
+  state.fogQuick = false;
   emit();
 }
 
 export function fogAll(reveal: boolean): void {
   checkpoint();
-  if (reveal) state.scene.fog.revealAll();
-  else state.scene.fog.hideAll();
+  const m = state.scene.map;
+  state.scene.fog = reveal ? revealAll(state.scene.fog, m.widthPx, m.heightPx, locked()) : hideAll();
+  state.fogQuick = false;
   recomputeVision();
+  state.fogQuick = false;
   emit();
 }
 
+/** In the Map Forge the map's default; while playing a live change for this scene. */
 export function setBiome(b: FogBiome): void {
   checkpoint();
-  state.scene.map.biome = b;
+  if (state.ws === 'forge') state.scene.map.biome = b;
+  else state.scene.fogEffect = { biome: b, strength: state.scene.fogEffect?.strength ?? state.scene.map.biomeStrength };
+  emit();
+}
+
+export function setBiomeStrength(v: number): void {
+  if (state.ws === 'forge') state.scene.map.biomeStrength = v;
+  else state.scene.fogEffect = { biome: state.scene.fogEffect?.biome ?? state.scene.map.biome, strength: v };
+  markDirty();
+  emit();
+}
+
+/** "Reset scene": the scene takes the map's fog look again. */
+export function resetSceneFogEffect(): void {
+  checkpoint();
+  state.scene.fogEffect = null;
   emit();
 }
 
@@ -526,14 +603,18 @@ export function produceFrame(now: number): PlayerFrame {
   // Drop pings older than 2 s.
   state.scene.pings = state.scene.pings.filter((p) => now - p.at < 2000);
   state.frameSeq++;
-  state.frame = buildPlayerFrame(state.scene, state.vision, {
+  state.frame = buildPlayerFrame(state.scene, {
     seq: state.frameSeq,
     now,
     showGrid: state.showGrid,
     memoryOpacity: state.memoryOpacity,
-    softness: state.fogSoftness,
     movementLocked: state.moveLock,
     zoom: tableZoom(),
+    look: lookToWire(state.fogLook),
+    visible: state.visible,
+    quick: state.fogQuick,
+    activeTokenId: state.ws === 'play' ? initiativeOrder()[state.turn]?.id ?? null : null,
+    seedKey: state.mapResource,
   });
   return state.frame;
 }

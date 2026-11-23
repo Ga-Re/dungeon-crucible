@@ -1,19 +1,34 @@
 /**
  * Fail-closed player projection.
  *
- * The table window never receives the DM scene. It receives a `PlayerFrame`
- * built here from a whitelist of fields. The table validates every frame with
- * `parsePlayerFrame`; anything invalid, stale or missing fog results in black.
+ * The table window never receives the DM scene. It receives a `PlayerFrame` built here from a
+ * whitelist of fields. The table validates every frame with `parsePlayerFrame`; anything invalid,
+ * stale or missing fog results in black.
  */
 import { z } from 'zod';
+import { clearArea, openArea } from './fogModel';
+import { polygonSchema, type Polygon } from './poly/types';
 import type { Scene } from './scene';
-import { tokensVisibleToPlayers, type ViewerVision } from './vision';
+import { tokensVisibleToPlayers } from './vision';
 
-export const FRAME_VERSION = 1;
+export const FRAME_VERSION = 2;
 /** The table blacks out when no valid frame or heartbeat arrived for this long. */
 export const MAX_FRAME_AGE_MS = 2500;
 
 const point = z.object({ x: z.number().finite(), y: z.number().finite() });
+
+/** The device's fog look (Dungeon-Manager's fog settings), so the TV looks like the DM's preview. */
+export const fogLookSchema = z.object({
+  softEdges: z.boolean(),
+  fadeSeconds: z.number().min(0).max(3),
+  quality: z.enum(['high', 'medium', 'off']),
+  edge: z.number().min(0).max(2.5),
+  motion: z.number().min(0).max(3),
+  /** Grid cells per second; `null` is "Sofort" (JSON has no Infinity). */
+  speed: z.number().positive().nullable(),
+  coverFrom: z.enum(['middle', 'random']),
+});
+export type FogLookWire = z.infer<typeof fogLookSchema>;
 
 export const PlayerFrameSchema = z.object({
   version: z.literal(FRAME_VERSION),
@@ -31,6 +46,8 @@ export const PlayerFrameSchema = z.object({
     isVideo: z.boolean(),
     widthPx: z.number().positive(),
     heightPx: z.number().positive(),
+    /** Seeds the ragged spread front, so DM window and TV spread alike. */
+    seedKey: z.string(),
     grid: z.object({
       type: z.enum(['square', 'hex-pointy', 'hex-flat']),
       cellWidth: z.number().positive(),
@@ -43,15 +60,15 @@ export const PlayerFrameSchema = z.object({
     showGrid: z.boolean(),
   }),
   fog: z.object({
-    cols: z.number().int().positive(),
-    rows: z.number().int().positive(),
-    cellSize: z.number().positive(),
-    /** RLE of explored cells (see FogState.encode). */
-    explored: z.string(),
+    /** Not covered by opaque fog. */
+    open: z.array(polygonSchema),
+    /** Seen right now (no memory dimming). */
+    clear: z.array(polygonSchema),
     memoryOpacity: z.number().min(0.2).max(1),
-    softness: z.number().min(0).max(1),
-    vision: z.array(z.object({ origin: point, radius: z.number().positive(), polygon: z.array(point).min(3) })),
-    biome: z.string(),
+    look: fogLookSchema,
+    effect: z.object({ biome: z.string().min(1), strength: z.number().min(0).max(1) }),
+    /** A change from token movement switches quickly instead of spreading. */
+    quick: z.boolean(),
   }),
   tokens: z.array(
     z.object({
@@ -65,6 +82,7 @@ export const PlayerFrameSchema = z.object({
       hpRatio: z.number().min(0).max(1).nullable(),
       down: z.boolean(),
       locked: z.boolean(),
+      active: z.boolean(),
     }),
   ),
   templates: z.array(
@@ -80,14 +98,21 @@ export interface ProjectionOptions {
   now: number;
   showGrid: boolean;
   memoryOpacity: number;
-  softness: number;
   movementLocked: boolean;
   zoom: number;
+  look: FogLookWire;
+  /** What players see right now (from `visiblePolygons`). */
+  visible: readonly Polygon[];
+  quick: boolean;
+  activeTokenId: string | null;
+  seedKey: string;
 }
 
-export function buildPlayerFrame(scene: Scene, vision: readonly ViewerVision[], o: ProjectionOptions): PlayerFrame {
-  const visibleTokens = tokensVisibleToPlayers(scene.tokens, vision);
+export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFrame {
+  const visibleTokens = tokensVisibleToPlayers(scene.tokens, scene.fog, o.visible);
   const g = scene.map.grid;
+  const effect = scene.fogEffect ?? { biome: scene.map.biome, strength: scene.map.biomeStrength };
+  const copy = (ps: readonly Polygon[]) => ps.map((p) => ({ outer: p.outer.map(([x, y]) => [x, y] as [number, number]), holes: p.holes.map((h) => h.map(([x, y]) => [x, y] as [number, number])) }));
   return {
     version: FRAME_VERSION,
     seq: o.seq,
@@ -102,26 +127,17 @@ export function buildPlayerFrame(scene: Scene, vision: readonly ViewerVision[], 
       isVideo: scene.map.isVideo,
       widthPx: scene.map.widthPx,
       heightPx: scene.map.heightPx,
-      grid: {
-        type: g.type,
-        cellWidth: g.cellWidth,
-        cellHeight: g.cellHeight,
-        originX: g.originX,
-        originY: g.originY,
-        rotationDeg: g.rotationDeg,
-        feetPerCell: g.feetPerCell,
-      },
+      seedKey: o.seedKey,
+      grid: { type: g.type, cellWidth: g.cellWidth, cellHeight: g.cellHeight, originX: g.originX, originY: g.originY, rotationDeg: g.rotationDeg, feetPerCell: g.feetPerCell },
       showGrid: o.showGrid,
     },
     fog: {
-      cols: scene.fog.cols,
-      rows: scene.fog.rows,
-      cellSize: scene.fog.cellSize,
-      explored: scene.fog.encode(),
+      open: copy(openArea(scene.fog, o.visible)),
+      clear: copy(clearArea(scene.fog, o.visible)),
       memoryOpacity: o.memoryOpacity,
-      softness: o.softness,
-      vision: vision.map((v) => ({ origin: { ...v.origin }, radius: v.radius, polygon: v.polygon.map((p) => ({ x: p.x, y: p.y })) })),
-      biome: scene.map.biome,
+      look: { ...o.look },
+      effect: { biome: effect.biome, strength: effect.strength },
+      quick: o.quick,
     },
     tokens: visibleTokens.map((t) => ({
       id: t.id,
@@ -133,6 +149,7 @@ export function buildPlayerFrame(scene: Scene, vision: readonly ViewerVision[], 
       hpRatio: t.kind === 'pc' ? Math.max(0, Math.min(1, t.hp / Math.max(1, t.maxHp))) : null,
       down: t.hp <= 0,
       locked: o.movementLocked && t.kind === 'pc',
+      active: t.id === o.activeTokenId,
     })),
     templates: scene.templates.map((t) => ({ shape: t.shape, x: t.x, y: t.y, angle: t.angle, sizeFt: t.sizeFt, color: t.color })),
     pings: scene.pings.map((p) => ({ x: p.x, y: p.y, age: Math.max(0, o.now - p.at) })),
@@ -149,8 +166,4 @@ export function parsePlayerFrame(data: unknown, now: number, lastSeq: number): F
   if (f.seq <= lastSeq) return { ok: false, reason: 'out-of-order' };
   if (now - f.issuedAt > MAX_FRAME_AGE_MS) return { ok: false, reason: 'stale' };
   return { ok: true, frame: f };
-}
-
-export function isFrameFresh(frame: PlayerFrame | null, lastReceivedAt: number, now: number): boolean {
-  return !!frame && now - lastReceivedAt <= MAX_FRAME_AGE_MS;
 }

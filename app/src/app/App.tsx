@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FunctionComponent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FunctionComponent } from 'react';
+import { exploredShare } from '../core/fogModel';
 import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IDockviewHeaderActionsProps, type IDockviewPanelProps } from 'dockview-react';
 import 'dockview-react/dist/styles/dockview.css';
 import { useI18n, LOCALES, type Locale } from '../i18n/i18n';
@@ -9,7 +10,7 @@ import {
 } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
 import {
-  clearTemplates, emit, fogAll, log, nextTurn, redo, removeLastUserWall, rotateTable, setGridType, setTool, setWorkspace, state, toggle, toggleBlackout, undo, useStore,
+  clearTemplates, emit, fogAll, log, nextTurn, redo, removeLastUserWall, rotateTable, setFogMode, setGridType, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { importMapIntoCampaign, openCampaignDialog, reopenLastCampaign, saveCampaign, startAutosave } from './campaign';
 import { openTable, refreshMonitors, startFrameLoop } from './tableOutput';
@@ -130,7 +131,7 @@ function Ribbon() {
   const { t } = useI18n();
   const ws = useStore((s) => s.ws);
   const tool = useStore((s) => s.tool);
-  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, grid: s.scene.map.grid.type }));
+  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, grid: s.scene.map.grid.type, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden }));
   const [tab, setTab] = useState(0);
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState<DOMRect | null>(null);
@@ -147,6 +148,9 @@ function Ribbon() {
     if (b.id === 'toggle:moveLock') return flags.moveLock;
     if (b.id === 'toggle:blackout') return flags.blackout;
     if (b.id.startsWith('grid:')) return b.id.slice(5) === flags.grid;
+    if (b.id === 'fogmode:reveal') return flags.fogMode === 'reveal';
+    if (b.id === 'fogmode:hide') return flags.fogMode === 'hide';
+    if (b.id === 'fog:dmHide') return flags.dmFogHidden;
     return false;
   };
 
@@ -162,6 +166,10 @@ function Ribbon() {
       case 'grid:hex-flat': return setGridType('hex-flat');
       case 'fit': return mapCommands.fit();
       case 'fog:hideAll': return fogAll(false);
+      case 'fog:dmHide': return toggleDmFog();
+      case 'fogmode:reveal': return setFogMode('reveal');
+      case 'fogmode:hide': return setFogMode('hide');
+      case 'panel:fog': return focusPanel('fog');
       case 'fog:revealAll': return fogAll(true);
       case 'walls:undo': return removeLastUserWall();
       case 'turn:next': return nextTurn();
@@ -327,9 +335,11 @@ function StatusBar() {
   const tableOpen = useStore((s) => s.tableOpen);
   const blackout = useStore((s) => s.scene.table.blackout);
   const fog = useStore((s) => s.scene.fog);
+  const visible = useStore((s) => s.visible);
+  const map = useStore((s) => s.scene.map);
   const round = useStore((s) => s.round);
   const grid = useStore((s) => s.scene.map.grid);
-  const explored = Math.round((fog.exploredCount() / (fog.cols * fog.rows)) * 100);
+  const explored = useMemo(() => Math.round(exploredShare(fog, visible, map.widthPx, map.heightPx) * 100), [fog, visible, map.widthPx, map.heightPx]);
   return (
     <footer className="statusbar">
       <span>{t(WORKSPACES[ws].name)}</span>

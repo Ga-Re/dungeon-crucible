@@ -1,15 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cellsVisibleOnTable, pixelsPerInch, ppiCorrectionFromMeasurement } from '../core/grid';
 import { FOG_BIOMES, type TableRotation } from '../core/scene';
 import { abilityModifier, ABILITIES, CONDITIONS, evaluateEncounter, proficiencyBonusForCr, proficiencyBonusForLevel, xpForCr, type ChallengeRating } from '../core/rules/rules2024';
 import { d20Test } from '../core/rules/dice';
 import { useI18n } from '../i18n/i18n';
-import { renderPlayerFrame } from '../render/frameRenderer';
+import { TableView, type FrameSource } from '../table/TableView';
+import { BIOMES } from '../render/pixi/fog-living';
+import { FADE_MAX_SECONDS, FADE_STEP_SECONDS, FOG_EDGE, FOG_MOTION, FOG_QUALITIES, FOG_SPEED, speedOfStep, stepOfSpeed } from '../app/fog-settings';
 import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
   changeHp, discoverZone, emit, initiativeOrder, markDirty, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  setBiome, setFogOption, setGridType, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
+  resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, setGridType, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { switchScene } from '../app/campaign';
@@ -163,36 +165,83 @@ export function PropertiesPanel() {
 
 /* ---------- Fog ---------- */
 
-const BIOME_SWATCH: Record<string, string> = {
-  ground: 'linear-gradient(180deg,#1c1d20,#c8ccd4)', blizzard: 'repeating-linear-gradient(120deg,#cfd8e8 0 2px,#5c6a80 2px 6px)',
-  heat: 'linear-gradient(180deg,#3a2414,#ffb060)', embers: 'radial-gradient(circle at 40% 60%,#ff7a28 0 3px,#2a1410 4px)',
-  miasma: 'linear-gradient(180deg,#1a2412,#7cb054)', sea: 'linear-gradient(180deg,#1a2430,#96b6cc)',
-  arcane: 'radial-gradient(circle,#ac74ff,#2a1840)', darkness: 'linear-gradient(180deg,#000,#1a1a1a)',
-};
+/** Swatches in each biome's colours (Dungeon-Manager's `BIOMES`). */
+function biomeSwatch(b: string): string {
+  const c = BIOMES[b]?.colours ?? ['#2a3238', '#66737c', '#b9c5cc'];
+  return `linear-gradient(180deg, ${c[0]}, ${c[1]} 60%, ${c[2]})`;
+}
 
 export function FogPanel() {
   const { t } = useI18n();
-  const soft = useStore((s) => s.fogSoftness);
+  const look = useStore((s) => s.fogLook);
   const mem = useStore((s) => s.memoryOpacity);
   const brush = useStore((s) => s.brushCells);
   const dmSee = useStore((s) => s.dmSeeThrough);
-  const biome = useStore((s) => s.scene.map.biome);
+  const dmHidden = useStore((s) => s.dmFogHidden);
+  const mode = useStore((s) => s.fogMode);
+  const ws = useStore((s) => s.ws);
+  const map = useStore((s) => s.scene.map);
+  const effect = useStore((s) => s.scene.fogEffect);
+  const biome = effect?.biome ?? map.biome;
+  const strength = effect?.strength ?? map.biomeStrength;
+  const step = stepOfSpeed(look.speed);
+  const living = look.quality !== 'off';
   return (
     <div className="panel-body">
-      <div className="sec">{t('fog.biome')}</div>
+      <div className="sec">{t('fog.mode')}</div>
+      <div className="seg">
+        <button className={mode === 'reveal' ? 'on' : ''} onClick={() => setFogMode('reveal')}>{t('fog.reveal')}</button>
+        <button className={mode === 'hide' ? 'on' : ''} onClick={() => setFogMode('hide')}>{t('fog.hide')}</button>
+      </div>
+      <p className="hint">{t('fog.altInverts')}</p>
+
+      <div className="sec">{t('fog.biome')}{ws === 'play' && effect ? ` · ${t('fog.sceneOverride')}` : ''}</div>
       <div className="biomes">
         {FOG_BIOMES.map((b) => (
           <button key={b} className={`biome ${b === biome ? 'on' : ''}`} onClick={() => setBiome(b)}>
-            <i style={{ background: BIOME_SWATCH[b] }} />{t(`biome.${b}`)}
+            <i style={{ background: biomeSwatch(b) }} />{t(`biome.${b}`)}
           </button>
         ))}
       </div>
-      <div className="sec">{t('panel.fog')}</div>
-      <div className="row"><label htmlFor="f-soft">{t('fog.softness')}</label><input id="f-soft" type="range" min={0} max={1} step={0.05} value={soft} onChange={(e) => setFogOption('fogSoftness', Number(e.target.value))} /></div>
+      <div className="row" style={{ marginTop: 8 }}><label htmlFor="f-str">{t('fog.strength')}</label><input id="f-str" type="range" min={0} max={1} step={0.05} value={strength} onChange={(e) => setBiomeStrength(Number(e.target.value))} /></div>
+      {ws === 'play' && effect && <button className="btn sm" onClick={resetSceneFogEffect}>{t('fog.resetScene')}</button>}
+
+      <div className="sec">{t('fog.spread')}</div>
+      <div className="row"><label htmlFor="f-speed">{t('fog.speed')}</label>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input id="f-speed" type="range" min={0} max={FOG_SPEED.steps} step={1} value={step} onChange={(e) => setFogLook({ speed: speedOfStep(Number(e.target.value)) })} style={{ flex: 1 }} />
+          <span className="mono hint" style={{ minWidth: 54 }}>{Number.isFinite(look.speed) ? `${look.speed} ${t('fog.cellsPerSecond')}` : t('fog.instant')}</span>
+        </div>
+      </div>
+      <div className="row"><label htmlFor="f-fade">{t('fog.transition')}</label>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input id="f-fade" type="range" min={0} max={FADE_MAX_SECONDS} step={FADE_STEP_SECONDS} value={look.fadeSeconds} onChange={(e) => setFogLook({ fadeSeconds: Number(e.target.value) })} style={{ flex: 1 }} />
+          <span className="mono hint" style={{ minWidth: 54 }}>{look.fadeSeconds.toFixed(2)} s</span>
+        </div>
+      </div>
+      <div className="row"><label>{t('fog.coverFrom')}</label>
+        <div className="seg">
+          <button className={look.coverFrom === 'middle' ? 'on' : ''} onClick={() => setFogLook({ coverFrom: 'middle' })}>{t('fog.middle')}</button>
+          <button className={look.coverFrom === 'random' ? 'on' : ''} onClick={() => setFogLook({ coverFrom: 'random' })}>{t('fog.random')}</button>
+        </div>
+      </div>
+
+      <div className="sec">{t('fog.animation')}</div>
+      <div className="row"><label>{t('fog.quality')}</label>
+        <div className="seg">
+          {FOG_QUALITIES.map((q) => <button key={q} className={look.quality === q ? 'on' : ''} onClick={() => setFogLook({ quality: q })}>{t(`fog.quality.${q}`)}</button>)}
+        </div>
+      </div>
+      <div className="row"><label htmlFor="f-edge">{t('fog.edge')}</label><input id="f-edge" type="range" min={0} max={FOG_EDGE.max} step={FOG_EDGE.step} value={look.edge} disabled={!living} onChange={(e) => setFogLook({ edge: Number(e.target.value) })} /></div>
+      <div className="row"><label htmlFor="f-motion">{t('fog.motion')}</label><input id="f-motion" type="range" min={0} max={FOG_MOTION.max} step={FOG_MOTION.step} value={look.motion} disabled={!living} onChange={(e) => setFogLook({ motion: Number(e.target.value) })} /></div>
+      <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={look.softEdges} disabled={living} onChange={(e) => setFogLook({ softEdges: e.target.checked })} />{t('fog.softEdges')}</label>
+      {living && <p className="hint">{t('fog.softEdgesLiving')}</p>}
+
+      <div className="sec">{t('fog.dmView')}</div>
       <div className="row"><label htmlFor="f-mem">{t('fog.memoryOpacity')}</label><input id="f-mem" type="range" min={0.2} max={0.95} step={0.05} value={mem} onChange={(e) => setFogOption('memoryOpacity', Number(e.target.value))} /></div>
       <div className="row"><label htmlFor="f-brush">{t('fog.brushSize')}</label><input id="f-brush" type="range" min={0.5} max={6} step={0.5} value={brush} onChange={(e) => setFogOption('brushCells', Number(e.target.value))} /></div>
       <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={dmSee} onChange={() => toggle('dmSeeThrough')} />{t('fog.dmSeeThrough')}</label>
-      <p className="hint">Living fog animation for the eight biomes follows in phase 3; the biome is already stored per map and sent to the table.</p>
+      <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={dmHidden} onChange={toggleDmFog} />{t('fog.hideInDm')}</label>
     </div>
   );
 }
@@ -254,34 +303,14 @@ export function InitiativePanel() {
 
 /* ---------- Player preview (same renderer as the table) ---------- */
 
+const PREVIEW_SOURCE: FrameSource = { current: () => (state.frame ? { frame: state.frame, receivedAt: Date.now() } : null) };
+
+/** The table's own view component fed with the same frames: the preview is exactly the TV. */
 export function PreviewPanel() {
   const { t } = useI18n();
-  const ref = useRef<HTMLCanvasElement>(null);
   const blackout = useStore((s) => s.scene.table.blackout);
   const tableOpen = useStore((s) => s.tableOpen);
   const [menu, setMenu] = useState<DOMRect | null>(null);
-  useEffect(() => {
-    const c = ref.current!;
-    const g = c.getContext('2d')!;
-    let raf = 0;
-    const draw = () => {
-      const dpr = window.devicePixelRatio || 1;
-      const w = Math.round(c.clientWidth * dpr);
-      const h = Math.round(c.clientHeight * dpr);
-      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-      try {
-        if (!state.frame) throw new Error('no frame');
-        renderPlayerFrame(g, state.frame, w, h, 0);
-      } catch {
-        g.setTransform(1, 0, 0, 1, 0, 0);
-        g.fillStyle = '#000';
-        g.fillRect(0, 0, w, h);
-      }
-      raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, []);
   return (
     <div className="preview">
       <div className="preview-bar">
@@ -291,7 +320,7 @@ export function PreviewPanel() {
         <button className={`ab-btn ${blackout ? 'on' : ''}`} title={t('tool.blackout')} onClick={toggleBlackout}><Icon name="blackout" /></button>
         <button className="ab-btn" title={t('tool.moveMonitor')} onClick={(e) => setMenu(menu ? null : e.currentTarget.getBoundingClientRect())}><Icon name="monmove" /></button>
       </div>
-      <canvas ref={ref} />
+      <div style={{ flex: 1, minHeight: 0 }}><TableView source={PREVIEW_SOURCE} /></div>
       {menu && <MonitorMenu anchor={menu} onClose={() => setMenu(null)} />}
     </div>
   );

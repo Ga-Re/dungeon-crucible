@@ -229,7 +229,7 @@ li.closed>.tn .tw{transform:rotate(-90deg)}
 .win .ph button.on{color:var(--crit)}
 .win .ph .ic{width:14px;height:14px}
 .win canvas{flex:1;width:100%;min-height:0;display:block;background:#000}
-.win .wfoot{display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:11px;color:var(--fg-dim);border-top:1px solid var(--line-soft)}
+.wfoot{display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:11px;color:var(--fg-dim);border-top:1px solid var(--line-soft)}
 .live{display:inline-flex;align-items:center;gap:4px;color:var(--ok);font-weight:600;font-size:10.5px;letter-spacing:.08em}
 .live::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink 1.6s infinite}
 @keyframes blink{50%{opacity:.25}}
@@ -263,6 +263,17 @@ li.closed>.tn .tw{transform:rotate(-90deg)}
 .pop button{text-align:left;padding:4px 6px;border-radius:3px;font-size:11.5px}
 .pop button:hover{background:var(--panel-2)}
 .pop button.on{color:var(--arcane)}
+.pop.mon{grid-template-columns:1fr;width:270px}
+.pop.mon .pop-h{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-faint);padding:6px 6px 2px}
+.pop.mon button{display:flex;gap:8px;align-items:center}
+.pop.mon button.on{color:var(--accent);background:var(--accent-soft)}
+.pop.mon small{display:block;color:var(--fg-dim);font-size:10.5px}
+.pb.pv{padding:0;display:flex;flex-direction:column}
+.pvbar{display:flex;align-items:center;gap:6px;padding:3px 6px;border-bottom:1px solid var(--line-soft)}
+.pvbar .ab-btn{height:24px;min-width:24px}
+.pvbar .ab-btn.on{color:var(--crit)}
+.pv canvas{width:100%;min-height:120px;aspect-ratio:16/9;display:block;background:#000}
+.panel.floating .pv canvas,#dockB .pv canvas{flex:1;aspect-ratio:auto}
 
 /* Nebel-Biome */
 .biomes{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
@@ -622,6 +633,7 @@ const IC={
   trash:'M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14',
   hand:'M8 13V5a1.5 1.5 0 0 1 3 0v6 M11 11V3.5a1.5 1.5 0 0 1 3 0V11 M14 11V5a1.5 1.5 0 0 1 3 0v8 M17 8.5a1.5 1.5 0 0 1 3 0V15a7 7 0 0 1-7 7h-1a7 7 0 0 1-5.8-3L3.5 14a1.6 1.6 0 0 1 2.6-1.8L8 15',
   book:'M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z M20 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8z',
+  monmove:'M3 4h12v9H3z M6 17h6 M9 13v4 M15 16h7 M19 13l3 3-3 3',
   dot:'M12 11.5v1'
 };
 function ico(n,cls){return `<svg class="ic ${cls||''}" viewBox="0 0 24 24" aria-hidden="true"><path d="${IC[n]||IC.dot}"/></svg>`}
@@ -1039,17 +1051,18 @@ function renderPlayer(now){
     g.fillStyle='#e2554c';g.font=`600 ${11*DPR}px Inter`;g.textAlign='center';g.fillText('Ausgabe gesperrt (fail-closed)',w/2,h/2-6*DPR);g.fillStyle='#6b727c';g.font=`${10*DPR}px Inter`;g.fillText('Spieler sehen nur Schwarz',w/2,h/2+10*DPR);
   }
 }
-function openPlayerWin(){
-  if($('#playerWin')){S.player.open=true;return}
-  const el=document.createElement('div');el.className='win';el.id='playerWin';
-  const c=$('#center').getBoundingClientRect(),wr=$('#work').getBoundingClientRect();
-  el.style.cssText=`left:${Math.max(10,c.right-wr.left-342)}px;top:${c.top-wr.top+118}px;width:330px;height:250px`;
-  el.innerHTML=`<div class="ph"><span class="live">LIVE</span><b>Spieleransicht · Tisch</b><button data-a="rot" title="Um 90° drehen">${ico('rotate')}</button><button data-a="black" title="Blackout">${ico('blackout')}</button><button data-a="close" title="Vorschau schließen (Tisch-Monitor läuft weiter)">${ico('close')}</button></div><canvas></canvas><div class="wfoot"><span id="pwRot">0°</span><span>·</span><span id="pwSafe" class="mono">gesichert</span><span style="margin-left:auto">Monitor 2 · 1920×1080</span></div>`;
-  $('#floatLayer').appendChild(el);pcv=$('canvas',el);pctx=pcv.getContext('2d');S.player.open=true;
-  makeDraggable(el,$('.ph',el));
-  el.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const a=b.dataset.a;if(a==='rot')cmd('rotate');if(a==='black')cmd('blackout');if(a==='close'){el.remove();pcv=null;S.player.open=false;refreshPanel('player')}});
-  refreshPanel('player');
-}
+const MONITORS=[{id:1,n:'Monitor 1',d:'DM-Bildschirm · 2560×1440',role:'dm'},{id:2,n:'Monitor 2',d:'Tisch · 55″ · 3840×2160',role:'table'},{id:3,n:'Monitor 3',d:'Zweiter DM-Bildschirm · 1920×1080',role:'dm'}];
+S.player.monitor=2;S.previewMonitor=1;
+function openPlayerWin(){openFloatingPanel('preview');refreshPanel('player')}
+function isPreviewOpen(){return !!where('preview')}
+function monitorMenu(anchor){$$('.pop').forEach(p=>p.remove());const p=document.createElement('div');p.className='pop mon';
+  p.innerHTML=`<div class="pop-h">Vorschaufenster verschieben nach</div>${MONITORS.map(m=>`<button data-mv="prev:${m.id}" class="${S.previewMonitor===m.id?'on':''}">${ico('monitor')}<span><b>${m.n}</b><small>${m.d}</small></span></button>`).join('')}
+  <div class="pop-h">Tisch-Ausgabe verschieben nach</div>${MONITORS.map(m=>`<button data-mv="out:${m.id}" class="${S.player.monitor===m.id?'on':''}">${ico('table')}<span><b>${m.n}</b><small>${m.d}</small></span></button>`).join('')}`;
+  document.body.appendChild(p);const r=anchor.getBoundingClientRect();p.style.left=clamp(r.right-270,8,innerWidth-280)+'px';p.style.top=clamp(r.bottom+4,8,innerHeight-360)+'px';
+  p.onclick=e=>{const b=e.target.closest('[data-mv]');if(!b)return;const [k,v]=b.dataset.mv.split(':');const m=MONITORS.find(x=>x.id===+v);
+    if(k==='prev'){S.previewMonitor=m.id;toast(m.id===1?'Vorschau bleibt im Hauptfenster.':`Vorschau wird als eigenes Fenster auf <b>${m.n}</b> geöffnet (${m.d}).`);log(`Vorschau → ${m.n}`)}
+    else{if(m.role==='dm'){S.player.blackout=true;toast(`Achtung: ${m.n} ist ein DM-Bildschirm. Ausgabe startet im Blackout, bis du sie freigibst.`)}else toast(`Tisch-Ausgabe auf <b>${m.n}</b> (${m.d}).`);S.player.monitor=m.id;log(`Tisch-Ausgabe → ${m.n}`)}
+    p.remove();refreshPanel('preview');refreshPanel('player');updateStatus()}}
 function makeDraggable(el,handle){handle.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;const r=el.getBoundingClientRect(),pr=el.offsetParent.getBoundingClientRect();const ox=e.clientX-r.left,oy=e.clientY-r.top;handle.setPointerCapture(e.pointerId);
   const mv=ev=>{el.style.left=clamp(ev.clientX-pr.left-ox,0,pr.width-60)+'px';el.style.top=clamp(ev.clientY-pr.top-oy,0,pr.height-30)+'px'};const up=()=>{handle.removeEventListener('pointermove',mv);handle.removeEventListener('pointerup',up)};handle.addEventListener('pointermove',mv);handle.addEventListener('pointerup',up)})}
 
@@ -1157,7 +1170,7 @@ function buildWsMenu(){
 }
 $('#wsBtn').addEventListener('click',e=>{e.stopPropagation();const m=$('#wsMenu');m.hidden=!m.hidden;$('#wsBtn').setAttribute('aria-expanded',String(!m.hidden))});
 $('#wsMenu').addEventListener('click',e=>{const b=e.target.closest('[data-ws]');if(b){setWs(b.dataset.ws);$('#wsMenu').hidden=true}});
-document.addEventListener('click',e=>{if(!e.target.closest('#wsSwitch'))$('#wsMenu').hidden=true;if(!e.target.closest('.pop')&&!e.target.closest('[data-cond]'))$$('.pop').forEach(p=>p.remove())});
+document.addEventListener('click',e=>{if(!e.target.closest('#wsSwitch'))$('#wsMenu').hidden=true;if(!e.target.closest('.pop')&&!e.target.closest('[data-cond],[data-pv="mon"],[data-pa="mon"]'))$$('.pop').forEach(p=>p.remove())});
 
 function isToggled(id){return({gridsq:S.grid==='square',gridhex:S.grid==='hex',snap:S.snap,fogprev:S.fogVisibleForge,pview:S.viewMode==='player',living:S.living,dmsee:S.dmSee,lock:S.moveLock,blackout:S.player.blackout,ccalc:true})[id]}
 function buildRibbon(){
@@ -1176,8 +1189,6 @@ function setWs(k){
   ['mapView','vaultView','creatureView','atlasView'].forEach(v=>$('#'+v).hidden=true);
   $({map:'#mapView',vault:'#vaultView',creatures:'#creatureView',atlas:'#atlasView'}[w.center]).hidden=false;
   if(k==='forge'){S.viewMode='dm';setTool('select')}else if(k==='play'){S.viewMode='dm';setTool('select')}
-  if(k==='play'&&S.tab===0&&!$('#playerWin')&&S.player.open)setTimeout(openPlayerWin,50);
-  if($('#playerWin'))$('#playerWin').hidden=k!=='play';
   buildWsMenu();buildRibbon();applyLayout();buildNav();updateModeBadge();
   if(w.center==='vault')renderVault();if(w.center==='creatures')renderCreature();if(w.center==='atlas')renderAtlas();
   if(w.center==='map')requestAnimationFrame(()=>{resizeCanvas()});
@@ -1210,7 +1221,7 @@ function cmd(id){
     case 'rollinit':TOK.forEach(t=>{t.init=1+Math.floor(Math.random()*20)+(t.kind==='pc'?2:1)});S.turn=0;S.round=1;refreshPanel('initiative');log('Initiative neu gewürfelt');break;
     case 'next':nextTurn();break;
     case 'lock':S.moveLock=!S.moveLock;log(`Bewegungssperre für Spieler ${S.moveLock?'aktiv':'aufgehoben'}`);refreshPanel('player');break;
-    case 'popen':if(!$('#playerWin'))openPlayerWin();else T('Spieleransicht ist bereits geöffnet.');break;
+    case 'popen':if(!isPreviewOpen())openPlayerWin();else{if(where('preview')==='B')showBottom('preview');T('Vorschau ist bereits geöffnet.')}break;
     case 'rotate':S.player.rot=(S.player.rot+90)%360;$('#cube').style.transform=`rotate(${S.player.rot}deg)`;log(`Tisch-Display gedreht: ${S.player.rot}°`);refreshPanel('player');break;
     case 'blackout':S.player.blackout=!S.player.blackout;log(`Blackout ${S.player.blackout?'AN':'aus'}`);refreshPanel('player');break;
     case 'tplclear':S.templates=[];break;
@@ -1255,7 +1266,7 @@ const PANELS={
   browser:{t:'Browser',i:'folder'},layers:{t:'Ebenen',i:'layers'},props:{t:'Eigenschaften',i:'gear'},fog:{t:'Nebel-Engine',i:'fog'},
   library:{t:'Asset-Bibliothek',i:'box'},initiative:{t:'Initiative',i:'swords'},player:{t:'Spieleransicht',i:'monitor'},
   notes:{t:'Notizen',i:'note'},sound:{t:'Soundboard',i:'music'},dice:{t:'Würfel',i:'d20'},log:{t:'Protokoll',i:'list'},
-  timeline:{t:'Zeitleiste',i:'clock'},encounter:{t:'Begegnungs-Rechner',i:'swords'},tables:{t:'Zufallstabellen',i:'dice6'},
+  timeline:{t:'Zeitleiste',i:'clock'},preview:{t:'Spieler-Vorschau',i:'monitor'},encounter:{t:'Begegnungs-Rechner',i:'swords'},tables:{t:'Zufallstabellen',i:'dice6'},
 };
 const PEL={};
 for(const id in PANELS){const p=PANELS[id];const el=document.createElement('section');el.className='panel';el.dataset.panel=id;
@@ -1263,7 +1274,8 @@ for(const id in PANELS){const p=PANELS[id];const el=document.createElement('sect
   el.querySelector('.ph').addEventListener('pointerdown',e=>startPanelDrag(e,id));
   el.querySelector('.ph').addEventListener('click',e=>{const b=e.target.closest('[data-pa]');if(!b)return;if(b.dataset.pa==='col')el.classList.toggle('collapsed');if(b.dataset.pa==='float')toggleFloat(id)});}
 const LAYOUT={};
-function curLayout(){if(!LAYOUT[S.ws]){const l=WS[S.ws].layout;LAYOUT[S.ws]={L:[...l.L],R:[...l.R],B:[...l.B],F:{},bActive:l.B[0]}}return LAYOUT[S.ws]}
+function curLayout(){if(!LAYOUT[S.ws]){const l=WS[S.ws].layout;LAYOUT[S.ws]={L:[...l.L],R:[...l.R],B:[...l.B],F:{},bActive:l.B[0]};
+  if(S.ws==='play'){const c=$('#center').getBoundingClientRect(),wr=$('#work').getBoundingClientRect();LAYOUT.play.F.preview={x:Math.max(10,wr.width-300-360),y:118,w:340,h:290,from:'R'}}}return LAYOUT[S.ws]}
 function saveLayout(){}
 function applyLayout(){
   const lay=curLayout();
@@ -1315,7 +1327,7 @@ $$('.splitter').forEach(sp=>sp.addEventListener('pointerdown',e=>{const side=sp.
   const mv=ev=>{const d=ev.clientX-sx;dock.style.width=clamp(side==='L'?w0+d:w0-d,190,520)+'px'};const up=()=>{sp.classList.remove('drag');sp.removeEventListener('pointermove',mv);sp.removeEventListener('pointerup',up)};sp.addEventListener('pointermove',mv);sp.addEventListener('pointerup',up)}));
 $('#bSplit').addEventListener('pointerdown',e=>{const sy=e.clientY,h0=$('#bBody').offsetHeight;e.target.setPointerCapture(e.pointerId);const mv=ev=>{$('#dockB').style.setProperty('--bh',clamp(h0-(ev.clientY-sy),90,420)+'px')};const up=()=>{e.target.removeEventListener('pointermove',mv);e.target.removeEventListener('pointerup',up)};e.target.addEventListener('pointermove',mv);e.target.addEventListener('pointerup',up)});
 
-function refreshPanel(id){const el=PEL[id];if(!el||!el.isConnected)return;const pb=el.querySelector('.pb');const f=RENDER[id];if(f)f(pb)}
+function refreshPanel(id){if(id==='preview'&&!(PEL.preview&&PEL.preview.isConnected))pcv=null;const el=PEL[id];if(!el||!el.isConnected)return;const pb=el.querySelector('.pb');const f=RENDER[id];if(f)f(pb)}
 
 /* ---------- Panel-Inhalte ---------- */
 const NOTES={
@@ -1492,7 +1504,7 @@ const RENDER={
       if(e.target.closest('input'))return;S.selToken=t.id;centerOn(t.x,t.y);refreshPanel('initiative')}},
   player(pb){const ok=playerSafe;
     pb.innerHTML=`<div class="sec">Ausgaben</div>
-      <div class="row"><label>Tisch-Monitor</label><select id="pMon"><option>Monitor 2 · 1920×1080 (Tisch)</option><option>Monitor 3 · 3840×2160</option></select></div>
+      <div class="row"><label>Tisch-Monitor</label><button class="btn sm" data-pa="mon" style="justify-content:flex-start">${ico('monmove')}${MONITORS.find(m=>m.id===S.player.monitor).n} · ändern</button></div>
       <div class="row"><label>Status</label><span style="display:flex;gap:6px;align-items:center"><span class="live">LIVE</span><span class="hint">Vollbild, randlos, Mauszeiger aus</span></span></div>
       <div class="row"><label>DM-Vorschau</label><span class="hint">Fenster „Spieleransicht“ auf deinem Bildschirm</span></div>
       <div class="sec">Ausrichtung</div>
@@ -1501,15 +1513,21 @@ const RENDER={
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn ${S.player.blackout?'danger':''}" data-pa="black">${ico('blackout')}${S.player.blackout?'Blackout aktiv':'Blackout'}</button>
         <button class="btn ${S.moveLock?'danger':''}" data-pa="lock">${ico(S.moveLock?'lock':'unlock')}${S.moveLock?'Bewegung gesperrt':'Bewegung frei'}</button>
-        <button class="btn" data-pa="open">${ico('monitor')}${$('#playerWin')?'Vorschau aktiv':'Vorschau öffnen'}</button>
+        <button class="btn" data-pa="open">${ico('monitor')}${isPreviewOpen()?'Vorschau aktiv':'Vorschau öffnen'}</button>
       </div>
       <div style="margin-top:8px;padding:8px;border-radius:4px;border:1px solid ${ok?'rgba(93,183,118,.45)':'rgba(226,85,76,.5)'};background:${ok?'rgba(93,183,118,.08)':'rgba(226,85,76,.08)'}">
         <b style="color:${ok?'var(--ok)':'var(--crit)'}">${ok?'Fail-closed aktiv':'Ausgabe gesperrt'}</b>
         <p class="hint" style="margin:4px 0 6px">Die Spieleransicht wird aus einer eigenen Whitelist gerendert: nur aufgedeckte Bereiche, nur sichtbare Monster, keine Zonen, Notizen oder Geheimtüren. Fehlt der Nebel oder tritt ein Fehler auf, zeigt der Tisch Schwarz.</p>
         <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="pFault" ${S.player.fault?'checked':''}> Renderfehler simulieren (Test)</label>
       </div>`;
-    pb.onclick=e=>{const r=e.target.closest('[data-rot]');if(r){S.player.rot=+r.dataset.rot;$('#cube').style.transform=`rotate(${S.player.rot}deg)`;refreshPanel('player')}const a=e.target.closest('[data-pa]');if(a){if(a.dataset.pa==='black')cmd('blackout');if(a.dataset.pa==='lock')cmd('lock');if(a.dataset.pa==='open')openPlayerWin();refreshPanel('player')}};
+    pb.onclick=e=>{const r=e.target.closest('[data-rot]');if(r){S.player.rot=+r.dataset.rot;$('#cube').style.transform=`rotate(${S.player.rot}deg)`;refreshPanel('player')}const a=e.target.closest('[data-pa]');if(a){if(a.dataset.pa==='black')cmd('blackout');if(a.dataset.pa==='lock')cmd('lock');if(a.dataset.pa==='mon'){monitorMenu(a);return}if(a.dataset.pa==='open')openPlayerWin();refreshPanel('player')}};
     pb.onchange=e=>{if(e.target.id==='pFault'){S.player.fault=e.target.checked;setTimeout(()=>refreshPanel('player'),60)}if(e.target.id==='pDm'){S.player.dm2=e.target.checked;updateStatus()}}},
+  preview(pb){const mo=MONITORS.find(m=>m.id===S.player.monitor);
+    pb.classList.add('pv');pb.innerHTML=`<div class="pvbar"><span class="live">LIVE</span><span class="hint">${mo.n} · ${mo.d.split(' · ').slice(1).join(' · ')}</span><span style="flex:1"></span>
+      <button class="ab-btn" data-pv="rot" title="Um 90° drehen">${ico('rotate')}</button><button class="ab-btn ${S.player.blackout?'on':''}" data-pv="black" title="Blackout">${ico('blackout')}</button><button class="ab-btn" data-pv="mon" title="Auf anderen Bildschirm verschieben">${ico('monmove')}</button><button class="ab-btn" data-pv="close" title="Vorschau schließen (Tisch-Ausgabe läuft weiter)">${ico('close')}</button></div>
+      <canvas></canvas><div class="wfoot"><span id="pwRot">${S.player.rot}°</span><span>·</span><span id="pwSafe" class="mono">gesichert</span><span style="margin-left:auto">Vorschau auf Monitor ${S.previewMonitor}</span></div>`;
+    pcv=$('canvas',pb);pctx=pcv.getContext('2d');
+    pb.onclick=e=>{const b=e.target.closest('[data-pv]');if(!b)return;const a=b.dataset.pv;if(a==='rot')cmd('rotate');if(a==='black'){cmd('blackout');refreshPanel('preview')}if(a==='mon')monitorMenu(b);if(a==='close'){removeFromLayout('preview');pcv=null;applyLayout();refreshPanel('player')}}},
   notes(pb){const n=NOTES[curNote];
     pb.innerHTML=`<div class="mdbar"><select id="nSel" style="max-width:170px">${Object.entries(NOTES).map(([k,v])=>`<option value="${k}" ${k===curNote?'selected':''}>${esc(v.title)}</option>`).join('')}</select>
       <button data-md="bold" title="Fett"><b>B</b></button><button data-md="italic" title="Kursiv"><i>I</i></button><button data-md="h1">H1</button><button data-md="h2">H2</button><button data-md="ul" title="Liste">•</button><button data-md="quote" title="Zitat">❝</button><button data-md="secret" title="DM-Geheimnis">🔒</button><button data-md="link" title="Wiki-Link">[[ ]]</button><span class="sp"></span>
@@ -1760,8 +1778,8 @@ function updateStatus(){
     <span>Erkundet <span class="mono">${Math.round(exp/fl*100)} %</span> · ${BIOMES[S.biome].name}</span><span class="sep"></span>
     ${S.ws==='play'?`<span>Runde ${S.round} · am Zug: <b>${esc(cur.name)}</b></span><span class="sep"></span>`:''}
     <span class="safe ${playerSafe?'':'bad'}">● Spieleransicht ${S.player.blackout?'Blackout':playerSafe?'gesichert':'gesperrt'}</span>`;
-  const p=$('#pillTable');p.className='out-pill'+(S.player.blackout||!playerSafe?' black':'');$('#pillTableTxt').textContent=`Tisch · Monitor 2 · ${S.player.rot}°${S.player.blackout?' · Blackout':''}`;
-  $('#pillDm').className='out-pill dm'+($('#playerWin')&&!$('#playerWin').hidden?'':' off');
+  const p=$('#pillTable');p.className='out-pill'+(S.player.blackout||!playerSafe?' black':'');$('#pillTableTxt').textContent=`Tisch · ${MONITORS.find(m=>m.id===S.player.monitor).n} · ${S.player.rot}°${S.player.blackout?' · Blackout':''}`;
+  $('#pillDm').className='out-pill dm'+(isPreviewOpen()?'':' off');
   const ps=$('#pwSafe');if(ps){ps.textContent=S.player.blackout?'Blackout':playerSafe?'gesichert':'GESPERRT';ps.style.color=playerSafe?'':'var(--crit)';$('#pwRot').textContent=S.player.rot+'°'}
 }
 setInterval(updateStatus,400);

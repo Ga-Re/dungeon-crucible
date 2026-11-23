@@ -11,10 +11,24 @@
   --accent:#e2a03c; --accent-soft:rgba(226,160,60,.16);
   --sel:#3f9de2; --sel-soft:rgba(63,157,226,.18);
   --ok:#5db776; --warn:#e3b341; --crit:#e2554c; --arcane:#a77bf3;
+  --edge:#111316; --canvas:#0e0f11; --overlay:rgba(34,37,42,.93);
   --font-ui:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
   --font-head:'Barlow Semi Condensed','Arial Narrow',system-ui,sans-serif;
   --font-mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
   color-scheme:dark;
+}
+/* Themes (Vorschau): eigene Attribut-Namen, damit das Host-Theme nicht kollidiert */
+:root[data-skin="hell"]{
+  --bg:#c9cdd3; --shell:#e3e6ea; --ribbon:#f3f4f6; --panel:#eef0f3; --panel-2:#e1e4e9; --input:#ffffff;
+  --line:#c2c8d0; --line-soft:#d5d9df; --fg:#1e2328; --fg-dim:#56606b; --fg-faint:#87909b;
+  --accent:#c57510; --accent-soft:rgba(197,117,16,.14); --sel:#1f78c1; --sel-soft:rgba(31,120,193,.14);
+  --edge:#b4bac3; --canvas:#7d838b; --overlay:rgba(243,244,246,.95); color-scheme:light;
+}
+:root[data-skin="pergament"]{
+  --bg:#1c1712; --shell:#2a221a; --ribbon:#342a1f; --panel:#30271d; --panel-2:#3d3226; --input:#211b15;
+  --line:#54463a; --line-soft:#3f3429; --fg:#efe3cc; --fg-dim:#b9a68a; --fg-faint:#85745d;
+  --accent:#d9a441; --accent-soft:rgba(217,164,65,.17); --sel:#7fb0a0; --sel-soft:rgba(127,176,160,.18);
+  --edge:#120e0a; --canvas:#15110d; --overlay:rgba(48,39,29,.94); color-scheme:dark;
 }
 html,body{height:100%}
 [hidden]{display:none!important}
@@ -31,7 +45,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 #app{display:grid;grid-template-rows:34px auto 1fr auto 22px;height:100%}
 
 /* App-Leiste */
-#appbar{display:flex;align-items:center;gap:4px;background:var(--shell);border-bottom:1px solid #111;padding:0 8px;min-width:0}
+#appbar{display:flex;align-items:center;gap:4px;background:var(--shell);border-bottom:1px solid var(--edge);padding:0 8px;min-width:0}
 .brand{display:flex;align-items:center;gap:7px;font-family:var(--font-head);font-weight:700;font-size:15px;letter-spacing:.04em;padding-right:10px;margin-right:2px;border-right:1px solid var(--line);white-space:nowrap}
 .brand .mark{width:20px;height:20px;border-radius:3px;background:linear-gradient(135deg,var(--accent),#a4511f);display:grid;place-items:center;color:#1a1208}
 .brand .mark .ic{width:14px;height:14px;stroke-width:2.2}
@@ -46,10 +60,11 @@ input[type=checkbox]{accent-color:var(--accent)}
 .out-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok)}
 .out-pill.black .dot{background:var(--crit);box-shadow:0 0 6px var(--crit)}
 .out-pill.off .dot{background:var(--fg-faint);box-shadow:none}
+.skin{height:24px;padding:0 6px;font-size:11.5px;border-radius:3px;background:var(--panel);border:1px solid var(--line);color:var(--fg-dim)}
 .avatar{width:24px;height:24px;border-radius:50%;background:#4a3a6a;display:grid;place-items:center;font-weight:600;font-size:11px}
 
 /* Ribbon */
-#ribbon{background:var(--ribbon);border-bottom:1px solid #111;display:grid;grid-template-columns:auto 1fr;min-width:0}
+#ribbon{background:var(--ribbon);border-bottom:1px solid var(--edge);display:grid;grid-template-columns:auto 1fr;min-width:0}
 #wsSwitch{grid-row:1/3;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:3px;padding:6px 14px;border-right:1px solid var(--line);min-width:172px;position:relative}
 #wsSwitch .lbl{font-size:10px;color:var(--fg-faint);letter-spacing:.08em;text-transform:uppercase}
 #wsBtn{display:flex;align-items:center;gap:8px;font-family:var(--font-head);font-weight:700;font-size:16px;letter-spacing:.05em;text-transform:uppercase;padding:4px 8px 4px 4px;border-radius:3px;color:var(--fg)}
@@ -85,13 +100,13 @@ input[type=checkbox]{accent-color:var(--accent)}
 /* Arbeitsfläche */
 #work{display:grid;grid-template-columns:auto auto 1fr auto auto;min-height:0;position:relative}
 .dock{display:flex;flex-direction:column;background:var(--shell);min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin}
-#dockL{border-right:1px solid #111}
-#dockR{border-left:1px solid #111}
+#dockL{border-right:1px solid var(--edge)}
+#dockR{border-left:1px solid var(--edge)}
 .dock:empty{display:none}
 .splitter{width:4px;cursor:col-resize;background:transparent;position:relative;z-index:5}
 .splitter:hover,.splitter.drag{background:var(--sel)}
 .splitter.hidden{display:none}
-#center{position:relative;min-width:0;min-height:0;background:#0e0f11;overflow:hidden}
+#center{position:relative;min-width:0;min-height:0;background:var(--canvas);overflow:hidden}
 .view{position:absolute;inset:0}
 
 /* Panels */
@@ -116,7 +131,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 .dropzone.hot{background:rgba(63,157,226,.32)}
 
 /* Dock unten (Tabs) */
-#dockB{background:var(--shell);border-top:1px solid #111;display:flex;flex-direction:column;min-height:0;position:relative}
+#dockB{background:var(--shell);border-top:1px solid var(--edge);display:flex;flex-direction:column;min-height:0;position:relative}
 #dockB.empty{display:none}
 #dockB .btabs{display:flex;align-items:center;gap:2px;background:var(--panel-2);border-bottom:1px solid var(--line-soft);padding:0 4px;height:27px}
 #dockB .btab{display:flex;align-items:center;gap:5px;height:26px;padding:0 10px;font-family:var(--font-head);font-weight:600;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-dim);border-bottom:2px solid transparent;cursor:grab;white-space:nowrap}
@@ -132,7 +147,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 #bSplit:hover{background:var(--sel)}
 
 /* Statusleiste */
-#status{display:flex;align-items:center;gap:14px;padding:0 10px;background:var(--shell);border-top:1px solid #111;font-size:11px;color:var(--fg-dim);white-space:nowrap;overflow:hidden}
+#status{display:flex;align-items:center;gap:14px;padding:0 10px;background:var(--shell);border-top:1px solid var(--edge);font-size:11px;color:var(--fg-dim);white-space:nowrap;overflow:hidden}
 #status .sep{width:1px;height:12px;background:var(--line)}
 #status .safe{color:var(--ok)}
 #status .safe.bad{color:var(--crit)}
@@ -156,7 +171,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:26px;padding:0 10px;border-radius:3px;background:var(--panel-2);border:1px solid var(--line);font-size:12px;white-space:nowrap}
 .btn:hover{border-color:#59606b}
 .btn.pri{background:var(--accent);color:#22160a;border-color:var(--accent);font-weight:600}
-.btn.danger{color:#ffb4ae;border-color:rgba(226,85,76,.5)}
+.btn.danger{color:var(--crit);border-color:rgba(226,85,76,.5)}
 .btn .ic{width:14px;height:14px}
 .btn.sm{height:22px;padding:0 7px;font-size:11px}
 .hint{color:var(--fg-faint);font-size:11px;line-height:1.45}
@@ -182,7 +197,7 @@ li.closed>.tn .tw{transform:rotate(-90deg)}
 
 /* Karten-Canvas Overlays */
 #mapCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
-#navbar{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;background:rgba(34,37,42,.94);border:1px solid var(--line);border-radius:5px;padding:3px;box-shadow:0 8px 20px rgba(0,0,0,.4);z-index:10;max-width:calc(100% - 24px);overflow-x:auto;scrollbar-width:none}
+#navbar{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;background:var(--overlay);border:1px solid var(--line);border-radius:5px;padding:3px;box-shadow:0 8px 20px rgba(0,0,0,.4);z-index:10;max-width:calc(100% - 24px);overflow-x:auto;scrollbar-width:none}
 #navbar .nb{width:30px;height:28px;border-radius:3px;display:grid;place-items:center;color:var(--fg-dim);flex:none}
 #navbar .nb:hover{background:var(--panel-2);color:var(--fg)}
 #navbar .nb.on{color:var(--accent);background:var(--accent-soft)}
@@ -197,9 +212,9 @@ li.closed>.tn .tw{transform:rotate(-90deg)}
 #compass .cube i.w{left:-13px;top:50%;transform:translateY(-50%)}
 #compass .cube i.o{right:-13px;top:50%;transform:translateY(-50%)}
 #compass .cap{text-align:center;color:var(--fg-faint);font-size:10px;margin-top:18px;letter-spacing:.06em}
-#toolHint{position:absolute;left:12px;top:12px;z-index:10;background:rgba(34,37,42,.92);border:1px solid var(--line);border-radius:4px;padding:6px 9px;max-width:min(360px,calc(100% - 130px));font-size:11.5px;color:var(--fg-dim);line-height:1.45}
+#toolHint{position:absolute;left:12px;top:12px;z-index:10;background:var(--overlay);border:1px solid var(--line);border-radius:4px;padding:6px 9px;max-width:min(360px,calc(100% - 130px));font-size:11.5px;color:var(--fg-dim);line-height:1.45}
 #toolHint b{color:var(--fg);font-weight:600}
-#modeBadge{position:absolute;left:12px;bottom:14px;z-index:10;font-family:var(--font-head);font-weight:600;letter-spacing:.08em;font-size:11.5px;text-transform:uppercase;padding:4px 8px;border-radius:3px;background:rgba(34,37,42,.92);border:1px solid var(--line)}
+#modeBadge{position:absolute;left:12px;bottom:14px;z-index:10;font-family:var(--font-head);font-weight:600;letter-spacing:.08em;font-size:11.5px;text-transform:uppercase;padding:4px 8px;border-radius:3px;background:var(--overlay);border:1px solid var(--line)}
 #modeBadge.player{color:var(--ok);border-color:rgba(93,183,118,.5)}
 
 /* Spieleransicht-Fenster */
@@ -229,7 +244,7 @@ li.closed>.tn .tw{transform:rotate(-90deg)}
 .ini .nm{font-weight:600;display:flex;align-items:center;gap:5px;min-width:0}
 .ini .nm span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ini .tag{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;padding:1px 4px;border-radius:2px;background:var(--panel-2);color:var(--fg-dim);flex:none}
-.ini .tag.m{color:#ffb4ae;background:rgba(226,85,76,.15)}
+.ini .tag.m{color:var(--crit);background:rgba(226,85,76,.15)}
 .ini .ac{grid-row:1/3;display:flex;flex-direction:column;align-items:center;font-size:10px;color:var(--fg-faint)}
 .ini .ac b{font-family:var(--font-mono);font-size:13px;color:var(--fg)}
 .hpbar{height:5px;border-radius:3px;background:#1a1c20;overflow:hidden}
@@ -311,15 +326,15 @@ li.closed>.tn .tw{transform:rotate(-90deg)}
 .mded h2{font-family:var(--font-head);font-size:15px;margin:10px 0 4px;color:var(--accent)}
 .mded p{margin:0 0 6px}
 .mded ul{margin:0 0 6px;padding-left:18px}
-.mded blockquote{margin:6px 0;padding:4px 10px;border-left:3px solid var(--arcane);color:#cbbdf0;background:rgba(167,123,243,.08)}
+.mded blockquote{margin:6px 0;padding:4px 10px;border-left:3px solid var(--arcane);color:var(--fg);background:rgba(167,123,243,.08)}
 .mded .wl{color:var(--sel);background:var(--sel-soft);border-radius:3px;padding:0 3px;cursor:pointer}
-.mded .secret{background:rgba(226,85,76,.12);border:1px dashed rgba(226,85,76,.5);border-radius:3px;padding:4px 8px;margin:6px 0;color:#f3c3bf}
+.mded .secret{background:rgba(226,85,76,.12);border:1px dashed rgba(226,85,76,.5);border-radius:3px;padding:4px 8px;margin:6px 0;color:var(--fg)}
 .mdsrc{width:100%;min-height:150px;font-family:var(--font-mono);font-size:11.5px;line-height:1.5;resize:vertical}
 .sidecar{margin-top:6px;font-family:var(--font-mono);font-size:10.5px;color:var(--fg-faint);display:flex;gap:6px;align-items:center}
 
 /* Asset-Vault */
 #vaultView{display:grid;grid-template-columns:minmax(260px,1fr) minmax(0,1.35fr);background:var(--bg)}
-.vgal{border-right:1px solid #111;display:flex;flex-direction:column;min-height:0}
+.vgal{border-right:1px solid var(--edge);display:flex;flex-direction:column;min-height:0}
 .vbar{display:flex;gap:6px;padding:8px;border-bottom:1px solid var(--line-soft);align-items:center}
 .vbar input{flex:1}
 .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px;padding:10px;overflow:auto}
@@ -339,7 +354,7 @@ li.closed>.tn .tw{transform:rotate(-90deg)}
 .vtab{padding:7px 12px;border-bottom:2px solid transparent;color:var(--fg-dim);display:flex;gap:6px;align-items:center}
 .vtab.on{color:var(--fg);border-bottom-color:var(--accent)}
 .vtab.add{color:var(--fg-faint)}
-.vstage{position:relative;margin:12px 16px;border:1px solid var(--line);border-radius:5px;overflow:hidden;background:#0e0f11}
+.vstage{position:relative;margin:12px 16px;border:1px solid var(--line);border-radius:5px;overflow:hidden;background:var(--canvas)}
 .vstage svg{display:block;width:100%;height:auto;aspect-ratio:16/10}
 .vstage .badge{position:absolute;left:8px;top:8px;background:rgba(0,0,0,.6);padding:3px 7px;border-radius:3px;font-size:11px}
 .vprop{cursor:grab}
@@ -371,6 +386,7 @@ li.closed>.tn .tw{transform:rotate(-90deg)}
 .ab{text-align:center;border:1px solid var(--line);border-radius:6px;padding:6px 2px 4px;background:var(--input)}
 .ab label{font-family:var(--font-head);font-weight:700;letter-spacing:.08em;font-size:12px;color:var(--accent)}
 .ab input{width:100%;text-align:center;border:0;background:none;font-family:var(--font-mono);font-size:17px;font-weight:600;padding:2px 0}
+.ab .sv{display:block;margin-top:4px;font-family:var(--font-mono);font-size:10.5px;color:var(--fg-dim)}
 .ab .mod{display:inline-block;font-family:var(--font-mono);font-size:11.5px;padding:1px 7px;border-radius:9px;background:var(--panel-2);border:1px solid var(--line)}
 .kv{display:grid;grid-template-columns:130px 1fr;gap:4px 10px;font-size:12px;margin:8px 0}
 .kv dt{color:var(--fg-dim);font-weight:600}
@@ -391,13 +407,13 @@ li.closed>.tn .tw{transform:rotate(-90deg)}
 .anode text{font-family:var(--font-ui);font-size:12px;fill:var(--fg)}
 .anode .k{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;fill:var(--fg-dim)}
 .lane-t{font-family:var(--font-head);font-weight:700;font-size:15px;letter-spacing:.07em;fill:var(--fg-dim);text-transform:uppercase}
-.atlas-legend{position:absolute;right:12px;top:12px;background:rgba(34,37,42,.92);border:1px solid var(--line);border-radius:4px;padding:8px 10px;display:grid;gap:4px;font-size:11px;color:var(--fg-dim)}
+.atlas-legend{position:absolute;right:12px;top:12px;background:var(--overlay);border:1px solid var(--line);border-radius:4px;padding:8px 10px;display:grid;gap:4px;font-size:11px;color:var(--fg-dim)}
 .atlas-legend div{display:flex;align-items:center;gap:6px}
 
 /* Encounter */
-.diff{height:10px;border-radius:5px;background:linear-gradient(90deg,var(--ok) 0 25%,var(--warn) 25% 50%,#e98a3d 50% 75%,var(--crit) 75%);position:relative;margin:8px 0 4px}
+.diff{height:10px;border-radius:5px;background:linear-gradient(90deg,var(--ok) 0 37.6%,var(--warn) 37.6% 56.4%,#e98a3d 56.4% 75.2%,var(--crit) 75.2%);position:relative;margin:8px 0 4px}
 .diff i{position:absolute;top:-4px;width:3px;height:18px;background:#fff;border-radius:2px;box-shadow:0 0 0 2px rgba(0,0,0,.5)}
-.diffl{display:flex;justify-content:space-between;font-size:10px;color:var(--fg-faint)}
+.diffl{display:grid;grid-template-columns:37.6% 18.8% 18.8% 24.8%;font-size:10px;color:var(--fg-faint)}
 .mrow{display:grid;grid-template-columns:1fr 40px 54px;gap:6px;align-items:center;margin-bottom:4px}
 .mrow input{padding:2px 4px;height:22px;text-align:center}
 .tbl{width:100%;border-collapse:collapse;font-size:11.5px}
@@ -436,7 +452,7 @@ li.closed>.tn .tw{transform:rotate(-90deg)}
   #wsBtn{font-size:13px}
   .sheet{grid-template-columns:1fr}
   #vaultView{grid-template-columns:1fr;grid-template-rows:40% 60%}
-  .vgal{border-right:0;border-bottom:1px solid #111}
+  .vgal{border-right:0;border-bottom:1px solid var(--edge)}
   .sb,.dice{grid-template-columns:1fr}
   #compass{display:none}
 }
@@ -452,8 +468,9 @@ li.closed>.tn .tw{transform:rotate(-90deg)}
     <button class="ab-btn" title="Wiederholen" data-cmd="redo"><span id="ic-redo"></span></button>
     <div class="doc-tabs" id="docTabs"></div>
     <div class="ab-right">
-      <div class="out-pill" id="pillTable" title="Tisch-Display (eingelassener PC)"><span class="dot"></span><span id="pillTableTxt">Tisch-Display · 0°</span></div>
-      <div class="out-pill dm off" id="pillDm" title="Optionaler DM-Monitor"><span class="dot"></span>DM-Monitor</div>
+      <div class="out-pill" id="pillTable" title="Spieleransicht auf Monitor 2 (im Tisch, am DM-PC)"><span class="dot"></span><span id="pillTableTxt">Tisch · Monitor 2 · 0°</span></div>
+      <div class="out-pill dm off" id="pillDm" title="Kopie der Spieleransicht auf dem DM-Bildschirm"><span class="dot"></span>Vorschau</div>
+      <select class="skin" id="skinSel" title="Theme" aria-label="Theme"><option value="dunkel">Theme: Dunkel</option><option value="hell">Theme: Hell</option><option value="pergament">Theme: Pergament</option></select>
       <button class="ab-btn" title="Hilfe & Demo-Tour" data-cmd="help"><span id="ic-help"></span></button>
       <div class="avatar" title="Spielleitung">SL</div>
     </div>
@@ -1002,7 +1019,8 @@ function drawOverlay(g){
 /* ============================================================
    Spieleransicht (Fail-closed)
    ============================================================ */
-let pcv=null,pctx=null,playerSafe=true;
+let pcv=null,pctx=null,playerSafe=true,CANVAS_BG='#0e0f11';
+function setSkin(k){if(k==='dunkel')document.documentElement.removeAttribute('data-skin');else document.documentElement.setAttribute('data-skin',k);CANVAS_BG=getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim()||'#0e0f11';try{localStorage.setItem('dc-skin',k)}catch(e){}}
 function renderPlayer(now){
   if(!pcv)return;const r=pcv.getBoundingClientRect();if(!r.width)return;
   const w=r.width*DPR|0,h=r.height*DPR|0;if(pcv.width!==w||pcv.height!==h){pcv.width=w;pcv.height=h}
@@ -1023,7 +1041,7 @@ function openPlayerWin(){
   const el=document.createElement('div');el.className='win';el.id='playerWin';
   const c=$('#center').getBoundingClientRect(),wr=$('#work').getBoundingClientRect();
   el.style.cssText=`left:${Math.max(10,c.right-wr.left-342)}px;top:${c.top-wr.top+118}px;width:330px;height:250px`;
-  el.innerHTML=`<div class="ph"><span class="live">LIVE</span><b>Spieleransicht · Tisch</b><button data-a="rot" title="Um 90° drehen">${ico('rotate')}</button><button data-a="black" title="Blackout">${ico('blackout')}</button><button data-a="close" title="Vorschau schließen (Ausgabe läuft weiter)">${ico('close')}</button></div><canvas></canvas><div class="wfoot"><span id="pwRot">0°</span><span>·</span><span id="pwSafe" class="mono">gesichert</span><span style="margin-left:auto">Monitor 2 · 1920×1080</span></div>`;
+  el.innerHTML=`<div class="ph"><span class="live">LIVE</span><b>Spieleransicht · Tisch</b><button data-a="rot" title="Um 90° drehen">${ico('rotate')}</button><button data-a="black" title="Blackout">${ico('blackout')}</button><button data-a="close" title="Vorschau schließen (Tisch-Monitor läuft weiter)">${ico('close')}</button></div><canvas></canvas><div class="wfoot"><span id="pwRot">0°</span><span>·</span><span id="pwSafe" class="mono">gesichert</span><span style="margin-left:auto">Monitor 2 · 1920×1080</span></div>`;
   $('#floatLayer').appendChild(el);pcv=$('canvas',el);pctx=pcv.getContext('2d');S.player.open=true;
   makeDraggable(el,$('.ph',el));
   el.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const a=b.dataset.a;if(a==='rot')cmd('rotate');if(a==='black')cmd('blackout');if(a==='close'){el.remove();pcv=null;S.player.open=false;refreshPanel('player')}});
@@ -1040,7 +1058,7 @@ function frame(now){
   stepSpreads(dt);buildFog();buildLivingFog(dt,now);
   S.pings=S.pings.filter(p=>now-p.t<1600);
   const mapVisible=!$('#mapView').hidden;
-  if(mapVisible&&cv.width){ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#0e0f11';ctx.fillRect(0,0,cv.width,cv.height);
+  if(mapVisible&&cv.width){ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle=CANVAS_BG;ctx.fillRect(0,0,cv.width,cv.height);
     ctx.setTransform(DPR*S.view.z,0,0,DPR*S.view.z,DPR*S.view.x,DPR*S.view.y);
     ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(6,8,W,H);
     const mode=S.viewMode==='player'?'player':(S.ws==='forge'?'edit':'dm');
@@ -1471,8 +1489,9 @@ const RENDER={
       if(e.target.closest('input'))return;S.selToken=t.id;centerOn(t.x,t.y);refreshPanel('initiative')}},
   player(pb){const ok=playerSafe;
     pb.innerHTML=`<div class="sec">Ausgaben</div>
-      <div class="row"><label>Tisch-Display</label><span style="display:flex;gap:6px;align-items:center"><span class="live">LIVE</span><span class="hint">Monitor 2 · 1920×1080</span></span></div>
-      <div class="row"><label>DM-Monitor</label><label><input type="checkbox" id="pDm" ${S.player.dm2?'checked':''}> Spiegel zusätzlich zeigen</label></div>
+      <div class="row"><label>Tisch-Monitor</label><select id="pMon"><option>Monitor 2 · 1920×1080 (Tisch)</option><option>Monitor 3 · 3840×2160</option></select></div>
+      <div class="row"><label>Status</label><span style="display:flex;gap:6px;align-items:center"><span class="live">LIVE</span><span class="hint">Vollbild, randlos, Mauszeiger aus</span></span></div>
+      <div class="row"><label>DM-Vorschau</label><span class="hint">Fenster „Spieleransicht“ auf deinem Bildschirm</span></div>
       <div class="sec">Ausrichtung</div>
       <div class="seg">${[0,90,180,270].map(r=>`<button data-rot="${r}" class="${S.player.rot===r?'on':''}">${r}°</button>`).join('')}</div>
       <div class="sec">Sicherheit</div>
@@ -1521,13 +1540,14 @@ const RENDER={
     pb.innerHTML=`<div class="tl"><div class="tl-bar"><button class="btn sm">${ico('play')}</button><span class="hint">${S.ws==='atlas'?'Kampagnen-Zeitleiste · Weltdatum 14. Eisfrost 1247':'Session 3 · Szenenfolge'}</span><span style="flex:1"></span><button class="btn sm">${ico('plus')}${S.ws==='atlas'?'Session':'Szene'}</button></div>
       <div class="tl-track">${items.map((it,i)=>`${i?`<span class="tl-arrow">${ico('chevr')}</span>`:''}<div class="tl-item ${it.s==='Gespielt'?'done':''} ${it.s==='Aktiv'||(it.id&&it.id===S.selNode)?'on':''}" ${it.id?`data-tn="${it.id}"`:''}>${ico(it.i)}${esc(it.n)}<small>${esc(it.d||'')}</small></div>`).join('')}</div></div>`;
     pb.onclick=e=>{const t=e.target.closest('[data-tn]');if(t){S.selNode=t.dataset.tn;renderAtlas();refreshPanel('props');refreshPanel('timeline')}}},
-  encounter(pb){const lvl=4,party=3;const TH={easy:125,medium:250,hard:375,deadly:500};const tot={};for(const k in TH)tot[k]=TH[k]*party;
-    const xp=ENC.reduce((s,m)=>s+m.xp*m.n,0),cnt=ENC.reduce((s,m)=>s+m.n,0);const mult=cnt<=1?1:cnt===2?1.5:cnt<=6?2:cnt<=10?2.5:3;const adj=xp*mult;
-    const pos=clamp(adj/(tot.deadly*1.33),0,1);const lab=adj>=tot.deadly?'Tödlich':adj>=tot.hard?'Schwer':adj>=tot.medium?'Mittel':'Leicht';
+  encounter(pb){const lvl=4,party=3;const TH={low:250,mod:375,high:500};const tot={};for(const k in TH)tot[k]=TH[k]*party;
+    const xp=ENC.reduce((s,m)=>s+m.xp*m.n,0);
+    const pos=clamp(xp/(tot.high*1.33),0,1);const lab=xp>tot.high?'Über Budget (Hoch überschritten)':xp>tot.mod?'Hoch':xp>tot.low?'Mittel':'Niedrig';
     pb.innerHTML=`<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;width:100%"><div><div class="sec">Gruppe</div><p class="hint" style="margin:0 0 6px">${party} Charaktere · Stufe ${lvl}</p>
       <div class="sec">Monster</div>${ENC.map((m,i)=>`<div class="mrow"><span>${esc(m.n_)}</span><input type="number" min="0" value="${m.n}" data-enc="${i}" aria-label="Anzahl ${esc(m.n_)}"><span class="mono hint">${m.xp} EP</span></div>`).join('')}</div>
-      <div><div class="sec">Schwierigkeit (5e)</div><div style="font-family:var(--font-head);font-size:20px;font-weight:700">${lab}</div><div class="diff"><i style="left:${pos*100}%"></i></div><div class="diffl"><span>Leicht ${tot.easy}</span><span>Mittel ${tot.medium}</span><span>Schwer ${tot.hard}</span><span>Tödlich ${tot.deadly}</span></div>
-      <div class="kv" style="grid-template-columns:120px 1fr"><dt>Basis-EP</dt><dd class="mono">${xp}</dd><dt>Multiplikator</dt><dd class="mono">×${mult}</dd><dt>Angepasste EP</dt><dd class="mono">${adj}</dd><dt>EP je Charakter</dt><dd class="mono">${Math.round(xp/party)}</dd></div>
+      <div><div class="sec">EP-Budget (5e 2024)</div><div style="font-family:var(--font-head);font-size:20px;font-weight:700">${lab}</div><div class="diff"><i style="left:${pos*100}%"></i></div><div class="diffl"><span>0</span><span>Niedrig ${tot.low}</span><span>Mittel ${tot.mod}</span><span>Hoch ${tot.high}</span></div>
+      <div class="kv" style="grid-template-columns:120px 1fr"><dt>Monster-EP</dt><dd class="mono">${xp}</dd><dt>Budget Hoch</dt><dd class="mono">${tot.high} (${TH.high} × ${party})</dd><dt>Rest bis Hoch</dt><dd class="mono">${Math.max(0,tot.high-xp)}</dd></div>
+      <p class="hint" style="margin:0 0 6px">Regeln 2024: Budget je Charakter nach Stufe, kein Gruppen-Multiplikator.</p>
       <button class="btn sm">${ico('play')}Begegnung in Szene übernehmen</button></div></div>`;
     pb.oninput=e=>{const i=e.target.dataset.enc;if(i!=null){ENC[i].n=Math.max(0,+e.target.value||0);clearTimeout(pb._t);pb._t=setTimeout(()=>refreshPanel('encounter'),300)}}},
   tables(pb){pb.innerHTML=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><b>Ereignisse in der Krypta</b><span class="hint mono">W6</span><span style="flex:1"></span><button class="btn sm pri" data-rt>${ico('d20')}Würfeln</button></div>
@@ -1536,7 +1556,7 @@ const RENDER={
 };
 function bioSwatch(k){return{ground:'linear-gradient(180deg,#1c1d20,#c8ccd4)',blizzard:'repeating-linear-gradient(120deg,#cfd8e8 0 2px,#5c6a80 2px 6px)',heat:'linear-gradient(180deg,#3a2414,#ffb060)',embers:'radial-gradient(circle at 30% 60%,#ff7a28 0 2px,transparent 3px),radial-gradient(circle at 70% 30%,#ffb040 0 2px,transparent 3px),#2a1410',miasma:'linear-gradient(180deg,#1a2412,#7cb054)',sea:'linear-gradient(180deg,#1a2430,#96b6cc)',arcane:'radial-gradient(circle at 50% 50%,#ac74ff,#2a1840)',dark:'linear-gradient(180deg,#000,#1a1a1a)'}[k]}
 function centerOn(x,y){const r=cv.getBoundingClientRect();if(!r.width)return;S.view.x=r.width/2-x*S.view.z;S.view.y=r.height/2-y*S.view.z}
-const COND=['Blind','Bezaubert','Taub','Verängstigt','Gepackt','Kampfunfähig','Unsichtbar','Gelähmt','Versteinert','Vergiftet','Liegend','Festgesetzt','Betäubt','Bewusstlos','Erschöpfung 1','Konzentration'];
+const COND=['Blind','Bezaubert','Taub','Verängstigt','Gepackt','Kampfunfähig','Unsichtbar','Gelähmt','Versteinert','Vergiftet','Liegend','Festgesetzt','Betäubt','Bewusstlos','Erschöpfung (Stufe 1–6)','Konzentration'];
 function condPop(anchor,t){$$('.pop').forEach(p=>p.remove());const p=document.createElement('div');p.className='pop';p.innerHTML=COND.map(c=>`<button class="${t.conds.includes(c)?'on':''}" data-c="${c}">${c}</button>`).join('');document.body.appendChild(p);
   const r=anchor.getBoundingClientRect();p.style.left=clamp(r.left-150,8,innerWidth-260)+'px';p.style.top=clamp(r.bottom+4,8,innerHeight-300)+'px';
   p.onclick=e=>{const b=e.target.closest('[data-c]');if(!b)return;const c=b.dataset.c;t.conds=t.conds.includes(c)?t.conds.filter(x=>x!==c):[...t.conds,c];log(`${t.name}: Zustand ${c}`);p.remove();refreshPanel('initiative')}}
@@ -1647,11 +1667,11 @@ function renderStageOnly(){const st=$('#vStage');const tmp=document.createElemen
    Tokens & Kreaturen
    ============================================================ */
 const CREATURES=[
-  {id:'thorin',kind:'pc',name:'Thorin Eisenbart',sub:'Bergzwerg, Kämpfer 4 · rechtschaffen neutral',level:4,color:'#e2a03c',size:'Mittelgroß',ac:18,acn:'Kettenhemd, Schild',hp:44,hpf:'4W10+12',speed:'25 ft',ab:[16,12,16,10,13,8],saves:'Stä +5, Kon +5',skills:'Athletik +5, Wahrnehmung +3',senses:'Dunkelsicht 60 ft, passive Wahrnehmung 13',lang:'Gemeinsprache, Zwergisch',dv:60,
-    acts:[['Streitaxt','Nahkampfwaffenangriff','+5','1W8+3'],['Zweiter Wind','Bonusaktion, 1W10+4 TP heilen','',''],['Tatendrang','Eine zusätzliche Aktion, 1× pro Rast','','']]},
-  {id:'lyra',kind:'pc',name:'Lyra Mondfeder',sub:'Hochelfe, Magierin 4 · chaotisch gut',level:4,color:'#7fb2d9',size:'Mittelgroß',ac:13,acn:'Magierrüstung',hp:26,hpf:'4W6+8',speed:'30 ft',ab:[8,16,14,18,12,10],saves:'Int +6, Wei +3',skills:'Arkane Kunde +6, Geschichte +6',senses:'Dunkelsicht 60 ft, passive Wahrnehmung 11',lang:'Gemeinsprache, Elfisch, Drakonisch',dv:60,
+  {id:'thorin',kind:'pc',name:'Thorin Eisenbart',sub:'Zwerg, Kämpfer 4 (Champion) · Hintergrund: Soldat',level:4,color:'#e2a03c',size:'Mittelgroß',ac:18,acn:'Kettenhemd, Schild',hp:44,hpf:'4W10+12',speed:'25 ft',ab:[16,12,16,10,13,8],saves:'Stä +5, Kon +5',skills:'Athletik +5, Wahrnehmung +3',senses:'Dunkelsicht 60 ft, passive Wahrnehmung 13',lang:'Gemeinsprache, Zwergisch',dv:60,
+    acts:[['Streitaxt','Nahkampfwaffenangriff · Waffenmeisterung: Spalten','+5','1W8+3'],['Zweiter Wind','Bonusaktion, 1W10+4 TP heilen','',''],['Tatendrang','Eine zusätzliche Aktion, 1× pro Rast','','']]},
+  {id:'lyra',kind:'pc',name:'Lyra Mondfeder',sub:'Elfe (Hochelf-Abstammung), Magierin 4 (Hervorrufer) · Hintergrund: Weise',level:4,color:'#7fb2d9',size:'Mittelgroß',ac:13,acn:'Magierrüstung',hp:26,hpf:'4W6+8',speed:'30 ft',ab:[8,16,14,18,12,10],saves:'Int +6, Wei +3',skills:'Arkane Kunde +6, Geschichte +6',senses:'Dunkelsicht 60 ft, passive Wahrnehmung 11',lang:'Gemeinsprache, Elfisch, Drakonisch',dv:60,
     acts:[['Feuerpfeil','Fernkampf-Zauberangriff, 120 ft','+6','2W10'],['Brennende Hände','15-ft-Kegel, SG 14 Ges.','','3W6'],['Nebelschritt','Bonusaktion, Teleport 30 ft','','']]},
-  {id:'bram',kind:'pc',name:'Bram Hollow',sub:'Mensch, Kleriker 4 (Licht) · neutral gut',level:4,color:'#8fd98f',size:'Mittelgroß',ac:16,acn:'Schuppenpanzer',hp:33,hpf:'4W8+8',speed:'30 ft',ab:[12,10,14,10,17,13],saves:'Wei +5, Cha +3',skills:'Heilkunde +5, Religion +2',senses:'passive Wahrnehmung 13',lang:'Gemeinsprache',dv:0,torch:true,
+  {id:'bram',kind:'pc',name:'Bram Hollow',sub:'Mensch, Kleriker 4 (Lichtdomäne) · Hintergrund: Akolyth',level:4,color:'#8fd98f',size:'Mittelgroß',ac:16,acn:'Schuppenpanzer',hp:33,hpf:'4W8+8',speed:'30 ft',ab:[12,10,14,10,17,13],saves:'Wei +5, Cha +3',skills:'Heilkunde +5, Religion +2',senses:'passive Wahrnehmung 13',lang:'Gemeinsprache',dv:0,torch:true,
     acts:[['Streitkolben','Nahkampfwaffenangriff','+3','1W6+1'],['Heilendes Wort','Bonusaktion, 60 ft','','1W4+3'],['Heilige Flamme','SG 13 Ges.','','2W8']]},
   {id:'mira',kind:'npc',name:'Schwester Mira',sub:'Mensch, Priesterin · Wächterin des Aschehügels',cr:'1/2',color:'#c9a45c',size:'Mittelgroß',ac:13,acn:'Kettenhemd',hp:27,hpf:'5W8+5',speed:'30 ft',ab:[10,10,12,13,16,13],saves:'–',skills:'Heilkunde +7, Religion +4',senses:'passive Wahrnehmung 13',lang:'Gemeinsprache',dv:0,acts:[['Streitkolben','Nahkampf','+2','1W6']]},
   {id:'skel1',kind:'mon',name:'Skelett',sub:'Mittelgroßer Untoter · rechtschaffen böse',cr:'1/4',color:'#d9d2c0',size:'Mittelgroß',ac:13,acn:'Rüstungsreste',hp:13,hpf:'2W8+4',speed:'30 ft',ab:[10,14,15,6,8,5],saves:'–',skills:'–',senses:'Dunkelsicht 60 ft, passive Wahrnehmung 9',lang:'versteht die Sprachen, die es im Leben kannte',dv:60,vuln:'Wucht',imm:'Gift; Erschöpfung, vergiftet',
@@ -1663,10 +1683,11 @@ const CREATURES=[
 ];
 const CRXP={'1/8':25,'1/4':50,'1/2':100,'1':200,'2':450,'3':700,'4':1100,'5':1800};
 const crNum=s=>s.includes('/')?s.split('/')[0]/s.split('/')[1]:+s;
+const SVP={thorin:[0,2],lyra:[3,4],bram:[4,5],mira:[4],wicht:[]};
 const mod=v=>Math.floor((v-10)/2);const fmt=n=>(n>=0?'+':'')+n;
 function renderCreature(){
   const c=CREATURES.find(x=>x.id===S.selCreature);const pb=c.kind==='pc'?Math.ceil(c.level/4)+1:(crNum(c.cr)<5?2:3);
-  const AB=['STÄ','GES','KON','INT','WEI','CHA'];
+  const AB=['STÄ','GES','KON','INT','WEI','CHA'];const ini=fmt(mod(c.ab[1]));
   $('#creatureView').innerHTML=`<div class="sheet"><div class="card">
     <div class="sh-top"><div class="portrait" style="border-color:${c.color};background:#2a2620;color:${c.color}">${c.name.split(' ').map(w=>w[0]).join('').slice(0,2)}</div><div style="flex:1;min-width:0"><input class="nm" id="cName" value="${esc(c.name)}" aria-label="Name"><div class="sub">${esc(c.sub)}</div></div>
       <div class="chips" style="flex-direction:column;align-items:flex-end"><span class="chip">${c.kind==='pc'?'Spielercharakter':c.kind==='npc'?'NSC':'Monster'}</span>${c.kind==='pc'?`<span class="chip">Stufe ${c.level}</span>`:`<span class="chip">HG ${c.cr} · ${CRXP[c.cr]} EP</span>`}</div></div>
@@ -1674,8 +1695,8 @@ function renderCreature(){
       <div class="stat"><label>Rüstungsklasse</label><input id="cAc" value="${c.ac}" inputmode="numeric"><small>${esc(c.acn||'')}</small></div>
       <div class="stat"><label>Trefferpunkte</label><input id="cHp" value="${c.hp}" inputmode="numeric"><small>${c.hpf} · <span class="act"><span class="roll" data-rf="${c.hpf}">würfeln</span></span></small></div>
       <div class="stat"><label>Bewegung</label><input value="${c.speed}"><small>Übungsbonus ${fmt(pb)}</small></div></div>
-    <div class="abil">${c.ab.map((v,i)=>`<div class="ab"><label>${AB[i]}</label><input data-ab="${i}" value="${v}" inputmode="numeric" aria-label="${AB[i]}"><span class="mod" id="m${i}">${fmt(mod(v))}</span></div>`).join('')}</div>
-    <dl class="kv"><dt>Rettungswürfe</dt><dd>${esc(c.saves)}</dd><dt>Fertigkeiten</dt><dd>${esc(c.skills)}</dd>${c.vuln?`<dt>Anfälligkeiten</dt><dd>${c.vuln}</dd>`:''}${c.res?`<dt>Resistenzen</dt><dd>${c.res}</dd>`:''}${c.imm?`<dt>Immunitäten</dt><dd>${c.imm}</dd>`:''}<dt>Sinne</dt><dd>${esc(c.senses)}</dd><dt>Sprachen</dt><dd>${esc(c.lang)}</dd><dt>Initiative</dt><dd><span class="act"><span class="roll" data-rf="1W20${fmt(mod(c.ab[1]))}">${fmt(mod(c.ab[1]))}</span></span></dd></dl>
+    <div class="abil">${c.ab.map((v,i)=>`<div class="ab"><label>${AB[i]}</label><input data-ab="${i}" value="${v}" inputmode="numeric" aria-label="${AB[i]}"><span class="mod" id="m${i}" title="Modifikator">${fmt(mod(v))}</span><small class="sv" id="s${i}" title="Rettungswurf">RW ${fmt(mod(v)+((SVP[c.id]||[]).includes(i)?pb:0))}${(SVP[c.id]||[]).includes(i)?' ●':''}</small></div>`).join('')}</div>
+    <dl class="kv"><dt>Fertigkeiten</dt><dd>${esc(c.skills)}</dd>${c.vuln?`<dt>Anfälligkeiten</dt><dd>${c.vuln}</dd>`:''}${c.res?`<dt>Resistenzen</dt><dd>${c.res}</dd>`:''}${c.imm?`<dt>Immunitäten</dt><dd>${c.imm}</dd>`:''}<dt>Sinne</dt><dd>${esc(c.senses)}</dd><dt>Sprachen</dt><dd>${esc(c.lang)}</dd><dt>Initiative</dt><dd><span class="act"><span class="roll" data-rf="1W20${fmt(mod(c.ab[1]))}">${fmt(mod(c.ab[1]))}</span></span></dd></dl>
     <div class="actions"><h4>Aktionen</h4>${c.acts.map(a=>`<p class="act"><b>${esc(a[0])}.</b> ${esc(a[1])}${a[2]?` <span class="roll" data-rf="1W20${a[2]}">${a[2]} zum Treffen</span>`:''}${a[3]?`, Treffer: <span class="roll" data-rf="${a[3]}">${a[3]}</span>`:''}</p>`).join('')}</div>
   </div>
   <div style="display:flex;flex-direction:column;gap:14px"><div class="card tokprev"><canvas id="tokCv" width="300" height="300"></canvas><span class="hint">Token-Vorschau auf Kartenraster</span></div>
@@ -1683,7 +1704,7 @@ function renderCreature(){
   const g=$('#tokCv').getContext('2d');g.fillStyle='#8a8170';g.fillRect(0,0,300,300);g.strokeStyle='rgba(0,0,0,.25)';for(let i=0;i<=300;i+=60){g.beginPath();g.moveTo(i,0);g.lineTo(i,300);g.moveTo(0,i);g.lineTo(300,i);g.stroke()}
   g.save();g.translate(150,150);g.scale(2.6,2.6);drawToken(g,{x:0,y:0,color:c.color,short:c.name.split(' ').map(w=>w[0]).join('').slice(0,2),hp:c.hp,maxHp:c.hp,conds:[],kind:c.kind,id:'prev'},'dm',0);g.restore();
   const cv2=$('#creatureView');
-  cv2.oninput=e=>{const t=e.target;const tk=tokById(c.id);if(t.dataset.ab!=null){const v=+t.value||0;c.ab[t.dataset.ab]=v;$('#m'+t.dataset.ab).textContent=fmt(mod(v))}
+  cv2.oninput=e=>{const t=e.target;const tk=tokById(c.id);if(t.dataset.ab!=null){const v=+t.value||0;c.ab[t.dataset.ab]=v;$('#m'+t.dataset.ab).textContent=fmt(mod(v));const pr=(SVP[c.id]||[]).includes(+t.dataset.ab);$('#s'+t.dataset.ab).textContent='RW '+fmt(mod(v)+(pr?pb:0))+(pr?' ●':'')}
     if(t.id==='cAc'){c.ac=+t.value||0;if(tk){tk.ac=c.ac;refreshPanel('initiative')}}if(t.id==='cHp'){c.hp=+t.value||0;if(tk){tk.maxHp=c.hp;tk.hp=Math.min(tk.hp,c.hp)}}if(t.id==='cName'){c.name=t.value;refreshPanel('browser')}};
   cv2.onclick=e=>{const r=e.target.closest('[data-rf]');if(r){doRoll(r.dataset.rf.replace(/\+-/,'-'));showBottom('dice')}if(e.target.closest('[data-toplay]')){setWs('play');const tk=tokById(c.id);if(tk){S.selToken=tk.id;setTimeout(()=>centerOn(tk.x,tk.y),60)}}};
 }
@@ -1736,8 +1757,8 @@ function updateStatus(){
     <span>Erkundet <span class="mono">${Math.round(exp/fl*100)} %</span> · ${BIOMES[S.biome].name}</span><span class="sep"></span>
     ${S.ws==='play'?`<span>Runde ${S.round} · am Zug: <b>${esc(cur.name)}</b></span><span class="sep"></span>`:''}
     <span class="safe ${playerSafe?'':'bad'}">● Spieleransicht ${S.player.blackout?'Blackout':playerSafe?'gesichert':'gesperrt'}</span>`;
-  const p=$('#pillTable');p.className='out-pill'+(S.player.blackout||!playerSafe?' black':'');$('#pillTableTxt').textContent=`Tisch-Display · ${S.player.rot}°${S.player.blackout?' · Blackout':''}`;
-  $('#pillDm').className='out-pill dm'+(S.player.dm2?'':' off');
+  const p=$('#pillTable');p.className='out-pill'+(S.player.blackout||!playerSafe?' black':'');$('#pillTableTxt').textContent=`Tisch · Monitor 2 · ${S.player.rot}°${S.player.blackout?' · Blackout':''}`;
+  $('#pillDm').className='out-pill dm'+($('#playerWin')&&!$('#playerWin').hidden?'':' off');
   const ps=$('#pwSafe');if(ps){ps.textContent=S.player.blackout?'Blackout':playerSafe?'gesichert':'GESPERRT';ps.style.color=playerSafe?'':'var(--crit)';$('#pwRot').textContent=S.player.rot+'°'}
 }
 setInterval(updateStatus,400);
@@ -1773,6 +1794,7 @@ $('#docTabs').innerHTML=`<div class="doc-tab on">${ico('book')}Die Asche von Vha
 for(let y=9;y<16;y++)for(let x=0;x<10;x++)explored[idx(x,y)]=1;
 updateVision();
 log('Kampagne „Die Asche von Vhal\'Durn“ geöffnet');log('Session 3 vorbereitet');
+{let k='dunkel';try{k=localStorage.getItem('dc-skin')||'dunkel'}catch(e){}$('#skinSel').value=k;setSkin(k);$('#skinSel').onchange=e=>{setSkin(e.target.value);toast('Theme gewechselt. Weitere Themes folgen später; alle Farben laufen über Theme-Tokens.')}}
 setWs('play');
 requestAnimationFrame(()=>{resizeCanvas();fitView();requestAnimationFrame(frame)});
 setTimeout(showWelcome,300);

@@ -6,6 +6,17 @@ planen, Karten bauen, Kreaturen pflegen und am Tisch leiten – mit Tisch-Displa
 Stand: Design-Demo (`design-demo/index.html`). Dieses Dokument sammelt Anforderungen, Abgleich mit
 vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidungen stehen am Ende.
 
+## 0. Getroffene Entscheidungen
+
+| Thema | Entscheidung |
+|---|---|
+| Plattform | Desktop-App |
+| Tisch-Display | Zusätzlicher Monitor am PC der Spielleitung (kein eigener Rechner, kein Netzwerk) |
+| Touch am Tisch | Vorerst nicht geplant; Spieler bedienen nichts, die SL steuert alles |
+| Regelwerk | D&D 5e, Ausgabe 2024 (SRD 5.2) |
+| Themes | Mehrere Themes später; die UI nutzt von Anfang an Theme-Tokens (Demo: Dunkel, Hell, Pergament als Vorschau) |
+| Design-Demo | Grundsätzlich abgenommen |
+
 ---
 
 ## 1. Bedienkonzept (an Fusion 360 angelehnt)
@@ -39,23 +50,24 @@ vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidungen st
 - Bibliothek mit Sammlungen, Tags, Suche
 
 ### 2.3 Tokens & Kreaturen
-- 5e-Werteblock: RK, TP (Formel + würfeln), Bewegung, Attribute mit Auto-Modifikator, Rettungswürfe, Fertigkeiten, Resistenzen/Immunitäten, Sinne, Sprachen, HG → EP, Übungsbonus
+- 5e-Werteblock im **2024-Format**: RK, Initiative, TP (Formel + würfeln), Bewegung, Attribute mit Modifikator und Rettungswurf je Attribut, Fertigkeiten, Resistenzen/Immunitäten, Sinne, Sprachen, HG → EP, Übungsbonus
 - Aktionen mit klickbaren Würfen (Angriff, Schaden)
 - Token: Ringfarbe, Bild, Größe (winzig … gigantisch), Dunkelsicht, Lichtquelle, Sichtbarkeit von Name/TP für Spieler
+- Spielercharaktere nach 2024: Spezies statt Volk, Hintergrund liefert Attributboni und Talent der 1. Stufe, Waffenmeisterungen, Unterklasse ab Stufe 3
 - Import: SRD 5.2 (CC-BY-4.0), JSON, später 5e.tools-/Foundry-Format
 
 ### 2.4 Kampagnen-Atlas
 - Graph aus Akten, Sessions, Szenen/Begegnungen, Quests, Orten, NSC, Fraktionen
 - Session-Vorbereitung nach „Lazy DM“-Checkliste
 - Kampagnen-Zeitleiste und Weltkalender
-- Begegnungs-Rechner (5e-EP-Schwellen, Multiplikator)
+- Begegnungs-Rechner nach 2024: EP-Budget je Charakter (Niedrig/Mittel/Hoch) nach Stufe, kein Gruppen-Multiplikator
 - Zufallstabellen, Handouts
 - „Im Orchestrator starten“ übernimmt Karte, Nebel, Tokens, Ambience der Szene
 
 ### 2.5 Game-Orchestrator
 - Karte mit DM-Sicht (durch Nebel), Spieler-Vorschau im Haupt-Canvas
 - Tokens: Einrasten oder freie Bewegung, **DM-Bewegungssperre** für Spieler
-- Initiative-Tracker: Reihenfolge, Runde, TP-Balken, RK, 5e-Zustände, Konzentration, Schaden/Heilung
+- Initiative-Tracker: Reihenfolge, Runde, TP-Balken, RK, Zustände nach 2024 (u. a. Erschöpfung Stufe 1–6: −2 je Stufe auf W20-Tests, −5 ft Bewegung je Stufe), Konzentration, Schaden/Heilung
 - Zauberschablonen: Kegel, Kugel, Linie, Würfel mit Markierung der betroffenen Felder
 - Messen (5e-Diagonale und euklidisch), Ping
 - Soundboard: Ambience-Loops mit Einzel-Lautstärke, SFX-Pads, Master, Szenen-Playlists
@@ -71,14 +83,17 @@ vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidungen st
 - **Living Fog** mit 8 Biomen: Bodennebel, Schneesturm, Hitzeflimmern, Glutasche, Sumpfmiasma, Seenebel, Arkaner Dunst, Finsternis. In der App als GPU-Shader (Noise + Partikel), Biom je Karte oder je Zone
 
 ## 4. Spieleransicht und Fail-closed-Sicherheit
-- Eigenes Fenster/Prozess für das **Tisch-Display** (eingelassener PC), optional zweiter Spiegel für einen DM-Monitor
+- Eigenes randloses Vollbildfenster auf **Monitor 2** (im Tisch eingelassen, am DM-PC angeschlossen); Monitorwahl in den Einstellungen, Mauszeiger dort ausgeblendet
+- Auf dem DM-Bildschirm optional eine Vorschau-Kopie der Spieleransicht (dockbares Fenster)
+- Das Tischfenster nimmt keine Eingaben an (kein Touch); Fokus bleibt immer beim DM-Fenster
+- Wird Monitor 2 getrennt oder wechselt die Auflösung, schaltet die Ausgabe auf Schwarz, bis die SL sie wieder freigibt
 - Rotation 0°/90°/180°/270°, **Blackout-Schalter**
 - Fail-closed-Regeln:
   1. Die Spieleransicht rendert aus einer **Whitelist-Projektion** des Szenenzustands (nur Karte, Raster, aufgedeckte Zellen, sichtbare Tokens, Schablonen, Pings). Zonen, Notizen, Geheimtüren, verborgene Tokens und DM-Ebenen werden gar nicht erst an den Renderer übergeben.
   2. Nebel wird zuerst deckend gezeichnet und nur aufgedeckt, nie umgekehrt. Fehlt die Nebel-Maske, ist sie veraltet oder wirft der Renderer einen Fehler, zeigt der Tisch **Schwarz**.
   3. Weichzeichnung gibt nie unerforschte Zellen frei: nach dem Blur werden unerforschte Zellen hart deckend übermalt.
   4. Der Kartenrand ist im Nebelpuffer schwarz aufgefüllt, damit Blur dort keinen Saum öffnet.
-  5. Heartbeat zwischen DM-App und Spielerfenster: bleibt er aus, Blackout.
+  5. Heartbeat zwischen DM-Fenster und Tischfenster (gleicher Prozess, eigener Renderpfad): bleibt er aus, Blackout.
   6. Beim Szenenwechsel erst Blackout, dann neue Szene laden, dann freigeben.
 - In der Demo: „Renderfehler simulieren“ im Panel *Spieleransicht* zeigt das Verhalten.
 
@@ -125,13 +140,13 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 - Begegnungs-Rechner, Zufallstabellen, Weltkalender
 - Szenenwechsel mit automatischem Blackout
 - Tastaturkürzel, Undo/Redo über alle Arbeitsbereiche
-- Touch-Eingabe am Tisch (Spieler bewegen eigene Tokens, sperrbar)
 
 ## 7. Architekturvorschlag
-- **Desktop-App mit Tauri 2** (Rust-Kern, Web-UI): mehrere native Fenster (DM + Tisch), direkter Dateizugriff, klein
+- **Desktop-App mit Tauri 2** (Rust-Kern, Web-UI): zwei native Fenster im selben Prozess (DM auf Monitor 1, Tisch-Vollbild auf Monitor 2), Monitorerkennung über die Tauri-Monitor-API, direkter Dateizugriff, klein. Alternative: Electron, falls Video-/WebGL-Verhalten der System-WebViews Probleme macht
+- Themes: alle Farben als CSS-Tokens, Theme = eine Token-Datei (JSON/CSS); Karte und Nebel bleiben themenunabhängig
 - UI: TypeScript + React (oder Svelte), Docking-Layout (z. B. Dockview), eigene Ribbon-Komponenten
 - Rendering: **WebGL2 via PixiJS** für Karte, Kacheln, Video-Texturen; Nebel und Living Fog als Shader; Raycasting im Worker (WASM aus Rust möglich)
-- Tisch-Fenster erhält nur die Whitelist-Projektion über IPC (kein Zugriff auf den vollen Zustand)
+- Tisch-Fenster erhält nur die Whitelist-Projektion über Tauri-Events (kein Zugriff auf den vollen Zustand)
 - Audio: Web Audio API (Loops, Crossfade, Kanäle je Ausgabe)
 - Datenmodell: TypeScript-Typen + JSON-Schema für Sidecars
 
@@ -145,12 +160,11 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 | 3 · Atmosphäre | Living Fog (8 Biome), Fog Spread, Lichtquellen, Zauberschablonen, Soundboard |
 | 4 · Planung | Kampagnen-Atlas, Notizen-Editor mit Wiki-Links, Begegnungs-Rechner, Zufallstabellen, Handouts |
 | 5 · Assets | Asset-Vault mit Varianten und Prop-Komposition, Universal-VTT-Import, SRD-Bestiarium |
-| 6 · Feinschliff | Touch am Tisch, Tastaturkürzel, Export/Backup, Performance |
+| 6 · Feinschliff | Weitere Themes, Tastaturkürzel, Export/Backup, Performance |
 
 ## 9. Offene Fragen
-1. Plattform: Desktop-App (Windows? Linux auf dem Tisch-PC?) oder Browser-App?
-2. Läuft der Tisch-PC als eigener Rechner im Netzwerk oder als zweiter Monitor am DM-Rechner?
-3. Touch-Bedienung am Tisch durch Spieler gewünscht?
-4. Regelwerk: nur 5e (2014 oder 2024) oder systemoffen?
-5. Helles Fusion-Theme zusätzlich zum dunklen?
-6. Woher kommen Monsterdaten (SRD, eigene, Import)?
+1. Betriebssystem des DM-PCs (Windows, macOS, Linux)?
+2. Wie groß und mit welcher Auflösung ist der Tisch-Monitor (Rastergröße in echten Zentimetern für Miniaturen)?
+3. Sollen echte Miniaturen auf dem Tisch stehen (dann 1 Feld = 1 Zoll physisch kalibrieren)?
+4. Woher kommen Monsterdaten über das SRD hinaus (eigene, Import)?
+5. Sprache der App: nur Deutsch oder zusätzlich Englisch?

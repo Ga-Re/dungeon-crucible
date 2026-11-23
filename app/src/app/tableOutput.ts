@@ -3,14 +3,17 @@
  * 250 ms so the table's freshness check (heartbeat) stays satisfied; when the
  * DM app stalls or closes, the table goes black on its own.
  */
-import { closeTableWindow, listMonitors, moveWindowToMonitor, openTableWindow, sendFrame } from '../platform/bridge';
-import { emit, produceFrame, state } from './store';
+import { closeTableWindow, listMonitors, moveTableToMonitor, onTableReady, openTableWindow, sendFrame } from '../platform/bridge';
+import { emit, log, produceFrame, state } from './store';
 
 const INTERVAL_MS = 100;
 let timer: ReturnType<typeof setInterval> | null = null;
 
 export function startFrameLoop(): void {
   if (timer) return;
+  void onTableReady(() => {
+    if (state.tableOpen) void sendFrame(produceFrame(Date.now())).catch(() => undefined);
+  });
   timer = setInterval(() => {
     const frame = produceFrame(Date.now());
     if (state.tableOpen) void sendFrame(frame).catch(() => undefined);
@@ -36,7 +39,13 @@ export async function openTable(monitorIndex = defaultTableMonitor()): Promise<v
     await moveTableTo(monitorIndex);
     return;
   }
-  await openTableWindow(monitorIndex);
+  try {
+    await openTableWindow(monitorIndex);
+  } catch (e) {
+    log('log.tableFailed', { error: String(e) });
+    emit();
+    return;
+  }
   state.tableOpen = true;
   state.tableMonitor = monitorIndex;
   emit();
@@ -52,7 +61,7 @@ export async function moveTableTo(monitorIndex: number): Promise<void> {
   state.scene.table.blackout = true;
   emit();
   try {
-    await moveWindowToMonitor('table', monitorIndex);
+    await moveTableToMonitor(monitorIndex);
     state.tableMonitor = monitorIndex;
   } finally {
     setTimeout(() => {

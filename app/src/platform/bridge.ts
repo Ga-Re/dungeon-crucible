@@ -27,8 +27,17 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
   return core.invoke<T>(cmd, args);
 }
 
+let displayService: import('./displays').DisplayService | null = null;
+async function displays(): Promise<import('./displays').DisplayService> {
+  if (!displayService) {
+    const d = await import('./displays');
+    displayService = d.createTauriDisplayService(d.detectPlatformFamily(navigator.userAgent));
+  }
+  return displayService;
+}
+
 export async function listMonitors(): Promise<MonitorInfo[]> {
-  if (isTauri()) return invoke<MonitorInfo[]>('list_monitors');
+  if (isTauri()) return (await (await displays()).listDisplays()).map((d) => ({ ...d }));
   // Browser: only the current screen is known.
   return [{ index: 0, name: 'Browser screen', x: 0, y: 0, width: screen.width * devicePixelRatio, height: screen.height * devicePixelRatio, scaleFactor: devicePixelRatio }];
 }
@@ -36,23 +45,36 @@ export async function listMonitors(): Promise<MonitorInfo[]> {
 let browserTable: Window | null = null;
 
 export async function openTableWindow(monitorIndex: number): Promise<MonitorInfo | null> {
-  if (isTauri()) return invoke<MonitorInfo>('open_table_window', { monitorIndex });
+  if (isTauri()) {
+    await (await displays()).openTableView(monitorIndex, 'Dungeon Crucible – Table');
+    return null;
+  }
   if (!browserTable || browserTable.closed) browserTable = window.open('table.html', 'dc-table', 'popup,width=960,height=540');
   return null;
 }
 
 export async function closeTableWindow(): Promise<void> {
   if (isTauri()) {
-    await invoke('close_table_window');
+    await (await displays()).closeTableView();
     return;
   }
   browserTable?.close();
   browserTable = null;
 }
 
-export async function moveWindowToMonitor(label: string, monitorIndex: number): Promise<MonitorInfo | null> {
-  if (isTauri()) return invoke<MonitorInfo>('move_window_to_monitor', { label, monitorIndex });
-  return null;
+/** Moves the table window to another display (same path as opening: windowed → move → fullscreen). */
+export async function moveTableToMonitor(monitorIndex: number): Promise<void> {
+  if (isTauri()) await (await displays()).openTableView(monitorIndex, 'Dungeon Crucible – Table');
+}
+
+/** Called when the table window has (re)loaded, so the DM window can resend the current frame at once. */
+export async function onTableReady(cb: () => void): Promise<void> {
+  if (!isTauri()) return;
+  const ev = await import('@tauri-apps/api/event');
+  await ev.listen('table-ready', () => {
+    cb();
+    setTimeout(cb, 1000);
+  });
 }
 
 let channel: BroadcastChannel | null = null;

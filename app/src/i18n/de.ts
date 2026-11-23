@@ -248,6 +248,7 @@ export const de: Partial<Record<MessageKey, string>> = {
   'log.mapImported': 'Karte importiert: {file}',
   'log.invalidFile': '{file} übersprungen: {error}',
   'log.saveFailed': 'Speichern fehlgeschlagen: {error}',
+  'log.tableFailed': 'Tischfenster konnte nicht geöffnet werden: {error}',
   'soon.title': 'Folgt in einer späteren Phase',
   'soon.atlas': 'Der Kampagnen-Atlas (Akte, Sessions, Quests, Zeitleiste) folgt in Phase 4. Die Design-Demo zeigt das geplante Layout.',
   'soon.vault': 'Der Asset-Vault mit Varianten und Prop-Komposition folgt in Phase 5.',

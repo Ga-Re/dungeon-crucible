@@ -248,6 +248,7 @@ export const en = {
   'log.mapImported': 'Map imported: {file}',
   'log.invalidFile': 'Skipped {file}: {error}',
   'log.saveFailed': 'Saving failed: {error}',
+  'log.tableFailed': 'Could not open the table window: {error}',
   'soon.title': 'Coming in a later phase',
   'soon.atlas': 'The campaign atlas (acts, sessions, quests, timeline) follows in phase 4. The design demo shows the planned layout.',
   'soon.vault': 'The asset vault with variants and prop composition follows in phase 5.',

@@ -98,6 +98,8 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .ab-btn { height: 26px; min-width: 26px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border-radius: 3px; padding: 0 6px; color: var(--fg-dim); }
 .ab-btn:hover { background: var(--panel-2); color: var(--fg); }
 .ab-btn.on { color: var(--crit); }
+.ab-btn.cta { color: var(--accent); border: 1px solid var(--accent); }
+.ab-btn.cta:hover { background: var(--accent-soft); color: var(--accent); }
 .doc-name { display: flex; align-items: center; gap: 6px; margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--line); white-space: nowrap; min-width: 0; overflow: hidden; }
 .doc-name .ic { width: 14px; height: 14px; color: var(--fg-dim); }
 .doc-name b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }

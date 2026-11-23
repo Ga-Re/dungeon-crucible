@@ -100,7 +100,9 @@ function AppBar() {
   return (
     <header className="appbar">
       <div className="brand"><span className="mark"><Icon name="anvil" /></span>{t('app.name')}</div>
-      <button className="ab-btn" title={`${t('campaign.open')} (Ctrl+O)`} onClick={() => void openCampaignDialog()}><Icon name="folder" /></button>
+      <button className={`ab-btn ${campaign ? '' : 'cta'}`} title={`${t('campaign.open')} (Ctrl/⌘+O)`} onClick={() => void openCampaignDialog()}>
+        <Icon name="folder" />{!campaign && <span>{t('campaign.openShort')}</span>}
+      </button>
       <button className="ab-btn" title={`${t('app.save')} (Ctrl+S)`} disabled={!campaign} onClick={() => void saveCampaign(true)}><Icon name="save" /></button>
       <button className="ab-btn" title={`${t('app.undo')} (Ctrl+Z)`} disabled={!canUndo} onClick={undo}><Icon name="undo" /></button>
       <button className="ab-btn" title={`${t('app.redo')} (Ctrl+Shift+Z)`} disabled={!canRedo} onClick={redo}><Icon name="redo" /></button>

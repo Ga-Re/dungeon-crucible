@@ -289,6 +289,7 @@ export const en = {
   'panels.expand': 'Expand',
   'panels.float': 'Float',
   'panels.dock': 'Dock',
+  'campaign.openShort': 'Open or create campaign …',
   'soon.title': 'Coming in a later phase',
   'soon.atlas': 'The campaign atlas (acts, sessions, quests, timeline) follows in phase 4. The design demo shows the planned layout.',
   'soon.vault': 'The asset vault with variants and prop composition follows in phase 5.',

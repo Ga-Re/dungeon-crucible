@@ -10,11 +10,15 @@ vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidungen st
 
 | Thema | Entscheidung |
 |---|---|
-| Plattform | Desktop-App |
+| Plattform | Desktop-App für **macOS und Windows** (Tauri 2) |
 | Tisch-Display | Zusätzlicher Monitor am PC der Spielleitung (kein eigener Rechner, kein Netzwerk) |
 | Touch am Tisch | Vorerst nicht geplant; Spieler bedienen nichts, die SL steuert alles |
 | Regelwerk | D&D 5e, Ausgabe 2024 (SRD 5.2) |
 | Themes | Mehrere Themes später; die UI nutzt von Anfang an Theme-Tokens (Demo: Dunkel, Hell, Pergament als Vorschau) |
+| Tisch-Monitor | 55″, 4K (3840×2160) → 80,1 px/Zoll; **1 Feld = 1 Zoll** für echte Miniaturen, Feinabgleich per Lineal-Korrektur |
+| Kreaturdaten | Werden von der SL selbst eingegeben (2024-Werteblock); Berechnungen (Mod, RW, ÜB, EP) automatisch |
+| Sprache | Englisch als Standard, Deutsch zusätzlich |
+| Spieler-Vorschau | Dockbar wie jedes Panel; Knopf „Auf anderen Bildschirm verschieben“ für die Tisch-Ausgabe |
 | Design-Demo | Grundsätzlich abgenommen |
 
 ---
@@ -162,9 +166,17 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 | 5 · Assets | Asset-Vault mit Varianten und Prop-Komposition, Universal-VTT-Import, SRD-Bestiarium |
 | 6 · Feinschliff | Weitere Themes, Tastaturkürzel, Export/Backup, Performance |
 
-## 9. Offene Fragen
-1. Betriebssystem des DM-PCs (Windows, macOS, Linux)?
-2. Wie groß und mit welcher Auflösung ist der Tisch-Monitor (Rastergröße in echten Zentimetern für Miniaturen)?
-3. Sollen echte Miniaturen auf dem Tisch stehen (dann 1 Feld = 1 Zoll physisch kalibrieren)?
-4. Woher kommen Monsterdaten über das SRD hinaus (eigene, Import)?
-5. Sprache der App: nur Deutsch oder zusätzlich Englisch?
+## 9. Umsetzungsstand
+
+**Phase 1 (Fundament) – umgesetzt in `app/`:**
+- Tauri-2-Projekt (Rust) mit Monitorliste, Tischfenster randlos im Vollbild auf gewähltem Monitor, Verschieben auf anderen Monitor, Mauszeiger aus, Fokus bleibt beim DM
+- React-Oberfläche: Arbeitsbereich-Umschalter, Ribbon, Docking mit dockview (andocken, abdocken, Layout je Arbeitsbereich gespeichert), Statusleiste, Themes, Englisch/Deutsch
+- Kernlogik mit 29 Tests: Sichtlinien, 3-Punkt- und physische Kalibrierung, Nebel (3 Zustände, gesperrte Geheimräume), 2024-Regeln (Mod, ÜB, RW, EP-Budget, Erschöpfung), Würfel, Sidecar-Schemas, Spieler-Projektion
+- Fail-closed: Whitelist-Frame, Validierung im Tischfenster, Herzschlag (2,5 s), Tisch-Capability nur „Events empfangen“, Build bricht ab, wenn das Tisch-Bundle DM-Code enthält
+- Kartenansicht mit Auswählen, Verschieben, Messen, Ping, Wände/Türen/Geheimtüren/Fenster, Zonen, Nebelwerkzeuge, Schablonen, Kalibrierung; Initiative mit Zuständen; Würfel; Begegnungs-Budget; Werteblock-Editor
+- CI (GitHub Actions): Tests, Build-Prüfung, `cargo check`, Desktop-Builds für macOS (universal) und Windows
+
+**Noch offen in Phase 1:** Kampagnenordner öffnen/speichern (Sidecars auf Platte), importierte Karten im Tischfenster über das Asset-Protokoll (derzeit nur im DM-Fenster), Undo/Redo.
+
+## 10. Offene Fragen
+1. Signierung: Sollen die macOS-/Windows-Builds signiert werden (Apple-Developer-Konto, Windows-Zertifikat)? Ohne Signatur warnt das Betriebssystem beim ersten Start.

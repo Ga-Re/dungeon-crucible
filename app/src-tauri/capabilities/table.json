@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "table-window",
+  "description": "Table window: may only listen to events (player frames). No app commands.",
+  "windows": ["table"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

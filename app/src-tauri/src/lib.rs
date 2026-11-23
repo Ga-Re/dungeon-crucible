@@ -4,6 +4,7 @@
 //! `src/core/projection.ts`). It is borderless, fullscreen on the chosen
 //! monitor, never takes focus and hides the mouse cursor.
 
+mod campaign;
 mod monitors;
 
 use monitors::{monitor_infos, MonitorInfo};
@@ -85,11 +86,20 @@ fn close_table_window(app: AppHandle) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .manage(campaign::CampaignState::default())
         .invoke_handler(tauri::generate_handler![
             list_monitors,
             open_table_window,
             move_window_to_monitor,
-            close_table_window
+            close_table_window,
+            campaign::pick_campaign_folder,
+            campaign::open_campaign_folder,
+            campaign::read_text,
+            campaign::write_text,
+            campaign::list_files,
+            campaign::absolute_path,
+            campaign::import_map_file
         ])
         .on_window_event(|window, event| {
             // Closing the DM window also closes the table window.

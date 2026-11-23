@@ -7,7 +7,7 @@ import type { MessageKey } from '../i18n/en';
 import { renderPlayerFrame } from '../render/frameRenderer';
 import { renderDm, type DmOverlay, type DmView } from '../render/dmRenderer';
 import {
-  addCalibrationPoint, addPing, addTemplate, addWall, addZone, fogBrush, fogRect, initiativeOrder, log, moveToken,
+  addCalibrationPoint, addPing, addTemplate, checkpoint, addWall, addZone, fogBrush, fogRect, initiativeOrder, log, moveToken,
   revealZone, selectToken, selectZone, snapPoint, state, toggleDoor, useStore, zoneAt,
 } from '../app/store';
 
@@ -34,6 +34,7 @@ export function MapView() {
   const tool = useStore((s) => s.tool);
   const ws = useStore((s) => s.ws);
   const viewAsPlayer = useStore((s) => s.viewAsPlayer);
+  const sceneVersion = useStore((s) => s.sceneVersion);
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const view = useRef<DmView>({ zoom: 0.4, x: 20, y: 20 });
@@ -114,6 +115,10 @@ export function MapView() {
   }, []);
 
   useEffect(() => {
+    if (sceneVersion > 0) mapCommands.fit();
+  }, [sceneVersion]);
+
+  useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.code === 'Space' && !(e.target as HTMLElement).closest('input,textarea,select')) space.current = true;
       if (e.key === 'Escape') {
@@ -157,6 +162,7 @@ export function MapView() {
         const tk = [...state.scene.tokens].reverse().find((k) => Math.hypot(k.x - p.x, k.y - p.y) < (cell * k.size) / 2);
         if (tk) {
           selectToken(tk.id);
+          checkpoint();
           drag.current = { kind: 'token', id: tk.id, ox: tk.x - p.x, oy: tk.y - p.y, start: { x: tk.x, y: tk.y }, moved: false };
           return;
         }
@@ -176,6 +182,7 @@ export function MapView() {
         return;
       case 'reveal':
       case 'hide':
+        checkpoint();
         drag.current = { kind: 'brush' };
         fogBrush(p, state.tool === 'reveal' ? 'reveal' : 'hide');
         return;

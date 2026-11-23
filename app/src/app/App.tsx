@@ -9,8 +9,9 @@ import {
 } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
 import {
-  clearTemplates, emit, fogAll, log, nextTurn, removeLastUserWall, rotateTable, setGridType, setTool, setWorkspace, state, toggle, toggleBlackout, useStore,
+  clearTemplates, emit, fogAll, log, nextTurn, redo, removeLastUserWall, rotateTable, setGridType, setTool, setWorkspace, state, toggle, toggleBlackout, undo, useStore,
 } from './store';
+import { importMapIntoCampaign, openCampaignDialog, reopenLastCampaign, saveCampaign, startAutosave } from './campaign';
 import { openTable, refreshMonitors, startFrameLoop } from './tableOutput';
 import { importMapFile } from './importMap';
 import { SAMPLE_CREATURES } from '../sample/creatures';
@@ -48,9 +49,22 @@ export function App() {
   const ws = useStore((s) => s.ws);
   useEffect(() => {
     startFrameLoop();
+    startAutosave();
     void refreshMonitors();
     log('log.opened');
     emit();
+    void reopenLastCampaign();
+    const keys = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if ((e.target as HTMLElement).closest('input,textarea,select')) return;
+      const k = e.key.toLowerCase();
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
+      else if (k === 's') { e.preventDefault(); void saveCampaign(true); }
+      else if (k === 'o') { e.preventDefault(); void openCampaignDialog(); }
+    };
+    window.addEventListener('keydown', keys);
+    return () => window.removeEventListener('keydown', keys);
   }, []);
   return (
     <div className="app">
@@ -72,6 +86,11 @@ function AppBar() {
   const rotation = useStore((s) => s.scene.table.rotation);
   const monitor = useStore((s) => s.monitors.find((m) => m.index === s.tableMonitor));
   const [menu, setMenu] = useState<DOMRect | null>(null);
+  const campaign = useStore((s) => s.campaign);
+  const dirty = useStore((s) => s.dirty);
+  const saving = useStore((s) => s.saving);
+  const canUndo = useStore((s) => s.canUndo);
+  const canRedo = useStore((s) => s.canRedo);
   useEffect(() => {
     document.documentElement.dataset.skin = skin;
     try { localStorage.setItem('dc.skin', skin); } catch { /* ignore */ }
@@ -79,9 +98,15 @@ function AppBar() {
   return (
     <header className="appbar">
       <div className="brand"><span className="mark"><Icon name="anvil" /></span>{t('app.name')}</div>
-      <button className="ab-btn" title={t('app.save')}><Icon name="save" /></button>
-      <button className="ab-btn" title={t('app.undo')}><Icon name="undo" /></button>
-      <button className="ab-btn" title={t('app.redo')}><Icon name="redo" /></button>
+      <button className="ab-btn" title={`${t('campaign.open')} (Ctrl+O)`} onClick={() => void openCampaignDialog()}><Icon name="folder" /></button>
+      <button className="ab-btn" title={`${t('app.save')} (Ctrl+S)`} disabled={!campaign} onClick={() => void saveCampaign(true)}><Icon name="save" /></button>
+      <button className="ab-btn" title={`${t('app.undo')} (Ctrl+Z)`} disabled={!canUndo} onClick={undo}><Icon name="undo" /></button>
+      <button className="ab-btn" title={`${t('app.redo')} (Ctrl+Shift+Z)`} disabled={!canRedo} onClick={redo}><Icon name="redo" /></button>
+      <span className="doc-name">
+        <Icon name="folder" />
+        <b>{campaign?.name ?? t('campaign.none')}</b>
+        <span className="hint">{campaign ? (saving ? t('campaign.saving') : dirty ? t('campaign.unsaved') : t('campaign.saved')) : t('campaign.notSaved')}</span>
+      </span>
       <div className="ab-right">
         <button className={`pill ${!tableOpen ? 'off' : blackout ? 'black' : ''}`} onClick={(e) => setMenu(menu ? null : e.currentTarget.getBoundingClientRect())}>
           <span className="dot" />
@@ -146,7 +171,9 @@ function Ribbon() {
       case 'table:move': return setMenu(el.getBoundingClientRect());
       case 'panel:table': return focusPanel('table');
       case 'panel:encounter': return focusPanel('encounter');
-      case 'map:import': return fileRef.current?.click();
+      case 'map:import':
+        void importMapIntoCampaign().then((handled) => { if (!handled) fileRef.current?.click(); });
+        return;
       case 'creature:new':
       case 'creature:newPc': {
         const tpl = structuredClone(SAMPLE_CREATURES[b.id === 'creature:newPc' ? 0 : 2]);

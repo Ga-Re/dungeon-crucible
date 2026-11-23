@@ -15,6 +15,9 @@ import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
 import type { Creature } from '../core/sidecar';
 import type { MessageKey } from '../i18n/en';
+import { History } from '../core/history';
+import { mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene } from '../core/persistence';
+import type { CampaignInfo } from '../platform/bridge';
 
 export type WorkspaceId = 'forge' | 'vault' | 'creatures' | 'atlas' | 'play';
 
@@ -60,6 +63,19 @@ export interface AppState {
   creatures: Creature[];
   selectedCreatureIdx: number;
   mapFileName: string;
+  /** Map resource: path relative to the campaign folder or `builtin:<id>`. */
+  mapResource: string;
+  campaign: CampaignInfo | null;
+  scenePath: string | null;
+  sceneName: string;
+  scenes: string[];
+  dirty: boolean;
+  saving: boolean;
+  lastSavedAt: number | null;
+  canUndo: boolean;
+  canRedo: boolean;
+  /** Increments whenever a different scene is loaded (views refit). */
+  sceneVersion: number;
 }
 
 function initial(): AppState {
@@ -97,6 +113,17 @@ function initial(): AppState {
     creatures: SAMPLE_CREATURES,
     selectedCreatureIdx: 0,
     mapFileName: 'builtin: crypt-of-vhal-durn',
+    mapResource: 'builtin:crypt',
+    campaign: null,
+    scenePath: null,
+    sceneName: 'Session 3',
+    scenes: [],
+    dirty: false,
+    saving: false,
+    lastSavedAt: null,
+    canUndo: false,
+    canRedo: false,
+    sceneVersion: 0,
   };
   s.vision = updateVision(scene);
   return s;
@@ -125,6 +152,84 @@ export function useStore<T>(select: (s: AppState) => T): T {
 export function log(key: MessageKey, params?: Record<string, string | number>): void {
   state.log.unshift({ at: Date.now(), key, params });
   if (state.log.length > 200) state.log.pop();
+}
+
+/* ---------- Undo / redo & dirty tracking ---------- */
+
+const history = new History<string>(100);
+const dirtyListeners = new Set<() => void>();
+
+export function onDirty(fn: () => void): () => void {
+  dirtyListeners.add(fn);
+  return () => dirtyListeners.delete(fn);
+}
+
+export function markDirty(): void {
+  state.dirty = true;
+  for (const f of dirtyListeners) f();
+}
+
+function snapshot(): string {
+  const s = state.scene;
+  return JSON.stringify({
+    map: mapSidecarFromScene(s, state.mapResource),
+    ov: sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }),
+  });
+}
+
+/** Call before every undoable change. */
+export function checkpoint(): void {
+  history.push(snapshot());
+  state.canUndo = history.canUndo;
+  state.canRedo = history.canRedo;
+  markDirty();
+}
+
+function restore(snap: string): void {
+  const { map, ov } = JSON.parse(snap);
+  const keepTable = state.scene.table;
+  state.scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, keepTable);
+  state.scene.table = keepTable;
+  state.round = ov.combat.round;
+  state.turn = ov.combat.turn;
+  recomputeVision();
+  state.canUndo = history.canUndo;
+  state.canRedo = history.canRedo;
+  markDirty();
+  emit();
+}
+
+export function undo(): void {
+  const prev = history.undo(snapshot());
+  if (prev) restore(prev);
+}
+
+export function redo(): void {
+  const next = history.redo(snapshot());
+  if (next) restore(next);
+}
+
+export function clearHistory(): void {
+  history.clear();
+  state.canUndo = state.canRedo = false;
+}
+
+/** Replaces the whole scene (open campaign, switch scene, import map). */
+export function replaceScene(scene: Scene, opts: { resource: string; fileName: string; scenePath: string | null; sceneName: string; round?: number; turn?: number }): void {
+  state.scene = scene;
+  state.mapResource = opts.resource;
+  state.mapFileName = opts.fileName;
+  state.scenePath = opts.scenePath;
+  state.sceneName = opts.sceneName;
+  state.round = opts.round ?? 1;
+  state.turn = opts.turn ?? 0;
+  state.selectedTokenId = null;
+  state.selectedZoneId = null;
+  state.wallStart = null;
+  recomputeVision();
+  clearHistory();
+  state.sceneVersion++;
+  emit();
 }
 
 /* ---------- Workspace & tools ---------- */
@@ -176,6 +281,7 @@ export function moveToken(id: string, p: Point, final: boolean): void {
 export function toggleDoor(id: string): void {
   const w = state.scene.walls.find((x) => x.id === id);
   if (!w || (w.kind !== 'door' && w.kind !== 'secret-door')) return;
+  checkpoint();
   w.open = !w.open;
   log(w.open ? 'log.doorOpened' : 'log.doorClosed');
   recomputeVision();
@@ -185,6 +291,7 @@ export function toggleDoor(id: string): void {
 let wallSeq = 0;
 export function addWall(kind: WallKind, a: Point, b: Point): void {
   if (Math.hypot(a.x - b.x, a.y - b.y) < 2) return;
+  checkpoint();
   const w: Wall = { id: `u${++wallSeq}`, kind, x1: a.x, y1: a.y, x2: b.x, y2: b.y, open: false };
   state.scene.walls.push(w);
   recomputeVision();
@@ -192,6 +299,7 @@ export function addWall(kind: WallKind, a: Point, b: Point): void {
 }
 
 export function removeLastUserWall(): void {
+  checkpoint();
   const i = state.scene.walls.map((w) => w.id.startsWith('u')).lastIndexOf(true);
   if (i >= 0) state.scene.walls.splice(i, 1);
   recomputeVision();
@@ -204,6 +312,7 @@ export function addZone(x0: number, y0: number, x1: number, y1: number): void {
   const w = Math.abs(x1 - x0);
   const h = Math.abs(y1 - y0);
   if (w < 10 || h < 10) return;
+  checkpoint();
   const id = `z${state.scene.zones.length + 1}`;
   state.scene.zones.push({ id, name: `Zone ${state.scene.zones.length + 1}`, kind: 'area', rect: { x, y, w, h }, color: '#7fd9cf', discovered: true });
   state.selectedZoneId = id;
@@ -227,6 +336,7 @@ function zoneCells(id: string): [number, number][] {
 export function revealZone(id: string): void {
   const z = state.scene.zones.find((q) => q.id === id);
   if (!z || (z.kind === 'secret' && !z.discovered)) return;
+  checkpoint();
   for (const [c, r] of zoneCells(id)) state.scene.fog.reveal(c, r, true);
   emit();
 }
@@ -235,6 +345,7 @@ export function revealZone(id: string): void {
 export function discoverZone(id: string): void {
   const z = state.scene.zones.find((q) => q.id === id);
   if (!z) return;
+  checkpoint();
   z.discovered = true;
   state.scene.fog.setLocked(zoneCells(id), false);
   for (const w of state.scene.walls) {
@@ -252,11 +363,13 @@ export function fogBrush(p: Point, mode: 'reveal' | 'hide'): void {
 }
 
 export function fogRect(x0: number, y0: number, x1: number, y1: number): void {
+  checkpoint();
   state.scene.fog.revealRect(x0, y0, x1, y1);
   emit();
 }
 
 export function fogAll(reveal: boolean): void {
+  checkpoint();
   if (reveal) state.scene.fog.revealAll();
   else state.scene.fog.hideAll();
   recomputeVision();
@@ -264,11 +377,13 @@ export function fogAll(reveal: boolean): void {
 }
 
 export function setBiome(b: FogBiome): void {
+  checkpoint();
   state.scene.map.biome = b;
   emit();
 }
 
 export function setGridType(type: GridType): void {
+  checkpoint();
   state.scene.map.grid = { ...state.scene.map.grid, type };
   emit();
 }
@@ -279,6 +394,7 @@ export function addCalibrationPoint(p: Point): void {
     const [a, b, c] = state.calibPoints;
     try {
       const r = calibrateFromThreePoints(a, b, c);
+      checkpoint();
       state.scene.map.grid = applyCalibration(state.scene.map.grid, r);
       state.lastCalibration = { w: r.cellWidth, h: r.cellHeight, r: r.rotationDeg };
       log('log.calibrated');
@@ -298,6 +414,7 @@ export function addTemplate(shape: TemplateShape, origin: Point, to: Point): Are
   const lenPx = Math.hypot(to.x - origin.x, to.y - origin.y);
   const sizeFt = Math.max(g.feetPerCell, Math.round(lenPx / g.cellWidth) * g.feetPerCell);
   if (lenPx < g.cellWidth * 0.4) return null;
+  checkpoint();
   const t: AreaTemplate = { id: `t${++tplSeq}`, shape, x: origin.x, y: origin.y, angle: Math.atan2(to.y - origin.y, to.x - origin.x), sizeFt, color: TPL_COLORS[shape] };
   state.scene.templates.push(t);
   emit();
@@ -305,6 +422,7 @@ export function addTemplate(shape: TemplateShape, origin: Point, to: Point): Are
 }
 
 export function clearTemplates(): void {
+  checkpoint();
   state.scene.templates = [];
   emit();
 }
@@ -321,6 +439,7 @@ export function initiativeOrder(): Token[] {
 }
 
 export function nextTurn(): void {
+  markDirty();
   const order = initiativeOrder();
   state.turn++;
   if (state.turn >= order.length) {
@@ -335,6 +454,7 @@ export function nextTurn(): void {
 export function changeHp(id: string, delta: number): void {
   const t = state.scene.tokens.find((x) => x.id === id);
   if (!t) return;
+  checkpoint();
   t.hp = Math.max(0, Math.min(t.maxHp, t.hp + delta));
   if (t.kind === 'pc') recomputeVision();
   emit();
@@ -343,6 +463,7 @@ export function changeHp(id: string, delta: number): void {
 export function toggleCondition(id: string, c: Condition): void {
   const t = state.scene.tokens.find((x) => x.id === id);
   if (!t) return;
+  checkpoint();
   t.conditions = t.conditions.includes(c) ? t.conditions.filter((x) => x !== c) : [...t.conditions, c];
   if (c === 'exhaustion') t.exhaustion = t.conditions.includes('exhaustion') ? Math.max(1, t.exhaustion ?? 1) : 0;
   emit();
@@ -373,11 +494,13 @@ export function roll(expr: string): RollResult | null {
 /* ---------- Table output ---------- */
 
 export function setTableRotation(r: TableRotation): void {
+  markDirty();
   state.scene.table.rotation = r;
   emit();
 }
 
 export function rotateTable(): void {
+  markDirty();
   state.scene.table.rotation = (((state.scene.table.rotation + 90) % 360) as TableRotation);
   emit();
 }
@@ -388,6 +511,7 @@ export function toggleBlackout(): void {
 }
 
 export function updateTable(patch: Partial<Scene['table']>): void {
+  markDirty();
   state.scene.table = { ...state.scene.table, ...patch };
   emit();
 }

@@ -212,7 +212,7 @@ describe('sidecars', () => {
     expect(resourcePathForSidecar('maps/crypt.webp')).toBeNull();
   });
   it('validates a map sidecar and reports errors', () => {
-    const ok = parseSidecar(MapSidecarSchema, JSON.stringify({ kind: 'map', schemaVersion: 1, name: 'Crypt', grid: DEFAULT_GRID }));
+    const ok = parseSidecar(MapSidecarSchema, JSON.stringify({ kind: 'map', schemaVersion: 1, name: 'Crypt', resource: 'maps/crypt.webp', widthPx: 2000, heightPx: 1400, grid: DEFAULT_GRID }));
     expect(ok.ok).toBe(true);
     const bad = parseSidecar(CreatureSchema, JSON.stringify({ kind: 'creature', schemaVersion: 1, name: '' }));
     expect(bad.ok).toBe(false);

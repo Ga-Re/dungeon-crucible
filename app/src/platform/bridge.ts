@@ -79,3 +79,29 @@ export async function onFrame(cb: (data: unknown) => void): Promise<() => void> 
   ch.onmessage = (e) => cb(e.data);
   return () => ch.close();
 }
+
+/* ---------- Campaign folders (desktop only) ---------- */
+
+export interface CampaignInfo {
+  root: string;
+  name: string;
+}
+
+export interface ImportedFile {
+  relPath: string;
+  absPath: string;
+}
+
+export const pickCampaignFolder = () => invoke<CampaignInfo | null>('pick_campaign_folder');
+export const openCampaignFolder = (path: string) => invoke<CampaignInfo>('open_campaign_folder', { path });
+export const readText = (rel: string) => invoke<string>('read_text', { rel });
+export const writeText = (rel: string, content: string) => invoke<void>('write_text', { rel, content });
+export const listFiles = (dir: string) => invoke<string[]>('list_files', { dir });
+export const absolutePath = (rel: string) => invoke<string>('absolute_path', { rel });
+export const importMapFileNative = () => invoke<ImportedFile | null>('import_map_file');
+
+/** URL the webviews (DM and table) can load a campaign file from. */
+export async function assetUrl(absPath: string): Promise<string> {
+  const core = await import('@tauri-apps/api/core');
+  return core.convertFileSrc(absPath);
+}

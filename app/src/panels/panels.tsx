@@ -8,10 +8,11 @@ import { renderPlayerFrame } from '../render/frameRenderer';
 import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
-  changeHp, discoverZone, emit, initiativeOrder, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
+  changeHp, discoverZone, emit, initiativeOrder, markDirty, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
   setBiome, setFogOption, setGridType, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
+import { switchScene } from '../app/campaign';
 
 /* ---------- Browser ---------- */
 
@@ -23,6 +24,9 @@ export function BrowserPanel() {
   const selTok = useStore((s) => s.selectedTokenId);
   const creatures = useStore((s) => s.creatures);
   const selCreature = useStore((s) => s.selectedCreatureIdx);
+  const campaign = useStore((s) => s.campaign);
+  const scenes = useStore((s) => s.scenes);
+  const scenePath = useStore((s) => s.scenePath);
 
   if (ws === 'creatures') {
     return (
@@ -47,6 +51,20 @@ export function BrowserPanel() {
   return (
     <div className="panel-body">
       <ul className="tree">
+        {campaign && (
+          <li>
+            <div className="tn"><Icon name="folder" /><span className="nm">{campaign.name}</span><span className="meta">{t('campaign.scenes')}</span></div>
+            <ul>
+              {scenes.map((p) => (
+                <li key={p}>
+                  <button className={`tn ${p === scenePath ? 'sel' : ''}`} onClick={() => void switchScene(p)}>
+                    <Icon name="map" /><span className="nm">{p.replace(/^scenes\//, '').replace(/\.scene\.json$/, '')}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </li>
+        )}
         <li>
           <div className="tn"><Icon name="map" /><span className="nm">{scene.map.name}</span></div>
           <ul>
@@ -445,7 +463,7 @@ export function CreaturePanel() {
   if (!c) return null;
   const level = c.classes?.reduce((s, x) => s + x.level, 0) ?? 1;
   const pb = c.role === 'pc' ? proficiencyBonusForLevel(Math.max(1, Math.min(20, level))) : proficiencyBonusForCr(c.cr ?? '0');
-  const set = (fn: () => void) => { fn(); emit(); };
+  const set = (fn: () => void) => { fn(); markDirty(); emit(); };
   return (
     <div className="panel-body">
       <div className="sheet">

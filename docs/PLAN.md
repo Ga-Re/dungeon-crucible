@@ -19,6 +19,7 @@ vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidungen st
 | Kreaturdaten | Werden von der SL selbst eingegeben (2024-Werteblock); Berechnungen (Mod, RW, ÜB, EP) automatisch |
 | Sprache | Englisch als Standard, Deutsch zusätzlich |
 | Spieler-Vorschau | Dockbar wie jedes Panel; Knopf „Auf anderen Bildschirm verschieben“ für die Tisch-Ausgabe |
+| Signierung | Keine; Installer bleiben unsigniert (Betriebssystem warnt beim ersten Start) |
 | Design-Demo | Grundsätzlich abgenommen |
 
 ---
@@ -176,7 +177,14 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 - Kartenansicht mit Auswählen, Verschieben, Messen, Ping, Wände/Türen/Geheimtüren/Fenster, Zonen, Nebelwerkzeuge, Schablonen, Kalibrierung; Initiative mit Zuständen; Würfel; Begegnungs-Budget; Werteblock-Editor
 - CI (GitHub Actions): Tests, Build-Prüfung, `cargo check`, Desktop-Builds für macOS (universal) und Windows
 
-**Noch offen in Phase 1:** Kampagnenordner öffnen/speichern (Sidecars auf Platte), importierte Karten im Tischfenster über das Asset-Protokoll (derzeit nur im DM-Fenster), Undo/Redo.
+- Kampagnenordner: öffnen oder neu anlegen (Strg+O), Manifest, Karten-Sidecars, Szenen-Overrides und Kreaturen als lesbare JSON-Dateien; atomares Schreiben; Autosave nach 1,5 s; letzte Kampagne öffnet beim Start wieder
+- Dateizugriff nur innerhalb des geöffneten Ordners (Rust prüft jeden Pfad, `..` wird abgelehnt)
+- Kartenimport (Bild/Video) kopiert die Datei nach `maps/`, legt eine neue Szene an; DM- und Tischfenster laden sie über das Asset-Protokoll
+- Szenenwechsel mit automatischem Blackout
+- Rückgängig/Wiederholen (Strg+Z / Strg+Umschalt+Z) für alle Karten-, Nebel-, Token- und Kampfänderungen
+- Tests: 36 im Frontend, 3 in Rust
+
+**Phase 1 ist damit abgeschlossen.** Nächster Schritt: Phase 2 (Spielen) – Lichtquellen, Feinschliff am Tisch-Workflow, Token aus Kreaturen auf die Karte ziehen.
 
 ## 10. Offene Fragen
-1. Signierung: Sollen die macOS-/Windows-Builds signiert werden (Apple-Developer-Konto, Windows-Zertifikat)? Ohne Signatur warnt das Betriebssystem beim ersten Start.
+Derzeit keine.

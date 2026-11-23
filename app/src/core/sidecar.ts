@@ -35,6 +35,11 @@ export const MapSidecarSchema = z.object({
   kind: z.literal('map'),
   schemaVersion: z.literal(SCHEMA_VERSION),
   name: z.string().min(1),
+  /** Map image/video relative to the campaign folder, or `builtin:<id>`. */
+  resource: z.string().min(1),
+  isVideo: z.boolean().default(false),
+  widthPx: z.number().positive(),
+  heightPx: z.number().positive(),
   tags: z.array(z.string()).default([]),
   biome: z.string().default(''),
   mapType: z.enum(['dungeon', 'building', 'region', 'world', 'arena']).default('dungeon'),
@@ -119,17 +124,60 @@ export const CreatureSchema = z.object({
 });
 export type Creature = z.infer<typeof CreatureSchema>;
 
+const tokenSchema = z.object({
+  id,
+  name: z.string(),
+  label: z.string().max(4),
+  kind: z.enum(['pc', 'npc', 'monster']),
+  x: z.number(),
+  y: z.number(),
+  size: z.number().positive(),
+  ringColor: color,
+  visionFt: z.number().min(0),
+  hp: z.number().int(),
+  maxHp: z.number().int().positive(),
+  ac: z.number().int(),
+  initiative: z.number(),
+  conditions: z.array(z.enum(CONDITIONS)).default([]),
+  exhaustion: z.number().int().min(0).max(6).optional(),
+  hidden: z.boolean().optional(),
+  creatureId: z.string().optional(),
+});
+
+/** Per-session state on top of a map: fog, doors, tokens, combat. The map itself stays untouched. */
 export const SceneOverrideSchema = z.object({
   kind: z.literal('scene'),
   schemaVersion: z.literal(SCHEMA_VERSION),
-  mapPath: z.string(),
-  fog: z.object({ cols: z.number().int().positive(), rows: z.number().int().positive(), cellSize: z.number().positive(), explored: z.string() }),
+  name: z.string().min(1),
+  /** Path of the map sidecar relative to the campaign folder. */
+  mapSidecar: z.string().min(1),
+  fog: z.object({ cols: z.number().int().positive(), rows: z.number().int().positive(), cellSize: z.number().positive(), explored: z.string(), locked: z.string() }),
   doors: z.record(z.string(), z.boolean()).default({}),
   discoveredZones: z.array(z.string()).default([]),
-  tokens: z.array(z.object({ id, creaturePath: z.string().optional(), x: z.number(), y: z.number(), hp: z.number().int(), hidden: z.boolean().default(false) })).default([]),
+  tokens: z.array(tokenSchema).default([]),
+  templates: z.array(z.object({ id, shape: z.enum(['cone', 'sphere', 'line', 'cube']), x: z.number(), y: z.number(), angle: z.number(), sizeFt: z.number().positive(), color })).default([]),
+  combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
   ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
 });
 export type SceneOverride = z.infer<typeof SceneOverrideSchema>;
+
+export const CampaignManifestSchema = z.object({
+  kind: z.literal('campaign'),
+  schemaVersion: z.literal(SCHEMA_VERSION),
+  name: z.string().min(1),
+  activeScene: z.string().nullable(),
+  table: z.object({
+    diagonalInches: z.number().positive(),
+    widthPx: z.number().int().positive(),
+    heightPx: z.number().int().positive(),
+    inchesPerCell: z.number().positive(),
+    ppiCorrection: z.number().positive(),
+    rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]),
+  }),
+});
+export type CampaignManifest = z.infer<typeof CampaignManifestSchema>;
+
+export const CAMPAIGN_FILE = 'campaign.dm.json';
 
 export type SidecarParse<T> = { ok: true; value: T } | { ok: false; errors: string[] };
 

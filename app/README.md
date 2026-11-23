@@ -38,3 +38,20 @@ listening to events. `npm run build` fails if the table bundle can reach DM code
 For a 55" 4K TV: 3840×2160 px over 55" → 80.1 px per inch. The table zoom makes
 one grid cell exactly one inch, so miniatures fit. Fine-tune with the ruler
 correction in the *Table display* panel.
+
+## Campaign folder
+
+```
+campaign.dm.json                 name, active scene, table calibration
+maps/<file>  + <file>.dm.json    map image/video and its sidecar (grid, walls, zones)
+scenes/<name>.scene.json         per-session state (fog, doors, tokens, combat)
+creatures/<name>.dm.json         2024 stat blocks
+```
+
+All files are plain JSON and can be versioned or synced. The native side only
+reads and writes inside the opened folder.
+
+## Unsigned installers
+
+Builds are not code-signed. On macOS, open the app the first time with
+right-click → Open. On Windows, choose "More info" → "Run anyway".

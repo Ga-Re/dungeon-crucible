@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FunctionComponent } from 'react';
 import { exploredShare } from '../core/fogModel';
-import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IDockviewHeaderActionsProps, type IDockviewPanelProps } from 'dockview-react';
+import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type DockviewTheme, type IDockviewHeaderActionsProps, type IDockviewPanelProps } from 'dockview-react';
 import 'dockview-react/dist/styles/dockview.css';
 import { useI18n, LOCALES, translate, type Locale } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
@@ -390,8 +390,14 @@ function DockArea({ ws }: { ws: keyof typeof WORKSPACES }) {
     dockApi?.panels.forEach((p) => p.api.setTitle(t(PANEL_TITLES[p.id as PanelId] ?? 'panel.map')));
   }, [locale, t]);
 
-  return <DockviewReact key={resets} className="dockview-theme-dc" components={COMPONENTS} onReady={onReady} rightHeaderActionsComponent={HeaderActions} />;
+  return <DockviewReact key={resets} className="dockview-theme-dc" theme={DOCK_THEME} components={COMPONENTS} onReady={onReady} rightHeaderActionsComponent={HeaderActions} />;
 }
+
+/**
+ * dockview 8 mounts floating groups in an outer shell that gets the theme class from
+ * this option (default: the built-in navy "abyss"), not from `className`.
+ */
+const DOCK_THEME: DockviewTheme = { name: 'dc', className: 'dockview-theme-dc' };
 
 function buildDefault(api: DockviewApi, ws: keyof typeof WORKSPACES, title: (id: PanelId) => string): void {
   const l = WORKSPACES[ws].layout;

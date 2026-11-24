@@ -213,3 +213,95 @@ describe('computeDropTarget', () => {
     expect(computeDropTarget(g, { x: 1195, y: 10 })!.target).toEqual({ kind: 'newGroup', edge: 'right', groupIndex: 0 });
   });
 });
+
+describe('right and bottom zones', () => {
+  /** left 280 [a]; right g0 300 [r1 r2], g1 200 [r3]; bottom g0 200 [b1 b2(collapsed) b3], g1 160 [b4]. */
+  function all(): DockLayout {
+    const l = emptyLayout();
+    l.zones.left.groups = [{ size: 280, panels: [ref('a')] }];
+    l.zones.right.groups = [{ size: 300, panels: [ref('r1'), ref('r2')] }, { size: 200, panels: [ref('r3')] }];
+    l.zones.bottom.groups = [{ size: 200, panels: [ref('b1'), ref('b2', false), ref('b3')] }, { size: 160, panels: [ref('b4')] }];
+    return l;
+  }
+  const AREA2 = { width: 1600, height: 900 };
+
+  it('bottom sits between left and right; groups go from the outside in', () => {
+    const g = computeGeometry(all(), AREA2);
+    expect(g.zones.left.rect).toEqual({ x: 0, y: 0, width: 280, height: 900 });
+    expect(g.zones.right.rect).toEqual({ x: 1100, y: 0, width: 500, height: 900 });
+    expect(g.zones.bottom.rect).toEqual({ x: 280, y: 540, width: 820, height: 360 });
+    expect(g.canvas).toEqual({ x: 280, y: 0, width: 820, height: 540 });
+    expect(g.zones.right.groups.map((x) => x.rect.x)).toEqual([1300, 1100]);
+    expect(g.zones.bottom.groups.map((x) => [x.rect.y, x.rect.height])).toEqual([[700, 200], [540, 160]]);
+  });
+
+  it('panels in a bottom row sit side by side; a collapsed one is a 24 px strip', () => {
+    const g = computeGeometry(all(), AREA2);
+    const [b1, b2, b3] = g.zones.bottom.groups[0]!.panels;
+    // 820 wide - one 24 px strip = 796 for two open panels.
+    expect(b1!.rect).toEqual({ x: 280, y: 700, width: 398, height: 200 });
+    expect(b1!.header).toEqual({ x: 280, y: 700, width: 398, height: 24 });
+    expect(b2!.rect).toEqual({ x: 678, y: 700, width: 24, height: 200 });
+    expect(b3!.rect).toEqual({ x: 702, y: 700, width: 398, height: 200 });
+  });
+
+  it('splitters: between bottom rows and to the canvas run horizontally; between bottom panels vertically', () => {
+    const g = computeGeometry(all(), AREA2);
+    const bottomGroups = g.splitters.filter((s) => s.kind === 'group' && s.edge === 'bottom');
+    expect(bottomGroups.map((s) => s.rect)).toEqual([
+      { x: 280, y: 697, width: 820, height: 6 },
+      { x: 280, y: 537, width: 820, height: 6 },
+    ]);
+    // Between b1 and b3 (across the collapsed b2).
+    const panel = g.splitters.find((s) => s.kind === 'panel' && s.edge === 'bottom')!;
+    expect(panel).toMatchObject({ a: 0, b: 2 });
+    expect(panel.rect.height).toBe(200);
+    const rightGroups = g.splitters.filter((s) => s.kind === 'group' && s.edge === 'right');
+    expect(rightGroups.map((s) => s.rect.x)).toEqual([1297, 1097]);
+  });
+
+  it('bottomSpansFullWidth: bottom runs under left and right, which get shorter', () => {
+    const g = computeGeometry(all(), AREA2, { bottomSpansFullWidth: true });
+    expect(g.zones.bottom.rect).toEqual({ x: 0, y: 540, width: 1600, height: 360 });
+    expect(g.zones.left.rect).toEqual({ x: 0, y: 0, width: 280, height: 540 });
+    expect(g.zones.right.rect).toEqual({ x: 1100, y: 0, width: 500, height: 540 });
+    expect(g.canvas).toEqual({ x: 280, y: 0, width: 820, height: 540 });
+    // The edge bars follow the zones.
+    expect(computeDropTarget(g, { x: 800, y: 895 })!.indicator).toEqual({ x: 0, y: 896, width: 1600, height: 4 });
+    expect(computeDropTarget(g, { x: 5, y: 300 })!.indicator).toEqual({ x: 0, y: 0, width: 4, height: 540 });
+  });
+
+  it('drop targets in the bottom zone: between rows and at the inner (top) edge → new row', () => {
+    const g = computeGeometry(all(), AREA2);
+    // Top edge of the inner row (g1, 540–700) → new innermost row.
+    expect(computeDropTarget(g, { x: 600, y: 545 })).toEqual({
+      target: { kind: 'newGroup', edge: 'bottom', groupIndex: 2 }, rule: 'groupEdge', indicator: { x: 280, y: 540, width: 820, height: 3 },
+    });
+    // Around the border between g0 and g1 (y = 700).
+    expect(computeDropTarget(g, { x: 600, y: 705 })!.target).toEqual({ kind: 'newGroup', edge: 'bottom', groupIndex: 1 });
+    expect(computeDropTarget(g, { x: 600, y: 695 })!.target).toEqual({ kind: 'newGroup', edge: 'bottom', groupIndex: 1 });
+    // Inside a row: before b3 (x = 702).
+    expect(computeDropTarget(g, { x: 710, y: 800 })).toMatchObject({ target: { kind: 'intoGroup', edge: 'bottom', groupIndex: 0, panelIndex: 2 }, rule: 'seam' });
+  });
+
+  it('drop targets in the right zone: the inner edge is the left side', () => {
+    const g = computeGeometry(all(), AREA2);
+    expect(computeDropTarget(g, { x: 1105, y: 300 })).toEqual({
+      target: { kind: 'newGroup', edge: 'right', groupIndex: 2 }, rule: 'groupEdge', indicator: { x: 1100, y: 0, width: 3, height: 900 },
+    });
+    // Seam between r1 and r2 (both 450 high: r2 starts at 450).
+    expect(computeDropTarget(g, { x: 1450, y: 440 })).toMatchObject({ target: { kind: 'intoGroup', edge: 'right', groupIndex: 0, panelIndex: 1 }, indicator: { x: 1300, width: 300, height: 3 } });
+  });
+
+  it('collapsed bottom: a 24 px horizontal bar between left and right, tabs side by side', () => {
+    const l = all();
+    l.zones.bottom.collapsed = true;
+    const g = computeGeometry(l, AREA2, { tabLength: () => 80 });
+    const bar = g.zones.bottom.bar!;
+    expect(bar.rect).toEqual({ x: 280, y: 876, width: 820, height: 24 });
+    expect(g.canvas.height).toBe(876);
+    expect(bar.tabs.every((t) => t.rect.y === 876 && t.rect.height === 24 && t.rect.width === 80)).toBe(true);
+    expect(bar.tabs.map((t) => t.id)).toEqual(['b1', 'b2', 'b3', 'b4']);
+    expect(computeDropTarget(g, { x: bar.tabs[1]!.rect.x + 5, y: 885 })!.target).toEqual({ kind: 'intoGroup', edge: 'bottom', groupIndex: 0, panelIndex: 1 });
+  });
+});

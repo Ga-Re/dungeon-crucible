@@ -7,7 +7,7 @@ import { Icon } from '../ui/Icon';
 import { mapCommands } from '../panels/MapView';
 import { MonitorMenu } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
-import { PANEL_CONTENT, activateWorkspaceLayout, dock, focusPanel, removeLegacyLayouts } from './docking';
+import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, focusPanel, removeLegacyLayouts } from './docking';
 import {
   clearTemplates, emit, fogAll, log, nextTurn, redo, removeLastUserWall, rotateTable, setFogMode, setGridType, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
@@ -267,7 +267,7 @@ function DockArea({ ws }: { ws: keyof typeof WORKSPACES }) {
     [t],
   );
   const titleOf = useMemo(() => (id: string) => t(PANEL_TITLES[id as PanelId] ?? 'panel.map'), [t]);
-  return <DockHost manager={dock} canvas={PANEL_CONTENT[WORKSPACES[ws].layout.center]()} labels={labels} titleOf={titleOf} floating={floatingBackend()} />;
+  return <DockHost manager={dock} canvas={PANEL_CONTENT[WORKSPACES[ws].layout.center]()} labels={labels} titleOf={titleOf} floating={floatingBackend()} bottomSpansFullWidth={BOTTOM_SPANS_FULL_WIDTH} />;
 }
 
 function StatusBar() {

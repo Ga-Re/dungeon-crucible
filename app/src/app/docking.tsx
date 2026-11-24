@@ -47,6 +47,12 @@ for (const id of Object.keys(PANEL_TITLES) as PanelId[]) {
 
 const GROUP_SIZES = { left: 270, right: 320, bottom: 200 };
 
+/**
+ * false: the left and right zones run the full height and the bottom zone sits between them.
+ * true: the bottom zone runs the full width under them.
+ */
+export const BOTTOM_SPANS_FULL_WIDTH = false;
+
 export function workspaceDefaults(ws: WorkspaceId): DefaultSpec {
   const l = WORKSPACES[ws].layout;
   return { left: l.left, right: l.right, bottom: l.bottom, floating: l.floating ?? [], sizes: GROUP_SIZES };

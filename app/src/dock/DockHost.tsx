@@ -152,7 +152,9 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
     if (mounted.current.has(id)) pool.attach(id, el);
   };
 
-  const commit = (l: DockLayout) => manager.setLayout(l);
+  // Changes always start from the manager's current layout, not the one of the last render, so
+  // several changes in a row (or between renders) do not overwrite each other.
+  const update = (change: (l: DockLayout) => DockLayout) => manager.setLayout(change(manager.getLayout()));
 
   // Drop target under the cursor (only the mouse position counts).
   const dropFor = (d: DragState): DropResult | null => computeDropTarget(geom, d.client, { suppress: d.suppress });
@@ -285,7 +287,7 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
                 title={labels.expandZone}
                 aria-label={labels.expandZone}
                 disabled={zone.autoCollapsed}
-                onClick={() => commit(setZoneCollapsed(layout, edge, false))}
+                onClick={() => update((l) => setZoneCollapsed(l, edge, false))}
               >
                 {EXPAND_ZONE_GLYPH[edge]}
               </button>
@@ -306,8 +308,8 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
                 origin={group.rect}
                 title={title(p.id)}
                 labels={labels}
-                zoneToggle={group.index === 0 && p.panelIndex === 0 ? { glyph: COLLAPSE_ZONE_GLYPH[edge], onClick: () => commit(setZoneCollapsed(layout, edge, true)) } : null}
-                onToggle={() => commit(toggleExpanded(layout, p.id))}
+                zoneToggle={group.index === 0 && p.panelIndex === 0 ? { glyph: COLLAPSE_ZONE_GLYPH[edge], onClick: () => update((l) => setZoneCollapsed(l, edge, true)) } : null}
+                onToggle={() => update((l) => toggleExpanded(l, p.id))}
                 onPress={(e) => press(e, p.id, { width: p.rect.width, height: p.rect.height, expanded: p.expanded })}
                 slotRef={slotRef(p.id)}
               />
@@ -327,9 +329,9 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
           rect: f,
           title: title(f.id),
           labels,
-          onClose: () => commit(hidePanel(layout, f.id)),
-          onRedock: () => commit(insertPanel(stored, f.id, redockTarget(stored, f.lastDock, f.id))),
-          onResize: (r) => manager.setLayout(moveFloating(manager.getLayout(), f.id, r)),
+          onClose: () => update((l) => hidePanel(l, f.id)),
+          onRedock: () => update((l) => insertPanel(l, f.id, redockTarget(l, l.floating.find((x) => x.id === f.id)?.lastDock, f.id))),
+          onResize: (r) => update((l) => moveFloating(l, f.id, r)),
           onPress: (e) => press(e, f.id, { width: f.width, height: f.height, expanded: true }),
           slotRef: slotRef(f.id),
         };

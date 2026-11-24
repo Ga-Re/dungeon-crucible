@@ -5,6 +5,7 @@
  * - Table window (`table.html`) that can only receive player frames (`preload-table.ts`).
  * - `app://dc/…` serves the built pages; `dc-asset://file/…` serves files of the open
  *   campaign folder only (maps, videos), with CORS and byte ranges.
+ * - Floating panels live in frameless child windows the DM window opens itself (`floating.ts`).
  * - Closing the DM window quits the app, so nothing is left on the TV.
  */
 import { app, BrowserWindow, ipcMain, Menu, protocol, screen, session, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
@@ -12,6 +13,8 @@ import path from 'node:path';
 import { ASSET_SCHEME, assetPathFrom } from '../src/platform/asset-url';
 import { Campaign } from './campaign';
 import { fileResponse, isInside } from './files';
+import { FloatingWindows } from './floating';
+import type { FloatBounds } from '../src/platform/desktop-api';
 import { listDisplays, TableWindow } from './table';
 
 const DEV_URL = process.env['VITE_DEV_SERVER_URL'];
@@ -53,6 +56,17 @@ const table = new TableWindow({
   onClosed: () => mainWindow?.webContents.send('table:closed'),
 });
 
+const floating = new FloatingWindows({
+  moved: (name, bounds) => mainWindow?.webContents.send('float:moved', name, bounds),
+  closed: (name) => mainWindow?.webContents.send('float:closed', name),
+});
+
+/** Default for every window: no popups; external web links open in the browser. */
+function denyWindowOpen({ url }: { url: string }): { action: 'deny' } {
+  if (/^https?:\/\//.test(url) && !isOwnUrl(url)) void shell.openExternal(url);
+  return { action: 'deny' };
+}
+
 function createMainWindow(): void {
   const win = new BrowserWindow({
     width: 1600,
@@ -78,6 +92,8 @@ function createMainWindow(): void {
     table.close();
     app.quit();
   });
+  win.webContents.setWindowOpenHandler((details) => floating.openHandler(win, details) ?? denyWindowOpen(details));
+  win.webContents.on('did-create-window', (child, details) => floating.adopt(child, details.frameName));
   void win.loadURL(pageUrl('index.html'));
   mainWindow = win;
 }
@@ -100,6 +116,13 @@ function registerIpc(): void {
   handle('table:close', () => table.close());
   ipcMain.on('table:frame', (e, frame: unknown) => {
     if (fromMain(e)) table.send('player-frame', frame);
+  });
+  ipcMain.on('float:bounds', (e, name: string, bounds: FloatBounds) => {
+    if (fromMain(e)) floating.setBounds(name, bounds);
+  });
+  handle('window:contentOrigin', (w) => {
+    const b = w.getContentBounds();
+    return { x: b.x, y: b.y };
   });
 
   handle('campaign:pick', (w) => campaign.pick(w));
@@ -139,10 +162,8 @@ function lockDown(): void {
     contents.on('will-navigate', (e, url) => {
       if (!isOwnUrl(url)) e.preventDefault();
     });
-    contents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:\/\//.test(url) && !isOwnUrl(url)) void shell.openExternal(url);
-      return { action: 'deny' };
-    });
+    // The DM window replaces this with a handler that also allows floating panel windows.
+    contents.setWindowOpenHandler(denyWindowOpen);
   });
 }
 

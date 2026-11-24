@@ -3,7 +3,7 @@
  * (types from elsewhere are fine) and is bundled into a single file.
  */
 import { contextBridge, ipcRenderer } from 'electron';
-import type { DcApi } from '../src/platform/desktop-api';
+import type { DcApi, FloatBounds } from '../src/platform/desktop-api';
 
 function on(channel: string) {
   return (cb: () => void) => {
@@ -30,6 +30,22 @@ const api: DcApi = {
   listFiles: (dir) => ipcRenderer.invoke('campaign:list', dir),
   absolutePath: (rel) => ipcRenderer.invoke('campaign:absolute', rel),
   importMapFile: () => ipcRenderer.invoke('campaign:importMap'),
+  setFloatBounds: (name, bounds) => ipcRenderer.send('float:bounds', name, bounds),
+  onFloatMoved: (cb) => {
+    const listener = (_e: unknown, name: string, bounds: FloatBounds) => cb(name, bounds);
+    ipcRenderer.on('float:moved', listener);
+    return () => {
+      ipcRenderer.removeListener('float:moved', listener);
+    };
+  },
+  onFloatClosed: (cb) => {
+    const listener = (_e: unknown, name: string) => cb(name);
+    ipcRenderer.on('float:closed', listener);
+    return () => {
+      ipcRenderer.removeListener('float:closed', listener);
+    };
+  },
+  contentOrigin: () => ipcRenderer.invoke('window:contentOrigin'),
 };
 
 contextBridge.exposeInMainWorld('dc', api);

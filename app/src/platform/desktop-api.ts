@@ -29,6 +29,16 @@ export interface ImportedFile {
 
 export type Unsubscribe = () => void;
 
+/** A floating panel window's bounds in desktop coordinates (logical pixels). */
+export interface FloatBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Window opacity 0–1 (lowered while the panel is dragged). */
+  opacity?: number;
+}
+
 /** DM window. */
 export interface DcApi {
   listDisplays(): Promise<MonitorInfo[]>;
@@ -52,6 +62,18 @@ export interface DcApi {
   listFiles(dir: string): Promise<string[]>;
   absolutePath(rel: string): Promise<string>;
   importMapFile(): Promise<ImportedFile | null>;
+
+  /**
+   * Floating panel windows (opened by the page with `window.open('about:blank', 'dc-float:…')`).
+   * Moves/resizes one; the first call shows it without taking the focus.
+   */
+  setFloatBounds(name: string, bounds: FloatBounds): void;
+  /** The system moved or resized a floating window (reported after it settles). */
+  onFloatMoved(cb: (name: string, bounds: FloatBounds) => void): Unsubscribe;
+  /** A floating window was closed (by the page or the system, e.g. ⌘W). */
+  onFloatClosed(cb: (name: string) => void): Unsubscribe;
+  /** Desktop position of the DM window's content area (top-left, logical pixels). */
+  contentOrigin(): Promise<{ x: number; y: number }>;
 }
 
 /** Table window: may only receive frames. */

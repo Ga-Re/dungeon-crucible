@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { exploredShare } from '../core/fogModel';
 import { DockHost } from '../dock/DockHost';
+import { floatingBackend } from '../platform/bridge';
 import { useI18n, LOCALES, type Locale } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
 import { mapCommands } from '../panels/MapView';
@@ -266,7 +267,7 @@ function DockArea({ ws }: { ws: keyof typeof WORKSPACES }) {
     [t],
   );
   const titleOf = useMemo(() => (id: string) => t(PANEL_TITLES[id as PanelId] ?? 'panel.map'), [t]);
-  return <DockHost manager={dock} canvas={PANEL_CONTENT[WORKSPACES[ws].layout.center]()} labels={labels} titleOf={titleOf} />;
+  return <DockHost manager={dock} canvas={PANEL_CONTENT[WORKSPACES[ws].layout.center]()} labels={labels} titleOf={titleOf} floating={floatingBackend()} />;
 }
 
 function StatusBar() {

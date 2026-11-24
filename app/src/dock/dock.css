@@ -138,3 +138,19 @@
 .dock-floating.dragging { z-index: 25; }
 .dock-indicators { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
 .dock-indicator { position: absolute; background: var(--dock-accent); }
+
+/* Floating panels: a native window's whole page, or an overlay over the main window. */
+.dock-float-body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: var(--dock-panel-bg); }
+.dock-floating.native { position: fixed; inset: 0; box-shadow: none; }
+.dock-resize { position: absolute; z-index: 6; }
+.dock-resize.n, .dock-resize.s { left: var(--dock-grip); right: var(--dock-grip); height: var(--dock-grip); cursor: ns-resize; }
+.dock-resize.e, .dock-resize.w { top: var(--dock-grip); bottom: var(--dock-grip); width: var(--dock-grip); cursor: ew-resize; }
+.dock-resize.n { top: 0; }
+.dock-resize.s { bottom: 0; }
+.dock-resize.e { right: 0; }
+.dock-resize.w { left: 0; }
+.dock-resize.ne, .dock-resize.nw, .dock-resize.se, .dock-resize.sw { width: var(--dock-grip); height: var(--dock-grip); }
+.dock-resize.ne { top: 0; right: 0; cursor: nesw-resize; }
+.dock-resize.sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.dock-resize.nw { top: 0; left: 0; cursor: nwse-resize; }
+.dock-resize.se { bottom: 0; right: 0; cursor: nwse-resize; }

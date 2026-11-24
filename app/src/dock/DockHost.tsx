@@ -1,14 +1,17 @@
 /**
  * Docking view: draws the layout from `computeGeometry` with absolutely positioned elements.
  * Panel contents are rendered once into persistent hosts (PanelPool) and moved into the
- * visible slots after each render, so they keep their state.
+ * visible slots after each render, so they keep their state. Floating panels get native
+ * windows when a `floating` backend is given (desktop app), otherwise they are overlays.
  */
-import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { beginDrag, dropLayout, passedThreshold, previewLayout, type DragSession } from './drag';
 import { computeDropTarget, computeGeometry, stacksVertically, type DockGeometry, type DropResult, type PanelGeom, type Point, type Rect, type SplitterGeom } from './geometry';
 import type { DockManager } from './manager';
-import { DOCK, hidePanel, resizeGroup, setPanelWeights, setZoneCollapsed, splitWeights, toggleExpanded, type DockLayout, type Edge, type FloatingPanel } from './model';
+import { FloatingFrame, type FloatingFrameProps } from './FloatingFrame';
+import { DOCK, hidePanel, insertPanel, moveFloating, redockTarget, resizeGroup, setPanelWeights, setZoneCollapsed, splitWeights, toggleExpanded, type DockLayout, type Edge, type FloatingPanel } from './model';
+import { NativeWindowPool, type FloatingBackend, type FloatWindow } from './nativeWindows';
 import { PanelPool } from './panelPool';
 import './dock.css';
 
@@ -28,7 +31,12 @@ export interface DockHostProps {
   /** Overrides the registered title (e.g. translated). */
   titleOf?: (id: string) => string;
   bottomSpansFullWidth?: boolean;
+  /** Native windows for floating panels; without it they are drawn over the main window. */
+  floating?: FloatingBackend | null;
 }
+
+/** Opacity of a floating window while it is dragged, so drop indicators show through. */
+const DRAG_OPACITY = 0.7;
 
 const px = (r: Rect): CSSProperties => ({ left: r.x, top: r.y, width: r.width, height: r.height });
 const rel = (r: Rect, origin: Rect): CSSProperties => ({ left: r.x - origin.x, top: r.y - origin.y, width: r.width, height: r.height });
@@ -54,7 +62,7 @@ interface PressInfo {
   expanded: boolean;
 }
 
-export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidth = false }: DockHostProps) {
+export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidth = false, floating = null }: DockHostProps) {
   const stored = useSyncExternalStore(manager.subscribe, manager.getLayout);
   const [drag, setDrag] = useState<DragState | null>(null);
   // While dragging, the panel is out of the layout and floats under the cursor.
@@ -66,6 +74,35 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [pool] = useState(() => new PanelPool());
   const slots = useRef(new Map<string, HTMLElement>());
+  const dragRef = useRef<DragState | null>(null);
+  dragRef.current = drag;
+
+  // Native floating windows: closing one first takes the panel's DOM back into this document.
+  const windows = useMemo(
+    () => (floating ? new NativeWindowPool(floating, (id, doc) => pool.host(id).ownerDocument === doc && pool.park(id)) : null),
+    [floating, pool],
+  );
+  useEffect(() => {
+    if (!floating || !windows) return;
+    const offMoved = floating.onMoved((name, b) => {
+      const id = windows.movedBySystem(name);
+      if (!id || dragRef.current) return;
+      const l = manager.getLayout();
+      const f = l.floating.find((x) => x.id === id);
+      if (f && (f.x !== b.x || f.y !== b.y || f.width !== b.width || f.height !== b.height)) manager.setLayout(moveFloating(l, id, b));
+    });
+    const offClosed = floating.onClosed((name) => {
+      const id = windows.closedBySystem(name);
+      if (id && manager.getLayout().floating.some((f) => f.id === id)) manager.setLayout(hidePanel(manager.getLayout(), id));
+    });
+    const closeAll = () => windows.closeAll();
+    window.addEventListener('pagehide', closeAll);
+    return () => {
+      offMoved();
+      offClosed();
+      window.removeEventListener('pagehide', closeAll);
+    };
+  }, [floating, windows, manager]);
 
   useLayoutEffect(() => {
     const el = rootRef.current;
@@ -106,8 +143,13 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
   });
 
   const slotRef = (id: string) => (el: HTMLElement | null) => {
-    if (el) slots.current.set(id, el);
-    else slots.current.delete(id);
+    if (!el) {
+      slots.current.delete(id);
+      return;
+    }
+    slots.current.set(id, el);
+    // Slots in native windows appear without a render of this component.
+    if (mounted.current.has(id)) pool.attach(id, el);
   };
 
   const commit = (l: DockLayout) => manager.setLayout(l);
@@ -118,13 +160,23 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
   dropForRef.current = dropFor;
   const drop = drag ? dropFor(drag) : null;
 
-  // Offset between screen and docking-area coordinates, taken from the last pointer event.
+  // Desktop position of the docking area's top-left corner: exact from the platform when it
+  // can tell (refreshed on every press), estimated from the window otherwise.
   const screenOffset = useRef<Point | null>(null);
   const areaOrigin = (): Point => {
     if (screenOffset.current) return screenOffset.current;
     const r = rootRef.current?.getBoundingClientRect();
     return r ? areaScreenOrigin(r) : { x: 0, y: 0 };
   };
+  const refreshOrigin = () => {
+    if (!floating) return;
+    void floating.contentOrigin().then((o) => {
+      const r = rootRef.current?.getBoundingClientRect();
+      if (r) screenOffset.current = { x: o.x + r.left, y: o.y + r.top };
+    });
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(refreshOrigin, [floating]);
 
   /**
    * Press on a title: after 4 px it becomes a drag. Esc, losing the window focus or a cancelled
@@ -137,25 +189,35 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
     if (!root || !panelEl) return;
     const box = panelEl.getBoundingClientRect();
     const grab = { x: e.clientX - box.left, y: e.clientY - box.top };
-    const from = { x: e.clientX, y: e.clientY };
     const pointerId = e.pointerId;
+    // A press in a floating window: its events arrive there, and the window moves with them,
+    // so only screen coordinates are stable.
+    const win = e.currentTarget.ownerDocument.defaultView ?? window;
+    const inMain = win === window;
+    const at = (ev: { clientX: number; clientY: number; screenX: number; screenY: number }): Point => (inMain ? { x: ev.clientX, y: ev.clientY } : { x: ev.screenX, y: ev.screenY });
+    const from = at(e);
+    const captureEl: Element = inMain ? root : e.currentTarget;
     let session: DragSession | null = null;
     let last: DragState | null = null;
+    refreshOrigin();
 
     const stateFrom = (ev: { clientX: number; clientY: number; screenX: number; screenY: number }, suppress: boolean): DragState => {
-      const r = root.getBoundingClientRect();
-      const client = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+      const o = areaOrigin();
+      if (inMain) {
+        const r = root.getBoundingClientRect();
+        const client = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+        return { session: session!, client, screen: { x: client.x + o.x, y: client.y + o.y }, suppress };
+      }
       const screen = { x: ev.screenX, y: ev.screenY };
-      screenOffset.current = { x: screen.x - client.x, y: screen.y - client.y };
-      return { session: session!, screen, client, suppress };
+      return { session: session!, screen, client: { x: screen.x - o.x, y: screen.y - o.y }, suppress };
     };
     const onMove = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
       if (!session) {
-        if (!passedThreshold(from, { x: ev.clientX, y: ev.clientY })) return;
+        if (!passedThreshold(from, at(ev))) return;
         session = beginDrag(manager.getLayout(), id, info, grab);
         try {
-          root.setPointerCapture(pointerId);
+          captureEl.setPointerCapture(pointerId);
         } catch {
           /* pointer already gone */
         }
@@ -187,19 +249,19 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
     };
     const onCancel = (ev: PointerEvent) => ev.pointerId === pointerId && cancel();
     const cleanup = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onCancel);
-      window.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('keyup', onKey, true);
-      window.removeEventListener('blur', cancel);
+      win.removeEventListener('pointermove', onMove);
+      win.removeEventListener('pointerup', onUp);
+      win.removeEventListener('pointercancel', onCancel);
+      win.removeEventListener('keydown', onKey, true);
+      win.removeEventListener('keyup', onKey, true);
+      win.removeEventListener('blur', cancel);
     };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onCancel);
-    window.addEventListener('keydown', onKey, true);
-    window.addEventListener('keyup', onKey, true);
-    window.addEventListener('blur', cancel);
+    win.addEventListener('pointermove', onMove);
+    win.addEventListener('pointerup', onUp);
+    win.addEventListener('pointercancel', onCancel);
+    win.addEventListener('keydown', onKey, true);
+    win.addEventListener('keyup', onKey, true);
+    win.addEventListener('blur', cancel);
   };
 
   // Nothing is mounted before the area has a size: panels (e.g. the map) size themselves on mount.
@@ -258,19 +320,25 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
         <Splitter key={splitterKey(s)} splitter={s} geom={geom} manager={manager} />
       ))}
 
-      {view.floating.map((f) => (
-        <FloatingOverlay
-          key={f.id}
-          panel={f}
-          origin={origin}
-          dragging={drag?.session.id === f.id}
-          title={title(f.id)}
-          labels={labels}
-          onClose={() => commit(hidePanel(layout, f.id))}
-          onPress={(e) => press(e, f.id, { width: f.width, height: f.height, expanded: true })}
-          slotRef={slotRef(f.id)}
-        />
-      ))}
+      {view.floating.map((f) => {
+        const dragging = drag?.session.id === f.id;
+        const frame: FrameProps = {
+          id: f.id,
+          rect: f,
+          title: title(f.id),
+          labels,
+          onClose: () => commit(hidePanel(layout, f.id)),
+          onRedock: () => commit(insertPanel(stored, f.id, redockTarget(stored, f.lastDock, f.id))),
+          onResize: (r) => manager.setLayout(moveFloating(manager.getLayout(), f.id, r)),
+          onPress: (e) => press(e, f.id, { width: f.width, height: f.height, expanded: true }),
+          slotRef: slotRef(f.id),
+        };
+        return windows ? (
+          <NativeFloating key={f.id} windows={windows} panel={f} dragging={dragging} frame={frame} />
+        ) : (
+          <FloatingFrame key={f.id} {...frame} className={`overlay ${dragging ? 'dragging' : ''}`} style={px({ x: f.x - origin.x, y: f.y - origin.y, width: f.width, height: f.height })} />
+        );
+      })}
 
       {drop && (
         <div className="dock-indicators" aria-hidden="true">
@@ -385,36 +453,30 @@ function Splitter({ splitter, geom, manager }: { splitter: SplitterGeom; geom: D
   );
 }
 
-/* ---------------------------------------------------------------- floating (overlay for now) */
+/* ---------------------------------------------------------------- floating */
+
+type FrameProps = Omit<FloatingFrameProps, 'className' | 'style'>;
 
 /**
- * Floating panels are real windows from step 4 on. Until then they are drawn over the main
- * window at their stored global position, converted to docking-area coordinates.
+ * A floating panel in its own native window. The window is taken from the pool on mount and
+ * released on unmount; React renders the frame into it through a portal.
  */
-interface FloatingOverlayProps {
-  panel: FloatingPanel;
-  origin: Point;
-  dragging: boolean;
-  title: string;
-  labels: DockLabels;
-  onClose: () => void;
-  onPress: (e: ReactPointerEvent<HTMLElement>) => void;
-  slotRef: (el: HTMLElement | null) => void;
-}
-
-function FloatingOverlay({ panel, origin, dragging, title, labels, onClose, onPress, slotRef }: FloatingOverlayProps) {
-  const rect: Rect = { x: panel.x - origin.x, y: panel.y - origin.y, width: panel.width, height: panel.height };
-  return (
-    <section className={`dock-floating ${dragging ? 'dragging' : ''}`} style={px(rect)} aria-label={title}>
-      <div className="dock-title" style={{ left: 0, top: 0, right: 0, height: DOCK.title }} onPointerDown={onPress}>
-        <span className="dock-title-text">{title}</span>
-        <button type="button" className="dock-icon-btn" title={labels.close} aria-label={`${labels.close}: ${title}`} onClick={onClose}>
-          ×
-        </button>
-      </div>
-      <div className="dock-content" style={{ left: 0, top: DOCK.title, right: 0, bottom: 0 }} ref={slotRef} />
-    </section>
-  );
+function NativeFloating({ windows, panel, dragging, frame }: { windows: NativeWindowPool; panel: FloatingPanel; dragging: boolean; frame: FrameProps }) {
+  const [fw, setFw] = useState<FloatWindow | null>(null);
+  useLayoutEffect(() => {
+    setFw(windows.acquire(panel.id, panel, frame.title));
+    return () => windows.release(panel.id);
+    // Only the panel decides which window; bounds and title follow below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windows, panel.id]);
+  const { x, y, width, height } = panel;
+  useLayoutEffect(() => {
+    if (fw) windows.setBounds(panel.id, { x, y, width, height }, dragging ? DRAG_OPACITY : 1);
+  }, [fw, windows, panel.id, x, y, width, height, dragging]);
+  useEffect(() => {
+    if (fw) fw.doc.title = frame.title;
+  }, [fw, frame.title]);
+  return fw ? createPortal(<FloatingFrame {...frame} className="native" />, fw.doc.body) : null;
 }
 
 /** Global screen position of the docking area's top-left corner (logical pixels). */

@@ -4,6 +4,7 @@
  * scripts; in a plain browser (development) it falls back to window.open + BroadcastChannel.
  */
 import type { PlayerFrame } from '../core/projection';
+import type { FloatingBackend } from '../dock/nativeWindows';
 import { assetUrlFor } from './asset-url';
 import type { CampaignInfo, DcApi, DcTableApi, ImportedFile, MonitorInfo } from './desktop-api';
 
@@ -103,4 +104,20 @@ export const importMapFileNative = () => dc().importMapFile();
 /** URL the pages (DM and table) can load a campaign file from. */
 export async function assetUrl(absPath: string): Promise<string> {
   return assetUrlFor(absPath);
+}
+
+let floating: FloatingBackend | null | undefined;
+
+/** Native windows for floating panels (desktop app only; the browser shows overlays). */
+export function floatingBackend(): FloatingBackend | null {
+  if (floating !== undefined) return floating;
+  if (!isDesktop()) return (floating = null);
+  const api = dc();
+  floating = {
+    setBounds: (name, bounds) => api.setFloatBounds(name, bounds),
+    onMoved: (cb) => api.onFloatMoved(cb),
+    onClosed: (cb) => api.onFloatClosed(cb),
+    contentOrigin: () => api.contentOrigin(),
+  };
+  return floating;
 }

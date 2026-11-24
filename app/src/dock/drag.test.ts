@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { beginDrag, dragRect, dropLayout, passedThreshold, previewLayout } from './drag';
+import { beginDrag, dragRect, dropLayout, passedThreshold, previewLayout, resizeRect } from './drag';
 import { computeDropTarget, computeGeometry } from './geometry';
 import { emptyLayout, findPanel, insertPanel, type DockLayout } from './model';
 
@@ -80,5 +80,13 @@ describe('drag', () => {
     const l2 = dropLayout(s, computeDropTarget(geom, { x: 5, y: 300 }), { x: 0, y: 0 });
     expect(l2.floating).toHaveLength(0);
     expect(l2.zones.left.groups[0]!.panels[0]!.id).toBe('c');
+  });
+
+  it('resizes floating rects from any edge, keeping the opposite edge and the minimum size', () => {
+    const r = { x: 100, y: 100, width: 300, height: 200 };
+    expect(resizeRect(r, 'se', 50, 20)).toEqual({ x: 100, y: 100, width: 350, height: 220 });
+    expect(resizeRect(r, 'nw', 40, 30)).toEqual({ x: 140, y: 130, width: 260, height: 170 });
+    expect(resizeRect(r, 'w', 500, 0)).toEqual({ x: 240, y: 100, width: 160, height: 200 });
+    expect(resizeRect(r, 'n', 0, 500)).toEqual({ x: 100, y: 180, width: 300, height: 120 });
   });
 });

@@ -70,3 +70,23 @@ export function dropLayout(s: DragSession, drop: DropResult | null, screen: Poin
   const size = target.kind === 'newGroup' && sameAxis && s.groupSize ? s.groupSize : undefined;
   return insertPanel(s.start, s.id, target, size ? { size } : {});
 }
+
+/** Which edges of a floating window a resize handle moves ('n', 'se', …). */
+export type ResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+
+/** A floating rect resized from `start` by dragging edge `dir` by (dx, dy); never below the minimum. */
+export function resizeRect(start: FloatRect, dir: ResizeEdge, dx: number, dy: number): FloatRect {
+  const min = DOCK.minFloat;
+  const r = { ...start };
+  if (dir.includes('e')) r.width = Math.max(min.width, Math.round(start.width + dx));
+  if (dir.includes('s')) r.height = Math.max(min.height, Math.round(start.height + dy));
+  if (dir.includes('w')) {
+    r.width = Math.max(min.width, Math.round(start.width - dx));
+    r.x = start.x + start.width - r.width;
+  }
+  if (dir.includes('n')) {
+    r.height = Math.max(min.height, Math.round(start.height - dy));
+    r.y = start.y + start.height - r.height;
+  }
+  return r;
+}

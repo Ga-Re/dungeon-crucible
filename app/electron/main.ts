@@ -103,6 +103,7 @@ function createMainWindow(): void {
   });
   win.webContents.setWindowOpenHandler((details) => floating.openHandler(win, details) ?? denyWindowOpen(details));
   win.webContents.on('did-create-window', (child, details) => floating.adopt(child, details.frameName));
+  floating.attachMain(win);
   void win.loadURL(pageUrl('index.html'));
   mainWindow = win;
 }

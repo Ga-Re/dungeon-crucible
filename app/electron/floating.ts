@@ -2,15 +2,22 @@
  * Native windows for floating panels. The DM window opens them itself with
  * `window.open('about:blank', 'dc-float:…')` (same renderer process, same JS realm), so a
  * panel's DOM can move into them unchanged; the main process only shapes the windows:
- * frameless, child of the DM window, no taskbar entry, shown without taking the focus.
+ * frameless, owned by the DM window, no taskbar entry, shown without taking the focus.
+ *
+ * macOS: a child window (`parent`) belongs to the Space of its parent's display; with
+ * "Displays have separate Spaces" (the default) it is invisible on any other display. So on
+ * macOS the windows have no parent, and what the parent relation would give is done here:
+ * above the DM window while the app is active (not above other apps when it is not), hidden
+ * while the DM window is minimized, shown in its fullscreen Space, not in the Window menu.
  */
-import { BrowserWindow, type HandlerDetails, type WindowOpenHandlerResponse } from 'electron';
+import { app, BrowserWindow, type HandlerDetails, type WindowOpenHandlerResponse } from 'electron';
 import type { FloatBounds } from '../src/platform/desktop-api';
 
 export const FLOAT_PREFIX = 'dc-float:';
 const MIN = { width: 160, height: 120 };
-/** Bounds changes by the system (e.g. moving with the parent) are reported after this pause. */
+/** Bounds changes by the system are reported after this pause. */
 const REPORT_DELAY_MS = 150;
+const MAC = process.platform === 'darwin';
 
 export interface FloatingEvents {
   moved(name: string, bounds: FloatBounds): void;
@@ -21,8 +28,51 @@ export class FloatingWindows {
   private readonly windows = new Map<string, BrowserWindow>();
   /** Bounds that arrived before the window was registered (applied when it is). */
   private readonly pending = new Map<string, FloatBounds>();
+  /** The DM window is minimized or hidden: floating windows stay hidden too. */
+  private mainHidden = false;
+  private appActive = true;
+  private mainFullScreen = false;
 
-  constructor(private readonly events: FloatingEvents) {}
+  constructor(private readonly events: FloatingEvents) {
+    if (MAC) {
+      app.on('did-become-active', () => {
+        this.appActive = true;
+        this.applyLevel();
+      });
+      app.on('did-resign-active', () => {
+        this.appActive = false;
+        this.applyLevel();
+      });
+    }
+  }
+
+  /** The DM window: floating windows follow it (minimize/restore, fullscreen, close). */
+  attachMain(main: BrowserWindow): void {
+    const hide = () => {
+      this.mainHidden = true;
+      for (const w of this.all()) w.hide();
+    };
+    const show = () => {
+      if (!this.mainHidden) return;
+      this.mainHidden = false;
+      for (const w of this.all()) w.showInactive();
+    };
+    main.on('minimize', hide);
+    main.on('hide', hide);
+    main.on('restore', show);
+    main.on('show', show);
+    main.on('enter-full-screen', () => {
+      this.mainFullScreen = true;
+      for (const w of this.all()) this.applySpaces(w);
+    });
+    main.on('leave-full-screen', () => {
+      this.mainFullScreen = false;
+      for (const w of this.all()) this.applySpaces(w);
+    });
+    main.on('closed', () => {
+      for (const w of this.all()) w.close();
+    });
+  }
 
   /** `setWindowOpenHandler` answer for the DM window: only blank `dc-float:` popups are allowed. */
   openHandler(parent: BrowserWindow, details: HandlerDetails): WindowOpenHandlerResponse | null {
@@ -30,7 +80,7 @@ export class FloatingWindows {
     return {
       action: 'allow',
       overrideBrowserWindowOptions: {
-        parent,
+        ...(MAC ? {} : { parent }),
         frame: false,
         show: false,
         skipTaskbar: true,
@@ -54,6 +104,11 @@ export class FloatingWindows {
     const name = frameName;
     this.windows.set(name, win);
     win.setMenuBarVisibility(false);
+    if (MAC) {
+      win.excludedFromShownWindowsMenu = true;
+      this.applyLevel(win);
+      if (this.mainFullScreen) this.applySpaces(win);
+    }
     let timer: NodeJS.Timeout | null = null;
     const report = () => {
       if (timer) clearTimeout(timer);
@@ -88,11 +143,28 @@ export class FloatingWindows {
       width: Math.max(MIN.width, Math.round(b.width)),
       height: Math.max(MIN.height, Math.round(b.height)),
     };
-    // Show first: macOS confines a hidden child window that is moved onto another display to
-    // the parent's display. It was created at these bounds already, so nothing jumps.
-    if (!win.isVisible()) win.showInactive();
+    // Show first, then move: it was created at these bounds already, so nothing jumps.
+    if (!win.isVisible() && !this.mainHidden) win.showInactive();
     const cur = win.getBounds();
     if (cur.x !== bounds.x || cur.y !== bounds.y || cur.width !== bounds.width || cur.height !== bounds.height) win.setBounds(bounds);
     if (b.opacity !== undefined && win.getOpacity() !== b.opacity) win.setOpacity(b.opacity);
+  }
+
+  private all(): BrowserWindow[] {
+    return [...this.windows.values()].filter((w) => !w.isDestroyed());
+  }
+
+  /** macOS: above the DM window while the app is active, an ordinary window otherwise. */
+  private applyLevel(only?: BrowserWindow): void {
+    if (!MAC) return;
+    for (const w of only ? [only] : this.all()) w.setAlwaysOnTop(this.appActive, 'floating');
+  }
+
+  /** macOS: a DM window in fullscreen has its own Space; the floating windows join it. */
+  private applySpaces(w: BrowserWindow): void {
+    if (!MAC) return;
+    // Without skipTransformProcessType Electron briefly changes the process type, which takes
+    // the focus from the DM window (and would cancel a drag).
+    w.setVisibleOnAllWorkspaces(this.mainFullScreen, { visibleOnFullScreen: this.mainFullScreen, skipTransformProcessType: true });
   }
 }

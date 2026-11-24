@@ -3,8 +3,9 @@
 Ein Werkzeug, das eine D&D-5e-Kampagne vom ersten Entwurf bis zur letzten Sitzung begleitet:
 planen, Karten bauen, Kreaturen pflegen und am Tisch leiten – mit Tisch-Display für die Spieler.
 
-Stand: Design-Demo (`design-demo/index.html`). Dieses Dokument sammelt Anforderungen, Abgleich mit
-vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidungen stehen am Ende.
+Stand: Desktop-App in `app/` (Electron); Phase 1 abgeschlossen, Phase 2 und 3 begonnen (siehe Abschnitt 9).
+Die Design-Demo (`design-demo/index.html`) ist abgenommen. Dieses Dokument sammelt Anforderungen, Abgleich
+mit vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidungen stehen am Ende.
 
 ## 0. Getroffene Entscheidungen
 
@@ -19,6 +20,7 @@ vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidungen st
 | Kreaturdaten | Werden von der SL selbst eingegeben (2024-Werteblock); Berechnungen (Mod, RW, ÜB, EP) automatisch |
 | Sprache | Englisch als Standard, Deutsch zusätzlich |
 | Spieler-Vorschau | Dockbar wie jedes Panel; Knopf „Auf anderen Bildschirm verschieben“ für die Tisch-Ausgabe |
+| Docking | Eigenes System nach Fusion-Vorbild (kein dockview): Zonen links/rechts/unten, Akkordeon, Einklappen mit Hover-Flyout; abgedockte Panels sind echte Fenster, auch auf anderen Monitoren |
 | Signierung | Keine; Installer bleiben unsigniert (Betriebssystem warnt beim ersten Start) |
 | Tischfenster | versteckt anlegen, auf den Bildschirm setzen, Vollbild („simple fullscreen“ auf macOS); Fokus bleibt beim DM |
 | Nebel-Engine | Aus Dungeon-Manager übernommen (ADR-0019 dort): Polygone, PixiJS-Renderer, Ausbreitung mit Geschwindigkeit, Living Fog mit 8 Biomen |
@@ -178,7 +180,8 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 
 **Phase 1 (Fundament) – umgesetzt in `app/`:**
 - Desktop-App (anfangs Tauri 2, seit Nov. 2026 Electron) mit Monitorliste, Tischfenster randlos im Vollbild auf gewähltem Monitor, Verschieben auf anderen Monitor, Mauszeiger aus, Fokus bleibt beim DM
-- React-Oberfläche: Arbeitsbereich-Umschalter, Ribbon, eigenes Docking-System (Zonen links/rechts/unten mit Akkordeon und Splittern, einklappbare Zonen, Layout je Arbeitsbereich gespeichert; Abdocken/Andocken per Drag folgt), Statusleiste, Themes, Englisch/Deutsch
+- React-Oberfläche: Arbeitsbereich-Umschalter, Ribbon, Statusleiste, Themes, Englisch/Deutsch
+- Eigenes Docking-System (`app/src/dock/`): Zonen links/rechts/unten mit Gruppen, Akkordeon und Splittern; Zonen klappen zur Leiste ein, Hovern öffnet das Panel als Flyout; Abdocken und Andocken per Drag mit blauen Zielanzeigen; abgedockte Panels sind echte Fenster (auch auf anderen Monitoren, Rückholung bei abgestecktem Monitor); Panel-Inhalte behalten beim Umhängen ihren Zustand; Layout je Arbeitsbereich gespeichert, „Layout zurücksetzen“; Tastatur und Screenreader
 - Kernlogik mit 29 Tests: Sichtlinien, 3-Punkt- und physische Kalibrierung, Nebel (3 Zustände, gesperrte Geheimräume), 2024-Regeln (Mod, ÜB, RW, EP-Budget, Erschöpfung), Würfel, Sidecar-Schemas, Spieler-Projektion
 - Fail-closed: Whitelist-Frame, Validierung im Tischfenster, Herzschlag (2,5 s), Tisch-Fenster darf nur Frames empfangen (eigenes Preload), Build bricht ab, wenn das Tisch-Bundle DM-Code enthält
 - Kartenansicht mit Auswählen, Verschieben, Messen, Ping, Wände/Türen/Geheimtüren/Fenster, Zonen, Nebelwerkzeuge, Schablonen, Kalibrierung; Initiative mit Zuständen; Würfel; Begegnungs-Budget; Werteblock-Editor
@@ -196,7 +199,20 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 **Phase 2 (Spielen) – begonnen:**
 - Licht und Sicht nach 2024: Lichtquellen (hell/dämmrig, Farbe, an/aus), Licht getragener Tokens (Fackel), Dunkelsicht; Spieler sehen, was in Sichtlinie liegt und beleuchtet oder in Dunkelsichtweite ist; Umgebungslicht pro Karte (dunkel/hell)
 - Tokens aus der Kreaturen-Bibliothek per Drag & Drop oder Knopf auf die Karte; Werte, Größe, Sicht, Licht werden übernommen, Initiative gewürfelt; Token entfernen (Entf)
-- Messung: Benchmark erfüllt (59,9 FPS, 0,2 % verpasst, 4K-Video, Living Fog) Nächster Schritt: Phase 2 (Spielen) – Lichtquellen, Feinschliff am Tisch-Workflow, Token aus Kreaturen auf die Karte ziehen.
+- Messung: Benchmark erfüllt (59,9 FPS, 0,2 % verpasst, 4K-Video, Living Fog)
+
+**Phase 3 (Atmosphäre) – größtenteils umgesetzt:**
+- Living Fog mit 8 Biomen, animierte Ausbreitung (Fog Spread)
+- Lichtquellen (siehe Phase 2), Zauberschablonen
+- Soundboard: Ambience-Loops (eingebaut und eigene Dateien aus `audio/`) mit Einzel-Lautstärke, SFX-Pads (eingebaut und `audio/sfx/`), Master, Alles stoppen; die laufende Ambience wird mit der Szene gespeichert, beim Szenenwechsel wird übergeblendet; eigene Dateien werden beim Hinzufügen in den Kampagnenordner kopiert
+- Offen: Szenen-Playlists
+
+**Nächster Schritt:** Testrunde am echten Tisch (Karte laden, Tisch öffnen, Nebel, Kampf mit Initiative und Licht), danach Feinschliff am Tisch-Workflow. Bekannt:
+- Die Karte passt sich nicht an, wenn der Canvas größer wird (z. B. nach dem Einklappen einer Zone); „Einpassen“ hilft
+- Das Soundboard ist unten neben Würfeln und Protokoll recht schmal
+- Windows und Linux sind gebaut, aber noch nicht im Einsatz getestet
+
+Tests insgesamt: 239 (Vitest), dazu Prüfungen in der laufenden App.
 
 ## 10. Offene Fragen
 Derzeit keine.

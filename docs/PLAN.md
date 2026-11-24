@@ -10,7 +10,7 @@ vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidungen st
 
 | Thema | Entscheidung |
 |---|---|
-| Plattform | Desktop-App für **macOS und Windows** (Tauri 2) |
+| Plattform | Desktop-App für **macOS und Windows** (Electron) |
 | Tisch-Display | Zusätzlicher Monitor am PC der Spielleitung (kein eigener Rechner, kein Netzwerk) |
 | Touch am Tisch | Vorerst nicht geplant; Spieler bedienen nichts, die SL steuert alles |
 | Regelwerk | D&D 5e, Ausgabe 2024 (SRD 5.2) |
@@ -20,7 +20,7 @@ vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidungen st
 | Sprache | Englisch als Standard, Deutsch zusätzlich |
 | Spieler-Vorschau | Dockbar wie jedes Panel; Knopf „Auf anderen Bildschirm verschieben“ für die Tisch-Ausgabe |
 | Signierung | Keine; Installer bleiben unsigniert (Betriebssystem warnt beim ersten Start) |
-| Tischfenster | Platzierung wie Dungeon-Manager (`tauri-displays.ts`): versteckt anlegen, logische Position auf macOS, „simple fullscreen“ |
+| Tischfenster | versteckt anlegen, auf den Bildschirm setzen, Vollbild („simple fullscreen“ auf macOS); Fokus bleibt beim DM |
 | Nebel-Engine | Aus Dungeon-Manager übernommen (ADR-0019 dort): Polygone, PixiJS-Renderer, Ausbreitung mit Geschwindigkeit, Living Fog mit 8 Biomen |
 | Renderer | Komplett PixiJS 8.22 (Karte, Raster, Tokens, Nebel) für DM-Fenster und TV |
 | Token-Sicht | Deckt automatisch auf; Verlassenes wird Erinnerungsnebel; SL-Werkzeuge zusätzlich |
@@ -154,11 +154,11 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 - Tastaturkürzel, Undo/Redo über alle Arbeitsbereiche
 
 ## 7. Architekturvorschlag
-- **Desktop-App mit Tauri 2** (Rust-Kern, Web-UI): zwei native Fenster im selben Prozess (DM auf Monitor 1, Tisch-Vollbild auf Monitor 2), Monitorerkennung über die Tauri-Monitor-API, direkter Dateizugriff, klein. Alternative: Electron, falls Video-/WebGL-Verhalten der System-WebViews Probleme macht
+- **Desktop-App mit Electron** (Node-Hauptprozess, Web-UI): DM-Fenster auf Monitor 1, Tisch-Vollbild auf Monitor 2, Monitorerkennung über die Electron-Screen-API (inkl. An-/Abstecken), direkter Dateizugriff. Gewählt statt Tauri 2 (bis Nov. 2026): überall dieselbe Chromium-Engine für WebGL/Video und ausgereifte Mehrfenster-Unterstützung (schwebende Panels als echte Fenster)
 - Themes: alle Farben als CSS-Tokens, Theme = eine Token-Datei (JSON/CSS); Karte und Nebel bleiben themenunabhängig
-- UI: TypeScript + React (oder Svelte), Docking-Layout (z. B. Dockview), eigene Ribbon-Komponenten
-- Rendering: **WebGL2 via PixiJS** für Karte, Kacheln, Video-Texturen; Nebel und Living Fog als Shader; Raycasting im Worker (WASM aus Rust möglich)
-- Tisch-Fenster erhält nur die Whitelist-Projektion über Tauri-Events (kein Zugriff auf den vollen Zustand)
+- UI: TypeScript + React (oder Svelte), eigenes Docking-System (Zonen links/rechts/unten, Akkordeon, Flyout, schwebende Fenster), eigene Ribbon-Komponenten
+- Rendering: **WebGL2 via PixiJS** für Karte, Kacheln, Video-Texturen; Nebel und Living Fog als Shader; Raycasting im Worker (WASM möglich)
+- Tisch-Fenster erhält nur die Whitelist-Projektion über einen eigenen IPC-Kanal (kein Zugriff auf den vollen Zustand)
 - Audio: Web Audio API (Loops, Crossfade, Kanäle je Ausgabe)
 - Datenmodell: TypeScript-Typen + JSON-Schema für Sidecars
 
@@ -167,7 +167,7 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 | Phase | Inhalt |
 |---|---|
 | 0 | Design-Demo abstimmen (dieser Stand) |
-| 1 · Fundament | Tauri-Grundgerüst, Docking/Ribbon/Arbeitsbereiche, Kampagnenordner + Sidecars, Kartenimport mit Tiling, Raster + Kalibrierung |
+| 1 · Fundament | Desktop-Grundgerüst, Docking/Ribbon/Arbeitsbereiche, Kampagnenordner + Sidecars, Kartenimport mit Tiling, Raster + Kalibrierung |
 | 2 · Spielen | Tokens, Wände/Türen, Raycasting, Nebel (3 Zustände, Werkzeuge), Tisch-Fenster fail-closed mit Rotation/Blackout, Initiative |
 | 3 · Atmosphäre | Living Fog (8 Biome), Fog Spread, Lichtquellen, Zauberschablonen, Soundboard |
 | 4 · Planung | Kampagnen-Atlas, Notizen-Editor mit Wiki-Links, Begegnungs-Rechner, Zufallstabellen, Handouts |
@@ -177,19 +177,19 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 ## 9. Umsetzungsstand
 
 **Phase 1 (Fundament) – umgesetzt in `app/`:**
-- Tauri-2-Projekt (Rust) mit Monitorliste, Tischfenster randlos im Vollbild auf gewähltem Monitor, Verschieben auf anderen Monitor, Mauszeiger aus, Fokus bleibt beim DM
+- Desktop-App (anfangs Tauri 2, seit Nov. 2026 Electron) mit Monitorliste, Tischfenster randlos im Vollbild auf gewähltem Monitor, Verschieben auf anderen Monitor, Mauszeiger aus, Fokus bleibt beim DM
 - React-Oberfläche: Arbeitsbereich-Umschalter, Ribbon, Docking mit dockview (andocken, abdocken, Layout je Arbeitsbereich gespeichert), Statusleiste, Themes, Englisch/Deutsch
 - Kernlogik mit 29 Tests: Sichtlinien, 3-Punkt- und physische Kalibrierung, Nebel (3 Zustände, gesperrte Geheimräume), 2024-Regeln (Mod, ÜB, RW, EP-Budget, Erschöpfung), Würfel, Sidecar-Schemas, Spieler-Projektion
-- Fail-closed: Whitelist-Frame, Validierung im Tischfenster, Herzschlag (2,5 s), Tisch-Capability nur „Events empfangen“, Build bricht ab, wenn das Tisch-Bundle DM-Code enthält
+- Fail-closed: Whitelist-Frame, Validierung im Tischfenster, Herzschlag (2,5 s), Tisch-Fenster darf nur Frames empfangen (eigenes Preload), Build bricht ab, wenn das Tisch-Bundle DM-Code enthält
 - Kartenansicht mit Auswählen, Verschieben, Messen, Ping, Wände/Türen/Geheimtüren/Fenster, Zonen, Nebelwerkzeuge, Schablonen, Kalibrierung; Initiative mit Zuständen; Würfel; Begegnungs-Budget; Werteblock-Editor
-- CI (GitHub Actions): Tests, Build-Prüfung, `cargo check`, Desktop-Builds für macOS (universal) und Windows
+- CI (GitHub Actions): Tests, Build-Prüfung, Desktop-Builds für macOS (universal) und Windows
 
 - Kampagnenordner: öffnen oder neu anlegen (Strg+O), Manifest, Karten-Sidecars, Szenen-Overrides und Kreaturen als lesbare JSON-Dateien; atomares Schreiben; Autosave nach 1,5 s; letzte Kampagne öffnet beim Start wieder
-- Dateizugriff nur innerhalb des geöffneten Ordners (Rust prüft jeden Pfad, `..` wird abgelehnt)
-- Kartenimport (Bild/Video) kopiert die Datei nach `maps/`, legt eine neue Szene an; DM- und Tischfenster laden sie über das Asset-Protokoll
+- Dateizugriff nur innerhalb des geöffneten Ordners (der Hauptprozess prüft jeden Pfad, `..` wird abgelehnt)
+- Kartenimport (Bild/Video) kopiert die Datei nach `maps/`, legt eine neue Szene an; DM- und Tischfenster laden sie über das Asset-Protokoll `dc-asset://` (nur Dateien im Kampagnenordner)
 - Szenenwechsel mit automatischem Blackout
 - Rückgängig/Wiederholen (Strg+Z / Strg+Umschalt+Z) für alle Karten-, Nebel-, Token- und Kampfänderungen
-- Tests: 36 im Frontend, 3 in Rust
+- Tests: Frontend und Dateizugriff (Vitest)
 
 **Phase 1 ist damit abgeschlossen.** Nächster Schritt: Phase 2 (Spielen) – Lichtquellen, Feinschliff am Tisch-Workflow, Token aus Kreaturen auf die Karte ziehen.
 

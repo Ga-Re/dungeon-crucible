@@ -8,7 +8,7 @@
 //
 // What is measured: the intervals between animation frames (requestAnimationFrame cadence), not
 // GPU completion; and the video's dropped frames.
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { assetUrlFor } from '../platform/asset-url';
 import { createRenderer, type FogOptions } from '../render/pixi/renderer';
 import type { Size } from '../render/pixi/camera';
 import { createMapVideo } from '../render/mapImages';
@@ -19,7 +19,7 @@ const WARM_UP_MS = 5_000;
 const MEASURE_MS = Number(import.meta.env.VITE_BENCH_SECONDS ?? '30') * 1000;
 const REFRESH_SAMPLE_MS = 2_000;
 const STABLE_MS = 1_500;
-/** Absolute path of the 4K video map inside the open campaign folder (asset protocol scope). */
+/** Absolute path of the 4K video map inside the open campaign folder (served through the dc-asset protocol). */
 const VIDEO_PATH: string = import.meta.env.VITE_BENCH_VIDEO ?? '';
 const QUALITY = (import.meta.env.VITE_BENCH_QUALITY ?? 'medium') as 'off' | 'medium' | 'high';
 const TARGET_BACKING = { width: 3840, height: 2160 };
@@ -121,7 +121,7 @@ async function main() {
   let videoNote: string;
   try {
     if (!VIDEO_PATH) throw new Error('VITE_BENCH_VIDEO is not set');
-    video = await createMapVideo(convertFileSrc(VIDEO_PATH));
+    video = await createMapVideo(assetUrlFor(VIDEO_PATH));
     canvas.before(video);
     renderer.setVideo(video);
     videoNote = `${video.videoWidth}×${video.videoHeight} (${VIDEO_PATH})`;

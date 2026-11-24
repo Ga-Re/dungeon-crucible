@@ -13,7 +13,7 @@ import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MapSidecarSchema
 import { DEFAULT_GRID } from '../core/grid';
 import type { Scene } from '../core/scene';
 import {
-  assetUrl, importMapFileNative, isTauri, listFiles, openCampaignFolder, pickCampaignFolder, readText, writeText, type CampaignInfo,
+  assetUrl, importMapFileNative, isDesktop, listFiles, openCampaignFolder, pickCampaignFolder, readText, writeText, type CampaignInfo,
 } from '../platform/bridge';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
@@ -49,7 +49,7 @@ function creaturePath(c: Creature): string {
 
 /** Shows the folder picker. A folder without campaign.dm.json becomes a new campaign. */
 export async function openCampaignDialog(): Promise<void> {
-  if (!isTauri()) {
+  if (!isDesktop()) {
     log('log.desktopOnly');
     emit();
     return;
@@ -59,7 +59,7 @@ export async function openCampaignDialog(): Promise<void> {
 }
 
 export async function reopenLastCampaign(): Promise<void> {
-  if (!isTauri()) return;
+  if (!isDesktop()) return;
   let last: string | null = null;
   try {
     last = localStorage.getItem(LAST_KEY);
@@ -177,7 +177,7 @@ export function startAutosave(): void {
 
 /** Imports a map into the campaign and starts a new scene on it. Player tokens come along. */
 export async function importMapIntoCampaign(): Promise<boolean> {
-  if (!isTauri()) return false;
+  if (!isDesktop()) return false;
   if (!state.campaign) {
     log('log.importNeedsCampaign');
     emit();

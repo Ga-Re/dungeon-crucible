@@ -39,11 +39,30 @@ export interface FloatBounds {
   opacity?: number;
 }
 
+/** A display's work area (without menu bar / taskbar) in desktop coordinates, logical pixels. */
+export interface ScreenArea {
+  /** Stable id of the display while it is connected. */
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** All displays, and the one the DM window is on. */
+export interface ScreenSetupInfo {
+  screens: ScreenArea[];
+  main: ScreenArea;
+}
+
 /** DM window. */
 export interface DcApi {
   listDisplays(): Promise<MonitorInfo[]>;
   /** A display was plugged in, removed or changed its resolution. */
   onDisplaysChanged(cb: () => void): Unsubscribe;
+  /** Work areas of all displays (for floating windows). Synchronous: needed before the first layout. */
+  screensSync(): ScreenSetupInfo | null;
+  screens(): Promise<ScreenSetupInfo>;
 
   /** Opens the table window fullscreen on display `index`, or moves it there. */
   openTable(index: number, title: string): Promise<void>;

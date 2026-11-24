@@ -214,3 +214,45 @@ export function restoreFloating(layout: DockLayout, screens: readonly ScreenInfo
   });
   return moved === 0 ? layout : { ...layout, floating };
 }
+
+/** The screens and the one with the main window. */
+export interface ScreenSetup {
+  screens: ScreenInfo[];
+  main: ScreenInfo;
+}
+
+function overlap(f: FloatRect, s: ScreenInfo): number {
+  const w = Math.min(f.x + f.width, s.x + s.width) - Math.max(f.x, s.x);
+  const h = Math.min(f.y + f.height, s.y + s.height) - Math.max(f.y, s.y);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+/**
+ * Records for every floating window the monitor it is mostly on (`monitorId`), so a window
+ * whose monitor is unplugged can be brought back later. Unchanged layouts are returned as is.
+ */
+export function assignMonitors(layout: DockLayout, screens: readonly ScreenInfo[]): DockLayout {
+  if (screens.length === 0) return layout;
+  let changed = false;
+  const floating = layout.floating.map((f) => {
+    let best: ScreenInfo | null = null;
+    let area = 0;
+    for (const s of screens) {
+      const a = overlap(f, s);
+      if (a > area) {
+        area = a;
+        best = s;
+      }
+    }
+    if (!best || best.id === f.monitorId) return f;
+    changed = true;
+    return { ...f, monitorId: best.id };
+  });
+  return changed ? { ...layout, floating } : layout;
+}
+
+/** Brings lost floating windows back, then records their monitors. */
+export function placeOnScreens(layout: DockLayout, setup: ScreenSetup | null): DockLayout {
+  if (!setup || setup.screens.length === 0) return layout;
+  return assignMonitors(restoreFloating(layout, setup.screens, setup.main), setup.screens);
+}

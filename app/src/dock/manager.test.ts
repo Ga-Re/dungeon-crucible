@@ -97,4 +97,26 @@ describe('DockManager', () => {
     expect(seen).toEqual([2, 1]);
     expect(dock.title('fog')).toBe('FOG');
   });
+
+  it('places floating windows on the screens: lost ones come back, all remember their monitor', () => {
+    const { dock, storage } = setup();
+    const main = { id: 'm', x: 0, y: 0, width: 1440, height: 900 };
+    const tv = { id: 'tv', x: 1440, y: 0, width: 1920, height: 1080 };
+    dock.setScreens({ screens: [main, tv], main });
+    dock.useWorkspace(WS_A);
+    dock.float('dice', { x: 2000, y: 200, width: 300, height: 300 });
+    expect(dock.getLayout().floating[0]).toMatchObject({ id: 'dice', x: 2000, monitorId: 'tv' });
+    vi.advanceTimersByTime(SAVE_DELAY_MS);
+    // Restart without the TV: the window comes back to the main screen.
+    const again = new DockManager<string>(storage);
+    for (const id of ['map', 'browser', 'fog', 'log', 'dice']) again.registerPanel({ id, title: id, create: () => id });
+    again.setScreens({ screens: [main], main });
+    again.useWorkspace(WS_A);
+    expect(again.getLayout().floating[0]).toMatchObject({ id: 'dice', x: 40, y: 40, monitorId: 'm' });
+    vi.advanceTimersByTime(SAVE_DELAY_MS);
+    expect(JSON.parse(storage.getItem('dc.dock.a')!).floating[0]).toMatchObject({ x: 40, monitorId: 'm' });
+    // The TV is unplugged while running.
+    dock.setScreens({ screens: [main], main });
+    expect(dock.getLayout().floating[0]).toMatchObject({ x: 40, y: 40, monitorId: 'm' });
+  });
 });

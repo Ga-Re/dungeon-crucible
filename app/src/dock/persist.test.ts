@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { LAYOUT_VERSION, findPanel, floatPanel, hidePanel, setZoneCollapsed, toggleExpanded, type DockLayout } from './model';
-import { MIGRATIONS, defaultLayout, loadLayout, restoreFloating, type DefaultSpec, type ScreenInfo } from './persist';
+import { MIGRATIONS, assignMonitors, defaultLayout, loadLayout, restoreFloating, type DefaultSpec, type ScreenInfo } from './persist';
 
 const KNOWN = ['browser', 'properties', 'fog', 'initiative', 'preview', 'table', 'dice', 'log', 'encounter'];
 const PLAY: DefaultSpec = {
@@ -131,5 +131,17 @@ describe('restoreFloating', () => {
     const l = withFloating({ id: 'dice', x: 5000, y: 0, width: 3000, height: 2000, monitorId: '9' });
     const r = restoreFloating(l, [main], main);
     expect(r.floating[0]).toMatchObject({ x: 40, y: 40, width: 1840, height: 1000 });
+  });
+});
+
+describe('assignMonitors', () => {
+  const main: ScreenInfo = { id: '1', x: 0, y: 0, width: 1920, height: 1080 };
+  const tv: ScreenInfo = { id: '2', x: 1920, y: 0, width: 3840, height: 2160 };
+
+  it('records the monitor a window is mostly on; unchanged layouts stay the same object', () => {
+    const l = { ...defaults(), floating: [{ id: 'dice', x: 1800, y: 100, width: 400, height: 300 }, { id: 'log', x: 100, y: 100, width: 300, height: 300, monitorId: '1' }] };
+    const r = assignMonitors(l, [main, tv]);
+    expect(r.floating.map((f) => f.monitorId)).toEqual(['2', '1']);
+    expect(assignMonitors(r, [main, tv])).toBe(r);
   });
 });

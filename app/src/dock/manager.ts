@@ -6,7 +6,7 @@ import {
   emptyLayout, findPanel, floatPanel, getPanelRef, hidePanel, insertPanel, normalize, setExpanded, setZoneCollapsed, showPanel,
   type DockLayout, type DockTarget, type Edge, type FloatRect,
 } from './model';
-import { defaultLayout, loadLayout, type DefaultSpec, type PlaceFloating } from './persist';
+import { defaultLayout, loadLayout, placeOnScreens, type DefaultSpec, type PlaceFloating, type ScreenSetup } from './persist';
 
 export interface PanelDefinition<C = unknown> {
   id: string;
@@ -43,6 +43,7 @@ export class DockManager<C = unknown> {
   private readonly listeners = new Set<LayoutListener>();
   private config: WorkspaceConfig | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private screens: ScreenSetup | null = null;
 
   constructor(private readonly storage: StorageLike | null = null) {}
 
@@ -83,8 +84,11 @@ export class DockManager<C = unknown> {
     } catch {
       saved = null;
     }
-    this.layout = loadLayout(saved, { known: this.known(), defaults: this.defaults() });
+    const loaded = loadLayout(saved, { known: this.known(), defaults: this.defaults() });
+    this.layout = placeOnScreens(loaded, this.screens);
     this.emit();
+    // Windows brought back from a missing monitor: remember their new place.
+    if (this.layout !== loaded) this.scheduleSave();
   }
 
   private defaults(): DockLayout {
@@ -136,9 +140,20 @@ export class DockManager<C = unknown> {
     return () => this.listeners.delete(cb);
   }
 
+  /**
+   * The screens (desktop app). Floating windows on a monitor that is gone, or with less than
+   * 40 × 40 px visible, move to the main window's screen; every floating window remembers its
+   * monitor. Call again when the displays change.
+   */
+  setScreens(setup: ScreenSetup | null): void {
+    this.screens = setup;
+    const placed = placeOnScreens(this.layout, setup);
+    if (placed !== this.layout) this.commit(placed);
+  }
+
   private commit(layout: DockLayout): void {
     if (layout === this.layout) return;
-    this.layout = normalize(layout);
+    this.layout = placeOnScreens(normalize(layout), this.screens);
     this.emit();
     this.scheduleSave();
   }

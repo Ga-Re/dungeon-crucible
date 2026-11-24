@@ -18,6 +18,8 @@ function on(channel: string) {
 const api: DcApi = {
   listDisplays: () => ipcRenderer.invoke('displays:list'),
   onDisplaysChanged: on('displays:changed'),
+  screensSync: () => ipcRenderer.sendSync('displays:screensSync'),
+  screens: () => ipcRenderer.invoke('displays:screens'),
   openTable: (index, title) => ipcRenderer.invoke('table:open', index, title),
   closeTable: () => ipcRenderer.invoke('table:close'),
   sendFrame: (frame) => ipcRenderer.send('table:frame', frame),

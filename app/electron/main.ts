@@ -15,7 +15,7 @@ import { Campaign } from './campaign';
 import { fileResponse, isInside } from './files';
 import { FloatingWindows } from './floating';
 import type { FloatBounds } from '../src/platform/desktop-api';
-import { listDisplays, TableWindow } from './table';
+import { listDisplays, screenSetup, TableWindow } from './table';
 
 const DEV_URL = process.env['VITE_DEV_SERVER_URL'];
 const BENCH = process.env['VITE_BENCH'] === '1';
@@ -112,6 +112,10 @@ function handle<A extends unknown[], R>(channel: string, fn: (win: BrowserWindow
 
 function registerIpc(): void {
   handle('displays:list', () => listDisplays());
+  handle('displays:screens', (w) => screenSetup(w));
+  ipcMain.on('displays:screensSync', (e) => {
+    e.returnValue = fromMain(e) ? screenSetup(mainWindow) : null;
+  });
   handle('table:open', (_w, index: number, title: string) => table.open(index, title));
   handle('table:close', () => table.close());
   ipcMain.on('table:frame', (e, frame: unknown) => {

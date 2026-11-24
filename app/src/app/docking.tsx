@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { DockManager } from '../dock/manager';
 import type { DefaultSpec } from '../dock/persist';
 import { translate, type Locale } from '../i18n/i18n';
+import { onMonitorsChanged, screenSetup, screenSetupSync } from '../platform/bridge';
 import { MapView } from '../panels/MapView';
 import {
   BrowserPanel, CreaturePanel, DicePanel, EncounterPanel, FogPanel, InitiativePanel, LogPanel, PreviewPanel, PropertiesPanel, SoonPanel, TablePanel,
@@ -38,6 +39,13 @@ function storage(): Storage | null {
 }
 
 export const dock = new DockManager<ReactNode>(storage());
+
+// Floating windows are placed on the screens that exist: known before the first layout loads,
+// and again whenever a display is plugged in or removed.
+dock.setScreens(screenSetupSync());
+onMonitorsChanged(() => {
+  void screenSetup().then((s) => dock.setScreens(s));
+});
 
 const currentLocale = (): Locale => (document.documentElement.lang === 'de' ? 'de' : 'en');
 

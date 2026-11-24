@@ -6,7 +6,7 @@
 import type { PlayerFrame } from '../core/projection';
 import type { FloatingBackend } from '../dock/nativeWindows';
 import { assetUrlFor } from './asset-url';
-import type { CampaignInfo, DcApi, DcTableApi, ImportedFile, MonitorInfo } from './desktop-api';
+import type { CampaignInfo, DcApi, DcTableApi, ImportedFile, MonitorInfo, ScreenSetupInfo } from './desktop-api';
 
 export type { CampaignInfo, ImportedFile, MonitorInfo };
 
@@ -104,6 +104,15 @@ export const importMapFileNative = () => dc().importMapFile();
 /** URL the pages (DM and table) can load a campaign file from. */
 export async function assetUrl(absPath: string): Promise<string> {
   return assetUrlFor(absPath);
+}
+
+/** Display work areas for floating windows (desktop app; null in the browser). Synchronous. */
+export function screenSetupSync(): ScreenSetupInfo | null {
+  return isDesktop() ? dc().screensSync() : null;
+}
+
+export async function screenSetup(): Promise<ScreenSetupInfo | null> {
+  return isDesktop() ? dc().screens() : null;
 }
 
 let floating: FloatingBackend | null | undefined;

@@ -4,7 +4,7 @@
  * platform, so no physical/logical conversion is needed (unlike the former Tauri port).
  */
 import { BrowserWindow, screen, type Display } from 'electron';
-import type { MonitorInfo } from '../src/platform/desktop-api';
+import type { MonitorInfo, ScreenArea, ScreenSetupInfo } from '../src/platform/desktop-api';
 
 /** Displays in a stable order: the primary (the DM's) first. */
 export function orderedDisplays(): Display[] {
@@ -22,6 +22,16 @@ export function listDisplays(): MonitorInfo[] {
     height: Math.round(d.size.height * d.scaleFactor),
     scaleFactor: d.scaleFactor,
   }));
+}
+
+function area(d: Display): ScreenArea {
+  return { id: String(d.id), ...d.workArea };
+}
+
+/** Work areas of all displays and the one `win` is on (for placing floating panel windows). */
+export function screenSetup(win: BrowserWindow | null): ScreenSetupInfo {
+  const main = win && !win.isDestroyed() ? screen.getDisplayMatching(win.getBounds()) : screen.getPrimaryDisplay();
+  return { screens: orderedDisplays().map(area), main: area(main) };
 }
 
 export interface TableWindowOptions {

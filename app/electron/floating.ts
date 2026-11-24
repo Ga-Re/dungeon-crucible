@@ -19,6 +19,8 @@ export interface FloatingEvents {
 
 export class FloatingWindows {
   private readonly windows = new Map<string, BrowserWindow>();
+  /** Bounds that arrived before the window was registered (applied when it is). */
+  private readonly pending = new Map<string, FloatBounds>();
 
   constructor(private readonly events: FloatingEvents) {}
 
@@ -62,6 +64,9 @@ export class FloatingWindows {
     };
     win.on('move', report);
     win.on('resize', report);
+    const early = this.pending.get(name);
+    this.pending.delete(name);
+    if (early) this.setBounds(name, early);
     win.on('closed', () => {
       if (timer) clearTimeout(timer);
       this.windows.delete(name);
@@ -72,7 +77,11 @@ export class FloatingWindows {
   /** Moves/resizes a floating window; the first call shows it without activating it. */
   setBounds(name: string, b: FloatBounds): void {
     const win = this.windows.get(name);
-    if (!win || win.isDestroyed()) return;
+    if (!win) {
+      if (name.startsWith(FLOAT_PREFIX)) this.pending.set(name, b);
+      return;
+    }
+    if (win.isDestroyed()) return;
     const bounds = {
       x: Math.round(b.x),
       y: Math.round(b.y),

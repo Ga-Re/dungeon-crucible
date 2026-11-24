@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type FunctionComponent } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { exploredShare } from '../core/fogModel';
-import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IDockviewHeaderActionsProps, type IDockviewPanelProps } from 'dockview-react';
-import 'dockview-react/dist/styles/dockview.css';
-import { useI18n, LOCALES, translate, type Locale } from '../i18n/i18n';
+import { DockHost } from '../dock/DockHost';
+import { useI18n, LOCALES, type Locale } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
-import { MapView, mapCommands } from '../panels/MapView';
-import {
-  BrowserPanel, CreaturePanel, DicePanel, EncounterPanel, FogPanel, InitiativePanel, LogPanel, MonitorMenu, PreviewPanel, PropertiesPanel, SoonPanel, TablePanel,
-} from '../panels/panels';
+import { mapCommands } from '../panels/MapView';
+import { MonitorMenu } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
+import { PANEL_CONTENT, activateWorkspaceLayout, dock, focusPanel, removeLegacyLayouts } from './docking';
 import {
   clearTemplates, emit, fogAll, log, nextTurn, redo, removeLastUserWall, rotateTable, setFogMode, setGridType, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
@@ -16,26 +14,6 @@ import { importMapIntoCampaign, openCampaignDialog, reopenLastCampaign, saveCamp
 import { openTable, refreshMonitors, startFrameLoop } from './tableOutput';
 import { importMapFile } from './importMap';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-
-const LAYOUT_VERSION = 1;
-
-const COMPONENTS: Record<PanelId, FunctionComponent<IDockviewPanelProps>> = {
-  map: () => <MapView />,
-  browser: () => <BrowserPanel />,
-  properties: () => <PropertiesPanel />,
-  fog: () => <FogPanel />,
-  initiative: () => <InitiativePanel />,
-  preview: () => <PreviewPanel />,
-  table: () => <TablePanel />,
-  dice: () => <DicePanel />,
-  log: () => <LogPanel />,
-  encounter: () => <EncounterPanel />,
-  creature: () => <CreaturePanel />,
-  atlas: () => <SoonPanel text="soon.atlas" />,
-  vault: () => <SoonPanel text="soon.vault" />,
-};
-
-export let dockApi: DockviewApi | null = null;
 
 type Skin = 'dark' | 'light' | 'parchment';
 function initialSkin(): Skin {
@@ -55,6 +33,9 @@ export function App() {
     log('log.opened');
     emit();
     void reopenLastCampaign();
+    removeLegacyLayouts();
+    const flush = () => dock.flush();
+    window.addEventListener('pagehide', flush);
     const keys = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       if ((e.target as HTMLElement).closest('input,textarea,select')) return;
@@ -65,7 +46,11 @@ export function App() {
       else if (k === 'o') { e.preventDefault(); void openCampaignDialog(); }
     };
     window.addEventListener('keydown', keys);
-    return () => window.removeEventListener('keydown', keys);
+    return () => {
+      window.removeEventListener('keydown', keys);
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
   }, []);
   return (
     <div className="app">
@@ -239,61 +224,27 @@ function Ribbon() {
   );
 }
 
-/** Shows a panel: activates it, or brings a closed one back where it belongs by default. */
-export function focusPanel(id: PanelId): void {
-  const api = dockApi;
-  if (!api) return;
-  const p = api.getPanel(id);
-  if (p) {
-    p.api.setActive();
-    return;
-  }
-  const l = WORKSPACES[state.ws].layout;
-  const title = translate(currentLocale(), PANEL_TITLES[id]);
-  const side: 'left' | 'right' | 'below' | null = l.left.includes(id) ? 'left' : l.right.includes(id) ? 'right' : l.bottom.includes(id) ? 'below' : null;
-  const sameSide = side ? (side === 'left' ? l.left : side === 'right' ? l.right : l.bottom).find((x) => x !== id && api.getPanel(x)) : undefined;
-  const center = api.getPanel(l.center);
-  if (sameSide) {
-    api.addPanel({ id, component: id, title, position: { referencePanel: sameSide, direction: side === 'below' ? 'within' : 'below' } });
-  } else if (side && center && id !== l.center) {
-    api.addPanel({ id, component: id, title, position: { referencePanel: center, direction: side }, ...(side === 'below' ? { initialHeight: 200 } : { initialWidth: 300 }) });
-  } else if (id === l.center && api.panels.length > 0) {
-    api.addPanel({ id, component: id, title, position: { referencePanel: api.panels[0], direction: 'right' } });
-  } else {
-    api.addPanel({ id, component: id, title, floating: { width: 340, height: 460 } });
-  }
-}
-
-function currentLocale(): 'en' | 'de' {
-  return document.documentElement.lang === 'de' ? 'de' : 'en';
-}
-
-/** Rebuilds the workspace's default layout (all panels back in place). */
-function resetLayout(): void {
-  try { localStorage.removeItem(`dc.layout.v${LAYOUT_VERSION}.${state.ws}`); } catch { /* ignore */ }
-  layoutResets++;
-  emit();
-}
-let layoutResets = 0;
-
-/** Menu "Fenster": every panel of the workspace with a check mark; closed ones open again. */
+/** Menu "Windows": every panel with its state; a click shows a closed one or closes an open one. */
 function PanelsMenu({ anchor, onClose }: { anchor: DOMRect; onClose: () => void }) {
   const { t } = useI18n();
   const ws = useStore((s) => s.ws);
+  useSyncExternalStore(dock.subscribe, dock.getLayout);
   const l = WORKSPACES[ws].layout;
-  const mine = [l.center, ...l.left, ...l.right, ...l.bottom, ...(l.floating ?? []).map((f) => f.id)];
-  const others = (Object.keys(PANEL_TITLES) as PanelId[]).filter((id) => !mine.includes(id));
-  const open = new Set(dockApi?.panels.map((p) => p.id) ?? []);
+  const mine = [...l.left, ...l.right, ...l.bottom, ...(l.floating ?? []).map((f) => f.id)];
+  const others = (Object.keys(PANEL_TITLES) as PanelId[]).filter((id) => id !== l.center && !mine.includes(id));
   useEffect(() => {
     const close = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest('.menu')) onClose(); };
     const id = setTimeout(() => document.addEventListener('click', close), 0);
     return () => { clearTimeout(id); document.removeEventListener('click', close); };
   }, [onClose]);
-  const item = (id: PanelId) => (
-    <button key={id} className={open.has(id) ? 'on' : ''} onClick={() => { focusPanel(id); onClose(); }}>
-      <Icon name={open.has(id) ? 'eye' : 'eyeoff'} /><span>{t(PANEL_TITLES[id])}</span>
-    </button>
-  );
+  const item = (id: PanelId) => {
+    const open = dock.isVisible(id);
+    return (
+      <button key={id} className={open ? 'on' : ''} aria-pressed={open} onClick={() => { if (open) dock.hide(id); else focusPanel(id); onClose(); }}>
+        <Icon name={open ? 'eye' : 'eyeoff'} /><span>{t(PANEL_TITLES[id])}</span>
+      </button>
+    );
+  };
   return (
     <div className="menu" style={{ left: Math.max(8, anchor.left), top: anchor.bottom + 4 }}>
       <div className="mh">{t('panels.workspace')}</div>
@@ -301,115 +252,21 @@ function PanelsMenu({ anchor, onClose }: { anchor: DOMRect; onClose: () => void 
       <div className="mh">{t('panels.more')}</div>
       {others.map(item)}
       <div className="mh" />
-      <button onClick={() => { resetLayout(); onClose(); }}><Icon name="undo" /><span>{t('panels.reset')}</span></button>
-    </div>
-  );
-}
-
-const collapsedGroups = new Map<string, number>();
-const COLLAPSED_HEIGHT = 30;
-
-/** Header buttons on every panel group: collapse, float ↔ dock, like Fusion's palettes. */
-function HeaderActions(props: IDockviewHeaderActionsProps) {
-  const { t } = useI18n();
-  const floating = props.api.location.type === 'floating';
-  const [collapsed, setCollapsed] = useState(collapsedGroups.has(props.group.id));
-  const toggleCollapse = () => {
-    const prev = collapsedGroups.get(props.group.id);
-    if (prev !== undefined) {
-      collapsedGroups.delete(props.group.id);
-      props.api.setConstraints({ minimumHeight: 100, maximumHeight: Number.MAX_SAFE_INTEGER });
-      props.api.setSize({ height: prev });
-      setCollapsed(false);
-    } else {
-      collapsedGroups.set(props.group.id, Math.max(120, props.group.height));
-      // dockview keeps groups at least 100 px high; a collapsed group is just its tab bar.
-      props.api.setConstraints({ minimumHeight: COLLAPSED_HEIGHT, maximumHeight: COLLAPSED_HEIGHT });
-      props.api.setSize({ height: COLLAPSED_HEIGHT });
-      setCollapsed(true);
-    }
-  };
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', height: '100%', paddingRight: 4 }}>
-      <button className="ab-btn" title={collapsed ? t('panels.expand') : t('panels.collapse')} aria-label={collapsed ? t('panels.expand') : t('panels.collapse')} onClick={toggleCollapse}>
-        <span style={{ display: 'inline-flex', transform: collapsed ? 'rotate(-90deg)' : undefined }}><Icon name="chev" /></span>
-      </button>
-      <button
-        className="ab-btn"
-        title={floating ? t('panels.dock') : t('panels.float')}
-        aria-label={floating ? t('panels.dock') : t('panels.float')}
-        onClick={() => {
-          if (floating) props.api.moveTo({ position: 'right' });
-          else props.containerApi.addFloatingGroup(props.group, { width: 360, height: 300 });
-        }}
-      >
-        <Icon name={floating ? 'map' : 'box'} />
-      </button>
-      {props.panels.some((p) => p.id === 'preview') && (
-        <button className="ab-btn" title={t('tool.moveMonitor')} onClick={() => focusPanel('table')}><Icon name="monmove" /></button>
-      )}
+      <button onClick={() => { dock.resetLayout(); onClose(); }}><Icon name="undo" /><span>{t('panels.reset')}</span></button>
     </div>
   );
 }
 
 function DockArea({ ws }: { ws: keyof typeof WORKSPACES }) {
-  const { t, locale } = useI18n();
-  const key = `dc.layout.v${LAYOUT_VERSION}.${ws}`;
-  useStore(() => layoutResets);
-  const resets = layoutResets;
-
-  const onReady = (e: DockviewReadyEvent) => {
-    dockApi = e.api;
-    let restored = false;
-    try {
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        e.api.fromJSON(JSON.parse(saved));
-        restored = true;
-      }
-    } catch {
-      restored = false;
-    }
-    if (!restored) buildDefault(e.api, ws, (id) => t(PANEL_TITLES[id]));
-    e.api.onDidLayoutChange(() => {
-      try { localStorage.setItem(key, JSON.stringify(e.api.toJSON())); } catch { /* ignore */ }
-    });
-  };
-
-  // Retitle panels when the language changes.
-  useEffect(() => {
-    dockApi?.panels.forEach((p) => p.api.setTitle(t(PANEL_TITLES[p.id as PanelId] ?? 'panel.map')));
-  }, [locale, t]);
-
-  return <DockviewReact key={resets} className="dockview-theme-dc" components={COMPONENTS} onReady={onReady} rightHeaderActionsComponent={HeaderActions} />;
-}
-
-function buildDefault(api: DockviewApi, ws: keyof typeof WORKSPACES, title: (id: PanelId) => string): void {
-  const l = WORKSPACES[ws].layout;
-  api.addPanel({ id: l.center, component: l.center, title: title(l.center) });
-  const side = (ids: PanelId[], direction: 'left' | 'right' | 'below', size: number) => {
-    let first: string | null = null;
-    for (const id of ids) {
-      if (!first) {
-        api.addPanel({
-          id, component: id, title: title(id),
-          position: { referencePanel: l.center, direction },
-          ...(direction === 'below' ? { initialHeight: size } : { initialWidth: size }),
-        });
-        first = id;
-      } else {
-        api.addPanel({ id, component: id, title: title(id), position: { referencePanel: first, direction: direction === 'below' ? 'within' : 'below' } });
-      }
-    }
-  };
-  side(l.bottom, 'below', 200);
-  side(l.left, 'left', 270);
-  side(l.right, 'right', 320);
-  const rect = api.width;
-  for (const f of l.floating ?? []) {
-    api.addPanel({ id: f.id, component: f.id, title: title(f.id), floating: { x: Math.max(20, rect - 320 - f.width - 40), y: 60, width: f.width, height: f.height } });
-  }
-  api.getPanel(l.center)?.api.setActive();
+  const { t } = useI18n();
+  // Before the first render, so the workspace never shows the previous layout.
+  useMemo(() => activateWorkspaceLayout(ws), [ws]);
+  const labels = useMemo(
+    () => ({ collapse: t('panels.collapse'), expand: t('panels.expand'), close: t('panels.close'), collapseZone: t('panels.collapseZone'), expandZone: t('panels.expandZone') }),
+    [t],
+  );
+  const titleOf = useMemo(() => (id: string) => t(PANEL_TITLES[id as PanelId] ?? 'panel.map'), [t]);
+  return <DockHost manager={dock} canvas={PANEL_CONTENT[WORKSPACES[ws].layout.center]()} labels={labels} titleOf={titleOf} />;
 }
 
 function StatusBar() {

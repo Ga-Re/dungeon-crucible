@@ -18,7 +18,8 @@ npm run dist           # installers into release/ (dmg on macOS, nsis + msi on W
 | Path | Content |
 |---|---|
 | `src/core/` | Pure logic with tests: geometry and line of sight, grid and 3-point / physical calibration, fog of war, 2024 rules, dice, sidecar schemas, player projection |
-| `src/app/` | DM state, workspaces, ribbon, docking layout |
+| `src/app/` | DM state, workspaces, ribbon, panel registration (`docking.tsx`) |
+| `src/dock/` | Docking system: layout model, geometry and drop targets (pure, tested), `DockManager` API with per-workspace persistence, `DockHost` view |
 | `src/panels/` | Map view and dockable panels |
 | `src/render/` | DM renderer and the shared player-frame renderer |
 | `src/table/` | Table window (separate entry `table.html`) |

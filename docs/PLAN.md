@@ -178,7 +178,7 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 
 **Phase 1 (Fundament) – umgesetzt in `app/`:**
 - Desktop-App (anfangs Tauri 2, seit Nov. 2026 Electron) mit Monitorliste, Tischfenster randlos im Vollbild auf gewähltem Monitor, Verschieben auf anderen Monitor, Mauszeiger aus, Fokus bleibt beim DM
-- React-Oberfläche: Arbeitsbereich-Umschalter, Ribbon, Docking mit dockview (andocken, abdocken, Layout je Arbeitsbereich gespeichert), Statusleiste, Themes, Englisch/Deutsch
+- React-Oberfläche: Arbeitsbereich-Umschalter, Ribbon, eigenes Docking-System (Zonen links/rechts/unten mit Akkordeon und Splittern, einklappbare Zonen, Layout je Arbeitsbereich gespeichert; Abdocken/Andocken per Drag folgt), Statusleiste, Themes, Englisch/Deutsch
 - Kernlogik mit 29 Tests: Sichtlinien, 3-Punkt- und physische Kalibrierung, Nebel (3 Zustände, gesperrte Geheimräume), 2024-Regeln (Mod, ÜB, RW, EP-Budget, Erschöpfung), Würfel, Sidecar-Schemas, Spieler-Projektion
 - Fail-closed: Whitelist-Frame, Validierung im Tischfenster, Herzschlag (2,5 s), Tisch-Fenster darf nur Frames empfangen (eigenes Preload), Build bricht ab, wenn das Tisch-Bundle DM-Code enthält
 - Kartenansicht mit Auswählen, Verschieben, Messen, Ping, Wände/Türen/Geheimtüren/Fenster, Zonen, Nebelwerkzeuge, Schablonen, Kalibrierung; Initiative mit Zuständen; Würfel; Begegnungs-Budget; Werteblock-Editor

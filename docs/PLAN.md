@@ -12,13 +12,22 @@ mit vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidunge
 | Thema | Entscheidung |
 |---|---|
 | Plattform | Desktop-App für **macOS und Windows** (Electron) |
-| Tisch-Display | Zusätzlicher Monitor am PC der Spielleitung (kein eigener Rechner, kein Netzwerk) |
-| Touch am Tisch | Vorerst nicht geplant; Spieler bedienen nichts, die SL steuert alles |
+| Tisch-Display | Zusätzlicher Monitor am PC der Spielleitung (kein eigener Rechner) |
+| Touch am Tisch | Vorerst nicht geplant; am TV bedient niemand etwas, die SL steuert alles |
+| Begleit-Webseite | Spätere Stufe: Spieler und SL scannen einen QR-Code und öffnen eine synchronisierte Webseite, die der Rechner im WLAN ausliefert (keine App, kein Internet, nur projizierte Daten) |
 | Regelwerk | D&D 5e, Ausgabe 2024 (SRD 5.2) |
-| Themes | Mehrere Themes später; die UI nutzt von Anfang an Theme-Tokens (Demo: Dunkel, Hell, Pergament als Vorschau) |
-| Tisch-Monitor | 55″, 4K (3840×2160) → 80,1 px/Zoll; **1 Feld = 1 Zoll** für echte Miniaturen, Feinabgleich per Lineal-Korrektur |
+| Themes | Dunkel (Standard), Hell, Pergament; alle Farben über Theme-Tokens |
+| Tisch-Monitor | 55″, 4K (3840×2160); Kalibrierung per **Prüfquadrat**, das die SL auf dem TV mit dem Lineal misst; Feldgröße in **Zoll oder cm** (Standard-Einheit in den Einstellungen, 1 Zoll für echte Miniaturen) |
 | Kreaturdaten | Werden von der SL selbst eingegeben (2024-Werteblock); Berechnungen (Mod, RW, ÜB, EP) automatisch |
-| Sprache | Englisch als Standard, Deutsch zusätzlich |
+| Sprache | Folgt der Systemsprache (Deutsch oder Englisch) |
+| Speicherort | Ein **Wurzelordner** (beim ersten Start gewählt, gern in iCloud/Dropbox) mit globaler **Bibliothek** `library/` und `campaigns/`; siehe §5 |
+| Bibliothek | Karten, Assets, Kreaturen und Spielercharaktere global für alle Kampagnen; flach, geordnet über Tags, Typ und Suche; Löschen benutzter Dateien warnt und legt in den Papierkorb |
+| Karte und Szene | Szene verweist auf die Karte und überschreibt einzelne Elemente per ID; Start- und Spielzustand getrennt, „Szene zurücksetzen“; Sessions und Unterszenen; mehrere Szenen als Tabs, der TV wechselt nur auf Befehl |
+| Raster | Nur Quadrat; Einmessen per N×N-Box; Rastermodus je Szene, Kampfschalter, Belegungsregeln wie Dungeon-Manager |
+| Werkzeuge | Zeichnen und Spielen direkt auf der Karte; Befehls-Panels mit OK/Abbrechen für Werkzeuge mit Optionen |
+| Sichtbarkeit | Pro Element: sichtbar, verborgen, ungefähr |
+| Hardware | Licht-Hardware (Home Assistant, Hue, WLED …) und Kamera-Erkennung als spätere Stufen |
+| Abgleich | Mit dem Dungeon-Manager-Repo verglichen; Entscheidungen und Taskliste in [TASKS.md](TASKS.md) |
 | Spieler-Vorschau | Dockbar wie jedes Panel; Knopf „Auf anderen Bildschirm verschieben“ für die Tisch-Ausgabe |
 | Docking | Eigenes System nach Fusion-Vorbild (kein dockview): Zonen links/rechts/unten, Akkordeon, Einklappen mit Hover-Flyout; abgedockte Panels sind echte Fenster, auch auf anderen Monitoren |
 | Signierung | Keine; Installer bleiben unsigniert (Betriebssystem warnt beim ersten Start) |
@@ -51,7 +60,7 @@ mit vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidunge
 - Eigenschaften: Name, Kartendatei, Tags, Biom, Typ, Nebel-Art
 - Import: `.png .jpg .webp` und Videokarten `.mp4 .webm` (Loop, stumm)
 - GPU-Tiling: Bilder über 4096 px werden in Kacheln zerlegt (WebGL-Texturlimit), Mipmaps für Zoom-out
-- Raster: Quadrat und Hex (spitz/flach), Zellgröße in px ↔ ft, **3-Punkt-Kalibrierung** (Ursprung, +1 Feld X, +1 Feld Y → Zellmaß, Rotation, Versatz, Verzerrung)
+- Raster: Quadrat, Zellgröße in px ↔ ft, Einmessen per **N×N-Box** (Box über N×N Felder aufziehen, Raster verschieben, Pfeiltasten-Feinschliff); Hex entfällt
 - Zonen: Räume, Gebiete, Points of Interest, Geheimräume, je Zone Biom-Override und Farbe
 - Hindernisse für 2D-Raycasting: Wände, Türen, Geheimtüren, Objekte (Fels, Baum, Statue als Polygon), Fenster (sichtdurchlässig, nicht passierbar) und Einweg-Wände
 - Assets platzieren (Stempel), Ebenen mit Sichtbarkeit
@@ -112,20 +121,27 @@ mit vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidunge
 - In der Demo: „Renderfehler simulieren“ im Panel *Spieleransicht* zeigt das Verhalten.
 
 ## 5. Datenhaltung
-- Kampagne = Ordner. Jede Ressource ist eine normale Datei (Bild, Video, Audio, Markdown) mit **Sidecar** `name.dm.json` (Metadaten, Raster, Zonen, Wände, Tags, Varianten)
-- **Szenen-Overrides** `*.scene.json`: Nebelzustand, Token-Positionen, Türzustände, aktive Ambience je Session, ohne die Basiskarte zu ändern
-- Notizen als Markdown mit Wiki-Links `[[…]]`, DM-Geheimblöcken `:::dm` und Rückverweisen; WYSIWYG-Editor mit Markdown-Ansicht
-- Versionierung freundlich zu Git/Cloud-Sync, Autosave, Verlauf (Undo/Redo) über alle Arbeitsbereiche
+- **Wurzelordner** mit globaler Bibliothek und Kampagnen. Jede Bibliotheksdatei (Bild, Video, Audio) hat ein **Sidecar** `name.dm.json` daneben (Metadaten, Raster, Ebenen, Bereiche, Wände, Lichter, Tags)
+- **Szenen** `*.scene.json` verweisen auf ihre Karte und speichern Overrides je Element-ID, Startzustand und Spielzustand (Nebel, Tokens, Türen, Lichter an/aus, Ambience)
+- **Sessions** als geordnete Szenenlisten, Unterszenen per Verweis auf die Elternszene
+- Notizen als Markdown (Wiki-Links, Front Matter), bearbeitbar mit jedem Markdown-Editor
+- Dateiregeln wie im Dungeon-Manager: `schemaVersion` mit Migrationen, unbekannte Felder bleiben erhalten, neuere Versionen werden nicht überschrieben, IDs klein geschrieben; Atomic Writes, Autosave
+- Geräte-Einstellungen (Fenster, TV-Kalibrierung, zuletzt benutzte Kampagnen) liegen nicht im Wurzelordner
 
 ```
-Kampagne/
-  campaign.dm.json
-  maps/krypta.webp            maps/krypta.webp.dm.json
-  assets/gasthaus.webp        assets/gasthaus.webp.dm.json
-  creatures/thorin.dm.json
-  audio/hoehlenwind.ogg       audio/hoehlenwind.ogg.dm.json
-  notes/krypta.md
-  sessions/session-03.scene.json
+Dungeon Crucible/                 (Wurzelordner)
+  library/
+    krypta.webp                   krypta.webp.dm.json
+    gasthaus.webp                 gasthaus.webp.dm.json
+    hoehlenwind.ogg               hoehlenwind.ogg.dm.json
+    thorin.dm.json                (Kreatur/Spielercharakter)
+  campaigns/
+    asche-von-vhal/
+      campaign.dm.json            (Spieler und verknüpfte Figuren)
+      scenes/krypta.scene.json
+      sessions/session-03.json
+      notes/krypta.md
+  .trash/
 ```
 
 ## 6. Abgleich mit vergleichbaren Tools
@@ -166,6 +182,8 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 
 ## 8. Roadmap
 
+Die aktuelle Reihenfolge und die Tasks stehen in [TASKS.md](TASKS.md): zuerst das Fundament (Dateiregeln, Wurzelordner und Bibliothek, Karte/Szene mit Overrides und Startzustand), dann die Kartenschmiede.
+
 | Phase | Inhalt |
 |---|---|
 | 0 | Design-Demo abstimmen (dieser Stand) |
@@ -174,7 +192,9 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 | 3 · Atmosphäre | Living Fog (8 Biome), Fog Spread, Lichtquellen, Zauberschablonen, Soundboard |
 | 4 · Planung | Kampagnen-Atlas, Notizen-Editor mit Wiki-Links, Begegnungs-Rechner, Zufallstabellen, Handouts |
 | 5 · Assets | Asset-Vault mit Varianten und Prop-Komposition, Universal-VTT-Import, SRD-Bestiarium |
-| 6 · Feinschliff | Weitere Themes, Tastaturkürzel, Export/Backup, Performance |
+| 6 · Feinschliff | Tastaturkürzel, Export/Backup, Performance |
+| 7 · Am Tisch vernetzt | Begleit-Webseite für Spieler und SL per QR im WLAN |
+| 8 · Hardware | Licht-Hardware und Ambilight, Kamera-Erkennung der Miniaturen |
 
 ## 9. Umsetzungsstand
 
@@ -215,4 +235,4 @@ Basis: bekannte Funktionsumfänge (Stand Wissen 2026). Ziel war, Lücken im eige
 Tests insgesamt: 239 (Vitest), dazu Prüfungen in der laufenden App.
 
 ## 10. Offene Fragen
-Derzeit keine.
+Siehe [TASKS.md §4](TASKS.md).

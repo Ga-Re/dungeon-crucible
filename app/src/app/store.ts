@@ -9,9 +9,9 @@ import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
-import { updateVision, visiblePolygons, type ViewerVision } from '../core/vision';
+import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision } from '../core/vision';
 import { hideAll, hideIn, rectPolygon, rememberSeen, revealAll, revealIn } from '../core/fogModel';
-import { lockedAreas } from '../core/persistence';
+import { lockedAreas, slugify } from '../core/persistence';
 import type { Polygon } from '../core/poly/types';
 import { readFogLook, saveCoverFrom, saveFadeSeconds, saveFogEdge, saveFogMotion, saveFogQuality, saveFogSpeed, saveSoftEdges, type CoverFrom, type FogLook, type FogQuality } from './fog-settings';
 import { lookToWire } from '../render/fogOptions';
@@ -20,6 +20,7 @@ import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
 import type { Creature } from '../core/sidecar';
 import type { MessageKey } from '../i18n/en';
+import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
 import { mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene } from '../core/persistence';
 import type { CampaignInfo } from '../platform/bridge';
@@ -30,7 +31,7 @@ export type ToolId =
   | 'select' | 'pan' | 'measure' | 'ping' | 'calibrate'
   | 'zone' | 'wall' | 'door' | 'secret-door' | 'window'
   | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
-  | 'cone' | 'sphere' | 'line' | 'cube';
+  | 'cone' | 'sphere' | 'line' | 'cube' | 'light';
 
 export interface LogEntry {
   at: number;
@@ -55,11 +56,14 @@ export interface AppState {
   fogMode: 'reveal' | 'hide';
   /** What players see right now (fog polygons from token sight). */
   visible: Polygon[];
+  /** Lights that are on, with the areas they light. */
+  lights: LitSource[];
   /** The last fog change came from token movement (switches quickly, no ragged spread). */
   fogQuick: boolean;
   moveLock: boolean;
   selectedTokenId: string | null;
   selectedZoneId: string | null;
+  selectedLightId: string | null;
   turn: number;
   round: number;
   scene: Scene;
@@ -88,6 +92,7 @@ export interface AppState {
   lastSavedAt: number | null;
   canUndo: boolean;
   canRedo: boolean;
+  soundboard: SoundboardState;
   /** Increments whenever a different scene is loaded (views refit). */
   sceneVersion: number;
 }
@@ -109,10 +114,12 @@ function initial(): AppState {
     dmFogHidden: false,
     fogMode: 'reveal',
     visible: [],
+    lights: [],
     fogQuick: false,
     moveLock: false,
     selectedTokenId: null,
     selectedZoneId: null,
+    selectedLightId: null,
     turn: 0,
     round: 1,
     scene,
@@ -141,9 +148,11 @@ function initial(): AppState {
     canUndo: false,
     canRedo: false,
     sceneVersion: 0,
+    soundboard: initialSoundboard(),
   };
   s.vision = updateVision(scene);
   s.visible = visiblePolygons(s.vision);
+  s.lights = litSources(scene);
   scene.fog = rememberSeen(scene.fog, s.visible);
   return s;
 }
@@ -316,6 +325,7 @@ let lastRemember = 0;
 export function recomputeVision(final = true): void {
   state.vision = updateVision(state.scene);
   state.visible = visiblePolygons(state.vision);
+  state.lights = litSources(state.scene);
   const now = Date.now();
   if (final || now - lastRemember > 150) {
     state.scene.fog = rememberSeen(state.scene.fog, state.visible);
@@ -551,6 +561,124 @@ export function selectToken(id: string | null): void {
   emit();
 }
 
+/* ---------- Lights ---------- */
+
+let lightSeq = 0;
+export function addLight(p: Point): void {
+  checkpoint();
+  const id = `light-${Date.now().toString(36)}-${++lightSeq}`;
+  // A torch by default (2024: bright 20 ft, dim 20 ft further).
+  state.scene.lights.push({ id, x: p.x, y: p.y, brightFt: 20, dimFt: 40, color: '#ffb14a', on: true });
+  state.selectedLightId = id;
+  recomputeVision();
+  emit();
+}
+
+export function lightAt(p: Point): string | null {
+  const r = state.scene.map.grid.cellWidth * 0.45;
+  return state.scene.lights.find((l) => Math.hypot(l.x - p.x, l.y - p.y) < r)?.id ?? null;
+}
+
+export function toggleLight(id: string): void {
+  const l = state.scene.lights.find((x) => x.id === id);
+  if (!l) return;
+  checkpoint();
+  l.on = !l.on;
+  log(l.on ? 'log.lightOn' : 'log.lightOff');
+  recomputeVision();
+  emit();
+}
+
+export function updateLight(id: string, patch: Partial<Omit<Scene['lights'][number], 'id'>>): void {
+  const l = state.scene.lights.find((x) => x.id === id);
+  if (!l) return;
+  Object.assign(l, patch);
+  markDirty();
+  recomputeVision();
+  emit();
+}
+
+export function removeLight(id: string): void {
+  checkpoint();
+  state.scene.lights = state.scene.lights.filter((l) => l.id !== id);
+  if (state.selectedLightId === id) state.selectedLightId = null;
+  recomputeVision();
+  emit();
+}
+
+export function selectLight(id: string | null): void {
+  state.selectedLightId = id;
+  emit();
+}
+
+export function setAmbient(a: Scene['ambient']): void {
+  checkpoint();
+  state.scene.ambient = a;
+  recomputeVision();
+  emit();
+}
+
+/* ---------- Tokens from creatures ---------- */
+
+const SIZE_CELLS: Record<string, number> = { tiny: 1, small: 1, medium: 1, large: 2, huge: 3, gargantuan: 4 };
+
+function initialsOf(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? '?') + (parts[1]?.[0] ?? parts[0]?.[1] ?? '')).toUpperCase();
+}
+
+/** Puts a creature from the library on the map; initiative is rolled (d20 + Dex). */
+export function addCreatureToken(index: number, at?: Point): void {
+  const c = state.creatures[index];
+  if (!c) return;
+  checkpoint();
+  const creatureId = slugify(c.name);
+  const same = state.scene.tokens.filter((t) => t.creatureId === creatureId).length;
+  const base = initialsOf(c.name);
+  const label = c.role === 'pc' || same === 0 ? base : `${base.slice(0, 1)}${same + 1}`;
+  const m = state.scene.map;
+  const p = snapPoint(at ?? { x: state.scene.table.centerX || m.widthPx / 2, y: state.scene.table.centerY || m.heightPx / 2 });
+  const dex = Math.floor((c.abilities.dex - 10) / 2);
+  const id = `${creatureId}-${Date.now().toString(36)}`;
+  state.scene.tokens.push({
+    id,
+    name: same > 0 && c.role !== 'pc' ? `${c.name} ${same + 1}` : c.name,
+    label: label.slice(0, 4),
+    kind: c.role === 'pc' ? 'pc' : c.role === 'npc' ? 'npc' : 'monster',
+    x: p.x,
+    y: p.y,
+    size: SIZE_CELLS[c.size] ?? 1,
+    ringColor: c.token.ringColor,
+    visionFt: c.senses.darkvision,
+    lightFt: c.token.lightFt || undefined,
+    hp: c.hp,
+    maxHp: c.hp,
+    ac: c.ac,
+    initiative: 1 + Math.floor(Math.random() * 20) + dex,
+    conditions: [],
+    creatureId,
+  });
+  state.selectedTokenId = id;
+  log('log.tokenAdded', { name: c.name });
+  recomputeVision();
+  emit();
+}
+
+export function removeToken(id: string): void {
+  const t = state.scene.tokens.find((x) => x.id === id);
+  if (!t) return;
+  checkpoint();
+  const order = initiativeOrder();
+  const idx = order.findIndex((x) => x.id === id);
+  state.scene.tokens = state.scene.tokens.filter((x) => x.id !== id);
+  if (idx >= 0 && idx < state.turn) state.turn--;
+  if (state.turn >= state.scene.tokens.length) state.turn = 0;
+  if (state.selectedTokenId === id) state.selectedTokenId = null;
+  log('log.tokenRemoved', { name: t.name });
+  recomputeVision();
+  emit();
+}
+
 export function selectZone(id: string | null): void {
   state.selectedZoneId = id;
   emit();
@@ -615,6 +743,7 @@ export function produceFrame(now: number): PlayerFrame {
     quick: state.fogQuick,
     activeTokenId: state.ws === 'play' ? initiativeOrder()[state.turn]?.id ?? null : null,
     seedKey: state.mapResource,
+    lights: state.lights,
   });
   return state.frame;
 }

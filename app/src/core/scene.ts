@@ -39,8 +39,10 @@ export interface Token {
   /** Size in cells (Medium = 1, Large = 2 …). */
   size: number;
   ringColor: string;
-  /** Sight range in feet (darkvision or light). 0 = cannot see in darkness. */
+  /** Darkvision in feet. 0 = cannot see in darkness without light. */
   visionFt: number;
+  /** Light the token carries: bright radius in feet (dim light reaches twice as far). 0 = none. */
+  lightFt?: number;
   hp: number;
   maxHp: number;
   ac: number;
@@ -51,6 +53,20 @@ export interface Token {
   hidden?: boolean;
   creatureId?: string;
 }
+
+/** A placed light source (brazier, lantern, magical light). Dim light reaches `dimFt`. */
+export interface LightSource {
+  id: string;
+  x: number;
+  y: number;
+  brightFt: number;
+  dimFt: number;
+  color: string;
+  on: boolean;
+}
+
+/** Ambient light of a map: dark (dungeon, night) or lit (daylight, well-lit hall). */
+export type AmbientLight = 'dark' | 'lit';
 
 export type TemplateShape = 'cone' | 'sphere' | 'line' | 'cube';
 
@@ -117,6 +133,8 @@ export interface Scene {
   tokens: Token[];
   templates: AreaTemplate[];
   pings: Ping[];
+  lights: LightSource[];
+  ambient: AmbientLight;
   /** Polygon fog in map pixels (Dungeon-Manager's model): revealed and remembered. */
   fog: LevelFog;
   /** Live change of biome/strength in this scene; `null` uses the map's setting. */

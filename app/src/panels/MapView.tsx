@@ -15,13 +15,17 @@ import { useI18n } from '../i18n/i18n';
 import type { MessageKey } from '../i18n/en';
 import { drawDmOverlay, type OverlayState } from '../render/dmOverlay';
 import { fogOptions } from '../render/fogOptions';
+import { DARKNESS } from '../core/projection';
 import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
 import { TableView, type FrameSource } from '../table/TableView';
 import {
   addCalibrationPoint, addPing, addTemplate, addWall, addZone, applyFogArea, checkpoint, getVersion, initiativeOrder, log, moveToken,
-  revealZone, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, useStore, zoneAt,
+  addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
 } from '../app/store';
+
+/** Drag-and-drop type for creatures dragged from the browser onto the map. */
+export const CREATURE_DRAG = 'application/x-dc-creature';
 
 /** Commands other UI parts can trigger on the active map view. */
 export const mapCommands: { fit: () => void } = { fit: () => undefined };
@@ -30,7 +34,7 @@ const HINTS: Partial<Record<string, MessageKey>> = {
   select: 'hint.select', pan: 'hint.pan', measure: 'hint.measure', ping: 'hint.ping', calibrate: 'hint.calibrate',
   zone: 'hint.zone', wall: 'hint.wall', door: 'hint.door', 'secret-door': 'hint.secretDoor', window: 'hint.window',
   'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
-  'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom',
+  'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom', light: 'hint.light',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
 };
 
@@ -106,6 +110,12 @@ function DmMap() {
           color: k.ringColor, selected: k.id === state.selectedTokenId, hidden: k.hidden, active: k.id === active,
         })),
       );
+      // The DM sees all light, unclipped (the TV gets only what players see, see projection.ts).
+      r.setLighting(
+        sc.ambient === 'lit'
+          ? null
+          : { darkness: DARKNESS, lit: state.lights.flatMap((l) => l.area), glows: state.lights.map((l) => ({ x: l.x, y: l.y, brightPx: l.brightPx, dimPx: l.dimPx, color: l.color, area: l.area })), softEdge: cell * 0.35 },
+      );
       const editMode = state.ws === 'forge';
       if (editMode || state.dmFogHidden) {
         r.setMemory(null);
@@ -167,6 +177,7 @@ function DmMap() {
         polygonDraft.current = [];
       }
       if (e.key === 'Enter') finishPolygon();
+      if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedTokenId) removeToken(state.selectedTokenId);
       // "Nebel ausblenden" (N): DM window only; the TV never changes.
       if (e.key.toLowerCase() === 'n' && !e.ctrlKey && !e.metaKey) toggleDmFog();
     };
@@ -192,6 +203,7 @@ function DmMap() {
       editMode: state.ws === 'forge',
       selectedTokenId: state.selectedTokenId,
       selectedZoneId: state.selectedZoneId,
+      selectedLightId: state.selectedLightId,
       measure: d?.kind === 'measure' ? { a: d.a, b: d.b, ft: gridDistanceFeet(state.scene.map.grid, d.a, d.b) } : null,
       dragRect: d?.kind === 'rect' ? { a: d.a, b: d.b } : null,
       wallPreview: state.wallStart ? { a: state.wallStart, b: snapCorner(mouse.current) } : null,
@@ -236,6 +248,12 @@ function DmMap() {
           drag.current = { kind: 'token', id: tk.id, ox: tk.x - p.x, oy: tk.y - p.y, start: { x: tk.x, y: tk.y }, moved: false };
           return;
         }
+        const light = lightAt(p);
+        if (light) {
+          if (state.ws === 'play') toggleLight(light);
+          else selectLight(light);
+          return;
+        }
         if (state.ws === 'play') {
           const door = state.scene.walls.find((w) => (w.kind === 'door' || w.kind === 'secret-door') && Math.hypot((w.x1 + w.x2) / 2 - p.x, (w.y1 + w.y2) / 2 - p.y) < cell * 0.45);
           if (door && (door.kind === 'door' || door.open)) {
@@ -244,9 +262,13 @@ function DmMap() {
           }
         }
         selectToken(null);
+        selectLight(null);
         selectZone(zoneAt(p));
         return;
       }
+      case 'light':
+        addLight(snapPoint(p));
+        return;
       case 'measure':
         drag.current = { kind: 'measure', a: snapPoint(p), b: p };
         return;
@@ -361,6 +383,18 @@ function DmMap() {
         onPointerUp={onPointerUp}
         onDoubleClick={() => state.tool === 'fog-polygon' && finishPolygon()}
         onWheel={onWheel}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes(CREATURE_DRAG)) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+          }
+        }}
+        onDrop={(e) => {
+          const idx = e.dataTransfer.getData(CREATURE_DRAG);
+          if (idx === '') return;
+          e.preventDefault();
+          addCreatureToken(Number(idx), toWorld(e));
+        }}
         onContextMenu={(e) => e.preventDefault()}
         aria-label={t('panel.map')}
       />

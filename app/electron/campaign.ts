@@ -8,6 +8,7 @@ import type { CampaignInfo, ImportedFile } from '../src/platform/desktop-api';
 import { isInside, listFilesIn, safeJoin, toRel, uniquePath, writeAtomic } from './files';
 
 const MAP_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'webm'];
+const AUDIO_EXTENSIONS = ['mp3', 'ogg', 'oga', 'opus', 'wav', 'm4a', 'aac', 'flac'];
 
 export class Campaign {
   private root: string | null = null;
@@ -49,19 +50,29 @@ export class Campaign {
   }
 
   /** Picks an image or video map and copies it into `maps/`. */
-  async importMap(win: BrowserWindow): Promise<ImportedFile | null> {
+  /** Picks an image or video map and copies it into `maps/`. */
+  importMap(win: BrowserWindow): Promise<ImportedFile | null> {
+    return this.importInto(win, 'Maps', MAP_EXTENSIONS, 'maps');
+  }
+
+  /** Picks an audio file and copies it into `audio/` (ambience) or `audio/sfx/` (sound effects). */
+  importAudio(win: BrowserWindow, sfx: boolean): Promise<ImportedFile | null> {
+    return this.importInto(win, 'Audio', AUDIO_EXTENSIONS, sfx ? 'audio/sfx' : 'audio');
+  }
+
+  private async importInto(win: BrowserWindow, filter: string, extensions: string[], folder: string): Promise<ImportedFile | null> {
     const root = this.requireRoot();
-    const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'Maps', extensions: MAP_EXTENSIONS }] });
+    const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: filter, extensions }] });
     const src = r.filePaths[0];
     if (r.canceled || !src) return null;
-    const maps = path.join(root, 'maps');
-    await fs.promises.mkdir(maps, { recursive: true });
+    const dir = safeJoin(root, folder);
+    await fs.promises.mkdir(dir, { recursive: true });
     const realSrc = await fs.promises.realpath(src);
     let dest: string;
-    if (path.dirname(realSrc) === maps) {
-      dest = realSrc; // already in maps/
+    if (path.dirname(realSrc) === (await fs.promises.realpath(dir))) {
+      dest = realSrc; // already there
     } else {
-      dest = uniquePath(maps, path.basename(src));
+      dest = uniquePath(dir, path.basename(src));
       await fs.promises.copyFile(src, dest);
     }
     return { relPath: toRel(root, dest), absPath: dest };

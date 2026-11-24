@@ -9,7 +9,7 @@ import { translate, type Locale } from '../i18n/i18n';
 import { onMonitorsChanged, screenSetup, screenSetupSync } from '../platform/bridge';
 import { MapView } from '../panels/MapView';
 import {
-  BrowserPanel, CreaturePanel, DicePanel, EncounterPanel, FogPanel, InitiativePanel, LogPanel, PreviewPanel, PropertiesPanel, SoonPanel, TablePanel,
+  BrowserPanel, CreaturePanel, DicePanel, EncounterPanel, FogPanel, InitiativePanel, LogPanel, PreviewPanel, PropertiesPanel, SoonPanel, SoundPanel, TablePanel,
 } from '../panels/panels';
 import type { WorkspaceId } from './store';
 import { PANEL_TITLES, WORKSPACES, type PanelId } from './workspaces';
@@ -28,6 +28,7 @@ export const PANEL_CONTENT: Record<PanelId, () => ReactNode> = {
   creature: () => <CreaturePanel />,
   atlas: () => <SoonPanel text="soon.atlas" />,
   vault: () => <SoonPanel text="soon.vault" />,
+  sound: () => <SoundPanel />,
 };
 
 function storage(): Storage | null {

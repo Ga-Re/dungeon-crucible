@@ -11,6 +11,8 @@ import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, 
 import {
   clearTemplates, emit, fogAll, log, nextTurn, redo, removeLastUserWall, rotateTable, setFogMode, setGridType, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
+import { stopAll } from './soundboard';
+import { setMasterVolume, unlockAudioOnGesture } from './audio';
 import { importMapIntoCampaign, openCampaignDialog, reopenLastCampaign, saveCampaign, startAutosave } from './campaign';
 import { openTable, refreshMonitors, startFrameLoop } from './tableOutput';
 import { importMapFile } from './importMap';
@@ -30,6 +32,8 @@ export function App() {
   useEffect(() => {
     startFrameLoop();
     startAutosave();
+    unlockAudioOnGesture();
+    setMasterVolume(state.soundboard.master);
     void refreshMonitors();
     log('log.opened');
     emit();
@@ -86,7 +90,9 @@ function AppBar() {
   return (
     <header className="appbar">
       <div className="brand"><span className="mark"><Icon name="anvil" /></span>{t('app.name')}</div>
-      <button className="ab-btn" title={`${t('campaign.open')} (Ctrl+O)`} onClick={() => void openCampaignDialog()}><Icon name="folder" /></button>
+      <button className={`ab-btn ${campaign ? '' : 'cta'}`} title={`${t('campaign.open')} (Ctrl/⌘+O)`} onClick={() => void openCampaignDialog()}>
+        <Icon name="folder" />{!campaign && <span>{t('campaign.openShort')}</span>}
+      </button>
       <button className="ab-btn" title={`${t('app.save')} (Ctrl+S)`} disabled={!campaign} onClick={() => void saveCampaign(true)}><Icon name="save" /></button>
       <button className="ab-btn" title={`${t('app.undo')} (Ctrl+Z)`} disabled={!canUndo} onClick={undo}><Icon name="undo" /></button>
       <button className="ab-btn" title={`${t('app.redo')} (Ctrl+Shift+Z)`} disabled={!canRedo} onClick={redo}><Icon name="redo" /></button>
@@ -159,6 +165,8 @@ function Ribbon() {
       case 'fogmode:reveal': return setFogMode('reveal');
       case 'fogmode:hide': return setFogMode('hide');
       case 'panel:fog': return focusPanel('fog');
+      case 'panel:sound': return focusPanel('sound');
+      case 'audio:stop': return stopAll();
       case 'fog:revealAll': return fogAll(true);
       case 'walls:undo': return removeLastUserWall();
       case 'turn:next': return nextTurn();

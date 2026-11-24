@@ -100,6 +100,7 @@ export const writeText = (rel: string, content: string) => dc().writeText(rel, c
 export const listFiles = (dir: string) => dc().listFiles(dir);
 export const absolutePath = (rel: string) => dc().absolutePath(rel);
 export const importMapFileNative = () => dc().importMapFile();
+export const importAudioFileNative = (sfx: boolean) => dc().importAudioFile(sfx);
 
 /** URL the pages (DM and table) can load a campaign file from. */
 export async function assetUrl(absPath: string): Promise<string> {

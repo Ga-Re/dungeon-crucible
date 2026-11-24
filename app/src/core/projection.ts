@@ -9,9 +9,14 @@ import { z } from 'zod';
 import { clearArea, openArea } from './fogModel';
 import { polygonSchema, type Polygon } from './poly/types';
 import type { Scene } from './scene';
-import { tokensVisibleToPlayers } from './vision';
+import { tokensVisibleToPlayers, type LitSource } from './vision';
+import { intersection } from 'polyclip-ts';
+import { asGeom, fromClip } from './poly/polygon-clip';
 
-export const FRAME_VERSION = 2;
+export const FRAME_VERSION = 3;
+
+/** How dark unlit areas look on a dark map (darkvision sees them, dimmed). */
+export const DARKNESS = 0.45;
 /** The table blacks out when no valid frame or heartbeat arrived for this long. */
 export const MAX_FRAME_AGE_MS = 2500;
 
@@ -70,6 +75,12 @@ export const PlayerFrameSchema = z.object({
     /** A change from token movement switches quickly instead of spreading. */
     quick: z.boolean(),
   }),
+  /** Light and darkness, already limited to what players see now (no hints from hidden lights). */
+  lighting: z.object({
+    darkness: z.number().min(0).max(1),
+    lit: z.array(polygonSchema),
+    glows: z.array(z.object({ x: z.number(), y: z.number(), brightPx: z.number().min(0), dimPx: z.number().min(0), color: z.string(), area: z.array(polygonSchema) })),
+  }),
   tokens: z.array(
     z.object({
       id: z.string(),
@@ -106,6 +117,16 @@ export interface ProjectionOptions {
   quick: boolean;
   activeTokenId: string | null;
   seedKey: string;
+  /** Lights that are on (from `litSources`). */
+  lights: readonly LitSource[];
+}
+
+/** Light for the players: only inside what they see now, so a light in remembered or hidden areas gives nothing away. */
+export function playerLighting(scene: Scene, lights: readonly LitSource[], clear: readonly Polygon[]): PlayerFrame['lighting'] {
+  if (scene.ambient === 'lit') return { darkness: 0, lit: [], glows: [] };
+  const clip = (ps: readonly Polygon[]) => (ps.length && clear.length ? fromClip(intersection(asGeom(ps), asGeom(clear))) : []);
+  const glows = lights.map((l) => ({ x: l.x, y: l.y, brightPx: l.brightPx, dimPx: l.dimPx, color: l.color, area: clip(l.area) })).filter((g) => g.area.length > 0);
+  return { darkness: DARKNESS, lit: glows.flatMap((g) => g.area), glows };
 }
 
 export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFrame {
@@ -151,6 +172,7 @@ export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFram
       locked: o.movementLocked && t.kind === 'pc',
       active: t.id === o.activeTokenId,
     })),
+    lighting: playerLighting(scene, o.lights, clearArea(scene.fog, o.visible)),
     templates: scene.templates.map((t) => ({ shape: t.shape, x: t.x, y: t.y, angle: t.angle, sizeFt: t.sizeFt, color: t.color })),
     pings: scene.pings.map((p) => ({ x: p.x, y: p.y, age: Math.max(0, o.now - p.at) })),
   };

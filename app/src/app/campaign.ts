@@ -18,6 +18,7 @@ import {
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
 import { emit, log, onDirty, replaceScene, state } from './store';
+import { applySceneAmbience, refreshAudioFiles, sceneAmbience } from './soundboard';
 
 const LAST_KEY = 'dc.lastCampaign';
 const AUTOSAVE_MS = 1500;
@@ -99,6 +100,7 @@ async function loadCampaign(info: CampaignInfo): Promise<void> {
   if (manifest.activeScene) await loadScene(manifest.activeScene, tableFromManifest(manifest));
   await refreshSceneList();
   state.dirty = false;
+  await refreshAudioFiles();
   log('log.campaignOpened', { name: manifest.name });
   emit();
 }
@@ -118,6 +120,7 @@ export async function loadScene(scenePath: string, table: Partial<Scene['table']
   const scene = sceneFromDocuments(map, ov, url, table);
   scene.table = { ...state.scene.table, ...table, centerX: scene.table.centerX, centerY: scene.table.centerY, blackout: state.scene.table.blackout };
   replaceScene(scene, { resource: map.resource, fileName: map.resource, scenePath, sceneName: ov.name, round: ov.combat.round, turn: ov.combat.turn });
+  void applySceneAmbience(ov.ambience);
 }
 
 export async function switchScene(scenePath: string): Promise<void> {
@@ -153,7 +156,7 @@ export async function saveCampaign(force = false): Promise<void> {
     const s = state.scene;
     const sidecar = mapSidecarPath(state.mapResource);
     await writeText(sidecar, JSON.stringify(mapSidecarFromScene(s, state.mapResource), null, 2));
-    await writeText(state.scenePath, JSON.stringify(sceneOverrideFromScene(s, state.sceneName, sidecar, { round: state.round, turn: state.turn }), null, 2));
+    await writeText(state.scenePath, JSON.stringify({ ...sceneOverrideFromScene(s, state.sceneName, sidecar, { round: state.round, turn: state.turn }), ambience: sceneAmbience() }, null, 2));
     for (const c of state.creatures) await writeText(creaturePath(c), JSON.stringify(c, null, 2));
     await writeText(CAMPAIGN_FILE, JSON.stringify(manifestFromState(state.campaign.name, state.scenePath, s.table), null, 2));
     state.dirty = false;
@@ -191,7 +194,7 @@ export async function importMapIntoCampaign(): Promise<boolean> {
   const name = f.relPath.split('/').pop()!.replace(/\.[^.]+$/, '');
   const map: MapSidecar = {
     kind: 'map', schemaVersion: 1, name, resource: f.relPath, isVideo, widthPx: w, heightPx: h,
-    tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, walls: [], zones: [], pois: [], assets: [],
+    tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark',
   };
   await saveCampaign();
   const scene = sceneFromDocuments(map, null, url, state.scene.table);

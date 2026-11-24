@@ -146,6 +146,7 @@ function registerIpc(): void {
   handle('campaign:list', (_w, dir: string) => campaign.listFiles(dir));
   handle('campaign:absolute', (_w, rel: string) => campaign.absolutePath(rel));
   handle('campaign:importMap', (w) => campaign.importMap(w));
+  handle('campaign:importAudio', (w, sfx: boolean) => campaign.importAudio(w, sfx === true));
 
   const displaysChanged = () => toMain('displays:changed');
   screen.on('display-added', displaysChanged);

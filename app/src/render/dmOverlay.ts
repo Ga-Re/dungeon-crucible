@@ -18,6 +18,7 @@ export interface OverlayState {
   editMode: boolean;
   selectedTokenId: string | null;
   selectedZoneId: string | null;
+  selectedLightId: string | null;
   measure: { a: Point; b: Point; ft: number } | null;
   dragRect: { a: Point; b: Point } | null;
   wallPreview: { a: Point; b: Point } | null;
@@ -81,6 +82,46 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     g.moveTo(w.x1, w.y1);
     g.lineTo(w.x2, w.y2);
     g.stroke();
+    g.restore();
+  }
+
+  // Light sources: an icon, and their bright/dim radii in the forge or when selected.
+  for (const l of scene.lights) {
+    const sel = l.id === o.selectedLightId;
+    if (o.editMode || sel) {
+      const ftPx = cell / scene.map.grid.feetPerCell;
+      g.save();
+      g.strokeStyle = hexToRgba(l.color, l.on ? 0.7 : 0.3);
+      g.lineWidth = (sel ? 2 : 1) * px;
+      g.setLineDash([6 * px, 5 * px]);
+      g.beginPath();
+      g.arc(l.x, l.y, l.brightFt * ftPx, 0, Math.PI * 2);
+      g.stroke();
+      g.beginPath();
+      g.arc(l.x, l.y, l.dimFt * ftPx, 0, Math.PI * 2);
+      g.stroke();
+      g.restore();
+    }
+    const r = Math.max(8 * px, cell * 0.18);
+    g.save();
+    g.fillStyle = l.on ? l.color : '#555a60';
+    g.strokeStyle = sel ? '#3f9de2' : 'rgba(0,0,0,.7)';
+    g.lineWidth = (sel ? 3 : 2) * px;
+    g.beginPath();
+    g.arc(l.x, l.y, r, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    if (l.on) {
+      g.strokeStyle = l.color;
+      g.lineWidth = 2 * px;
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4;
+        g.beginPath();
+        g.moveTo(l.x + Math.cos(a) * r * 1.4, l.y + Math.sin(a) * r * 1.4);
+        g.lineTo(l.x + Math.cos(a) * r * 2, l.y + Math.sin(a) * r * 2);
+        g.stroke();
+      }
+    }
     g.restore();
   }
 

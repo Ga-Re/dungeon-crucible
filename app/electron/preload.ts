@@ -32,6 +32,7 @@ const api: DcApi = {
   listFiles: (dir) => ipcRenderer.invoke('campaign:list', dir),
   absolutePath: (rel) => ipcRenderer.invoke('campaign:absolute', rel),
   importMapFile: () => ipcRenderer.invoke('campaign:importMap'),
+  importAudioFile: (sfx) => ipcRenderer.invoke('campaign:importAudio', sfx),
   setFloatBounds: (name, bounds) => ipcRenderer.send('float:bounds', name, bounds),
   onFloatMoved: (cb) => {
     const listener = (_e: unknown, name: string, bounds: FloatBounds) => cb(name, bounds);

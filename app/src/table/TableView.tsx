@@ -73,6 +73,7 @@ export function TableView({ source }: { source: FrameSource }) {
         void map?.set(f.map.imageUrl, f.map.isVideo);
         r.setGrid(f.map.showGrid && f.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: f.map.grid.originX, offsetYPx: f.map.grid.originY, color: '#000000', alpha: 0.35 } : null);
         r.setTokens(f.tokens.map((t): TokenShape => ({ id: t.id, name: t.label, x: t.x - (t.size * cell) / 2, y: t.y - (t.size * cell) / 2, width: t.size * cell, height: t.size * cell, color: t.ringColor, active: t.active })), { glide: 120 });
+        r.setLighting(f.lighting.darkness > 0 || f.lighting.glows.length ? { ...f.lighting, softEdge: cell * 0.35 } : null);
         const look = lookFromWire(f.fog.look);
         r.setMemory(f.fog.clear, { opacity: f.fog.memoryOpacity, softEdge: look.softEdges ? cell * 0.25 : 0 });
         r.setFog(f.fog.open, fogOptions({ look, cellSizePx: cell, seedKey: f.map.seedKey, effect: f.fog.effect, opacity: 1, quick: f.fog.quick }));

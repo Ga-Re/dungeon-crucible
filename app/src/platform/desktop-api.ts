@@ -81,6 +81,8 @@ export interface DcApi {
   listFiles(dir: string): Promise<string[]>;
   absolutePath(rel: string): Promise<string>;
   importMapFile(): Promise<ImportedFile | null>;
+  /** Picks an audio file and copies it into `audio/` or (sfx) `audio/sfx/`. */
+  importAudioFile(sfx: boolean): Promise<ImportedFile | null>;
 
   /**
    * Floating panel windows (opened by the page with `window.open('about:blank', 'dc-float:…')`).

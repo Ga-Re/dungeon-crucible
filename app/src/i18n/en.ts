@@ -293,6 +293,7 @@ export const en = {
   'panels.collapseZone': 'Collapse side',
   'panels.expandZone': 'Expand side',
   'panels.pin': 'Dock the side again',
+  'panels.resize': 'Resize',
   'soon.title': 'Coming in a later phase',
   'soon.atlas': 'The campaign atlas (acts, sessions, quests, timeline) follows in phase 4. The design demo shows the planned layout.',
   'soon.vault': 'The asset vault with variants and prop composition follows in phase 5.',

@@ -89,4 +89,17 @@ describe('drag', () => {
     expect(resizeRect(r, 'w', 500, 0)).toEqual({ x: 240, y: 100, width: 160, height: 200 });
     expect(resizeRect(r, 'n', 0, 500)).toEqual({ x: 100, y: 180, width: 300, height: 120 });
   });
+
+  it('dragging the last panel out of a collapsed zone removes its bar; the canvas grows', () => {
+    let l = layout();
+    l = { ...l, zones: { ...l.zones, right: { ...l.zones.right, collapsed: true } } };
+    const before = computeGeometry(l, AREA);
+    expect(before.zones.right.state).toBe('collapsed');
+    const s = beginDrag(l, 'c', { width: 300, height: 600, expanded: true }, { x: 10, y: 10 });
+    const g = computeGeometry(s.base, AREA);
+    expect(s.base.zones.right).toMatchObject({ collapsed: false, groups: [] });
+    expect(g.zones.right.bar).toBeNull();
+    expect(g.canvas.width).toBe(before.canvas.width + 24);
+  });
 });
+

@@ -183,3 +183,9 @@
 .dock-flyout-grip.ns { left: 0; right: 0; height: var(--dock-grip); top: calc(var(--dock-grip) / -2); cursor: ns-resize; }
 .dock-flyout-grip:hover { background: linear-gradient(var(--dock-accent), var(--dock-accent)) center / 2px 100% no-repeat; }
 .dock-flyout-grip.ns:hover { background-size: 100% 2px; }
+
+/* Keyboard focus */
+.dock-splitter:focus { outline: none; }
+.dock-splitter:focus-visible::after { background: var(--dock-accent); }
+.dock-flyout:focus { outline: none; }
+.dock-flyout:focus-visible { outline: 2px solid var(--dock-accent); outline-offset: -2px; }

@@ -110,6 +110,7 @@ export function Flyout({ edge, id, rect, title, pinLabel, canPin, leaving, contr
       style={px(rect)}
       aria-label={title}
       ref={ref}
+      tabIndex={-1}
     >
       <div className="dock-title" style={{ left: 0, top: 0, right: 0, height: DOCK.title }} onPointerDown={onPress}>
         <span className="dock-title-text">{title}</span>

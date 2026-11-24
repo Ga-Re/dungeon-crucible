@@ -4,7 +4,7 @@
  * visible slots after each render, so they keep their state. Floating panels get native
  * windows when a `floating` backend is given (desktop app), otherwise they are overlays.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { beginDrag, dropLayout, passedThreshold, previewLayout, type DragSession } from './drag';
 import { computeDropTarget, computeGeometry, flyoutRect, stacksVertically, type DockGeometry, type DropResult, type PanelGeom, type Point, type Rect, type SplitterGeom } from './geometry';
@@ -25,6 +25,8 @@ export interface DockLabels {
   expandZone: string;
   /** Pin button of a flyout: docks the zone again. */
   pin: string;
+  /** Splitters (screen readers). */
+  resize: string;
 }
 
 export interface DockHostProps {
@@ -151,6 +153,14 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
   }, [fly]);
   const flyShown = flyValid ? fly : leaving && inBar(geom, leaving) ? leaving : null;
 
+  // A tab activated from the keyboard (Enter/Space) moves the focus into its flyout.
+  const focusFlyout = useRef(false);
+  useEffect(() => {
+    if (!fly || !focusFlyout.current) return;
+    focusFlyout.current = false;
+    document.getElementById(flyoutDomId(fly.id))?.focus();
+  }, [fly]);
+
   // Esc and any press outside the bars and the flyout close it at once.
   useEffect(() => {
     if (!fly) return;
@@ -158,7 +168,11 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
       if (!(e.target instanceof Element && e.target.closest('.dock-bar, .dock-flyout'))) flyout.close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !dragRef.current) flyout.close();
+      if (e.key !== 'Escape' || dragRef.current) return;
+      // Keyboard users go back to the tab they came from.
+      const back = document.activeElement?.closest('.dock-flyout') ? fly.id : null;
+      flyout.close();
+      if (back) document.querySelector<HTMLElement>(`.dock-tab[data-panel="${CSS.escape(back)}"]`)?.focus();
     };
     document.addEventListener('pointerdown', onDown, true);
     window.addEventListener('keydown', onKey);
@@ -353,7 +367,9 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
                     aria-controls={open ? flyoutDomId(tab.id) : undefined}
                     onPointerEnter={() => flyout.enterTab(edge, tab.id)}
                     onPointerLeave={() => flyout.leaveTab()}
-                    onFocus={() => {
+                    onFocus={(e) => {
+                      // Keyboard focus acts like hovering; focus from a mouse click does not hold it open.
+                      if (!e.currentTarget.matches(':focus-visible')) return;
                       flyout.hold('tab', true);
                       flyout.enterTab(edge, tab.id);
                     }}
@@ -361,7 +377,12 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
                       flyout.leaveTab();
                       flyout.hold('tab', false);
                     }}
-                    onClick={() => flyout.click(edge, tab.id)}
+                    data-panel={tab.id}
+                    onClick={(e) => {
+                      // detail 0: activated by keyboard, not by a mouse click.
+                      if (e.detail === 0) focusFlyout.current = true;
+                      flyout.click(edge, tab.id);
+                    }}
                   >
                     <span>{title(tab.id)}</span>
                   </button>
@@ -390,7 +411,7 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
       })}
 
       {geom.splitters.map((s) => (
-        <Splitter key={splitterKey(s)} splitter={s} geom={geom} manager={manager} />
+        <Splitter key={splitterKey(s)} splitter={s} geom={geom} manager={manager} label={labels.resize} />
       ))}
 
       {view.floating.map((f) => {
@@ -514,9 +535,29 @@ function DockPanel({ panel, origin, title, labels, zoneToggle, onToggle, onPress
 
 /* ---------------------------------------------------------------- splitters */
 
-function Splitter({ splitter, geom, manager }: { splitter: SplitterGeom; geom: DockGeometry; manager: DockManager<ReactNode> }) {
+/** Arrow keys move a focused splitter by this much (with Shift: `KEY_STEP_LARGE`). */
+const KEY_STEP = 10;
+const KEY_STEP_LARGE = 50;
+
+function Splitter({ splitter, geom, manager, label }: { splitter: SplitterGeom; geom: DockGeometry; manager: DockManager<ReactNode>; label: string }) {
   const [active, setActive] = useState(false);
   const horizontalLine = splitter.kind === 'group' ? splitter.edge === 'bottom' : stacksVertically(splitter.edge);
+
+  /** The layout after moving this splitter by (dx, dy) from where it is in `base`. */
+  const moved = (base: DockLayout, dx: number, dy: number): DockLayout => {
+    if (splitter.kind === 'group') {
+      const { edge, groupIndex } = splitter;
+      const startSize = geom.zones[edge].groups[groupIndex]!.rect[edge === 'bottom' ? 'height' : 'width'];
+      const delta = edge === 'left' ? dx : edge === 'right' ? -dx : -dy;
+      const max = DOCK.maxGroupFraction * (edge === 'bottom' ? geom.area.height : geom.area.width);
+      return resizeGroup(base, edge, groupIndex, startSize + delta, max);
+    }
+    const { edge, groupIndex, a, b, sizeA, sizeB } = splitter;
+    const g = base.zones[edge].groups[groupIndex]!;
+    const w = splitWeights(g.panels[a]!.weight, g.panels[b]!.weight, sizeA, sizeB, stacksVertically(edge) ? dy : dx);
+    return setPanelWeights(base, edge, groupIndex, a, b, w);
+  };
+
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -525,22 +566,7 @@ function Splitter({ splitter, geom, manager }: { splitter: SplitterGeom; geom: D
     const start = { x: e.clientX, y: e.clientY };
     const startLayout = manager.getLayout();
     setActive(true);
-    const move = (ev: PointerEvent) => {
-      const dx = ev.clientX - start.x;
-      const dy = ev.clientY - start.y;
-      if (splitter.kind === 'group') {
-        const { edge, groupIndex } = splitter;
-        const startSize = geom.zones[edge].groups[groupIndex]!.rect[edge === 'bottom' ? 'height' : 'width'];
-        const delta = edge === 'left' ? dx : edge === 'right' ? -dx : -dy;
-        const max = DOCK.maxGroupFraction * (edge === 'bottom' ? geom.area.height : geom.area.width);
-        manager.setLayout(resizeGroup(startLayout, edge, groupIndex, startSize + delta, max));
-      } else {
-        const { edge, groupIndex, a, b, sizeA, sizeB } = splitter;
-        const g = startLayout.zones[edge].groups[groupIndex]!;
-        const w = splitWeights(g.panels[a]!.weight, g.panels[b]!.weight, sizeA, sizeB, stacksVertically(edge) ? dy : dx);
-        manager.setLayout(setPanelWeights(startLayout, edge, groupIndex, a, b, w));
-      }
-    };
+    const move = (ev: PointerEvent) => manager.setLayout(moved(startLayout, ev.clientX - start.x, ev.clientY - start.y));
     const up = () => {
       setActive(false);
       el.removeEventListener('pointermove', move);
@@ -551,13 +577,35 @@ function Splitter({ splitter, geom, manager }: { splitter: SplitterGeom; geom: D
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
   };
+
+  // Keyboard: the arrows across the line move it.
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? KEY_STEP_LARGE : KEY_STEP;
+    const d = horizontalLine
+      ? e.key === 'ArrowUp' ? { dx: 0, dy: -step } : e.key === 'ArrowDown' ? { dx: 0, dy: step } : null
+      : e.key === 'ArrowLeft' ? { dx: -step, dy: 0 } : e.key === 'ArrowRight' ? { dx: step, dy: 0 } : null;
+    if (!d) return;
+    e.preventDefault();
+    manager.setLayout(moved(manager.getLayout(), d.dx, d.dy));
+  };
+
+  const value =
+    splitter.kind === 'group'
+      ? { now: Math.round(geom.zones[splitter.edge].groups[splitter.groupIndex]!.rect[splitter.edge === 'bottom' ? 'height' : 'width']), min: DOCK.minGroup, max: Math.round(DOCK.maxGroupFraction * (splitter.edge === 'bottom' ? geom.area.height : geom.area.width)) }
+      : { now: Math.round(splitter.sizeA), min: DOCK.minContent, max: Math.round(splitter.sizeA + splitter.sizeB - DOCK.minContent) };
   return (
     <div
       className={`dock-splitter ${horizontalLine ? 'ns' : 'ew'} ${active ? 'active' : ''}`}
       style={px(splitter.rect)}
       role="separator"
+      tabIndex={0}
+      aria-label={label}
       aria-orientation={horizontalLine ? 'horizontal' : 'vertical'}
+      aria-valuenow={value.now}
+      aria-valuemin={value.min}
+      aria-valuemax={value.max}
       onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
     />
   );
 }

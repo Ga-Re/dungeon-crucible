@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cellsVisibleOnTable, pixelsPerInch, ppiCorrectionFromMeasurement } from '../core/grid';
 import { FOG_BIOMES, type TableRotation } from '../core/scene';
 import { abilityModifier, ABILITIES, CONDITIONS, evaluateEncounter, proficiencyBonusForCr, proficiencyBonusForLevel, xpForCr, type ChallengeRating } from '../core/rules/rules2024';
@@ -330,13 +330,21 @@ export function MonitorMenu({ anchor, onClose }: { anchor: DOMRect; onClose: () 
   const { t } = useI18n();
   const monitors = useStore((s) => s.monitors);
   const current = useStore((s) => s.tableMonitor);
+  // The panel may sit in a floating window: listen and measure in the menu's own document.
+  const ref = useRef<HTMLDivElement>(null);
+  const [viewWidth, setViewWidth] = useState(innerWidth);
+  useLayoutEffect(() => {
+    const view = ref.current?.ownerDocument.defaultView;
+    if (view) setViewWidth(view.innerWidth);
+  }, []);
   useEffect(() => {
+    const doc = ref.current?.ownerDocument ?? document;
     const close = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest('.menu')) onClose(); };
-    const id = setTimeout(() => document.addEventListener('click', close), 0);
-    return () => { clearTimeout(id); document.removeEventListener('click', close); };
+    const id = setTimeout(() => doc.addEventListener('click', close), 0);
+    return () => { clearTimeout(id); doc.removeEventListener('click', close); };
   }, [onClose]);
   return (
-    <div className="menu" style={{ left: Math.max(8, Math.min(anchor.right - 280, innerWidth - 290)), top: anchor.bottom + 4 }}>
+    <div ref={ref} className="menu" style={{ left: Math.max(8, Math.min(anchor.right - 280, viewWidth - 290)), top: anchor.bottom + 4 }}>
       <div className="mh">{t('table.moveTo')}</div>
       {monitors.length === 0 && <p className="hint" style={{ padding: 6 }}>{t('table.noMonitors')}</p>}
       {monitors.map((m) => (

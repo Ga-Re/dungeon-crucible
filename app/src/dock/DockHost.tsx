@@ -3,9 +3,10 @@
  * Panel contents are rendered once into persistent hosts (PanelPool) and moved into the
  * visible slots after each render, so they keep their state.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { computeGeometry, stacksVertically, type DockGeometry, type PanelGeom, type Rect, type SplitterGeom } from './geometry';
+import { beginDrag, dropLayout, passedThreshold, previewLayout, type DragSession } from './drag';
+import { computeDropTarget, computeGeometry, stacksVertically, type DockGeometry, type DropResult, type PanelGeom, type Point, type Rect, type SplitterGeom } from './geometry';
 import type { DockManager } from './manager';
 import { DOCK, hidePanel, resizeGroup, setPanelWeights, setZoneCollapsed, splitWeights, toggleExpanded, type DockLayout, type Edge, type FloatingPanel } from './model';
 import { PanelPool } from './panelPool';
@@ -38,8 +39,27 @@ const tabLength = (title: string) => Math.round(title.length * 7.2 + 20);
 const COLLAPSE_ZONE_GLYPH: Record<Edge, string> = { left: '«', right: '»', bottom: '⌄' };
 const EXPAND_ZONE_GLYPH: Record<Edge, string> = { left: '»', right: '«', bottom: '⌃' };
 
+/** A drag in progress: the cursor in screen and docking-area coordinates. */
+interface DragState {
+  session: DragSession;
+  screen: Point;
+  client: Point;
+  suppress: boolean;
+}
+
+/** What the title of a panel reports when it is pressed (size on screen, for the floating panel). */
+interface PressInfo {
+  width: number;
+  height: number;
+  expanded: boolean;
+}
+
 export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidth = false }: DockHostProps) {
-  const layout = useSyncExternalStore(manager.subscribe, manager.getLayout);
+  const stored = useSyncExternalStore(manager.subscribe, manager.getLayout);
+  const [drag, setDrag] = useState<DragState | null>(null);
+  // While dragging, the panel is out of the layout and floats under the cursor.
+  const layout = drag ? drag.session.base : stored;
+  const view = useMemo(() => (drag ? previewLayout(drag.session, drag.screen) : stored), [drag, stored]);
   const title = (id: string) => titleOf?.(id) ?? manager.title(id);
   const rootRef = useRef<HTMLDivElement>(null);
   const parkingRef = useRef<HTMLDivElement>(null);
@@ -64,10 +84,17 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
   );
 
   // Panels are mounted the first time they are shown and stay mounted afterwards.
-  const shown = visiblePanelIds(geom, layout);
+  const shown = visiblePanelIds(geom, view);
   const mounted = useRef(new Set<string>());
   for (const id of shown) mounted.current.add(id);
   for (const id of [...mounted.current]) if (!manager.panel(id)) mounted.current.delete(id);
+  // Each panel's content element is created once: re-rendering the docking view (e.g. on every
+  // pointer move while dragging) must not re-render the panels.
+  const contents = useRef(new Map<string, ReactNode>());
+  const contentOf = (id: string): ReactNode => {
+    if (!contents.current.has(id)) contents.current.set(id, manager.panel(id)!.create() as ReactNode);
+    return contents.current.get(id);
+  };
 
   useLayoutEffect(() => {
     pool.setParking(parkingRef.current);
@@ -85,11 +112,102 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
 
   const commit = (l: DockLayout) => manager.setLayout(l);
 
+  // Drop target under the cursor (only the mouse position counts).
+  const dropFor = (d: DragState): DropResult | null => computeDropTarget(geom, d.client, { suppress: d.suppress });
+  const dropForRef = useRef(dropFor);
+  dropForRef.current = dropFor;
+  const drop = drag ? dropFor(drag) : null;
+
+  // Offset between screen and docking-area coordinates, taken from the last pointer event.
+  const screenOffset = useRef<Point | null>(null);
+  const areaOrigin = (): Point => {
+    if (screenOffset.current) return screenOffset.current;
+    const r = rootRef.current?.getBoundingClientRect();
+    return r ? areaScreenOrigin(r) : { x: 0, y: 0 };
+  };
+
+  /**
+   * Press on a title: after 4 px it becomes a drag. Esc, losing the window focus or a cancelled
+   * pointer abort it and leave the layout as it was; Ctrl/⌘ suppresses docking.
+   */
+  const press = (e: ReactPointerEvent<HTMLElement>, id: string, info: PressInfo) => {
+    if (e.button !== 0 || drag || (e.target as HTMLElement).closest('button')) return;
+    const root = rootRef.current;
+    const panelEl = e.currentTarget.closest<HTMLElement>('.dock-panel, .dock-floating');
+    if (!root || !panelEl) return;
+    const box = panelEl.getBoundingClientRect();
+    const grab = { x: e.clientX - box.left, y: e.clientY - box.top };
+    const from = { x: e.clientX, y: e.clientY };
+    const pointerId = e.pointerId;
+    let session: DragSession | null = null;
+    let last: DragState | null = null;
+
+    const stateFrom = (ev: { clientX: number; clientY: number; screenX: number; screenY: number }, suppress: boolean): DragState => {
+      const r = root.getBoundingClientRect();
+      const client = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+      const screen = { x: ev.screenX, y: ev.screenY };
+      screenOffset.current = { x: screen.x - client.x, y: screen.y - client.y };
+      return { session: session!, screen, client, suppress };
+    };
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      if (!session) {
+        if (!passedThreshold(from, { x: ev.clientX, y: ev.clientY })) return;
+        session = beginDrag(manager.getLayout(), id, info, grab);
+        try {
+          root.setPointerCapture(pointerId);
+        } catch {
+          /* pointer already gone */
+        }
+      }
+      last = stateFrom(ev, ev.ctrlKey || ev.metaKey);
+      setDrag(last);
+    };
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      cleanup();
+      if (!session) return;
+      const end = stateFrom(ev, ev.ctrlKey || ev.metaKey);
+      manager.setLayout(dropLayout(session, dropForRef.current(end), end.screen));
+      setDrag(null);
+    };
+    const cancel = () => {
+      cleanup();
+      setDrag(null);
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (!session) return;
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        cancel();
+      } else if (last && (ev.key === 'Control' || ev.key === 'Meta')) {
+        last = { ...last, suppress: ev.ctrlKey || ev.metaKey };
+        setDrag(last);
+      }
+    };
+    const onCancel = (ev: PointerEvent) => ev.pointerId === pointerId && cancel();
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('keyup', onKey, true);
+      window.removeEventListener('blur', cancel);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('keyup', onKey, true);
+    window.addEventListener('blur', cancel);
+  };
+
   // Nothing is mounted before the area has a size: panels (e.g. the map) size themselves on mount.
   if (size.width === 0 || size.height === 0) return <div className="dock-root" ref={rootRef} />;
 
+  const origin = areaOrigin();
   return (
-    <div className="dock-root" ref={rootRef}>
+    <div className={`dock-root ${drag ? 'dragging' : ''}`} ref={rootRef}>
       <div className="dock-canvas" style={px(geom.canvas)}>{canvas}</div>
 
       {(['left', 'right', 'bottom'] as const).map((edge) => {
@@ -128,6 +246,7 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
                 labels={labels}
                 zoneToggle={group.index === 0 && p.panelIndex === 0 ? { glyph: COLLAPSE_ZONE_GLYPH[edge], onClick: () => commit(setZoneCollapsed(layout, edge, true)) } : null}
                 onToggle={() => commit(toggleExpanded(layout, p.id))}
+                onPress={(e) => press(e, p.id, { width: p.rect.width, height: p.rect.height, expanded: p.expanded })}
                 slotRef={slotRef(p.id)}
               />
             ))}
@@ -139,12 +258,28 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
         <Splitter key={splitterKey(s)} splitter={s} geom={geom} manager={manager} />
       ))}
 
-      {layout.floating.map((f) => (
-        <FloatingOverlay key={f.id} panel={f} rootRef={rootRef} title={title(f.id)} labels={labels} onClose={() => commit(hidePanel(layout, f.id))} slotRef={slotRef(f.id)} />
+      {view.floating.map((f) => (
+        <FloatingOverlay
+          key={f.id}
+          panel={f}
+          origin={origin}
+          dragging={drag?.session.id === f.id}
+          title={title(f.id)}
+          labels={labels}
+          onClose={() => commit(hidePanel(layout, f.id))}
+          onPress={(e) => press(e, f.id, { width: f.width, height: f.height, expanded: true })}
+          slotRef={slotRef(f.id)}
+        />
       ))}
 
+      {drop && (
+        <div className="dock-indicators" aria-hidden="true">
+          <div className={`dock-indicator rule-${drop.rule}`} style={px(drop.indicator)} />
+        </div>
+      )}
+
       <div className="dock-parking" ref={parkingRef} aria-hidden="true" />
-      {[...mounted.current].map((id) => createPortal(manager.panel(id)!.create() as ReactNode, pool.host(id), id))}
+      {[...mounted.current].map((id) => createPortal(contentOf(id), pool.host(id), id))}
     </div>
   );
 }
@@ -169,16 +304,17 @@ interface DockPanelProps {
   labels: DockLabels;
   zoneToggle: { glyph: string; onClick: () => void } | null;
   onToggle: () => void;
+  onPress: (e: ReactPointerEvent<HTMLElement>) => void;
   slotRef: (el: HTMLElement | null) => void;
 }
 
-function DockPanel({ panel, origin, title, labels, zoneToggle, onToggle, slotRef }: DockPanelProps) {
+function DockPanel({ panel, origin, title, labels, zoneToggle, onToggle, onPress, slotRef }: DockPanelProps) {
   const vertical = stacksVertically(panel.edge);
   const strip = !vertical && !panel.expanded;
   const contentId = `dock-content-${panel.id}`;
   return (
     <section className={`dock-panel ${panel.expanded ? 'expanded' : 'collapsed'} ${strip ? 'strip' : ''}`} style={rel(panel.rect, origin)} aria-label={title}>
-      <div className="dock-title" style={rel(panel.header, panel.rect)} onDoubleClick={(e) => !(e.target as HTMLElement).closest('button') && onToggle()}>
+      <div className="dock-title" style={rel(panel.header, panel.rect)} onPointerDown={onPress} onDoubleClick={(e) => !(e.target as HTMLElement).closest('button') && onToggle()}>
         {zoneToggle && panel.edge === 'left' && (
           <button type="button" className="dock-icon-btn" title={labels.collapseZone} aria-label={labels.collapseZone} onClick={zoneToggle.onClick}>
             {zoneToggle.glyph}
@@ -255,16 +391,22 @@ function Splitter({ splitter, geom, manager }: { splitter: SplitterGeom; geom: D
  * Floating panels are real windows from step 4 on. Until then they are drawn over the main
  * window at their stored global position, converted to docking-area coordinates.
  */
-function FloatingOverlay({ panel, rootRef, title, labels, onClose, slotRef }: { panel: FloatingPanel; rootRef: React.RefObject<HTMLDivElement | null>; title: string; labels: DockLabels; onClose: () => void; slotRef: (el: HTMLElement | null) => void }) {
-  const [origin, setOrigin] = useState({ x: 0, y: 0 });
-  useEffect(() => {
-    const r = rootRef.current?.getBoundingClientRect();
-    if (r) setOrigin(areaScreenOrigin(r));
-  }, [rootRef]);
+interface FloatingOverlayProps {
+  panel: FloatingPanel;
+  origin: Point;
+  dragging: boolean;
+  title: string;
+  labels: DockLabels;
+  onClose: () => void;
+  onPress: (e: ReactPointerEvent<HTMLElement>) => void;
+  slotRef: (el: HTMLElement | null) => void;
+}
+
+function FloatingOverlay({ panel, origin, dragging, title, labels, onClose, onPress, slotRef }: FloatingOverlayProps) {
   const rect: Rect = { x: panel.x - origin.x, y: panel.y - origin.y, width: panel.width, height: panel.height };
   return (
-    <section className="dock-floating" style={px(rect)} aria-label={title}>
-      <div className="dock-title" style={{ left: 0, top: 0, right: 0, height: DOCK.title }}>
+    <section className={`dock-floating ${dragging ? 'dragging' : ''}`} style={px(rect)} aria-label={title}>
+      <div className="dock-title" style={{ left: 0, top: 0, right: 0, height: DOCK.title }} onPointerDown={onPress}>
         <span className="dock-title-text">{title}</span>
         <button type="button" className="dock-icon-btn" title={labels.close} aria-label={`${labels.close}: ${title}`} onClick={onClose}>
           ×

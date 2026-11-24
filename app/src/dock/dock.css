@@ -132,3 +132,9 @@
 
 /* Floating panel (overlay until floating windows are native) */
 .dock-floating { position: absolute; z-index: 20; background: var(--dock-panel-bg); border: 1px solid var(--dock-line); box-shadow: var(--dock-float-shadow); }
+
+/* Dragging a panel: drop indicators in a layer that never takes the mouse. */
+.dock-root.dragging, .dock-root.dragging * { cursor: grabbing !important; user-select: none; }
+.dock-floating.dragging { z-index: 25; }
+.dock-indicators { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.dock-indicator { position: absolute; background: var(--dock-accent); }

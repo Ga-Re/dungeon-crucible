@@ -1,90 +1,82 @@
 /**
- * Platform bridge: monitors, table window and frame transport.
- * In the desktop app it uses Tauri commands and events; in a plain browser
- * (development) it falls back to window.open + BroadcastChannel.
+ * Platform bridge: monitors, table window, frame transport and the campaign folder.
+ * In the desktop app (Electron) it uses `window.dc` / `window.dcTable` from the preload
+ * scripts; in a plain browser (development) it falls back to window.open + BroadcastChannel.
  */
 import type { PlayerFrame } from '../core/projection';
+import type { FloatingBackend } from '../dock/nativeWindows';
+import { assetUrlFor } from './asset-url';
+import type { CampaignInfo, DcApi, DcTableApi, ImportedFile, MonitorInfo, ScreenSetupInfo } from './desktop-api';
 
-export interface MonitorInfo {
-  index: number;
-  name: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  scaleFactor: number;
+export type { CampaignInfo, ImportedFile, MonitorInfo };
+
+declare global {
+  interface Window {
+    dc?: DcApi;
+    dcTable?: DcTableApi;
+  }
 }
 
-export const FRAME_EVENT = 'player-frame';
 const CHANNEL = 'dc-table';
 
-export function isTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+/** True in the desktop app's DM window. */
+export function isDesktop(): boolean {
+  return typeof window !== 'undefined' && !!window.dc;
 }
 
-async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const core = await import('@tauri-apps/api/core');
-  return core.invoke<T>(cmd, args);
-}
-
-let displayService: import('./displays').DisplayService | null = null;
-async function displays(): Promise<import('./displays').DisplayService> {
-  if (!displayService) {
-    const d = await import('./displays');
-    // `npm run bench` opens the renderer benchmark instead of the table view.
-    displayService = d.createTauriDisplayService(d.detectPlatformFamily(navigator.userAgent), import.meta.env.VITE_BENCH === '1' ? 'bench.html' : 'table.html');
-  }
-  return displayService;
+function dc(): DcApi {
+  if (!window.dc) throw new Error('Desktop app only');
+  return window.dc;
 }
 
 export async function listMonitors(): Promise<MonitorInfo[]> {
-  if (isTauri()) return (await (await displays()).listDisplays()).map((d) => ({ ...d }));
+  if (isDesktop()) return dc().listDisplays();
   // Browser: only the current screen is known.
   return [{ index: 0, name: 'Browser screen', x: 0, y: 0, width: screen.width * devicePixelRatio, height: screen.height * devicePixelRatio, scaleFactor: devicePixelRatio }];
 }
 
+export function onMonitorsChanged(cb: () => void): () => void {
+  return isDesktop() ? dc().onDisplaysChanged(cb) : () => undefined;
+}
+
 let browserTable: Window | null = null;
 
-export async function openTableWindow(monitorIndex: number): Promise<MonitorInfo | null> {
-  if (isTauri()) {
-    await (await displays()).openTableView(monitorIndex, 'Dungeon Crucible – Table');
-    return null;
-  }
+export async function openTableWindow(monitorIndex: number): Promise<void> {
+  if (isDesktop()) return dc().openTable(monitorIndex, 'Dungeon Crucible – Table');
   if (!browserTable || browserTable.closed) browserTable = window.open('table.html', 'dc-table', 'popup,width=960,height=540');
-  return null;
 }
 
 export async function closeTableWindow(): Promise<void> {
-  if (isTauri()) {
-    await (await displays()).closeTableView();
-    return;
-  }
+  if (isDesktop()) return dc().closeTable();
   browserTable?.close();
   browserTable = null;
 }
 
-/** Moves the table window to another display (same path as opening: windowed → move → fullscreen). */
+/** Moves the table window to another display (same path as opening). */
 export async function moveTableToMonitor(monitorIndex: number): Promise<void> {
-  if (isTauri()) await (await displays()).openTableView(monitorIndex, 'Dungeon Crucible – Table');
+  if (isDesktop()) await dc().openTable(monitorIndex, 'Dungeon Crucible – Table');
 }
 
 /** Called when the table window has (re)loaded, so the DM window can resend the current frame at once. */
-export async function onTableReady(cb: () => void): Promise<void> {
-  if (!isTauri()) return;
-  const ev = await import('@tauri-apps/api/event');
-  await ev.listen('table-ready', () => {
+export function onTableReady(cb: () => void): () => void {
+  if (!isDesktop()) return () => undefined;
+  return dc().onTableReady(() => {
     cb();
     setTimeout(cb, 1000);
   });
+}
+
+/** Called when the table window was closed from outside the app (e.g. Alt+F4). */
+export function onTableClosed(cb: () => void): () => void {
+  return isDesktop() ? dc().onTableClosed(cb) : () => undefined;
 }
 
 let channel: BroadcastChannel | null = null;
 
 /** Sends a frame to the table window only (never broadcast to other windows). */
 export async function sendFrame(frame: PlayerFrame): Promise<void> {
-  if (isTauri()) {
-    const ev = await import('@tauri-apps/api/event');
-    await ev.emitTo('table', FRAME_EVENT, frame);
+  if (isDesktop()) {
+    dc().sendFrame(frame);
     return;
   }
   channel ??= new BroadcastChannel(CHANNEL);
@@ -93,11 +85,7 @@ export async function sendFrame(frame: PlayerFrame): Promise<void> {
 
 /** Table side: subscribe to incoming frames. Returns an unsubscribe function. */
 export async function onFrame(cb: (data: unknown) => void): Promise<() => void> {
-  if (isTauri()) {
-    const ev = await import('@tauri-apps/api/event');
-    const un = await ev.listen(FRAME_EVENT, (e) => cb(e.payload));
-    return un;
-  }
+  if (window.dcTable) return window.dcTable.onFrame(cb);
   const ch = new BroadcastChannel(CHANNEL);
   ch.onmessage = (e) => cb(e.data);
   return () => ch.close();
@@ -105,27 +93,41 @@ export async function onFrame(cb: (data: unknown) => void): Promise<() => void> 
 
 /* ---------- Campaign folders (desktop only) ---------- */
 
-export interface CampaignInfo {
-  root: string;
-  name: string;
-}
+export const pickCampaignFolder = () => dc().pickCampaignFolder();
+export const openCampaignFolder = (path: string) => dc().openCampaignFolder(path);
+export const readText = (rel: string) => dc().readText(rel);
+export const writeText = (rel: string, content: string) => dc().writeText(rel, content);
+export const listFiles = (dir: string) => dc().listFiles(dir);
+export const absolutePath = (rel: string) => dc().absolutePath(rel);
+export const importMapFileNative = () => dc().importMapFile();
+export const importAudioFileNative = (sfx: boolean) => dc().importAudioFile(sfx);
 
-export interface ImportedFile {
-  relPath: string;
-  absPath: string;
-}
-
-export const pickCampaignFolder = () => invoke<CampaignInfo | null>('pick_campaign_folder');
-export const openCampaignFolder = (path: string) => invoke<CampaignInfo>('open_campaign_folder', { path });
-export const readText = (rel: string) => invoke<string>('read_text', { rel });
-export const writeText = (rel: string, content: string) => invoke<void>('write_text', { rel, content });
-export const listFiles = (dir: string) => invoke<string[]>('list_files', { dir });
-export const absolutePath = (rel: string) => invoke<string>('absolute_path', { rel });
-export const importMapFileNative = () => invoke<ImportedFile | null>('import_map_file');
-export const importAudioFileNative = (sfx: boolean) => invoke<ImportedFile | null>('import_audio_file', { sfx });
-
-/** URL the webviews (DM and table) can load a campaign file from. */
+/** URL the pages (DM and table) can load a campaign file from. */
 export async function assetUrl(absPath: string): Promise<string> {
-  const core = await import('@tauri-apps/api/core');
-  return core.convertFileSrc(absPath);
+  return assetUrlFor(absPath);
+}
+
+/** Display work areas for floating windows (desktop app; null in the browser). Synchronous. */
+export function screenSetupSync(): ScreenSetupInfo | null {
+  return isDesktop() ? dc().screensSync() : null;
+}
+
+export async function screenSetup(): Promise<ScreenSetupInfo | null> {
+  return isDesktop() ? dc().screens() : null;
+}
+
+let floating: FloatingBackend | null | undefined;
+
+/** Native windows for floating panels (desktop app only; the browser shows overlays). */
+export function floatingBackend(): FloatingBackend | null {
+  if (floating !== undefined) return floating;
+  if (!isDesktop()) return (floating = null);
+  const api = dc();
+  floating = {
+    setBounds: (name, bounds) => api.setFloatBounds(name, bounds),
+    onMoved: (cb) => api.onFloatMoved(cb),
+    onClosed: (cb) => api.onFloatClosed(cb),
+    contentOrigin: () => api.contentOrigin(),
+  };
+  return floating;
 }

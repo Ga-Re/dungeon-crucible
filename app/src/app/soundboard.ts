@@ -6,7 +6,7 @@
 import {
   BUILTIN_AMBIENCE, BUILTIN_PREFIX, playAmbience, playSfx, playSfxFile, setAmbienceVolume, setMasterVolume, stopAmbience, type BuiltinSfx,
 } from './audio';
-import { absolutePath, assetUrl, importAudioFileNative, isTauri, listFiles } from '../platform/bridge';
+import { absolutePath, assetUrl, importAudioFileNative, isDesktop, listFiles } from '../platform/bridge';
 import { emit, log, markDirty, state } from './store';
 
 export interface AmbienceEntry {
@@ -40,7 +40,7 @@ async function urlFor(id: string): Promise<string | undefined> {
 
 /** Reads the campaign's `audio/` and `audio/sfx/` folders. */
 export async function refreshAudioFiles(): Promise<void> {
-  if (!isTauri() || !state.campaign) return;
+  if (!isDesktop() || !state.campaign) return;
   const files = (await listFiles('audio')).filter((f) => AUDIO_FILE.test(f));
   const sfx = (await listFiles('audio/sfx')).filter((f) => AUDIO_FILE.test(f));
   const sb = state.soundboard;
@@ -97,7 +97,7 @@ export async function triggerSfx(id: string): Promise<void> {
 }
 
 export async function importAudio(sfx: boolean): Promise<void> {
-  if (!isTauri() || !state.campaign) {
+  if (!isDesktop() || !state.campaign) {
     log('log.audioNeedsCampaign');
     emit();
     return;

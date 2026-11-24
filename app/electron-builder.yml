@@ -1,0 +1,36 @@
+# Desktop installers (`npm run dist`). Everything the app needs is bundled by Vite into
+# dist/ (pages) and dist-electron/ (main + preloads); node_modules are not shipped.
+appId: app.dungeoncrucible.desktop
+productName: Dungeon Crucible
+copyright: Dungeon Crucible
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - dist-electron/**
+  - "!dist-electron/*.map"
+  - package.json
+asar: true
+mac:
+  category: public.app-category.role-playing-games
+  icon: build/icon.icns
+  # Ad-hoc signature: unsigned apps are reported as "damaged" on Apple Silicon.
+  # Hardened runtime only makes sense with a real Developer ID (and notarization).
+  # Locally, build outside iCloud-synced folders (e.g. ~/Documents): codesign rejects
+  # the extended attributes macOS adds there ("resource fork … detritus not allowed").
+  identity: "-"
+  hardenedRuntime: false
+  target:
+    - target: dmg
+      arch: [universal]
+win:
+  icon: build/icon.ico
+  target: [nsis, msi]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+linux:
+  icon: build/icon.png
+  category: Game
+  target: [AppImage]

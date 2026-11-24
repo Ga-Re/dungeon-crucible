@@ -1,15 +1,16 @@
 # Dungeon Crucible – desktop app
 
-Tauri 2 + React + TypeScript. Runs on macOS and Windows.
+Electron + React + TypeScript. Runs on macOS and Windows (Linux builds as AppImage).
 
 ## Develop
 
 ```bash
 npm install
-npm run tauri dev      # desktop app with hot reload
+npm start              # desktop app (Electron) with hot reload for the pages
 npm run dev            # browser only (table opens as a popup window)
-npm test               # unit tests (core logic, i18n)
-npm run build          # type-check, build, verify the table bundle has no DM code
+npm test               # unit tests (core logic, i18n, file access)
+npm run build          # type-check, build, verify the table bundle has no DM code, bundle Electron
+npm run dist           # installers into release/ (dmg on macOS, nsis + msi on Windows)
 ```
 
 ## Structure
@@ -17,21 +18,24 @@ npm run build          # type-check, build, verify the table bundle has no DM co
 | Path | Content |
 |---|---|
 | `src/core/` | Pure logic with tests: geometry and line of sight, grid and 3-point / physical calibration, fog of war, 2024 rules, dice, sidecar schemas, player projection |
-| `src/app/` | DM state, workspaces, ribbon, docking layout |
+| `src/app/` | DM state, workspaces, ribbon, panel registration (`docking.tsx`) |
+| `src/dock/` | Docking system: layout model, geometry and drop targets (pure, tested), `DockManager` API with per-workspace persistence, `DockHost` view |
 | `src/panels/` | Map view and dockable panels |
 | `src/render/` | DM renderer and the shared player-frame renderer |
 | `src/table/` | Table window (separate entry `table.html`) |
 | `src/i18n/` | English (default) and German |
 | `src/theme/` | Theme tokens: dark, light, parchment |
-| `src-tauri/` | Native side: monitor list, table window on a chosen monitor |
+| `src/platform/` | Bridge to the desktop API (`window.dc`), browser fallback |
+| `electron/` | Main process: windows, monitor list, table window on a chosen monitor, campaign folder access, `app://` and `dc-asset://` protocols; preload scripts |
 
 ## Table display safety (fail-closed)
 
 The table window never sees the DM scene. The DM window builds a `PlayerFrame`
-from a whitelist (`src/core/projection.ts`) and sends it to the window labelled
-`table` only. The table validates each frame; invalid, out-of-order or older
-than 2.5 s means black. The table window's Tauri capability only allows
-listening to events. `npm run build` fails if the table bundle can reach DM code.
+from a whitelist (`src/core/projection.ts`) and sends it to the table window
+only. The table validates each frame; invalid, out-of-order or older than
+2.5 s means black. The table window's preload (`electron/preload-table.ts`)
+only lets it receive frames. `npm run build` fails if the table bundle can
+reach DM code.
 
 ## Physical grid
 
@@ -48,13 +52,19 @@ scenes/<name>.scene.json         per-session state (fog, doors, tokens, combat)
 creatures/<name>.dm.json         2024 stat blocks
 ```
 
-All files are plain JSON and can be versioned or synced. The native side only
-reads and writes inside the opened folder.
+All files are plain JSON and can be versioned or synced. The main process only
+reads and writes inside the opened folder (`electron/files.ts` rejects absolute
+paths and `..`), and `dc-asset://` serves only files inside it.
 
 ## Unsigned installers
 
-Builds are not code-signed. On macOS, open the app the first time with
-right-click → Open. On Windows, choose "More info" → "Run anyway".
+Builds are not code-signed (macOS builds carry only an ad-hoc signature). On
+macOS, open the app the first time with right-click → Open. On Windows, choose
+"More info" → "Run anyway".
+
+Building the macOS app locally inside an iCloud-synced folder (such as
+`~/Documents`) fails at signing; build with an output folder elsewhere:
+`npm run dist -- -c.directories.output=/tmp/dc-release`.
 
 ## Fog engine (from Dungeon-Manager)
 
@@ -79,7 +89,7 @@ while the DM window is open. Budget: at most 1 % missed refreshes at 4K/60 Hz.
    npm run bench:video
    ```
 
-2. Open that campaign folder in the app once (so the folder may be read), then start:
+2. Open that campaign folder in the app once (it is reopened on start, so the file may be read), then start:
 
    ```bash
    VITE_BENCH_VIDEO="/absolute/path/to/campaign/maps/bench-4k.mp4" npm run bench

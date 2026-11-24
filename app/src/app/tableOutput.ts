@@ -3,7 +3,7 @@
  * 250 ms so the table's freshness check (heartbeat) stays satisfied; when the
  * DM app stalls or closes, the table goes black on its own.
  */
-import { closeTableWindow, listMonitors, moveTableToMonitor, onTableReady, openTableWindow, sendFrame } from '../platform/bridge';
+import { closeTableWindow, listMonitors, moveTableToMonitor, onMonitorsChanged, onTableClosed, onTableReady, openTableWindow, sendFrame } from '../platform/bridge';
 import { emit, log, produceFrame, state } from './store';
 
 const INTERVAL_MS = 100;
@@ -11,9 +11,14 @@ let timer: ReturnType<typeof setInterval> | null = null;
 
 export function startFrameLoop(): void {
   if (timer) return;
-  void onTableReady(() => {
+  onTableReady(() => {
     if (state.tableOpen) void sendFrame(produceFrame(Date.now())).catch(() => undefined);
   });
+  onTableClosed(() => {
+    state.tableOpen = false;
+    emit();
+  });
+  onMonitorsChanged(() => void refreshMonitors());
   timer = setInterval(() => {
     const frame = produceFrame(Date.now());
     if (state.tableOpen) void sendFrame(frame).catch(() => undefined);

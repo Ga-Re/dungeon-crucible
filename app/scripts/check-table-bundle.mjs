@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const dist = join(import.meta.dirname, '..', 'dist');
-const FORBIDDEN = ['createSampleScene', 'selectedTokenId', 'dc.layout', 'Thorin', 'produceFrame'];
+const FORBIDDEN = ['createSampleScene', 'selectedTokenId', 'dc.layout', 'dc.dock', 'Thorin', 'produceFrame'];
 
 const html = readFileSync(join(dist, 'table.html'), 'utf8');
 const queue = [...html.matchAll(/(?:src|href)="\/(assets\/[^"]+\.js)"/g)].map((m) => m[1]);

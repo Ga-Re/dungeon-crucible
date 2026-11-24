@@ -1,0 +1,191 @@
+/*
+ * Docking system. Every value is a token; the dark skin uses the Fusion-like values of the
+ * spec, the other skins derive them from the theme.
+ */
+:root,
+:root[data-skin='dark'] {
+  --dock-panel-bg: #2b2f38;
+  --dock-title-bg: #30343d;
+  --dock-title-fg: #c8ccd4;
+  --dock-line: #3a3f4a;
+  --dock-accent: #1e9bd7;
+  --dock-bar-bg: #262a32;
+  --dock-tab-hover: #353a45;
+}
+:root[data-skin='light'],
+:root[data-skin='parchment'] {
+  --dock-panel-bg: var(--panel);
+  --dock-title-bg: var(--panel-2);
+  --dock-title-fg: var(--fg-dim);
+  --dock-line: var(--line);
+  --dock-accent: #1e9bd7;
+  --dock-bar-bg: var(--shell);
+  --dock-tab-hover: var(--panel-2);
+}
+:root {
+  --dock-title-h: 24px;
+  --dock-title-size: 11px;
+  --dock-title-tracking: 0.5px;
+  --dock-grip: 6px;
+  --dock-float-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+}
+
+.dock-root { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--canvas); }
+.dock-canvas { position: absolute; overflow: hidden; }
+.dock-parking { display: none; }
+.dock-host { width: 100%; height: 100%; }
+
+/* Groups and panels */
+.dock-group { position: absolute; background: var(--dock-panel-bg); }
+.dock-group.edge-left { border-right: 1px solid var(--dock-line); }
+.dock-group.edge-right { border-left: 1px solid var(--dock-line); }
+.dock-group.edge-bottom { border-top: 1px solid var(--dock-line); }
+.dock-panel { position: absolute; overflow: hidden; }
+.dock-group.edge-left .dock-panel + .dock-panel,
+.dock-group.edge-right .dock-panel + .dock-panel { border-top: 1px solid var(--dock-line); }
+.dock-group.edge-bottom .dock-panel + .dock-panel { border-left: 1px solid var(--dock-line); }
+.dock-content { position: absolute; overflow: hidden; background: var(--dock-panel-bg); }
+
+.dock-title {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px 0 8px;
+  background: var(--dock-title-bg);
+  color: var(--dock-title-fg);
+  font-size: var(--dock-title-size);
+  letter-spacing: var(--dock-title-tracking);
+  text-transform: uppercase;
+  user-select: none;
+  cursor: grab;
+}
+.dock-title-text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
+.dock-title .dock-icon-btn:first-child { margin-left: -6px; }
+
+/* A collapsed panel in the bottom zone: a narrow strip with the title turned. */
+.dock-panel.strip .dock-title { flex-direction: column; padding: 4px 0; }
+.dock-panel.strip .dock-title-text { writing-mode: vertical-rl; flex: 0 1 auto; }
+.dock-panel.strip .dock-title .dock-icon-btn { order: -1; }
+
+.dock-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--dock-title-fg);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+.dock-icon-btn:hover { background: var(--dock-tab-hover); color: var(--fg); }
+.dock-icon-btn:focus-visible, .dock-tab:focus-visible { outline: 2px solid var(--dock-accent); outline-offset: -2px; }
+.dock-icon-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* Splitters: a 6 px grip around a 1 px line, blue while hovered or dragged. */
+.dock-splitter { position: absolute; z-index: 5; touch-action: none; }
+.dock-splitter.ew { cursor: ew-resize; }
+.dock-splitter.ns { cursor: ns-resize; }
+.dock-splitter::after { content: ''; position: absolute; background: transparent; transition: background 80ms; }
+.dock-splitter.ew::after { left: calc(50% - 1px); width: 2px; top: 0; bottom: 0; }
+.dock-splitter.ns::after { top: calc(50% - 1px); height: 2px; left: 0; right: 0; }
+.dock-splitter:hover::after, .dock-splitter.active::after { background: var(--dock-accent); }
+
+/* Collapsed zone: a bar with every panel title */
+.dock-bar { position: absolute; background: var(--dock-bar-bg); z-index: 4; }
+.dock-bar.edge-left { border-right: 1px solid var(--dock-line); }
+.dock-bar.edge-right { border-left: 1px solid var(--dock-line); }
+.dock-bar.edge-bottom { border-top: 1px solid var(--dock-line); }
+.dock-bar-toggle { position: absolute; width: auto; height: auto; }
+.dock-tab {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dock-title-fg);
+  font: inherit;
+  font-size: var(--dock-title-size);
+  font-weight: 600;
+  letter-spacing: var(--dock-title-tracking);
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dock-tab:hover { background: var(--dock-tab-hover); }
+.dock-bar.edge-left .dock-tab span,
+.dock-bar.edge-right .dock-tab span { writing-mode: vertical-rl; }
+.dock-bar.edge-left .dock-tab span { transform: rotate(180deg); }
+.dock-tab.active.edge-left { box-shadow: inset -2px 0 0 var(--dock-accent); }
+.dock-tab.active.edge-right { box-shadow: inset 2px 0 0 var(--dock-accent); }
+.dock-tab.active.edge-bottom { box-shadow: inset 0 2px 0 var(--dock-accent); }
+
+/* Floating panel (overlay until floating windows are native) */
+.dock-floating { position: absolute; z-index: 20; background: var(--dock-panel-bg); border: 1px solid var(--dock-line); box-shadow: var(--dock-float-shadow); }
+
+/* Dragging a panel: drop indicators in a layer that never takes the mouse. */
+.dock-root.dragging, .dock-root.dragging * { cursor: grabbing !important; user-select: none; }
+.dock-floating.dragging { z-index: 25; }
+.dock-indicators { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.dock-indicator { position: absolute; background: var(--dock-accent); }
+
+/* Floating panels: a native window's whole page, or an overlay over the main window. */
+.dock-float-body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; background: var(--dock-panel-bg); }
+.dock-floating.native { position: fixed; inset: 0; box-shadow: none; }
+.dock-resize { position: absolute; z-index: 6; }
+.dock-resize.n, .dock-resize.s { left: var(--dock-grip); right: var(--dock-grip); height: var(--dock-grip); cursor: ns-resize; }
+.dock-resize.e, .dock-resize.w { top: var(--dock-grip); bottom: var(--dock-grip); width: var(--dock-grip); cursor: ew-resize; }
+.dock-resize.n { top: 0; }
+.dock-resize.s { bottom: 0; }
+.dock-resize.e { right: 0; }
+.dock-resize.w { left: 0; }
+.dock-resize.ne, .dock-resize.nw, .dock-resize.se, .dock-resize.sw { width: var(--dock-grip); height: var(--dock-grip); }
+.dock-resize.ne { top: 0; right: 0; cursor: nesw-resize; }
+.dock-resize.sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.dock-resize.nw { top: 0; left: 0; cursor: nwse-resize; }
+.dock-resize.se { bottom: 0; right: 0; cursor: nwse-resize; }
+
+/* Flyout: a panel of a collapsed zone over the canvas, next to the bar. Slide + fade 120 ms. */
+.dock-flyout { position: absolute; z-index: 15; background: var(--dock-panel-bg); box-shadow: var(--dock-float-shadow); animation: 120ms ease-out both; }
+.dock-flyout.edge-left { border-right: 1px solid var(--dock-line); animation-name: dock-flyout-in-left; }
+.dock-flyout.edge-right { border-left: 1px solid var(--dock-line); animation-name: dock-flyout-in-right; }
+.dock-flyout.edge-bottom { border-top: 1px solid var(--dock-line); animation-name: dock-flyout-in-bottom; }
+.dock-flyout.leaving { pointer-events: none; animation-direction: reverse; animation-timing-function: ease-in; }
+.dock-flyout.leaving.edge-left { animation-name: dock-flyout-out-left; }
+.dock-flyout.leaving.edge-right { animation-name: dock-flyout-out-right; }
+.dock-flyout.leaving.edge-bottom { animation-name: dock-flyout-out-bottom; }
+/* Same frames under another name, so the browser restarts the animation for leaving. */
+@keyframes dock-flyout-in-left { from { opacity: 0; transform: translateX(-16px); } }
+@keyframes dock-flyout-in-right { from { opacity: 0; transform: translateX(16px); } }
+@keyframes dock-flyout-in-bottom { from { opacity: 0; transform: translateY(16px); } }
+@keyframes dock-flyout-out-left { from { opacity: 0; transform: translateX(-16px); } }
+@keyframes dock-flyout-out-right { from { opacity: 0; transform: translateX(16px); } }
+@keyframes dock-flyout-out-bottom { from { opacity: 0; transform: translateY(16px); } }
+@media (prefers-reduced-motion: reduce) {
+  .dock-flyout { animation: none; }
+}
+.dock-pin { font-size: 11px; }
+/* The free edge resizes the flyout. */
+.dock-flyout-grip { position: absolute; z-index: 6; }
+.dock-flyout-grip.ew { top: 0; bottom: 0; width: var(--dock-grip); cursor: ew-resize; }
+.dock-flyout.edge-left .dock-flyout-grip { right: calc(var(--dock-grip) / -2); }
+.dock-flyout.edge-right .dock-flyout-grip { left: calc(var(--dock-grip) / -2); }
+.dock-flyout-grip.ns { left: 0; right: 0; height: var(--dock-grip); top: calc(var(--dock-grip) / -2); cursor: ns-resize; }
+.dock-flyout-grip:hover { background: linear-gradient(var(--dock-accent), var(--dock-accent)) center / 2px 100% no-repeat; }
+.dock-flyout-grip.ns:hover { background-size: 100% 2px; }
+
+/* Keyboard focus */
+.dock-splitter:focus { outline: none; }
+.dock-splitter:focus-visible::after { background: var(--dock-accent); }
+.dock-flyout:focus { outline: none; }
+.dock-flyout:focus-visible { outline: 2px solid var(--dock-accent); outline-offset: -2px; }

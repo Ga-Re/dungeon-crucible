@@ -164,7 +164,7 @@ export function PropertiesPanel() {
       <div className="row"><label htmlFor="p-ft">{t('props.feetPerCell')}</label>
         <input id="p-ft" type="number" min={1} value={map.grid.feetPerCell} onChange={(e) => { const v = Number(e.target.value); if (v > 0) { map.grid = { ...map.grid, feetPerCell: v }; emit(); } }} />
       </div>
-      <div className="row"><label /><span className="hint mono">{map.widthPx}×{map.heightPx} px · {tileCount(map.widthPx, map.heightPx)} GPU tiles</span></div>
+      {map.widthPx > 0 && <div className="row"><label /><span className="hint mono">{map.widthPx}×{map.heightPx} px · {tileCount(map.widthPx, map.heightPx)} GPU tiles</span></div>}
       {cal && <div className="row"><label /><span className="hint">{t('props.calibrated', { w: cal.w.toFixed(1), h: cal.h.toFixed(1), r: cal.r.toFixed(2) })}</span></div>}
       <div className="row"><label htmlFor="p-amb">{t('map.ambient')}</label>
         <select id="p-amb" value={ambient} onChange={(e) => setAmbient(e.target.value as 'dark' | 'lit')}>

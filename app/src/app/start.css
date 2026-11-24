@@ -1,0 +1,82 @@
+/* Start screen: recent campaigns, new, open, import. Uses the app's theme tokens. */
+.start { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); overflow: auto; }
+.start-top { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px; background: var(--shell); border-bottom: 1px solid var(--edge); flex: none; }
+.start-top .brand { border-right: 0; }
+
+.start-main {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 40px;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 56px 32px 40px;
+}
+@media (max-width: 760px) {
+  .start-main { grid-template-columns: 1fr; padding-top: 32px; }
+}
+
+.start-actions h1 { margin: 0 0 6px; font-family: var(--font-head); font-size: 30px; font-weight: 700; letter-spacing: 0.02em; }
+.start-lead { margin: 0 0 22px; color: var(--fg-dim); line-height: 1.5; }
+
+.start-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--fg);
+  text-align: left;
+}
+.start-action:hover:not(:disabled) { border-color: var(--fg-faint); background: var(--panel-2); }
+.start-action:disabled { opacity: 0.55; cursor: default; }
+.start-action .ic { width: 20px; height: 20px; flex: none; color: var(--fg-dim); }
+.start-action span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.start-action b { font-weight: 600; font-size: 13.5px; }
+.start-action small { color: var(--fg-faint); font-size: 11.5px; }
+.start-action.primary { border-color: var(--accent); }
+.start-action.primary .ic { color: var(--accent); }
+.start-action.primary:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); }
+
+.start-notice { margin: 14px 0 0; padding: 10px 12px; border: 1px solid rgba(226, 85, 76, 0.5); border-left-width: 3px; border-radius: 3px; background: rgba(226, 85, 76, 0.08); color: var(--fg); line-height: 1.45; }
+
+.start-recent h2 { margin: 6px 0 12px; font-family: var(--font-head); font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-dim); }
+.start-recent ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line-soft); }
+.start-recent li { display: flex; align-items: stretch; border-bottom: 1px solid var(--line-soft); }
+.start-recent-open { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 10px 8px; background: none; border: 0; color: var(--fg); text-align: left; }
+.start-recent-open:hover:not(:disabled) { background: var(--panel); }
+.start-recent-open .ic { width: 18px; height: 18px; flex: none; color: var(--fg-faint); }
+.start-recent-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.start-recent-text b { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Long paths keep their end (the folder name) visible. */
+.start-path { font-family: var(--font-mono); font-size: 11px; color: var(--fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; unicode-bidi: plaintext; }
+.start-when { flex: none; font-size: 11.5px; color: var(--fg-faint); }
+.start-recent li.missing .start-recent-open { cursor: default; }
+.start-recent li.missing b, .start-recent li.missing .start-path { opacity: 0.55; }
+.start-recent li.missing .start-when { color: var(--warn); }
+.start-recent-remove { flex: none; width: 34px; display: grid; place-items: center; background: none; border: 0; color: var(--fg-faint); opacity: 0; }
+.start-recent li:hover .start-recent-remove, .start-recent-remove:focus-visible, .start-recent li.missing .start-recent-remove { opacity: 1; }
+.start-recent-remove:hover { color: var(--fg); background: var(--panel); }
+.start-recent-remove .ic { width: 14px; height: 14px; }
+
+/* New campaign dialog */
+.start-modal { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, 0.5); z-index: 50; }
+.start-dialog { width: min(460px, 100%); padding: 20px 22px; border: 1px solid var(--line); border-radius: 6px; background: var(--shell); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5); }
+.start-dialog h2 { margin: 0 0 16px; font-family: var(--font-head); font-size: 20px; font-weight: 700; }
+.start-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 16px; }
+.start-field span, .start-choice legend { font-size: 11.5px; color: var(--fg-dim); }
+.start-field input { height: 30px; font-size: 13.5px; }
+.start-choice { margin: 0 0 12px; padding: 0; border: 0; display: grid; gap: 6px; }
+.start-choice legend { margin-bottom: 5px; padding: 0; }
+.start-choice label { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
+.start-choice label.on { border-color: var(--accent); background: var(--accent-soft); }
+.start-choice input { margin-top: 2px; accent-color: var(--accent); }
+.start-choice span { display: flex; flex-direction: column; gap: 2px; }
+.start-choice b { font-weight: 600; }
+.start-choice small { color: var(--fg-faint); font-size: 11.5px; line-height: 1.4; }
+.start-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.start-buttons .btn { height: 30px; padding: 0 14px; }

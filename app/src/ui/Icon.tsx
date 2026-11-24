@@ -64,6 +64,9 @@ const PATHS = {
   close: 'M6 6l12 12M18 6L6 18',
   list: 'M8 6h13M8 12h13M8 18h13 M3.5 6h.01M3.5 12h.01M3.5 18h.01',
   poi: 'M12 22s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12z M12 7.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z',
+  home: 'M3 11l9-8 9 8 M5 9.5V21h14V9.5 M10 21v-6h4v6',
+  export: 'M12 15V3M7 8l5-5 5 5M4 21h16',
+  archive: 'M3 4h18v4H3z M5 8v12h14V8 M10 12h4',
 } as const;
 
 export type IconName = keyof typeof PATHS;

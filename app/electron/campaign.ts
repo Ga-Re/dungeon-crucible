@@ -1,11 +1,13 @@
 /**
- * The open campaign folder. Pages only ever pass paths relative to it.
+ * The open campaign folder. Pages only ever pass paths relative to it. Also creates campaign
+ * folders, and imports/exports campaigns as archives.
  */
-import { dialog, type BrowserWindow } from 'electron';
+import { app, dialog, type BrowserWindow } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CampaignInfo, ImportedFile } from '../src/platform/desktop-api';
-import { isInside, listFilesIn, safeJoin, toRel, uniquePath, writeAtomic } from './files';
+import type { CampaignInfo, CampaignResult, ExportResult, ImportedFile, RecentStatus } from '../src/platform/desktop-api';
+import { ArchiveError, CAMPAIGN_FILE_NAME, archiveCampaignName, extractArchive, writeArchive } from './archive';
+import { folderName, isInside, listFilesIn, safeJoin, toRel, uniquePath, writeAtomic } from './files';
 
 const MAP_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'webm'];
 const AUDIO_EXTENSIONS = ['mp3', 'ogg', 'oga', 'opus', 'wav', 'm4a', 'aac', 'flac'];
@@ -32,6 +34,86 @@ export class Campaign {
     return this.activate(folder);
   }
 
+  /** No campaign open any more (back on the start screen). */
+  close(): void {
+    this.root = null;
+  }
+
+  /**
+   * Creates a campaign folder: the user picks where (suggested: Documents/<name>). The folder
+   * must be new or empty. The page writes the campaign's files afterwards.
+   */
+  async create(win: BrowserWindow, name: string): Promise<CampaignResult | null> {
+    const r = await dialog.showSaveDialog(win, {
+      title: 'New campaign',
+      defaultPath: path.join(app.getPath('documents'), folderName(name)),
+      buttonLabel: 'Create',
+      properties: ['createDirectory'],
+    });
+    if (r.canceled || !r.filePath) return null;
+    try {
+      if (!(await isEmptyOrMissing(r.filePath))) return { ok: false, error: 'targetNotEmpty' };
+      await fs.promises.mkdir(r.filePath, { recursive: true });
+      return { ok: true, campaign: await this.activate(r.filePath) };
+    } catch {
+      return { ok: false, error: 'failed' };
+    }
+  }
+
+  /** Imports a campaign archive (.zip) into a new folder the user picks. */
+  async importArchive(win: BrowserWindow): Promise<CampaignResult | null> {
+    const open = await dialog.showOpenDialog(win, { title: 'Import campaign', properties: ['openFile'], filters: [{ name: 'Campaign archive', extensions: ['zip'] }] });
+    const zip = open.filePaths[0];
+    if (open.canceled || !zip) return null;
+    try {
+      const name = (await archiveCampaignName(zip)) ?? path.basename(zip, path.extname(zip));
+      const save = await dialog.showSaveDialog(win, {
+        title: 'Folder for the imported campaign',
+        defaultPath: path.join(app.getPath('documents'), folderName(name)),
+        buttonLabel: 'Import',
+        properties: ['createDirectory'],
+      });
+      if (save.canceled || !save.filePath) return null;
+      await extractArchive(zip, save.filePath);
+      return { ok: true, campaign: await this.activate(save.filePath) };
+    } catch (e) {
+      return { ok: false, error: e instanceof ArchiveError ? e.code : 'failed' };
+    }
+  }
+
+  /** Writes the open campaign as an archive (.zip) where the user picks. */
+  async exportArchive(win: BrowserWindow, name: string): Promise<ExportResult | null> {
+    const root = this.requireRoot();
+    const r = await dialog.showSaveDialog(win, {
+      title: 'Export campaign',
+      defaultPath: path.join(app.getPath('documents'), `${folderName(name)}.zip`),
+      filters: [{ name: 'Campaign archive', extensions: ['zip'] }],
+    });
+    if (r.canceled || !r.filePath) return null;
+    if (isInside(root, path.resolve(r.filePath))) return { ok: false, error: 'insideCampaign' };
+    try {
+      const files = await writeArchive(root, r.filePath, folderName(name));
+      return { ok: true, file: r.filePath, files };
+    } catch {
+      return { ok: false, error: 'failed' };
+    }
+  }
+
+  /** Whether each of these folders (recent campaigns) still holds a campaign. */
+  async status(folders: unknown): Promise<RecentStatus[]> {
+    if (!Array.isArray(folders)) return [];
+    return Promise.all(
+      folders.slice(0, 50).map(async (f): Promise<RecentStatus> => {
+        if (typeof f !== 'string' || !path.isAbsolute(f)) return 'missing';
+        try {
+          return (await fs.promises.stat(path.join(f, CAMPAIGN_FILE_NAME))).isFile() ? 'ok' : 'missing';
+        } catch {
+          return 'missing';
+        }
+      }),
+    );
+  }
+
   readText(rel: string): Promise<string> {
     return fs.promises.readFile(safeJoin(this.requireRoot(), rel), 'utf8');
   }
@@ -49,7 +131,6 @@ export class Campaign {
     return safeJoin(this.requireRoot(), rel);
   }
 
-  /** Picks an image or video map and copies it into `maps/`. */
   /** Picks an image or video map and copies it into `maps/`. */
   importMap(win: BrowserWindow): Promise<ImportedFile | null> {
     return this.importInto(win, 'Maps', MAP_EXTENSIONS, 'maps');
@@ -89,3 +170,12 @@ export class Campaign {
     }
   }
 }
+
+async function isEmptyOrMissing(dir: string): Promise<boolean> {
+  try {
+    return (await fs.promises.readdir(dir)).filter((n) => n !== '.DS_Store').length === 0;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'ENOENT';
+  }
+}
+

@@ -145,6 +145,11 @@ function registerIpc(): void {
   handle('campaign:write', (_w, rel: string, content: string) => campaign.writeText(rel, content));
   handle('campaign:list', (_w, dir: string) => campaign.listFiles(dir));
   handle('campaign:absolute', (_w, rel: string) => campaign.absolutePath(rel));
+  handle('campaign:create', (w, name: unknown) => campaign.create(w, typeof name === 'string' ? name : 'Campaign'));
+  handle('campaign:importArchive', (w) => campaign.importArchive(w));
+  handle('campaign:exportArchive', (w, name: unknown) => campaign.exportArchive(w, typeof name === 'string' ? name : 'Campaign'));
+  handle('campaign:close', () => campaign.close());
+  handle('campaign:status', (_w, folders: unknown) => campaign.status(folders));
   handle('campaign:importMap', (w) => campaign.importMap(w));
   handle('campaign:importAudio', (w, sfx: boolean) => campaign.importAudio(w, sfx === true));
 

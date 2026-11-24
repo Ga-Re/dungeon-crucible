@@ -12,6 +12,9 @@ import type { Polygon } from '../core/poly/types';
 import { rectPolygon } from '../core/fogModel';
 import type { TemplateShape } from '../core/scene';
 import { useI18n } from '../i18n/i18n';
+import { hasMap } from '../core/emptyScene';
+import { importMapIntoCampaign } from '../app/campaign';
+import { Icon } from '../ui/Icon';
 import type { MessageKey } from '../i18n/en';
 import { drawDmOverlay, type OverlayState } from '../render/dmOverlay';
 import { fogOptions } from '../render/fogOptions';
@@ -58,6 +61,8 @@ function DmMap() {
   const tool = useStore((s) => s.tool);
   const ws = useStore((s) => s.ws);
   const sceneVersion = useStore((s) => s.sceneVersion);
+  const mapPresent = useStore((s) => hasMap(s.scene));
+  const campaignOpen = useStore((s) => !!s.campaign);
   const dmFogHidden = useStore((s) => s.dmFogHidden);
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -83,6 +88,10 @@ function DmMap() {
     const fit = () => {
       const s = size();
       const m = state.scene.map;
+      if (!hasMap(state.scene)) {
+        view.current = { zoom: 1, x: 0, y: 0 };
+        return;
+      }
       const z = Math.min((s.width - 40) / m.widthPx, (s.height - 40) / m.heightPx);
       view.current = { zoom: z, x: (s.width - m.widthPx * z) / 2, y: (s.height - m.heightPx * z) / 2 };
     };
@@ -398,7 +407,20 @@ function DmMap() {
         onContextMenu={(e) => e.preventDefault()}
         aria-label={t('panel.map')}
       />
-      {hintKey && <div className="map-hint">{t(hintKey)}</div>}
+      {hintKey && mapPresent && <div className="map-hint">{t(hintKey)}</div>}
+      {!mapPresent && (
+        <div className="map-empty">
+          <Icon name="map" />
+          <b>{t('map.empty.title')}</b>
+          <p>{t('map.empty.hint')}</p>
+          {campaignOpen && (
+            <button className="btn pri" onClick={() => void importMapIntoCampaign()}>
+              <Icon name="import" />
+              {t('map.empty.import')}
+            </button>
+          )}
+        </div>
+      )}
       <div className="map-badge">{dmFogHidden ? t('fog.hiddenInDm') : t(ws === 'forge' ? 'ws.forge' : 'ws.play')}</div>
     </div>
   );

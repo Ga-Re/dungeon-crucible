@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assetPathFrom, assetUrlFor } from '../src/platform/asset-url';
-import { fileResponse, isInside, parseRange, safeJoin, toRel, uniquePath } from './files';
+import { fileResponse, folderName, isInside, parseRange, safeJoin, toRel, uniquePath } from './files';
 
 describe('safeJoin', () => {
   const r = path.join(path.sep, 'campaign');
@@ -76,5 +76,15 @@ describe('asset URLs', () => {
       expect(assetPathFrom(assetUrlFor(p))).toBe(p);
     }
     expect(assetPathFrom('https://example.com/x')).toBeNull();
+  });
+});
+
+describe('folderName', () => {
+  it('turns a campaign name into a safe folder name', () => {
+    expect(folderName('Ashes of Vhal’Durn')).toBe('Ashes of Vhal’Durn');
+    expect(folderName('../../etc')).toBe('etc');
+    expect(folderName('a/b\\c:d*e?"f<g>h|i')).toBe('a b c d e f g h i');
+    expect(folderName('   ')).toBe('Campaign');
+    expect(folderName('x'.repeat(200))).toHaveLength(80);
   });
 });

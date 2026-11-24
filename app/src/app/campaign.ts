@@ -13,14 +13,18 @@ import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MapSidecarSchema
 import { DEFAULT_GRID } from '../core/grid';
 import type { Scene } from '../core/scene';
 import {
-  assetUrl, importMapFileNative, isDesktop, listFiles, openCampaignFolder, pickCampaignFolder, readText, writeText, type CampaignInfo,
+  assetUrl, campaignStatus, closeCampaignFolder, createCampaignFolder, exportCampaignArchive, importCampaignArchive, importMapFileNative, isDesktop, listFiles,
+  openCampaignFolder, pickCampaignFolder, readText, writeText, type CampaignError, type CampaignInfo, type RecentStatus,
 } from '../platform/bridge';
+import { emptyScene } from '../core/emptyScene';
+import type { MessageKey } from '../i18n/en';
+import { addRecent, loadRecent, removeRecent, saveRecent } from './recent';
+import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { emit, log, onDirty, replaceScene, state } from './store';
-import { applySceneAmbience, refreshAudioFiles, sceneAmbience } from './soundboard';
+import { emit, log, onDirty, replaceScene, setWorkspace, state } from './store';
+import { applySceneAmbience, refreshAudioFiles, sceneAmbience, stopAll } from './soundboard';
 
-const LAST_KEY = 'dc.lastCampaign';
 const AUTOSAVE_MS = 1500;
 
 async function urlForResource(resource: string): Promise<string> {
@@ -48,7 +52,54 @@ function creaturePath(c: Creature): string {
   return `creatures/${slugify(c.name)}.dm.json`;
 }
 
-/** Shows the folder picker. A folder without campaign.dm.json becomes a new campaign. */
+/* ---------------------------------------------------------------- recent campaigns */
+
+function storage(): Storage | null {
+  try {
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** Loads the recent list and checks which folders still hold a campaign. */
+export async function refreshRecent(): Promise<Map<string, RecentStatus>> {
+  state.recent = loadRecent(storage());
+  emit();
+  const status = new Map<string, RecentStatus>();
+  if (!isDesktop() || state.recent.length === 0) return status;
+  const r = await campaignStatus(state.recent.map((x) => x.root));
+  state.recent.forEach((x, i) => status.set(x.root, r[i] ?? 'missing'));
+  return status;
+}
+
+function remember(info: CampaignInfo, name: string): void {
+  state.recent = addRecent(loadRecent(storage()), { root: info.root, name, openedAt: Date.now() });
+  saveRecent(storage(), state.recent);
+}
+
+export function forgetRecent(root: string): void {
+  state.recent = removeRecent(state.recent, root);
+  saveRecent(storage(), state.recent);
+  emit();
+}
+
+/* ---------------------------------------------------------------- open, create, close */
+
+function notice(key: MessageKey, params?: Record<string, string | number>): void {
+  state.notice = { key, ...(params ? { params } : {}) };
+  emit();
+}
+
+const ERROR_KEYS: Record<CampaignError, MessageKey> = {
+  notCampaign: 'start.error.notCampaign',
+  unsafe: 'start.error.unsafe',
+  tooLarge: 'start.error.tooLarge',
+  targetNotEmpty: 'start.error.targetNotEmpty',
+  failed: 'start.error.failed',
+};
+
+/** Ctrl/⌘+O and "Open campaign": a folder that holds a campaign. */
 export async function openCampaignDialog(): Promise<void> {
   if (!isDesktop()) {
     log('log.desktopOnly');
@@ -56,39 +107,117 @@ export async function openCampaignDialog(): Promise<void> {
     return;
   }
   const info = await pickCampaignFolder();
-  if (info) await loadCampaign(info);
+  if (info) await openCampaign(info);
 }
 
-export async function reopenLastCampaign(): Promise<void> {
-  if (!isDesktop()) return;
-  let last: string | null = null;
+/** Opens a campaign from the recent list. */
+export async function openRecent(root: string): Promise<void> {
+  let info: CampaignInfo;
   try {
-    last = localStorage.getItem(LAST_KEY);
+    info = await openCampaignFolder(root);
   } catch {
-    /* ignore */
-  }
-  if (!last) return;
-  try {
-    await loadCampaign(await openCampaignFolder(last));
-  } catch {
-    /* folder moved or deleted: start without campaign */
-  }
-}
-
-async function loadCampaign(info: CampaignInfo): Promise<void> {
-  state.campaign = info;
-  try {
-    localStorage.setItem(LAST_KEY, info.root);
-  } catch {
-    /* ignore */
-  }
-  const manifest = await readJson(CAMPAIGN_FILE, CampaignManifestSchema);
-  if (!manifest) {
-    await createCampaign(info.name);
-    log('log.campaignCreated', { name: info.name });
-    emit();
+    notice('start.error.missing');
     return;
   }
+  await openCampaign(info);
+}
+
+async function openCampaign(info: CampaignInfo): Promise<void> {
+  if (state.campaign) await closeCampaign({ toStart: false });
+  const ok = await loadCampaign(info);
+  if (!ok) {
+    await closeCampaignFolder();
+    state.campaign = null;
+    notice(ERROR_KEYS.notCampaign);
+  }
+}
+
+/** Imports a campaign archive (.zip) into a new folder and opens it. */
+export async function importCampaign(): Promise<void> {
+  const r = await importCampaignArchive();
+  if (!r) return;
+  if (!r.ok) {
+    notice(ERROR_KEYS[r.error]);
+    return;
+  }
+  await openCampaign(r.campaign);
+}
+
+/** Writes the open campaign as an archive (.zip). */
+export async function exportCampaign(): Promise<void> {
+  if (!state.campaign) return;
+  await saveCampaign(true);
+  const r = await exportCampaignArchive(state.campaign.name);
+  if (!r) return;
+  if (r.ok) log('log.campaignExported', { file: r.file, files: r.files });
+  else log(r.error === 'insideCampaign' ? 'log.exportInsideCampaign' : 'log.exportFailed');
+  emit();
+}
+
+/**
+ * New campaign: the user picks where its folder goes. It starts empty (in the map forge, ready
+ * to import a map) or with the sample crypt and creatures.
+ */
+export async function newCampaign(name: string, withSample: boolean): Promise<void> {
+  const clean = name.trim() || 'Campaign';
+  const r = await createCampaignFolder(clean);
+  if (!r) return;
+  if (!r.ok) {
+    notice(ERROR_KEYS[r.error]);
+    return;
+  }
+  if (state.campaign) await closeCampaign({ toStart: false });
+  state.campaign = { ...r.campaign, name: clean };
+  if (withSample) {
+    const scene = createSampleScene();
+    scene.map.imageUrl = 'builtin:crypt';
+    state.creatures = structuredClone(SAMPLE_CREATURES);
+    const scenePath = `scenes/${slugify('Session 1')}.scene.json`;
+    replaceScene(scene, { resource: 'builtin:crypt', fileName: 'builtin:crypt', scenePath, sceneName: 'Session 1' });
+  } else {
+    state.creatures = [];
+    replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
+  }
+  state.selectedCreatureIdx = 0;
+  await saveCampaign(true);
+  await refreshSceneList();
+  await refreshAudioFiles();
+  remember(state.campaign, clean);
+  log('log.campaignCreated', { name: clean });
+  enterCampaign(withSample ? 'play' : 'forge');
+}
+
+function enterCampaign(ws?: WorkspaceId): void {
+  state.home = false;
+  state.notice = null;
+  if (ws) setWorkspace(ws);
+  emit();
+}
+
+/** Saves and closes the open campaign; back to the start screen unless another one opens. */
+export async function closeCampaign({ toStart = true } = {}): Promise<void> {
+  if (state.campaign) {
+    await saveCampaign(true);
+    stopAll();
+    await closeCampaignFolder();
+  }
+  state.campaign = null;
+  state.scenes = [];
+  state.creatures = [];
+  replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
+  if (toStart) {
+    state.home = true;
+    void refreshRecent();
+  }
+  emit();
+}
+
+/** Loads the campaign in `info`; false if the folder holds no campaign. */
+async function loadCampaign(info: CampaignInfo): Promise<boolean> {
+  state.campaign = info;
+  const manifest = await readJson(CAMPAIGN_FILE, CampaignManifestSchema);
+  if (!manifest) return false;
+  state.campaign = { ...info, name: manifest.name };
   const files = await listFiles('creatures');
   const creatures: Creature[] = [];
   for (const f of files.filter((x) => x.endsWith('.dm.json'))) {
@@ -98,11 +227,14 @@ async function loadCampaign(info: CampaignInfo): Promise<void> {
   state.creatures = creatures;
   state.selectedCreatureIdx = 0;
   if (manifest.activeScene) await loadScene(manifest.activeScene, tableFromManifest(manifest));
+  else replaceScene(emptyScene({ ...state.scene.table, ...tableFromManifest(manifest) }), { resource: '', fileName: '', scenePath: null, sceneName: '' });
   await refreshSceneList();
   state.dirty = false;
   await refreshAudioFiles();
+  remember(info, manifest.name);
   log('log.campaignOpened', { name: manifest.name });
-  emit();
+  enterCampaign(manifest.activeScene ? undefined : 'forge');
+  return true;
 }
 
 export async function refreshSceneList(): Promise<void> {
@@ -136,27 +268,18 @@ export async function switchScene(scenePath: string): Promise<void> {
   await saveCampaign();
 }
 
-/** New campaign: the sample crypt and sample creatures become its first scene. */
-async function createCampaign(name: string): Promise<void> {
-  const scene = createSampleScene();
-  scene.map.imageUrl = 'builtin:crypt';
-  state.creatures = structuredClone(SAMPLE_CREATURES);
-  const scenePath = `scenes/${slugify('Session 1')}.scene.json`;
-  replaceScene(scene, { resource: 'builtin:crypt', fileName: 'builtin:crypt', scenePath, sceneName: 'Session 1' });
-  state.campaign = { ...(state.campaign as CampaignInfo), name };
-  await saveCampaign(true);
-  await refreshSceneList();
-}
-
 export async function saveCampaign(force = false): Promise<void> {
-  if (!state.campaign || !state.scenePath || state.saving || (!state.dirty && !force)) return;
+  if (!state.campaign || state.saving || (!state.dirty && !force)) return;
   state.saving = true;
   emit();
   try {
     const s = state.scene;
-    const sidecar = mapSidecarPath(state.mapResource);
-    await writeText(sidecar, JSON.stringify(mapSidecarFromScene(s, state.mapResource), null, 2));
-    await writeText(state.scenePath, JSON.stringify({ ...sceneOverrideFromScene(s, state.sceneName, sidecar, { round: state.round, turn: state.turn }), ambience: sceneAmbience() }, null, 2));
+    // A campaign without a map yet has no scene: only the manifest and creatures are written.
+    if (state.scenePath) {
+      const sidecar = mapSidecarPath(state.mapResource);
+      await writeText(sidecar, JSON.stringify(mapSidecarFromScene(s, state.mapResource), null, 2));
+      await writeText(state.scenePath, JSON.stringify({ ...sceneOverrideFromScene(s, state.sceneName, sidecar, { round: state.round, turn: state.turn }), ambience: sceneAmbience() }, null, 2));
+    }
     for (const c of state.creatures) await writeText(creaturePath(c), JSON.stringify(c, null, 2));
     await writeText(CAMPAIGN_FILE, JSON.stringify(manifestFromState(state.campaign.name, state.scenePath, s.table), null, 2));
     state.dirty = false;

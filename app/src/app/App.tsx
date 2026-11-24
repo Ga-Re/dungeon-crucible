@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { exploredShare } from '../core/fogModel';
 import { DockHost } from '../dock/DockHost';
 import { floatingBackend } from '../platform/bridge';
-import { useI18n, LOCALES, type Locale } from '../i18n/i18n';
+import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
 import { mapCommands } from '../panels/MapView';
 import { MonitorMenu } from '../panels/panels';
@@ -13,31 +13,31 @@ import {
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
-import { importMapIntoCampaign, openCampaignDialog, reopenLastCampaign, saveCampaign, startAutosave } from './campaign';
+import { closeCampaign, exportCampaign, importMapIntoCampaign, openCampaignDialog, refreshRecent, saveCampaign, startAutosave } from './campaign';
+import { AppearanceControls } from './Appearance';
+import { StartScreen } from './StartScreen';
+import { isDesktop } from '../platform/bridge';
 import { openTable, refreshMonitors, startFrameLoop } from './tableOutput';
 import { importMapFile } from './importMap';
 import { SAMPLE_CREATURES } from '../sample/creatures';
 
-type Skin = 'dark' | 'light' | 'parchment';
-function initialSkin(): Skin {
-  try {
-    const v = localStorage.getItem('dc.skin');
-    if (v === 'light' || v === 'parchment' || v === 'dark') return v;
-  } catch { /* ignore */ }
-  return 'dark';
-}
-
 export function App() {
   const ws = useStore((s) => s.ws);
+  const home = useStore((s) => s.home);
   useEffect(() => {
     startFrameLoop();
     startAutosave();
     unlockAudioOnGesture();
     setMasterVolume(state.soundboard.master);
     void refreshMonitors();
-    log('log.opened');
+    // Without the desktop app (plain browser) the sample campaign is what is open.
+    if (!isDesktop()) log('log.opened');
     emit();
-    void reopenLastCampaign();
+    // The desktop app starts on the start screen (recent campaigns, new, open, import).
+    if (isDesktop()) {
+      state.home = true;
+      void refreshRecent();
+    }
     removeLegacyLayouts();
     const flush = () => dock.flush();
     window.addEventListener('pagehide', flush);
@@ -57,6 +57,7 @@ export function App() {
       flush();
     };
   }, []);
+  if (home) return <StartScreen />;
   return (
     <div className="app">
       <AppBar />
@@ -70,8 +71,7 @@ export function App() {
 }
 
 function AppBar() {
-  const { t, locale, setLocale } = useI18n();
-  const [skin, setSkin] = useState<Skin>(initialSkin);
+  const { t } = useI18n();
   const tableOpen = useStore((s) => s.tableOpen);
   const blackout = useStore((s) => s.scene.table.blackout);
   const rotation = useStore((s) => s.scene.table.rotation);
@@ -83,17 +83,15 @@ function AppBar() {
   const saving = useStore((s) => s.saving);
   const canUndo = useStore((s) => s.canUndo);
   const canRedo = useStore((s) => s.canRedo);
-  useEffect(() => {
-    document.documentElement.dataset.skin = skin;
-    try { localStorage.setItem('dc.skin', skin); } catch { /* ignore */ }
-  }, [skin]);
   return (
     <header className="appbar">
       <div className="brand"><span className="mark"><Icon name="anvil" /></span>{t('app.name')}</div>
+      {isDesktop() && <button className="ab-btn" title={t('start.home')} aria-label={t('start.home')} onClick={() => void closeCampaign()}><Icon name="home" /></button>}
       <button className={`ab-btn ${campaign ? '' : 'cta'}`} title={`${t('campaign.open')} (Ctrl/⌘+O)`} onClick={() => void openCampaignDialog()}>
         <Icon name="folder" />{!campaign && <span>{t('campaign.openShort')}</span>}
       </button>
       <button className="ab-btn" title={`${t('app.save')} (Ctrl+S)`} disabled={!campaign} onClick={() => void saveCampaign(true)}><Icon name="save" /></button>
+      <button className="ab-btn" title={t('campaign.export')} aria-label={t('campaign.export')} disabled={!campaign} onClick={() => void exportCampaign()}><Icon name="export" /></button>
       <button className="ab-btn" title={`${t('app.undo')} (Ctrl+Z)`} disabled={!canUndo} onClick={undo}><Icon name="undo" /></button>
       <button className="ab-btn" title={`${t('app.redo')} (Ctrl+Shift+Z)`} disabled={!canRedo} onClick={redo}><Icon name="redo" /></button>
       <span className="doc-name">
@@ -108,14 +106,7 @@ function AppBar() {
           <span className="dot" />
           {tableOpen ? `${monitor?.name ?? t('table.monitor')} · ${rotation}°${blackout ? ` · ${t('tool.blackout')}` : ''}` : t('status.tableOff')}
         </button>
-        <select className="compact-select" aria-label={t('app.theme')} value={skin} onChange={(e) => setSkin(e.target.value as Skin)}>
-          <option value="dark">{t('app.theme')}: {t('theme.dark')}</option>
-          <option value="light">{t('app.theme')}: {t('theme.light')}</option>
-          <option value="parchment">{t('app.theme')}: {t('theme.parchment')}</option>
-        </select>
-        <select className="compact-select" aria-label={t('app.language')} value={locale} onChange={(e) => setLocale(e.target.value as Locale)}>
-          {LOCALES.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-        </select>
+        <AppearanceControls />
       </div>
       {menu && <MonitorMenu anchor={menu} onClose={() => setMenu(null)} />}
     </header>

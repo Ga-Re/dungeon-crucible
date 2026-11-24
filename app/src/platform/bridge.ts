@@ -7,6 +7,7 @@ import type { PlayerFrame } from '../core/projection';
 import type { FloatingBackend } from '../dock/nativeWindows';
 import { assetUrlFor } from './asset-url';
 import type { CampaignInfo, DcApi, DcTableApi, ImportedFile, MonitorInfo, ScreenSetupInfo } from './desktop-api';
+export type { CampaignError, RecentStatus } from './desktop-api';
 
 export type { CampaignInfo, ImportedFile, MonitorInfo };
 
@@ -101,6 +102,11 @@ export const listFiles = (dir: string) => dc().listFiles(dir);
 export const absolutePath = (rel: string) => dc().absolutePath(rel);
 export const importMapFileNative = () => dc().importMapFile();
 export const importAudioFileNative = (sfx: boolean) => dc().importAudioFile(sfx);
+export const createCampaignFolder = (name: string) => dc().createCampaign(name);
+export const importCampaignArchive = () => dc().importCampaignArchive();
+export const exportCampaignArchive = (name: string) => dc().exportCampaignArchive(name);
+export const closeCampaignFolder = () => dc().closeCampaign();
+export const campaignStatus = (folders: string[]) => dc().campaignStatus(folders);
 
 /** URL the pages (DM and table) can load a campaign file from. */
 export async function assetUrl(absPath: string): Promise<string> {

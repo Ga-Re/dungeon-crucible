@@ -278,3 +278,11 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .sfx .ic { width: 15px; height: 15px; }
 .meter { height: 6px; border-radius: 3px; background: var(--input); margin: 8px 0; overflow: hidden; }
 .meter div { height: 100%; width: 0; background: var(--accent); transition: width 0.08s; }
+
+/* Map view without a map (new, empty campaign) */
+.map-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; text-align: center; color: var(--fg-dim); pointer-events: none; }
+.map-empty > * { pointer-events: auto; }
+.map-empty > .ic { width: 40px; height: 40px; color: var(--fg-faint); }
+.map-empty b { font-family: var(--font-head); font-size: 20px; color: var(--fg); }
+.map-empty p { max-width: 380px; margin: 0 0 8px; line-height: 1.5; }
+.map-empty .btn { height: 32px; padding: 0 16px; }

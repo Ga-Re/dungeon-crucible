@@ -24,6 +24,7 @@ import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
 import { mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene } from '../core/persistence';
 import type { CampaignInfo } from '../platform/bridge';
+import type { RecentCampaign } from './recent';
 
 export type WorkspaceId = 'forge' | 'vault' | 'creatures' | 'atlas' | 'play';
 
@@ -95,6 +96,12 @@ export interface AppState {
   soundboard: SoundboardState;
   /** Increments whenever a different scene is loaded (views refit). */
   sceneVersion: number;
+  /** The start screen is shown (desktop app: at start and after closing a campaign). */
+  home: boolean;
+  /** Recently used campaigns (start screen). */
+  recent: RecentCampaign[];
+  /** A message on the start screen (e.g. why an import failed). */
+  notice: { key: MessageKey; params?: Record<string, string | number> } | null;
 }
 
 function initial(): AppState {
@@ -148,6 +155,9 @@ function initial(): AppState {
     canUndo: false,
     canRedo: false,
     sceneVersion: 0,
+    home: false,
+    recent: [],
+    notice: null,
     soundboard: initialSoundboard(),
   };
   s.vision = updateVision(scene);

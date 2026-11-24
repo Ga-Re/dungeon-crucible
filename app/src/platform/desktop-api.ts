@@ -29,6 +29,13 @@ export interface ImportedFile {
 
 export type Unsubscribe = () => void;
 
+/** Why creating, opening or importing a campaign failed. */
+export type CampaignError = 'notCampaign' | 'unsafe' | 'tooLarge' | 'targetNotEmpty' | 'failed';
+export type CampaignResult = { ok: true; campaign: CampaignInfo } | { ok: false; error: CampaignError };
+export type ExportResult = { ok: true; file: string; files: number } | { ok: false; error: 'insideCampaign' | 'failed' };
+/** Whether a recent campaign's folder still holds a campaign. */
+export type RecentStatus = 'ok' | 'missing';
+
 /** A floating panel window's bounds in desktop coordinates (logical pixels). */
 export interface FloatBounds {
   x: number;
@@ -80,6 +87,16 @@ export interface DcApi {
   writeText(rel: string, content: string): Promise<void>;
   listFiles(dir: string): Promise<string[]>;
   absolutePath(rel: string): Promise<string>;
+  /** Creates a campaign folder (the user picks where; null: cancelled). */
+  createCampaign(name: string): Promise<CampaignResult | null>;
+  /** Imports a campaign archive (.zip) into a new folder (null: cancelled). */
+  importCampaignArchive(): Promise<CampaignResult | null>;
+  /** Writes the open campaign as a .zip (null: cancelled). */
+  exportCampaignArchive(name: string): Promise<ExportResult | null>;
+  /** Back to no open campaign. */
+  closeCampaign(): Promise<void>;
+  /** For the recent list: does each folder still hold a campaign? */
+  campaignStatus(folders: string[]): Promise<RecentStatus[]>;
   importMapFile(): Promise<ImportedFile | null>;
   /** Picks an audio file and copies it into `audio/` or (sfx) `audio/sfx/`. */
   importAudioFile(sfx: boolean): Promise<ImportedFile | null>;

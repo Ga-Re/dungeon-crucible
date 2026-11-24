@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ARCHIVE_LIMITS, ArchiveError, archiveCampaignName, extractArchive, planExtraction, writeArchive, type ArchiveEntryInfo } from './archive';
+import yazl from 'yazl';
+import { ARCHIVE_LIMITS, ArchiveError, importArchive, planExtraction, writeArchive, type ArchiveEntryInfo } from './archive';
 
 const f = (fileName: string, uncompressedSize = 10, mode = 0o100644): ArchiveEntryInfo => ({ fileName, uncompressedSize, mode });
 const code = (fn: () => unknown) => {
@@ -15,71 +16,102 @@ const code = (fn: () => unknown) => {
 };
 
 describe('planExtraction', () => {
-  it('accepts a campaign at the top or inside one folder; skips OS junk and directories', () => {
-    const top = planExtraction([f('campaign.dm.json'), f('maps/'), f('maps/a.webp'), f('.DS_Store'), f('__MACOSX/._a')]);
-    expect(top.prefix).toBe('');
-    expect([...top.files.values()]).toEqual(['campaign.dm.json', 'maps/a.webp']);
-    const nested = planExtraction([f('Ashes/'), f('Ashes/campaign.dm.json'), f('Ashes/maps/a.webp')]);
-    expect(nested.prefix).toBe('Ashes/');
-    expect([...nested.files.values()]).toEqual(['campaign.dm.json', 'maps/a.webp']);
+  it('reads the campaign/ + library/ layout; library files are flat', () => {
+    const p = planExtraction([f('campaign/campaign.dm.json'), f('campaign/scenes/a.scene.json'), f('library/krypta.webp'), f('library/krypta.webp.dm.json'), f('library/deep/x.png'), f('.DS_Store')]);
+    expect([...p.campaign.values()]).toEqual(['campaign.dm.json', 'scenes/a.scene.json']);
+    expect([...p.library.values()]).toEqual(['krypta.webp', 'krypta.webp.dm.json']);
   });
 
-  it('refuses archives without a campaign', () => {
+  it('reads older archives (campaign at the top or in one folder) as campaign-only', () => {
+    expect([...planExtraction([f('campaign.dm.json'), f('maps/a.webp')]).campaign.values()]).toEqual(['campaign.dm.json', 'maps/a.webp']);
+    const nested = planExtraction([f('Ashes/campaign.dm.json'), f('Ashes/notes.md')]);
+    expect([...nested.campaign.values()]).toEqual(['campaign.dm.json', 'notes.md']);
+    expect(nested.library.size).toBe(0);
+  });
+
+  it('refuses archives without a campaign, unsafe paths, links, and oversize archives', () => {
     expect(code(() => planExtraction([f('notes.md')]))).toBe('notCampaign');
     expect(code(() => planExtraction([f('A/campaign.dm.json'), f('B/x.md')]))).toBe('notCampaign');
-  });
-
-  it('refuses paths that leave the target, and symbolic links', () => {
-    expect(code(() => planExtraction([f('campaign.dm.json'), f('../evil.sh')]))).toBe('unsafe');
-    expect(code(() => planExtraction([f('campaign.dm.json'), f('maps/../../evil')]))).toBe('unsafe');
-    expect(code(() => planExtraction([f('campaign.dm.json'), f('/etc/passwd')]))).toBe('unsafe');
-    expect(code(() => planExtraction([f('campaign.dm.json'), f('C:\\Windows\\x')]))).toBe('unsafe');
-    expect(code(() => planExtraction([f('campaign.dm.json'), f('maps\\..\\..\\x')]))).toBe('unsafe');
-    expect(code(() => planExtraction([f('campaign.dm.json'), f('link', 10, 0o120777)]))).toBe('unsafe');
-  });
-
-  it('refuses archives that are too large or have too many entries', () => {
-    expect(code(() => planExtraction([f('campaign.dm.json'), f('big.mp4', ARCHIVE_LIMITS.maxBytes)]))).toBe('tooLarge');
-    const many = Array.from({ length: ARCHIVE_LIMITS.maxEntries + 1 }, (_, i) => f(`x/${i}`));
-    expect(code(() => planExtraction(many))).toBe('tooLarge');
+    for (const bad of ['../evil.sh', 'campaign/../../evil', '/etc/passwd', 'C:\\Windows\\x', 'library\\..\\..\\x']) {
+      expect(code(() => planExtraction([f('campaign/campaign.dm.json'), f(bad)]))).toBe('unsafe');
+    }
+    expect(code(() => planExtraction([f('campaign/campaign.dm.json'), f('campaign/link', 10, 0o120777)]))).toBe('unsafe');
+    expect(code(() => planExtraction([f('campaign/campaign.dm.json'), f('library/big.mp4', ARCHIVE_LIMITS.maxBytes)]))).toBe('tooLarge');
+    expect(code(() => planExtraction(Array.from({ length: ARCHIVE_LIMITS.maxEntries + 1 }, (_, i) => f(`x/${i}`))))).toBe('tooLarge');
   });
 });
 
-describe('writeArchive / extractArchive', () => {
+describe('writeArchive / importArchive', () => {
   let dir: string;
+  let root: string;
   beforeEach(async () => {
     dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'dc-archive-'));
+    root = path.join(dir, 'root');
+    await fs.promises.mkdir(path.join(root, 'library'), { recursive: true });
+    await fs.promises.mkdir(path.join(root, 'campaigns'), { recursive: true });
   });
   afterEach(async () => {
     await fs.promises.rm(dir, { recursive: true, force: true });
   });
 
-  async function campaign(): Promise<string> {
-    const root = path.join(dir, 'Ashes of Vhal');
-    await fs.promises.mkdir(path.join(root, 'maps'), { recursive: true });
-    await fs.promises.writeFile(path.join(root, 'campaign.dm.json'), JSON.stringify({ kind: 'campaign', name: 'Ashes of Vhal' }));
-    await fs.promises.writeFile(path.join(root, 'maps', 'crypt.webp'), Buffer.alloc(5000, 7));
-    await fs.promises.writeFile(path.join(root, 'notes.md'), '# Notes\n');
-    await fs.promises.writeFile(path.join(root, '.DS_Store'), 'junk');
-    return root;
+  const write = (rel: string, content: string | Buffer) => {
+    const file = path.join(root, ...rel.split('/'));
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  };
+  const read = (rel: string) => fs.readFileSync(path.join(root, ...rel.split('/')), 'utf8');
+
+  function campaign(): void {
+    write('campaigns/ashes/campaign.dm.json', JSON.stringify({ kind: 'campaign', name: 'Ashes of Vhal' }));
+    write('campaigns/ashes/scenes/crypt.scene.json', JSON.stringify({ kind: 'scene', mapSidecar: 'library/crypt.webp.dm.json', ambience: [{ path: 'library/wind.ogg', volume: 1 }] }));
+    write('campaigns/ashes/.DS_Store', 'junk');
+    write('library/crypt.webp', Buffer.alloc(3000, 1));
+    write('library/crypt.webp.dm.json', JSON.stringify({ kind: 'map', grid: 'mine' }));
+    write('library/wind.ogg', Buffer.alloc(100, 2));
   }
 
-  it('round-trips a campaign folder (hidden files stay out)', async () => {
-    const root = await campaign();
+  it('exports with library files and imports into another root: same content is not copied twice', async () => {
+    campaign();
     const zip = path.join(dir, 'ashes.zip');
-    expect(await writeArchive(root, zip, 'Ashes of Vhal')).toBe(3);
-    expect(await archiveCampaignName(zip)).toBe('Ashes of Vhal');
-    const target = path.join(dir, 'imported');
-    await extractArchive(zip, target);
-    expect((await fs.promises.readdir(target)).sort()).toEqual(['campaign.dm.json', 'maps', 'notes.md']);
-    expect(await fs.promises.readFile(path.join(target, 'maps', 'crypt.webp'))).toEqual(Buffer.alloc(5000, 7));
-    expect(fs.existsSync(`${zip}.part`)).toBe(false);
+    expect(await writeArchive(path.join(root, 'campaigns/ashes'), path.join(root, 'library'), ['crypt.webp', 'wind.ogg'], zip)).toBe(5);
+    // Into the same root: the campaign gets a free folder name, the library files are reused.
+    const r = await importArchive(zip, root);
+    expect(r.slug).toBe('ashes-of-vhal');
+    expect(r.library).toEqual({ added: 0, reused: 2, renamed: 0, kept: 0 });
+    expect(JSON.parse(read('campaigns/ashes-of-vhal/scenes/crypt.scene.json')).mapSidecar).toBe('library/crypt.webp.dm.json');
+    expect(fs.existsSync(path.join(root, 'campaigns/ashes-of-vhal/.DS_Store'))).toBe(false);
+    // A second import of the same archive: another free folder name.
+    expect((await importArchive(zip, root)).slug).toBe('ashes-of-vhal-2');
+    expect(fs.readdirSync(root).filter((n) => n.startsWith('.import'))).toEqual([]);
   });
 
-  it('never extracts into a folder that has files', async () => {
-    const root = await campaign();
+  it('a library file with the same name but other content is renamed and the campaign follows it', async () => {
+    campaign();
     const zip = path.join(dir, 'ashes.zip');
-    await writeArchive(root, zip, 'Ashes');
-    await expect(extractArchive(zip, root)).rejects.toMatchObject({ code: 'targetNotEmpty' });
+    await writeArchive(path.join(root, 'campaigns/ashes'), path.join(root, 'library'), ['crypt.webp', 'wind.ogg'], zip);
+    // Another library: its own, different crypt.webp.
+    const other = path.join(dir, 'other');
+    fs.mkdirSync(path.join(other, 'library'), { recursive: true });
+    fs.writeFileSync(path.join(other, 'library/crypt.webp'), Buffer.alloc(10, 9));
+    fs.writeFileSync(path.join(other, 'library/crypt.webp.dm.json'), '{"theirs":true}');
+    const r = await importArchive(zip, other);
+    expect(r.library).toEqual({ added: 1, reused: 0, renamed: 1, kept: 0 });
+    expect(fs.readdirSync(path.join(other, 'library')).sort()).toEqual(['crypt-2.webp', 'crypt-2.webp.dm.json', 'crypt.webp', 'crypt.webp.dm.json', 'wind.ogg']);
+    expect(fs.readFileSync(path.join(other, 'library/crypt.webp.dm.json'), 'utf8')).toBe('{"theirs":true}');
+    const scene = JSON.parse(fs.readFileSync(path.join(other, 'campaigns', r.slug, 'scenes/crypt.scene.json'), 'utf8'));
+    expect(scene.mapSidecar).toBe('library/crypt-2.webp.dm.json');
+    expect(scene.ambience[0].path).toBe('library/wind.ogg');
+  });
+
+  it('campaign-only export leaves the library out; older archives still import', async () => {
+    campaign();
+    const zip = path.join(dir, 'only.zip');
+    expect(await writeArchive(path.join(root, 'campaigns/ashes'), path.join(root, 'library'), [], zip)).toBe(2);
+    const legacy = path.join(dir, 'legacy.zip');
+    const z = new yazl.ZipFile();
+    z.addBuffer(Buffer.from(JSON.stringify({ kind: 'campaign', name: 'Old One' })), 'Old One/campaign.dm.json');
+    z.end();
+    await new Promise<void>((res) => z.outputStream.pipe(fs.createWriteStream(legacy)).on('close', () => res()));
+    expect((await importArchive(legacy, root)).slug).toBe('old-one');
   });
 });

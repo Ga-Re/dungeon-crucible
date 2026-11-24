@@ -11,7 +11,7 @@ import { SCHEMA_VERSION, type CampaignManifest, type MapSidecar, type SceneOverr
 export const BUILTIN_PREFIX = 'builtin:';
 
 export function mapSidecarPath(resource: string): string {
-  if (resource.startsWith(BUILTIN_PREFIX)) return `maps/${resource.slice(BUILTIN_PREFIX.length)}.builtin.dm.json`;
+  if (resource.startsWith(BUILTIN_PREFIX)) return `library/${resource.slice(BUILTIN_PREFIX.length)}.builtin.dm.json`;
   return `${resource}.dm.json`;
 }
 

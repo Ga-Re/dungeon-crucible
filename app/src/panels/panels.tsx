@@ -14,7 +14,8 @@ import {
   resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, setGridType, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
-import { switchScene } from '../app/campaign';
+import { importMapIntoCampaign, switchScene } from '../app/campaign';
+import { filterLibraryMaps, mapUsage, openLibraryMap, refreshLibraryMaps, trashLibraryMap, type MapUsage } from '../app/library';
 import { CREATURE_DRAG } from './MapView';
 import { BUILTIN_PREFIX, BUILTIN_SFX, masterLevel } from '../app/audio';
 import { importAudio, setMaster, setTrackVolume, stopAll, toggleAmbience, trackFileName, triggerSfx } from '../app/soundboard';
@@ -55,6 +56,7 @@ export function BrowserPanel() {
   }
   return (
     <div className="panel-body">
+      {ws === 'forge' && campaign && <LibraryMaps />}
       <ul className="tree">
         {campaign && (
           <li>
@@ -113,6 +115,66 @@ export function BrowserPanel() {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Map Forge: the maps of the global library, searchable; open one, or move it to the trash. */
+function LibraryMaps() {
+  const { t } = useI18n();
+  const maps = useStore((s) => s.libraryMaps);
+  const current = useStore((s) => s.mapResource);
+  const sceneVersion = useStore((s) => s.sceneVersion);
+  const [query, setQuery] = useState('');
+  const [confirm, setConfirm] = useState<{ resource: string; usage: MapUsage[] } | null>(null);
+  useEffect(() => {
+    void refreshLibraryMaps();
+  }, [sceneVersion]);
+  const shown = filterLibraryMaps(maps, query);
+  return (
+    <div className="library">
+      <div className="sec">{t('library.maps')}</div>
+      <div className="library-tools">
+        <input type="search" value={query} placeholder={t('library.search')} aria-label={t('library.search')} onChange={(e) => setQuery(e.target.value)} />
+        <button className="ab-btn" title={t('tool.importMap')} aria-label={t('tool.importMap')} onClick={() => void importMapIntoCampaign()}><Icon name="import" /></button>
+      </div>
+      {maps.length === 0 ? (
+        <p className="hint">{t('library.empty')}</p>
+      ) : shown.length === 0 ? (
+        <p className="hint">{t('library.noMatch')}</p>
+      ) : (
+        <ul className="tree">
+          {shown.map((m) => (
+            <li key={m.resource}>
+              <div className={`tn ${m.resource === current ? 'sel' : ''}`}>
+                <button className="library-open" title={m.resource} onClick={() => void openLibraryMap(m.resource)}>
+                  <Icon name={m.isVideo ? 'play' : 'map'} />
+                  <span className="nm">{m.name}</span>
+                  {m.tags.length > 0 && <span className="meta">{m.tags.join(', ')}</span>}
+                </button>
+                <button className="ab-btn" title={t('library.trash')} aria-label={`${t('library.trash')}: ${m.name}`} onClick={() => void mapUsage(m.resource).then((usage) => setConfirm({ resource: m.resource, usage }))}><Icon name="trash" /></button>
+              </div>
+              {confirm?.resource === m.resource && (
+                <div className="library-confirm" role="alert">
+                  {confirm.usage.length > 0 ? (
+                    <>
+                      <p>{t('library.usedBy', { n: confirm.usage.length })}</p>
+                      <ul>{confirm.usage.slice(0, 6).map((u, i) => <li key={i}>{u.campaign} · {u.scene}</li>)}</ul>
+                      <p className="hint">{t('library.usedHint')}</p>
+                    </>
+                  ) : (
+                    <p>{t('library.unused')}</p>
+                  )}
+                  <div className="library-buttons">
+                    <button className="btn sm danger" onClick={() => void trashLibraryMap(m.resource).then(() => setConfirm(null))}>{t('library.trashConfirm')}</button>
+                    <button className="btn sm" onClick={() => setConfirm(null)}>{t('start.cancel')}</button>
+                  </div>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

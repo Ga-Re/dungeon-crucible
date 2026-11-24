@@ -15,26 +15,42 @@ export interface MonitorInfo {
   scaleFactor: number;
 }
 
+/** The open campaign: its folder `campaigns/<slug>/` in the root folder. */
 export interface CampaignInfo {
-  root: string;
+  slug: string;
   name: string;
 }
 
-export interface ImportedFile {
-  /** Path relative to the campaign folder, with forward slashes. */
+/** The root folder (null: not chosen yet) and the one suggested for a first start. */
+export interface RootInfo {
+  root: string | null;
+  suggested: string;
+}
+
+/** A campaign folder in the root folder (`campaigns/<slug>/`) with the manifest's last change. */
+export interface CampaignListEntry {
+  slug: string;
+  modifiedAt: number;
+}
+
+/** A file put into the library. */
+export interface LibraryImport {
+  /** Path relative to the root folder (`library/<file>`), with forward slashes. */
   relPath: string;
   /** Absolute path, for `assetUrlFor`. */
   absPath: string;
+  /** The library had a file with the same content already; nothing was copied. */
+  reused: boolean;
 }
 
 export type Unsubscribe = () => void;
 
-/** Why creating, opening or importing a campaign failed. */
+/** Why importing a campaign archive failed. */
 export type CampaignError = 'notCampaign' | 'unsafe' | 'tooLarge' | 'targetNotEmpty' | 'failed';
-export type CampaignResult = { ok: true; campaign: CampaignInfo } | { ok: false; error: CampaignError };
-export type ExportResult = { ok: true; file: string; files: number } | { ok: false; error: 'insideCampaign' | 'failed' };
-/** Whether a recent campaign's folder still holds a campaign. */
-export type RecentStatus = 'ok' | 'missing';
+export type ImportResultInfo =
+  | { ok: true; slug: string; library: { added: number; reused: number; renamed: number; kept: number } }
+  | { ok: false; error: CampaignError };
+export type ExportResult = { ok: true; file: string; files: number } | { ok: false; error: 'insideRoot' | 'failed' };
 
 /** A floating panel window's bounds in desktop coordinates (logical pixels). */
 export interface FloatBounds {
@@ -81,25 +97,31 @@ export interface DcApi {
   /** The table window was closed by the operating system or the user. */
   onTableClosed(cb: () => void): Unsubscribe;
 
-  pickCampaignFolder(): Promise<CampaignInfo | null>;
-  openCampaignFolder(path: string): Promise<CampaignInfo>;
+  /** The root folder holding `library/` and `campaigns/`. */
+  rootInfo(): Promise<RootInfo>;
+  /** Sets the root: the suggested folder, or one the user picks (null: cancelled). */
+  chooseRoot(useSuggested: boolean): Promise<RootInfo | null>;
+
+  /** Files, by path relative to the root folder (confined to it). */
   readText(rel: string): Promise<string>;
   writeText(rel: string, content: string): Promise<void>;
   listFiles(dir: string): Promise<string[]>;
   absolutePath(rel: string): Promise<string>;
-  /** Creates a campaign folder (the user picks where; null: cancelled). */
-  createCampaign(name: string): Promise<CampaignResult | null>;
-  /** Imports a campaign archive (.zip) into a new folder (null: cancelled). */
-  importCampaignArchive(): Promise<CampaignResult | null>;
-  /** Writes the open campaign as a .zip (null: cancelled). */
-  exportCampaignArchive(name: string): Promise<ExportResult | null>;
-  /** Back to no open campaign. */
-  closeCampaign(): Promise<void>;
-  /** For the recent list: does each folder still hold a campaign? */
-  campaignStatus(folders: string[]): Promise<RecentStatus[]>;
-  importMapFile(): Promise<ImportedFile | null>;
-  /** Picks an audio file and copies it into `audio/` or (sfx) `audio/sfx/`. */
-  importAudioFile(sfx: boolean): Promise<ImportedFile | null>;
+  /** Moves a file (with its sidecar unless `withSidecar` is false) to the root's trash. */
+  trash(rel: string, withSidecar: boolean): Promise<void>;
+
+  listCampaigns(): Promise<CampaignListEntry[]>;
+  /** A new campaign folder named after `name`; returns its slug. */
+  createCampaign(name: string): Promise<string>;
+  trashCampaign(slug: string): Promise<void>;
+
+  /** Picks a map or audio file and puts it into the library (null: cancelled). */
+  importToLibrary(kind: 'map' | 'audio'): Promise<LibraryImport | null>;
+
+  /** Writes campaign `slug` as .zip; `libraryFiles` (root-relative) come along, [] = campaign only. */
+  exportCampaignArchive(slug: string, name: string, libraryFiles: string[]): Promise<ExportResult | null>;
+  /** Imports a campaign archive into the root folder (null: cancelled). */
+  importCampaignArchive(): Promise<ImportResultInfo | null>;
 
   /**
    * Floating panel windows (opened by the page with `window.open('about:blank', 'dc-float:…')`).

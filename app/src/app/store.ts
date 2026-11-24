@@ -24,8 +24,9 @@ import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
 import { mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene } from '../core/persistence';
-import type { CampaignInfo } from '../platform/bridge';
+import type { CampaignInfo, RootInfo } from '../platform/bridge';
 import type { RecentCampaign } from './recent';
+import type { LibraryMap } from './library';
 
 export type WorkspaceId = 'forge' | 'vault' | 'creatures' | 'atlas' | 'play';
 
@@ -99,6 +100,10 @@ export interface AppState {
   sceneVersion: number;
   /** The start screen is shown (desktop app: at start and after closing a campaign). */
   home: boolean;
+  /** The root folder (desktop app); null until loaded. */
+  root: RootInfo | null;
+  /** Maps of the library (Map Forge browser). */
+  libraryMaps: LibraryMap[];
   /** Recently used campaigns (start screen). */
   recent: RecentCampaign[];
   /** A message on the start screen (e.g. why an import failed). */
@@ -157,6 +162,8 @@ function initial(): AppState {
     canRedo: false,
     sceneVersion: 0,
     home: false,
+    root: null,
+    libraryMaps: [],
     recent: [],
     notice: null,
     soundboard: initialSoundboard(),

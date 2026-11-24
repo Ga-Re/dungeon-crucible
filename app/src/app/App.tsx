@@ -13,7 +13,8 @@ import {
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
-import { closeCampaign, exportCampaign, importMapIntoCampaign, openCampaignDialog, refreshRecent, saveCampaign, startAutosave } from './campaign';
+import { closeCampaign, importMapIntoCampaign, refreshRoot, saveCampaign, startAutosave } from './campaign';
+import { ExportDialog } from './ExportDialog';
 import { AppearanceControls } from './Appearance';
 import { StartScreen } from './StartScreen';
 import { isDesktop } from '../platform/bridge';
@@ -36,7 +37,7 @@ export function App() {
     // The desktop app starts on the start screen (recent campaigns, new, open, import).
     if (isDesktop()) {
       state.home = true;
-      void refreshRecent();
+      void refreshRoot();
     }
     removeLegacyLayouts();
     const flush = () => dock.flush();
@@ -48,7 +49,8 @@ export function App() {
       if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
       else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
       else if (k === 's') { e.preventDefault(); void saveCampaign(true); }
-      else if (k === 'o') { e.preventDefault(); void openCampaignDialog(); }
+      // Campaigns live in the root folder: Ctrl/⌘+O goes to the start screen.
+      else if (k === 'o' && isDesktop()) { e.preventDefault(); void closeCampaign(); }
     };
     window.addEventListener('keydown', keys);
     return () => {
@@ -83,15 +85,14 @@ function AppBar() {
   const saving = useStore((s) => s.saving);
   const canUndo = useStore((s) => s.canUndo);
   const canRedo = useStore((s) => s.canRedo);
+  const [exporting, setExporting] = useState(false);
   return (
     <header className="appbar">
       <div className="brand"><span className="mark"><Icon name="anvil" /></span>{t('app.name')}</div>
-      {isDesktop() && <button className="ab-btn" title={t('start.home')} aria-label={t('start.home')} onClick={() => void closeCampaign()}><Icon name="home" /></button>}
-      <button className={`ab-btn ${campaign ? '' : 'cta'}`} title={`${t('campaign.open')} (Ctrl/⌘+O)`} onClick={() => void openCampaignDialog()}>
-        <Icon name="folder" />{!campaign && <span>{t('campaign.openShort')}</span>}
-      </button>
+      {isDesktop() && <button className="ab-btn" title={`${t('start.home')} (Ctrl/⌘+O)`} aria-label={t('start.home')} onClick={() => void closeCampaign()}><Icon name="home" /></button>}
       <button className="ab-btn" title={`${t('app.save')} (Ctrl+S)`} disabled={!campaign} onClick={() => void saveCampaign(true)}><Icon name="save" /></button>
-      <button className="ab-btn" title={t('campaign.export')} aria-label={t('campaign.export')} disabled={!campaign} onClick={() => void exportCampaign()}><Icon name="export" /></button>
+      <button className="ab-btn" title={t('campaign.export')} aria-label={t('campaign.export')} disabled={!campaign} onClick={() => setExporting(true)}><Icon name="export" /></button>
+      {exporting && <ExportDialog onClose={() => setExporting(false)} />}
       <button className="ab-btn" title={`${t('app.undo')} (Ctrl+Z)`} disabled={!canUndo} onClick={undo}><Icon name="undo" /></button>
       <button className="ab-btn" title={`${t('app.redo')} (Ctrl+Shift+Z)`} disabled={!canRedo} onClick={redo}><Icon name="redo" /></button>
       <span className="doc-name">

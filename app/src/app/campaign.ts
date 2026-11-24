@@ -1,26 +1,28 @@
 /**
- * Campaign folder handling (desktop app). Layout:
+ * Campaigns in the root folder (desktop app). All paths below are relative to the root folder:
  *
- *   campaign.dm.json                 manifest (name, active scene, table calibration)
- *   maps/<file>  + <file>.dm.json    map image/video and its sidecar (grid, walls, zones)
- *   scenes/<name>.scene.json         per-session state (fog, doors, tokens, combat)
- *   creatures/<name>.dm.json         2024 stat blocks entered by the DM
+ *   library/<file> + <file>.dm.json      maps and audio with their sidecars (global)
+ *   library/<name>.creature.json         creatures and player characters (global)
+ *   campaigns/<slug>/campaign.dm.json    manifest (name, active scene, table calibration)
+ *   campaigns/<slug>/scenes/<name>.scene.json   per-session state on a library map
+ *
+ * Inside a campaign, scene paths are relative to the campaign folder (`scenes/x.scene.json`);
+ * references into the library are relative to the root (`library/x.webp.dm.json`), so both stay
+ * valid in another root folder and in archives.
  */
-import {
-  BUILTIN_PREFIX, manifestFromState, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, slugify, tableFromManifest,
-} from '../core/persistence';
+import { manifestFromState, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, tableFromManifest, BUILTIN_PREFIX } from '../core/persistence';
 import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MapSidecarSchema, SceneOverrideSchema, type Creature, type MapSidecar } from '../core/sidecar';
-import { keepUnknown, readDocument, type DocumentKind } from '../core/documents';
+import { keepUnknown, readDocument, slugId, type DocumentKind } from '../core/documents';
 import type { z } from 'zod';
 import { DEFAULT_GRID } from '../core/grid';
 import type { Scene } from '../core/scene';
 import {
-  assetUrl, campaignStatus, closeCampaignFolder, createCampaignFolder, exportCampaignArchive, importCampaignArchive, importMapFileNative, isDesktop, listFiles,
-  openCampaignFolder, pickCampaignFolder, readText, writeText, type CampaignError, type CampaignInfo, type RecentStatus,
+  absolutePath, assetUrl, chooseRoot, createCampaignFolder, exportCampaignArchive, importCampaignArchive, importToLibrary, isDesktop, listCampaignFolders, listFiles,
+  readText, rootInfo, trashCampaignFolder, writeText, type CampaignError, type CampaignInfo,
 } from '../platform/bridge';
 import { emptyScene } from '../core/emptyScene';
 import type { MessageKey } from '../i18n/en';
-import { addRecent, loadRecent, removeRecent, saveRecent } from './recent';
+import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
@@ -28,22 +30,32 @@ import { emit, log, onDirty, replaceScene, setWorkspace, state } from './store';
 import { applySceneAmbience, refreshAudioFiles, sceneAmbience, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
+export const CREATURE_SUFFIX = '.creature.json';
+
+/** Path of a file of the open campaign, relative to the root folder. */
+export function campaignPath(rel: string): string {
+  if (!state.campaign) throw new Error('No campaign open');
+  return `campaigns/${state.campaign.slug}/${rel}`;
+}
+
+export function creaturePath(c: Pick<Creature, 'name'>): string {
+  return `library/${slugId(c.name, 'creature')}${CREATURE_SUFFIX}`;
+}
 
 async function urlForResource(resource: string): Promise<string> {
   if (resource.startsWith(BUILTIN_PREFIX)) return resource;
-  const { absolutePath } = await import('../platform/bridge');
   return assetUrl(await absolutePath(resource));
 }
 
 /* ---------------------------------------------------------------- documents (file rules) */
 
-/** What each document looked like when read: writing merges into it, so unknown fields survive. */
+/** What each document looked like when read or last written: writing merges into it, so unknown fields survive. */
 const originals = new Map<string, unknown>();
 /** Documents from a newer app version: shown if possible, never written back. */
 const readOnly = new Set<string>();
 
-/** Reads a JSON document: version check, migration, validation. Problems are logged, never thrown. */
-async function readDoc<T>(rel: string, kind: DocumentKind, schema: z.ZodType<T>): Promise<T | null> {
+/** Reads a JSON document (root-relative path): version check, migration, validation. Never throws. */
+export async function readDoc<T>(rel: string, kind: DocumentKind, schema: z.ZodType<T>, opts: { quiet?: boolean } = {}): Promise<T | null> {
   let text: string;
   try {
     text = await readText(rel);
@@ -58,26 +70,50 @@ async function readDoc<T>(rel: string, kind: DocumentKind, schema: z.ZodType<T>)
   }
   if (r.reason === 'newer') {
     readOnly.add(rel);
-    log('log.newerFile', { file: rel });
-  } else {
+    if (!opts.quiet) log('log.newerFile', { file: rel });
+  } else if (!opts.quiet) {
     log('log.invalidFile', { file: rel, error: r.errors[0] ?? '' });
   }
   return null;
 }
 
-/** Writes a JSON document, keeping the unknown fields it had; never one from a newer version. */
-async function writeDoc(rel: string, schema: z.ZodType, value: unknown): Promise<void> {
+/** Writes a JSON document, keeping the unknown fields it had; never one from a newer version; nothing if unchanged. */
+export async function writeDoc(rel: string, schema: z.ZodType, value: unknown): Promise<void> {
   if (readOnly.has(rel)) return;
-  const out = keepUnknown(schema, originals.get(rel), value);
+  const before = originals.get(rel);
+  const out = keepUnknown(schema, before, value);
+  if (before !== undefined && JSON.stringify(before) === JSON.stringify(out)) return;
   await writeText(rel, JSON.stringify(out, null, 2));
   originals.set(rel, out);
 }
 
-function creaturePath(c: Creature): string {
-  return `creatures/${slugify(c.name)}.dm.json`;
+/* ---------------------------------------------------------------- root folder */
+
+/** Loads the root folder's state into the store (start screen). */
+export async function refreshRoot(): Promise<void> {
+  if (!isDesktop()) return;
+  state.root = await rootInfo();
+  emit();
 }
 
-/* ---------------------------------------------------------------- recent campaigns */
+/** First start or "change folder": the suggested folder or one the user picks. */
+export async function setRootFolder(useSuggested: boolean): Promise<void> {
+  if (state.campaign) await closeCampaign({ toStart: true });
+  const r = await chooseRoot(useSuggested);
+  if (r) state.root = r;
+  emit();
+}
+
+/* ---------------------------------------------------------------- campaigns on the start screen */
+
+export interface CampaignEntry {
+  slug: string;
+  name: string;
+  /** Last opened on this device (0: never), else the manifest's last change. */
+  openedAt: number;
+  modifiedAt: number;
+  status: 'ok' | 'newer' | 'invalid';
+}
 
 function storage(): Storage | null {
   try {
@@ -87,26 +123,34 @@ function storage(): Storage | null {
   }
 }
 
-/** Loads the recent list and checks which folders still hold a campaign. */
-export async function refreshRecent(): Promise<Map<string, RecentStatus>> {
-  state.recent = loadRecent(storage());
-  emit();
-  const status = new Map<string, RecentStatus>();
-  if (!isDesktop() || state.recent.length === 0) return status;
-  const r = await campaignStatus(state.recent.map((x) => x.root));
-  state.recent.forEach((x, i) => status.set(x.root, r[i] ?? 'missing'));
-  return status;
+/** Recent-list key of a campaign: root folder and slug (the list is per device, across root folders). */
+function recentKey(slug: string): string {
+  return `${state.root?.root ?? ''}::${slug}`;
 }
 
-function remember(info: CampaignInfo, name: string): void {
-  state.recent = addRecent(loadRecent(storage()), { root: info.root, name, openedAt: Date.now() });
-  saveRecent(storage(), state.recent);
+/** The campaigns in the root folder, most recently opened first. */
+export async function listCampaigns(): Promise<CampaignEntry[]> {
+  if (!isDesktop() || !state.root?.root) return [];
+  const recent = new Map(loadRecent(storage()).map((r) => [r.root, r.openedAt]));
+  const out: CampaignEntry[] = [];
+  for (const f of await listCampaignFolders()) {
+    let status: CampaignEntry['status'] = 'ok';
+    let name = f.slug;
+    try {
+      const r = readDocument('campaign', CampaignManifestSchema, await readText(`campaigns/${f.slug}/${CAMPAIGN_FILE}`));
+      if (r.ok) name = r.value.name;
+      else status = r.reason === 'newer' ? 'newer' : 'invalid';
+    } catch {
+      status = 'invalid';
+    }
+    out.push({ slug: f.slug, name, openedAt: recent.get(recentKey(f.slug)) ?? 0, modifiedAt: f.modifiedAt, status });
+  }
+  return out.sort((a, b) => b.openedAt - a.openedAt || a.name.localeCompare(b.name));
 }
 
-export function forgetRecent(root: string): void {
-  state.recent = removeRecent(state.recent, root);
+function remember(slug: string, name: string): void {
+  state.recent = addRecent(loadRecent(storage()), { root: recentKey(slug), name, openedAt: Date.now() });
   saveRecent(storage(), state.recent);
-  emit();
 }
 
 /* ---------------------------------------------------------------- open, create, close */
@@ -124,40 +168,18 @@ const ERROR_KEYS: Record<CampaignError, MessageKey> = {
   failed: 'start.error.failed',
 };
 
-/** Ctrl/⌘+O and "Open campaign": a folder that holds a campaign. */
-export async function openCampaignDialog(): Promise<void> {
-  if (!isDesktop()) {
-    log('log.desktopOnly');
-    emit();
-    return;
-  }
-  const info = await pickCampaignFolder();
-  if (info) await openCampaign(info);
-}
-
-/** Opens a campaign from the recent list. */
-export async function openRecent(root: string): Promise<void> {
-  let info: CampaignInfo;
-  try {
-    info = await openCampaignFolder(root);
-  } catch {
-    notice('start.error.missing');
-    return;
-  }
-  await openCampaign(info);
-}
-
-async function openCampaign(info: CampaignInfo): Promise<void> {
+/** Opens campaign `slug` of the root folder. */
+export async function openCampaign(slug: string): Promise<void> {
   if (state.campaign) await closeCampaign({ toStart: false });
-  const ok = await loadCampaign(info);
+  const ok = await loadCampaign({ slug, name: slug });
   if (!ok) {
-    await closeCampaignFolder();
+    const newer = readOnly.has(`campaigns/${slug}/${CAMPAIGN_FILE}`);
     state.campaign = null;
-    notice(readOnly.has(CAMPAIGN_FILE) ? 'start.error.newer' : ERROR_KEYS.notCampaign);
+    notice(newer ? 'start.error.newer' : ERROR_KEYS.notCampaign);
   }
 }
 
-/** Imports a campaign archive (.zip) into a new folder and opens it. */
+/** Imports a campaign archive (.zip) into the root folder and opens it. */
 export async function importCampaign(): Promise<void> {
   const r = await importCampaignArchive();
   if (!r) return;
@@ -165,51 +187,69 @@ export async function importCampaign(): Promise<void> {
     notice(ERROR_KEYS[r.error]);
     return;
   }
-  await openCampaign(r.campaign);
-}
-
-/** Writes the open campaign as an archive (.zip). */
-export async function exportCampaign(): Promise<void> {
-  if (!state.campaign) return;
-  await saveCampaign(true);
-  const r = await exportCampaignArchive(state.campaign.name);
-  if (!r) return;
-  if (r.ok) log('log.campaignExported', { file: r.file, files: r.files });
-  else log(r.error === 'insideCampaign' ? 'log.exportInsideCampaign' : 'log.exportFailed');
+  await openCampaign(r.slug);
+  if (state.campaign) log('log.campaignImported', { added: r.library.added, reused: r.library.reused, renamed: r.library.renamed });
   emit();
 }
 
+/** Writes the open campaign as an archive: campaign data only, or with the library files it uses. */
+export async function exportCampaign(withLibrary: boolean): Promise<void> {
+  if (!state.campaign) return;
+  await saveCampaign(true);
+  const files = withLibrary ? await campaignLibraryFiles() : [];
+  const r = await exportCampaignArchive(state.campaign.slug, state.campaign.name, files);
+  if (!r) return;
+  if (r.ok) log('log.campaignExported', { file: r.file, files: r.files });
+  else log(r.error === 'insideRoot' ? 'log.exportInsideRoot' : 'log.exportFailed');
+  emit();
+}
+
+/** Library files the open campaign uses: maps of its scenes, ambience, creatures of its tokens. */
+async function campaignLibraryFiles(): Promise<string[]> {
+  const out = new Set<string>();
+  for (const p of state.scenes) {
+    const ov = await readDoc(campaignPath(p), 'scene', SceneOverrideSchema, { quiet: true });
+    if (!ov) continue;
+    const map = await readDoc(ov.mapSidecar, 'map', MapSidecarSchema, { quiet: true });
+    if (map && map.resource.startsWith('library/')) out.add(map.resource);
+    else if (ov.mapSidecar.startsWith('library/')) out.add(ov.mapSidecar.replace(/\.dm\.json$/, ''));
+    for (const a of ov.ambience) if (a.path.startsWith('library/')) out.add(a.path);
+    for (const t of ov.tokens) if (t.creatureId) out.add(`library/${t.creatureId}${CREATURE_SUFFIX}`);
+  }
+  return [...out];
+}
+
 /**
- * New campaign: the user picks where its folder goes. It starts empty (in the map forge, ready
- * to import a map) or with the sample crypt and creatures.
+ * New campaign in the root folder. It starts empty (in the map forge, ready to import a map) or
+ * with the sample crypt; sample creatures go into the library unless it has them.
  */
 export async function newCampaign(name: string, withSample: boolean): Promise<void> {
   const clean = name.trim() || 'Campaign';
-  const r = await createCampaignFolder(clean);
-  if (!r) return;
-  if (!r.ok) {
-    notice(ERROR_KEYS[r.error]);
-    return;
-  }
   if (state.campaign) await closeCampaign({ toStart: false });
-  state.campaign = { ...r.campaign, name: clean };
+  const slug = await createCampaignFolder(clean);
+  state.campaign = { slug, name: clean };
   if (withSample) {
     const scene = createSampleScene();
     scene.map.imageUrl = 'builtin:crypt';
-    state.creatures = structuredClone(SAMPLE_CREATURES);
-    const scenePath = `scenes/${slugify('Session 1')}.scene.json`;
-    replaceScene(scene, { resource: 'builtin:crypt', fileName: 'builtin:crypt', scenePath, sceneName: 'Session 1' });
+    replaceScene(scene, { resource: 'builtin:crypt', fileName: 'builtin:crypt', scenePath: 'scenes/session-1.scene.json', sceneName: 'Session 1' });
+    await loadCreatures();
+    for (const c of SAMPLE_CREATURES) if (!state.creatures.some((x) => creaturePath(x) === creaturePath(c))) state.creatures.push(structuredClone(c));
   } else {
-    state.creatures = [];
     replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
+    await loadCreatures();
   }
   state.selectedCreatureIdx = 0;
   await saveCampaign(true);
   await refreshSceneList();
   await refreshAudioFiles();
-  remember(state.campaign, clean);
+  remember(slug, clean);
   log('log.campaignCreated', { name: clean });
   enterCampaign(withSample ? 'play' : 'forge');
+}
+
+/** Moves a campaign of the root folder to the trash. */
+export async function trashCampaign(slug: string): Promise<void> {
+  await trashCampaignFolder(slug);
 }
 
 function enterCampaign(ws?: WorkspaceId): void {
@@ -224,7 +264,6 @@ export async function closeCampaign({ toStart = true } = {}): Promise<void> {
   if (state.campaign) {
     await saveCampaign(true);
     stopAll();
-    await closeCampaignFolder();
   }
   state.campaign = null;
   state.scenes = [];
@@ -232,33 +271,34 @@ export async function closeCampaign({ toStart = true } = {}): Promise<void> {
   originals.clear();
   readOnly.clear();
   replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
-  if (toStart) {
-    state.home = true;
-    void refreshRecent();
-  }
+  if (toStart) state.home = true;
   emit();
 }
 
-/** Loads the campaign in `info`; false if the folder holds no campaign. */
-async function loadCampaign(info: CampaignInfo): Promise<boolean> {
-  state.campaign = info;
-  const manifest = await readDoc(CAMPAIGN_FILE, 'campaign', CampaignManifestSchema);
-  if (!manifest) return false;
-  state.campaign = { ...info, name: manifest.name };
-  const files = await listFiles('creatures');
+/** All creatures of the library (global). */
+async function loadCreatures(): Promise<void> {
   const creatures: Creature[] = [];
-  for (const f of files.filter((x) => x.endsWith('.dm.json'))) {
+  for (const f of (await listFiles('library')).filter((x) => x.endsWith(CREATURE_SUFFIX))) {
     const c = await readDoc(f, 'creature', CreatureSchema);
     if (c) creatures.push(c);
   }
-  state.creatures = creatures;
+  state.creatures = creatures.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Loads campaign `info.slug`; false if its folder holds no (readable) campaign. */
+async function loadCampaign(info: CampaignInfo): Promise<boolean> {
+  state.campaign = info;
+  const manifest = await readDoc(campaignPath(CAMPAIGN_FILE), 'campaign', CampaignManifestSchema);
+  if (!manifest) return false;
+  state.campaign = { ...info, name: manifest.name };
+  await loadCreatures();
   state.selectedCreatureIdx = 0;
   if (manifest.activeScene) await loadScene(manifest.activeScene, tableFromManifest(manifest));
   else replaceScene(emptyScene({ ...state.scene.table, ...tableFromManifest(manifest) }), { resource: '', fileName: '', scenePath: null, sceneName: '' });
   await refreshSceneList();
   state.dirty = false;
   await refreshAudioFiles();
-  remember(info, manifest.name);
+  remember(info.slug, manifest.name);
   log('log.campaignOpened', { name: manifest.name });
   enterCampaign(manifest.activeScene ? undefined : 'forge');
   return true;
@@ -266,12 +306,14 @@ async function loadCampaign(info: CampaignInfo): Promise<boolean> {
 
 export async function refreshSceneList(): Promise<void> {
   if (!state.campaign) return;
-  state.scenes = (await listFiles('scenes')).filter((f) => f.endsWith('.scene.json'));
+  const prefix = campaignPath('');
+  state.scenes = (await listFiles(campaignPath('scenes'))).filter((f) => f.endsWith('.scene.json')).map((f) => f.slice(prefix.length));
   emit();
 }
 
+/** Loads a scene of the open campaign (`scenes/x.scene.json`). */
 export async function loadScene(scenePath: string, table: Partial<Scene['table']> = state.scene.table): Promise<void> {
-  const ov = await readDoc(scenePath, 'scene', SceneOverrideSchema);
+  const ov = await readDoc(campaignPath(scenePath), 'scene', SceneOverrideSchema);
   if (!ov) return;
   const map = await readDoc(ov.mapSidecar, 'map', MapSidecarSchema);
   if (!map) return;
@@ -305,10 +347,10 @@ export async function saveCampaign(force = false): Promise<void> {
     if (state.scenePath) {
       const sidecar = mapSidecarPath(state.mapResource);
       await writeDoc(sidecar, MapSidecarSchema, mapSidecarFromScene(s, state.mapResource));
-      await writeDoc(state.scenePath, SceneOverrideSchema, { ...sceneOverrideFromScene(s, state.sceneName, sidecar, { round: state.round, turn: state.turn }), ambience: sceneAmbience() });
+      await writeDoc(campaignPath(state.scenePath), SceneOverrideSchema, { ...sceneOverrideFromScene(s, state.sceneName, sidecar, { round: state.round, turn: state.turn }), ambience: sceneAmbience() });
     }
     for (const c of state.creatures) await writeDoc(creaturePath(c), CreatureSchema, c);
-    await writeDoc(CAMPAIGN_FILE, CampaignManifestSchema, manifestFromState(state.campaign.name, state.scenePath, s.table));
+    await writeDoc(campaignPath(CAMPAIGN_FILE), CampaignManifestSchema, manifestFromState(state.campaign.name, state.scenePath, s.table));
     state.dirty = false;
     state.lastSavedAt = Date.now();
   } catch (e) {
@@ -328,7 +370,20 @@ export function startAutosave(): void {
   });
 }
 
-/** Imports a map into the campaign and starts a new scene on it. Player tokens come along. */
+/* ---------------------------------------------------------------- maps */
+
+/** A free scene path for `name` in the open campaign. */
+function freeScenePath(name: string): string {
+  const base = slugId(name, 'scene');
+  let p = `scenes/${base}.scene.json`;
+  for (let i = 2; state.scenes.includes(p); i++) p = `scenes/${base}-${i}.scene.json`;
+  return p;
+}
+
+/**
+ * Imports a map into the library and starts a new scene on it. A file the library has already
+ * keeps its sidecar (grid, walls, areas); a new one gets a fresh sidecar. Player tokens come along.
+ */
 export async function importMapIntoCampaign(): Promise<boolean> {
   if (!isDesktop()) return false;
   if (!state.campaign) {
@@ -336,25 +391,51 @@ export async function importMapIntoCampaign(): Promise<boolean> {
     emit();
     return true;
   }
-  const f = await importMapFileNative();
+  const f = await importToLibrary('map');
   if (!f) return true;
-  const url = await assetUrl(f.absPath);
-  const isVideo = /\.(mp4|webm)$/i.test(f.relPath);
-  const { w, h } = await mediaSize(url, isVideo);
-  const name = f.relPath.split('/').pop()!.replace(/\.[^.]+$/, '');
-  const map: MapSidecar = {
-    kind: 'map', schemaVersion: 1, name, resource: f.relPath, isVideo, widthPx: w, heightPx: h,
-    tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark',
-  };
+  await openMapResource(f.relPath);
+  log(f.reused ? 'log.mapReused' : 'log.mapImported', { file: f.relPath });
+  emit();
+  return true;
+}
+
+/**
+ * Opens library map `resource` in the open campaign: its scene there if it has one, else a new
+ * scene (which takes the map's grid, walls and areas from its sidecar if it has one).
+ */
+export async function openMapResource(resource: string): Promise<void> {
+  if (!state.campaign) return;
+  const sidecar = mapSidecarPath(resource);
+  for (const p of state.scenes) {
+    const ov = await readDoc(campaignPath(p), 'scene', SceneOverrideSchema, { quiet: true });
+    if (ov?.mapSidecar === sidecar) {
+      await switchScene(p);
+      return;
+    }
+  }
   await saveCampaign();
+  await openMapInNewScene(resource, await readDoc(sidecar, 'map', MapSidecarSchema, { quiet: true }));
+}
+
+/** Starts a new scene of the open campaign on library map `resource` (with its sidecar if it has one). */
+export async function openMapInNewScene(resource: string, sidecar: MapSidecar | null = null): Promise<void> {
+  const url = await urlForResource(resource);
+  let map = sidecar;
+  if (!map) {
+    const isVideo = /\.(mp4|webm)$/i.test(resource);
+    const { w, h } = await mediaSize(url, isVideo);
+    const name = resource.split('/').pop()!.replace(/\.[^.]+$/, '');
+    map = {
+      kind: 'map', schemaVersion: 1, name, resource, isVideo, widthPx: w, heightPx: h,
+      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark',
+    };
+  }
   const scene = sceneFromDocuments(map, null, url, state.scene.table);
-  scene.tokens = state.scene.tokens.filter((t) => t.kind === 'pc').map((t, i) => ({ ...t, x: w / 2 + (i - 1) * DEFAULT_GRID.cellWidth, y: h / 2 }));
-  const scenePath = `scenes/${slugify(name)}.scene.json`;
-  replaceScene(scene, { resource: f.relPath, fileName: f.relPath, scenePath, sceneName: name });
-  log('log.mapImported', { file: f.relPath });
+  scene.tokens = state.scene.tokens.filter((t) => t.kind === 'pc').map((t, i) => ({ ...t, x: map.widthPx / 2 + (i - 1) * map.grid.cellWidth, y: map.heightPx / 2 }));
+  const scenePath = freeScenePath(map.name);
+  replaceScene(scene, { resource, fileName: resource, scenePath, sceneName: map.name });
   await saveCampaign(true);
   await refreshSceneList();
-  return true;
 }
 
 function mediaSize(url: string, isVideo: boolean): Promise<{ w: number; h: number }> {

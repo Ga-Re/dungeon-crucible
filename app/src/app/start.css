@@ -80,3 +80,16 @@
 .start-choice small { color: var(--fg-faint); font-size: 11.5px; line-height: 1.4; }
 .start-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .start-buttons .btn { height: 30px; padding: 0 14px; }
+
+/* First start: choose the root folder */
+.start-setup { width: min(560px, 100%); margin: 0 auto; padding: 72px 24px 40px; }
+.start-setup h1 { margin: 0 0 6px; font-family: var(--font-head); font-size: 30px; font-weight: 700; }
+.start-setup > .hint { margin-top: 14px; line-height: 1.5; }
+.start-path-inline { font-family: var(--font-mono); word-break: break-all; }
+
+/* Root folder line under the actions */
+.start-root { display: flex; flex-direction: column; gap: 4px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
+.start-root .btn { align-self: flex-start; margin-top: 4px; }
+
+/* Confirm moving a campaign to the trash */
+.start-confirm { display: flex; align-items: center; gap: 6px; padding: 0 6px; flex: none; }

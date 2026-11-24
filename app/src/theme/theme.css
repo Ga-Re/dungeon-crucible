@@ -286,3 +286,15 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .map-empty b { font-family: var(--font-head); font-size: 20px; color: var(--fg); }
 .map-empty p { max-width: 380px; margin: 0 0 8px; line-height: 1.5; }
 .map-empty .btn { height: 32px; padding: 0 16px; }
+
+/* Library list in the Map Forge browser */
+.library { margin-bottom: 12px; }
+.library-tools { display: flex; gap: 4px; margin: 4px 0 6px; }
+.library-tools input { flex: 1; min-width: 0; height: 26px; }
+.library .tn { display: flex; align-items: center; gap: 2px; }
+.library-open { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; padding: 0; background: none; border: 0; color: inherit; text-align: left; }
+.library-open .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-confirm { margin: 4px 0 8px 22px; padding: 8px 10px; border: 1px solid rgba(226, 85, 76, 0.45); border-radius: 3px; background: rgba(226, 85, 76, 0.07); font-size: 12px; }
+.library-confirm p { margin: 0 0 6px; }
+.library-confirm ul { margin: 0 0 6px; padding-left: 16px; }
+.library-buttons { display: flex; gap: 6px; }

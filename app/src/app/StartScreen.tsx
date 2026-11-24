@@ -1,27 +1,32 @@
 /**
- * Start screen of the desktop app: recently used campaigns for quick access, a new campaign
- * (empty or with the sample crypt), open a campaign folder, import a campaign archive.
+ * Start screen of the desktop app. First start: choose the root folder (library and campaigns).
+ * Then: the campaigns of the root folder (most recently opened first), a new campaign (empty or
+ * with the sample crypt), import a campaign archive, change the root folder.
  */
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useI18n } from '../i18n/i18n';
-import type { RecentStatus } from '../platform/bridge';
 import { Icon } from '../ui/Icon';
 import { AppearanceControls } from './Appearance';
-import { forgetRecent, importCampaign, newCampaign, openCampaignDialog, openRecent, refreshRecent } from './campaign';
-import { state, useStore, emit } from './store';
+import { importCampaign, listCampaigns, newCampaign, openCampaign, refreshRoot, setRootFolder, trashCampaign, type CampaignEntry } from './campaign';
+import { emit, state, useStore } from './store';
 import './start.css';
 
 export function StartScreen() {
   const { t } = useI18n();
-  const recent = useStore((s) => s.recent);
+  const root = useStore((s) => s.root);
   const notice = useStore((s) => s.notice);
-  const [status, setStatus] = useState<Map<string, RecentStatus>>(new Map());
+  const [campaigns, setCampaigns] = useState<CampaignEntry[]>([]);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirmTrash, setConfirmTrash] = useState<string | null>(null);
 
+  const reload = async () => setCampaigns(await listCampaigns());
   useEffect(() => {
-    void refreshRecent().then(setStatus);
+    void refreshRoot();
   }, []);
+  useEffect(() => {
+    void reload();
+  }, [root?.root]);
 
   /** Runs one action at a time (each may show a system dialog). */
   const run = (fn: () => Promise<void>) => async () => {
@@ -33,16 +38,43 @@ export function StartScreen() {
       await fn();
     } finally {
       setBusy(false);
-      if (state.home) setStatus(await refreshRecent());
+      if (state.home) await reload();
     }
   };
 
+  const top = (
+    <header className="start-top">
+      <div className="brand"><span className="mark"><Icon name="anvil" /></span>{t('app.name')}</div>
+      <div className="ab-right"><AppearanceControls /></div>
+    </header>
+  );
+
+  if (!root) return <div className="start">{top}</div>;
+
+  if (!root.root) {
+    return (
+      <div className="start">
+        {top}
+        <main className="start-setup">
+          <h1>{t('start.setup.title')}</h1>
+          <p className="start-lead">{t('start.setup.lead')}</p>
+          <button className="start-action primary" disabled={busy} onClick={run(() => setRootFolder(true))}>
+            <Icon name="folder" />
+            <span><b>{t('start.setup.suggested')}</b><small className="start-path-inline">{root.suggested}</small></span>
+          </button>
+          <button className="start-action" disabled={busy} onClick={run(() => setRootFolder(false))}>
+            <Icon name="folder" />
+            <span><b>{t('start.setup.choose')}</b><small>{t('start.setup.chooseHint')}</small></span>
+          </button>
+          <p className="hint">{t('start.setup.sync')}</p>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="start">
-      <header className="start-top">
-        <div className="brand"><span className="mark"><Icon name="anvil" /></span>{t('app.name')}</div>
-        <div className="ab-right"><AppearanceControls /></div>
-      </header>
+      {top}
       <main className="start-main">
         <section className="start-actions" aria-labelledby="start-title">
           <h1 id="start-title">{t('start.title')}</h1>
@@ -51,38 +83,48 @@ export function StartScreen() {
             <Icon name="plus" />
             <span><b>{t('start.new')}</b><small>{t('start.newHint')}</small></span>
           </button>
-          <button className="start-action" disabled={busy} onClick={run(openCampaignDialog)}>
-            <Icon name="folder" />
-            <span><b>{t('start.open')}</b><small>{t('start.openHint')}</small></span>
-          </button>
           <button className="start-action" disabled={busy} onClick={run(importCampaign)}>
             <Icon name="archive" />
             <span><b>{t('start.import')}</b><small>{t('start.importHint')}</small></span>
           </button>
+          <div className="start-root">
+            <span className="hint">{t('start.root')}</span>
+            <span className="start-path" title={root.root}>{root.root}</span>
+            <button className="btn sm" disabled={busy} onClick={run(() => setRootFolder(false))}>{t('start.changeRoot')}</button>
+          </div>
           {notice && <p className="start-notice" role="alert">{t(notice.key, notice.params)}</p>}
         </section>
 
         <section className="start-recent" aria-labelledby="start-recent">
-          <h2 id="start-recent">{t('start.recent')}</h2>
-          {recent.length === 0 ? (
-            <p className="hint">{t('start.recentEmpty')}</p>
+          <h2 id="start-recent">{t('start.campaigns')}</h2>
+          {campaigns.length === 0 ? (
+            <p className="hint">{t('start.campaignsEmpty')}</p>
           ) : (
             <ul>
-              {recent.map((r) => {
-                const missing = status.get(r.root) === 'missing';
+              {campaigns.map((c) => {
+                const blocked = c.status !== 'ok';
                 return (
-                  <li key={r.root} className={missing ? 'missing' : ''}>
-                    <button className="start-recent-open" disabled={busy || missing} onClick={run(() => openRecent(r.root))} title={r.root}>
+                  <li key={c.slug} className={blocked ? 'missing' : ''}>
+                    <button className="start-recent-open" disabled={busy || blocked} onClick={run(() => openCampaign(c.slug))} title={`campaigns/${c.slug}`}>
                       <Icon name="map" />
                       <span className="start-recent-text">
-                        <b>{r.name}</b>
-                        <span className="start-path">{r.root}</span>
+                        <b>{c.name}</b>
+                        <span className="start-path">campaigns/{c.slug}</span>
                       </span>
-                      <span className="start-when">{missing ? t('start.missing') : <When at={r.openedAt} />}</span>
+                      <span className="start-when">
+                        {c.status === 'newer' ? t('start.newer') : c.status === 'invalid' ? t('start.invalid') : <When at={c.openedAt || c.modifiedAt} />}
+                      </span>
                     </button>
-                    <button className="start-recent-remove" title={t('start.forget')} aria-label={`${t('start.forget')}: ${r.name}`} onClick={() => forgetRecent(r.root)}>
-                      <Icon name="close" />
-                    </button>
+                    {confirmTrash === c.slug ? (
+                      <span className="start-confirm">
+                        <button className="btn sm danger" disabled={busy} onClick={run(async () => { await trashCampaign(c.slug); setConfirmTrash(null); })}>{t('start.trashConfirm')}</button>
+                        <button className="btn sm" onClick={() => setConfirmTrash(null)}>{t('start.cancel')}</button>
+                      </span>
+                    ) : (
+                      <button className="start-recent-remove" title={t('start.trash')} aria-label={`${t('start.trash')}: ${c.name}`} onClick={() => setConfirmTrash(c.slug)}>
+                        <Icon name="trash" />
+                      </button>
+                    )}
                   </li>
                 );
               })}
@@ -150,7 +192,6 @@ function NewCampaignDialog({ busy, onCancel, onCreate }: { busy: boolean; onCanc
             <span><b>{t('start.sample')}</b><small>{t('start.sampleHint')}</small></span>
           </label>
         </fieldset>
-        <p className="hint">{t('start.whereHint')}</p>
         <div className="start-buttons">
           <button type="button" className="btn" onClick={onCancel}>{t('start.cancel')}</button>
           <button type="submit" className="btn pri" disabled={busy || !name.trim()}>{t('start.create')}</button>

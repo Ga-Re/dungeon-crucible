@@ -72,6 +72,15 @@ export const MapSidecarSchema = z.object({
 });
 export type MapSidecar = z.infer<typeof MapSidecarSchema>;
 
+/** Sidecar of an audio file in the library: what kind of sound it is. */
+export const AudioSidecarSchema = z.object({
+  kind: z.literal('audio'),
+  schemaVersion: z.literal(SCHEMA_VERSION),
+  category: z.enum(['ambience', 'sfx']).default('ambience'),
+  tags: z.array(z.string()).default([]),
+});
+export type AudioSidecar = z.infer<typeof AudioSidecarSchema>;
+
 export const AssetSidecarSchema = z.object({
   kind: z.literal('asset'),
   schemaVersion: z.literal(SCHEMA_VERSION),

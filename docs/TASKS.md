@@ -173,24 +173,29 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 
 ### 3.0 Fundament (zuerst)
 
-- **DC-090 Dateiregeln** (E-11): unbekannte Felder erhalten, neuere `schemaVersion` ablehnen, Migrationsgerüst,
+- ✓ **DC-090 Dateiregeln** (E-11): unbekannte Felder erhalten, neuere `schemaVersion` ablehnen, Migrationsgerüst,
   IDs klein geschrieben. Enthält DC-001 und DC-002.
-- **DC-091 Wurzelordner** (E-1): beim ersten Start wählen (Vorschlag Dokumente/Dungeon Crucible, Sync-Hinweis),
+- ✓ **DC-091 Wurzelordner** (E-1): beim ersten Start wählen (Vorschlag Dokumente/Dungeon Crucible, Sync-Hinweis),
   in den Einstellungen ändern; Struktur `library/` und `campaigns/<slug>/`; Main-Prozess begrenzt Zugriffe auf den
   Wurzelordner.
-- **DC-092 Startbildschirm umbauen** (E-1): Kampagnen aus `campaigns/` statt frei gewählter Ordner; „Neue
+- ✓ **DC-092 Startbildschirm umbauen** (E-1): Kampagnen aus `campaigns/` statt frei gewählter Ordner; „Neue
   Kampagne“ ohne Ordnerdialog; „Kampagne öffnen“ entfällt oder wird zu „Wurzelordner wechseln“; Archiv-Import
   entpackt nach `campaigns/` und benutzte Dateien in die Bibliothek.
-- **DC-093 Bibliothek** (E-1): Karten, Assets, Kreaturen flach in `library/`, Sidecars daneben; Import kopiert
-  hinein, Duplikate per Hash erkennen; Katalog mit Vorschaubildern, Tags, Typ, Suche; Löschen mit Warnung und
-  Papierkorb.
+- ◐ **DC-093 Bibliothek** (E-1): Karten, Audio, Kreaturen flach in `library/`, Sidecars daneben; Import kopiert
+  hinein, Duplikate per Hash erkennen; Kartenliste mit Suche (Name, Tags, Typ); Löschen mit Warnung und Papierkorb
+  (benutzte Karten: nur das Bild, die Kartendaten bleiben) – erledigt. Offen: Vorschaubilder im Katalog
+  (DC-093b), Tags in der Oberfläche bearbeiten (kommt mit DC-011), Papierkorb wiederherstellen (DC-035).
 - **DC-094 Karte/Szene mit Overrides** (E-2): Szene = Kartenverweis + Overrides je Element-ID + Zustand;
   `resolveMap`; verwaiste Overrides melden; Kartenänderung an einer TV-Szene erst nach Bestätigung.
 - **DC-095 Start- und Spielzustand** (E-3): getrennt speichern, „Szene zurücksetzen“, Nebel-Startzustand.
 - **DC-096 Spielercharaktere** (E-1): global in der Bibliothek, Kampagne führt Spieler und verknüpft Figuren.
-- **DC-097 Archiv-Export mit Schalter**: nur Kampagne oder vollständig mit Bibliotheksdateien.
+- ✓ **DC-097 Archiv-Export mit Schalter**: nur Kampagne oder vollständig mit Bibliotheksdateien; Import legt
+  Bibliotheksdateien ab (gleicher Inhalt wird nicht kopiert, Namenskonflikte bei Karten/Audio werden umbenannt und
+  Verweise umgeschrieben).
 - **DC-098 Hex-Raster entfernen** (E-7) aus Raster, Einrasten, Messen, Schablonen, Kalibrierung und UI.
 - **DC-099 Systemsprache** als Standard (E-5).
+- **DC-100 Kreatur umbenennen**: alte Datei `library/<name>.creature.json` entfernen bzw. umbenennen (heute bleibt
+  sie liegen und erscheint doppelt).
 
 ### 3.1 Sofort (Fehler und Risiken)
 

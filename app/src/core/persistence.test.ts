@@ -53,7 +53,7 @@ describe('persistence', () => {
     expect(slugify("Crypt of Vhal'Durn – Übersicht")).toBe('crypt-of-vhal-durn-ubersicht');
     expect(slugify('***')).toBe('untitled');
     expect(mapSidecarPath('maps/crypt.webp')).toBe('maps/crypt.webp.dm.json');
-    expect(mapSidecarPath('builtin:crypt')).toBe('maps/crypt.builtin.dm.json');
+    expect(mapSidecarPath('builtin:crypt')).toBe('library/crypt.builtin.dm.json');
   });
 });
 

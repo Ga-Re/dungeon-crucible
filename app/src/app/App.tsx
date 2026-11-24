@@ -263,7 +263,7 @@ function DockArea({ ws }: { ws: keyof typeof WORKSPACES }) {
   // Before the first render, so the workspace never shows the previous layout.
   useMemo(() => activateWorkspaceLayout(ws), [ws]);
   const labels = useMemo(
-    () => ({ collapse: t('panels.collapse'), expand: t('panels.expand'), close: t('panels.close'), collapseZone: t('panels.collapseZone'), expandZone: t('panels.expandZone') }),
+    () => ({ collapse: t('panels.collapse'), expand: t('panels.expand'), close: t('panels.close'), collapseZone: t('panels.collapseZone'), expandZone: t('panels.expandZone'), pin: t('panels.pin') }),
     [t],
   );
   const titleOf = useMemo(() => (id: string) => t(PANEL_TITLES[id as PanelId] ?? 'panel.map'), [t]);

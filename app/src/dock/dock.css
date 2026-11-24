@@ -154,3 +154,32 @@
 .dock-resize.sw { bottom: 0; left: 0; cursor: nesw-resize; }
 .dock-resize.nw { top: 0; left: 0; cursor: nwse-resize; }
 .dock-resize.se { bottom: 0; right: 0; cursor: nwse-resize; }
+
+/* Flyout: a panel of a collapsed zone over the canvas, next to the bar. Slide + fade 120 ms. */
+.dock-flyout { position: absolute; z-index: 15; background: var(--dock-panel-bg); box-shadow: var(--dock-float-shadow); animation: 120ms ease-out both; }
+.dock-flyout.edge-left { border-right: 1px solid var(--dock-line); animation-name: dock-flyout-in-left; }
+.dock-flyout.edge-right { border-left: 1px solid var(--dock-line); animation-name: dock-flyout-in-right; }
+.dock-flyout.edge-bottom { border-top: 1px solid var(--dock-line); animation-name: dock-flyout-in-bottom; }
+.dock-flyout.leaving { pointer-events: none; animation-direction: reverse; animation-timing-function: ease-in; }
+.dock-flyout.leaving.edge-left { animation-name: dock-flyout-out-left; }
+.dock-flyout.leaving.edge-right { animation-name: dock-flyout-out-right; }
+.dock-flyout.leaving.edge-bottom { animation-name: dock-flyout-out-bottom; }
+/* Same frames under another name, so the browser restarts the animation for leaving. */
+@keyframes dock-flyout-in-left { from { opacity: 0; transform: translateX(-16px); } }
+@keyframes dock-flyout-in-right { from { opacity: 0; transform: translateX(16px); } }
+@keyframes dock-flyout-in-bottom { from { opacity: 0; transform: translateY(16px); } }
+@keyframes dock-flyout-out-left { from { opacity: 0; transform: translateX(-16px); } }
+@keyframes dock-flyout-out-right { from { opacity: 0; transform: translateX(16px); } }
+@keyframes dock-flyout-out-bottom { from { opacity: 0; transform: translateY(16px); } }
+@media (prefers-reduced-motion: reduce) {
+  .dock-flyout { animation: none; }
+}
+.dock-pin { font-size: 11px; }
+/* The free edge resizes the flyout. */
+.dock-flyout-grip { position: absolute; z-index: 6; }
+.dock-flyout-grip.ew { top: 0; bottom: 0; width: var(--dock-grip); cursor: ew-resize; }
+.dock-flyout.edge-left .dock-flyout-grip { right: calc(var(--dock-grip) / -2); }
+.dock-flyout.edge-right .dock-flyout-grip { left: calc(var(--dock-grip) / -2); }
+.dock-flyout-grip.ns { left: 0; right: 0; height: var(--dock-grip); top: calc(var(--dock-grip) / -2); cursor: ns-resize; }
+.dock-flyout-grip:hover { background: linear-gradient(var(--dock-accent), var(--dock-accent)) center / 2px 100% no-repeat; }
+.dock-flyout-grip.ns:hover { background-size: 100% 2px; }

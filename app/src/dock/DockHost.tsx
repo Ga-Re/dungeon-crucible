@@ -7,9 +7,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { beginDrag, dropLayout, passedThreshold, previewLayout, type DragSession } from './drag';
-import { computeDropTarget, computeGeometry, stacksVertically, type DockGeometry, type DropResult, type PanelGeom, type Point, type Rect, type SplitterGeom } from './geometry';
+import { computeDropTarget, computeGeometry, flyoutRect, stacksVertically, type DockGeometry, type DropResult, type PanelGeom, type Point, type Rect, type SplitterGeom } from './geometry';
 import type { DockManager } from './manager';
 import { FloatingFrame, type FloatingFrameProps } from './FloatingFrame';
+import { Flyout, flyoutDomId } from './Flyout';
+import { FLYOUT, FlyoutController, type FlyoutState } from './flyoutController';
 import { DOCK, hidePanel, insertPanel, moveFloating, redockTarget, resizeGroup, setPanelWeights, setZoneCollapsed, splitWeights, toggleExpanded, type DockLayout, type Edge, type FloatingPanel } from './model';
 import { NativeWindowPool, type FloatingBackend, type FloatWindow } from './nativeWindows';
 import { PanelPool } from './panelPool';
@@ -21,6 +23,8 @@ export interface DockLabels {
   close: string;
   collapseZone: string;
   expandZone: string;
+  /** Pin button of a flyout: docks the zone again. */
+  pin: string;
 }
 
 export interface DockHostProps {
@@ -73,6 +77,9 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
   const parkingRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [pool] = useState(() => new PanelPool());
+  const [flyout] = useState(() => new FlyoutController());
+  useEffect(() => () => flyout.dispose(), [flyout]);
+  const fly = useSyncExternalStore(flyout.subscribe, flyout.getState);
   const slots = useRef(new Map<string, HTMLElement>());
   const dragRef = useRef<DragState | null>(null);
   dragRef.current = drag;
@@ -120,8 +127,50 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
     [layout, size, bottomSpansFullWidth, titleOf],
   );
 
+  // The flyout belongs to a tab of a collapsed bar; when its panel leaves the bar (docked,
+  // dragged, zone expanded), it closes. Closing fades it out unless the panel went elsewhere.
+  const flyValid = !!fly && inBar(geom, fly);
+  useLayoutEffect(() => {
+    if (fly && !flyValid) flyout.close();
+  }, [fly, flyValid, flyout]);
+  const [leaving, setLeaving] = useState<FlyoutState | null>(null);
+  const lastFly = useRef<FlyoutState | null>(null);
+  useLayoutEffect(() => {
+    const prev = lastFly.current;
+    lastFly.current = fly;
+    if (fly) {
+      setLeaving(null);
+      return;
+    }
+    if (!prev || dragRef.current || !inBar(geom, prev) || prefersReducedMotion()) return;
+    setLeaving(prev);
+    const t = setTimeout(() => setLeaving(null), FLYOUT.animation);
+    return () => clearTimeout(t);
+    // Only a change of the flyout starts or stops the fade-out.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fly]);
+  const flyShown = flyValid ? fly : leaving && inBar(geom, leaving) ? leaving : null;
+
+  // Esc and any press outside the bars and the flyout close it at once.
+  useEffect(() => {
+    if (!fly) return;
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target instanceof Element && e.target.closest('.dock-bar, .dock-flyout'))) flyout.close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !dragRef.current) flyout.close();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [fly, flyout]);
+
   // Panels are mounted the first time they are shown and stay mounted afterwards.
   const shown = visiblePanelIds(geom, view);
+  if (flyShown) shown.push(flyShown.id);
   const mounted = useRef(new Set<string>());
   for (const id of shown) mounted.current.add(id);
   for (const id of [...mounted.current]) if (!manager.panel(id)) mounted.current.delete(id);
@@ -187,7 +236,7 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
   const press = (e: ReactPointerEvent<HTMLElement>, id: string, info: PressInfo) => {
     if (e.button !== 0 || drag || (e.target as HTMLElement).closest('button')) return;
     const root = rootRef.current;
-    const panelEl = e.currentTarget.closest<HTMLElement>('.dock-panel, .dock-floating');
+    const panelEl = e.currentTarget.closest<HTMLElement>('.dock-panel, .dock-floating, .dock-flyout');
     if (!root || !panelEl) return;
     const box = panelEl.getBoundingClientRect();
     const grab = { x: e.clientX - box.left, y: e.clientY - box.top };
@@ -218,6 +267,7 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
       if (!session) {
         if (!passedThreshold(from, at(ev))) return;
         session = beginDrag(manager.getLayout(), id, info, grab);
+        flyout.close();
         try {
           captureEl.setPointerCapture(pointerId);
         } catch {
@@ -279,7 +329,7 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
         if (zone.state === 'collapsed' && zone.bar) {
           const bar = zone.bar;
           return (
-            <div key={edge} className={`dock-bar edge-${edge}`} style={px(bar.rect)}>
+            <div key={edge} className={`dock-bar edge-${edge}`} style={px(bar.rect)} onPointerEnter={() => flyout.setOverBar(true)} onPointerLeave={() => flyout.setOverBar(false)}>
               <button
                 type="button"
                 className="dock-icon-btn dock-bar-toggle"
@@ -291,11 +341,32 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
               >
                 {EXPAND_ZONE_GLYPH[edge]}
               </button>
-              {bar.tabs.map((tab) => (
-                <button key={tab.id} type="button" className="dock-tab" style={rel(tab.rect, bar.rect)}>
-                  <span>{title(tab.id)}</span>
-                </button>
-              ))}
+              {bar.tabs.map((tab) => {
+                const open = flyShown?.edge === edge && flyShown.id === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`dock-tab edge-${edge} ${open ? 'active' : ''}`}
+                    style={rel(tab.rect, bar.rect)}
+                    aria-expanded={open}
+                    aria-controls={open ? flyoutDomId(tab.id) : undefined}
+                    onPointerEnter={() => flyout.enterTab(edge, tab.id)}
+                    onPointerLeave={() => flyout.leaveTab()}
+                    onFocus={() => {
+                      flyout.hold('tab', true);
+                      flyout.enterTab(edge, tab.id);
+                    }}
+                    onBlur={() => {
+                      flyout.leaveTab();
+                      flyout.hold('tab', false);
+                    }}
+                    onClick={() => flyout.click(edge, tab.id)}
+                  >
+                    <span>{title(tab.id)}</span>
+                  </button>
+                );
+              })}
             </div>
           );
         }
@@ -342,6 +413,34 @@ export function DockHost({ manager, canvas, labels, titleOf, bottomSpansFullWidt
         );
       })}
 
+      {flyShown && (() => {
+        const { edge, id } = flyShown;
+        const tab = geom.zones[edge].bar!.tabs.find((t) => t.id === id)!;
+        const group = layout.zones[edge].groups[tab.groupIndex]!;
+        const rect = flyoutRect(geom, edge, group.size)!;
+        const max = DOCK.maxGroupFraction * (edge === 'bottom' ? geom.area.height : geom.area.width);
+        return (
+          <Flyout
+            key={`${edge}-${id}`}
+            edge={edge}
+            id={id}
+            rect={rect}
+            title={title(id)}
+            pinLabel={labels.pin}
+            canPin={!geom.zones[edge].autoCollapsed}
+            leaving={flyShown !== fly}
+            controller={flyout}
+            onPress={(e) => press(e, id, { width: rect.width, height: rect.height, expanded: true })}
+            onPin={() => {
+              flyout.close();
+              update((l) => setZoneCollapsed(l, edge, false));
+            }}
+            onResize={(s) => update((l) => resizeGroup(l, edge, tab.groupIndex, s, max))}
+            slotRef={slotRef(id)}
+          />
+        );
+      })()}
+
       {drop && (
         <div className="dock-indicators" aria-hidden="true">
           <div className={`dock-indicator rule-${drop.rule}`} style={px(drop.indicator)} />
@@ -359,6 +458,14 @@ function visiblePanelIds(geom: DockGeometry, layout: DockLayout): string[] {
   for (const edge of ['left', 'right', 'bottom'] as const) for (const g of geom.zones[edge].groups) for (const p of g.panels) if (p.expanded) ids.push(p.id);
   for (const f of layout.floating) ids.push(f.id);
   return ids;
+}
+
+function inBar(geom: DockGeometry, f: FlyoutState): boolean {
+  return !!geom.zones[f.edge].bar?.tabs.some((t) => t.id === f.id);
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 function splitterKey(s: SplitterGeom): string {

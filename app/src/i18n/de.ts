@@ -342,7 +342,7 @@ export const de: Partial<Record<MessageKey, string>> = {
   'start.sample': 'Beispielinhalt',
   'start.sampleHint': 'Die Krypta von Vhal’Durn mit Wänden, Räumen, Licht und Beispielkreaturen.',
   'start.cancel': 'Abbrechen',
-  'start.create': 'Ordner wählen und anlegen',
+  'start.create': 'Erstellen',
   'start.error.notCampaign': 'In diesem Ordner liegt keine Kampagne (campaign.dm.json fehlt). Neue Kampagnen legst du über „Neue Kampagne“ an.',
   'start.error.unsafe': 'Das Archiv enthält Pfade außerhalb seines Ordners oder Verknüpfungen und wurde nicht importiert.',
   'start.error.tooLarge': 'Das Archiv ist zu groß oder enthält zu viele Dateien.',

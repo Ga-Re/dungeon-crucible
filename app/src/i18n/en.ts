@@ -342,7 +342,7 @@ export const en = {
   'start.sample': 'Sample content',
   'start.sampleHint': 'The Crypt of Vhal’Durn with walls, rooms, lights and sample creatures.',
   'start.cancel': 'Cancel',
-  'start.create': 'Choose folder and create',
+  'start.create': 'Create',
   'start.error.notCampaign': 'This folder holds no campaign (campaign.dm.json is missing). Create new campaigns with “New campaign”.',
   'start.error.unsafe': 'The archive contains paths outside its folder or links and was not imported.',
   'start.error.tooLarge': 'The archive is too large or has too many files.',

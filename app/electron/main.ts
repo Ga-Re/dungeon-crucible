@@ -49,16 +49,25 @@ function isOwnUrl(url: string): boolean {
   return url.startsWith(`${APP_ORIGIN}/`) || (!!DEV_URL && url.startsWith(DEV_URL));
 }
 
+/**
+ * Sends to the DM window if it still exists. While it closes, its child windows (floating
+ * panels) close after its web contents are gone and must not report to it any more.
+ */
+function toMain(channel: string, ...args: unknown[]): void {
+  const w = mainWindow;
+  if (w && !w.isDestroyed() && !w.webContents.isDestroyed()) w.webContents.send(channel, ...args);
+}
+
 const table = new TableWindow({
   preload: path.join(__dirname, 'preload-table.cjs'),
   url: () => pageUrl(BENCH ? 'bench.html' : 'table.html'),
-  onReady: () => mainWindow?.webContents.send('table:ready'),
-  onClosed: () => mainWindow?.webContents.send('table:closed'),
+  onReady: () => toMain('table:ready'),
+  onClosed: () => toMain('table:closed'),
 });
 
 const floating = new FloatingWindows({
-  moved: (name, bounds) => mainWindow?.webContents.send('float:moved', name, bounds),
-  closed: (name) => mainWindow?.webContents.send('float:closed', name),
+  moved: (name, bounds) => toMain('float:moved', name, bounds),
+  closed: (name) => toMain('float:closed', name),
 });
 
 /** Default for every window: no popups; external web links open in the browser. */
@@ -137,7 +146,7 @@ function registerIpc(): void {
   handle('campaign:absolute', (_w, rel: string) => campaign.absolutePath(rel));
   handle('campaign:importMap', (w) => campaign.importMap(w));
 
-  const displaysChanged = () => mainWindow?.webContents.send('displays:changed');
+  const displaysChanged = () => toMain('displays:changed');
   screen.on('display-added', displaysChanged);
   screen.on('display-removed', displaysChanged);
   screen.on('display-metrics-changed', displaysChanged);

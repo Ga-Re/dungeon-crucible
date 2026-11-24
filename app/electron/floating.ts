@@ -88,8 +88,11 @@ export class FloatingWindows {
       width: Math.max(MIN.width, Math.round(b.width)),
       height: Math.max(MIN.height, Math.round(b.height)),
     };
-    win.setBounds(bounds);
-    if (b.opacity !== undefined && win.getOpacity() !== b.opacity) win.setOpacity(b.opacity);
+    // Show first: macOS confines a hidden child window that is moved onto another display to
+    // the parent's display. It was created at these bounds already, so nothing jumps.
     if (!win.isVisible()) win.showInactive();
+    const cur = win.getBounds();
+    if (cur.x !== bounds.x || cur.y !== bounds.y || cur.width !== bounds.width || cur.height !== bounds.height) win.setBounds(bounds);
+    if (b.opacity !== undefined && win.getOpacity() !== b.opacity) win.setOpacity(b.opacity);
   }
 }

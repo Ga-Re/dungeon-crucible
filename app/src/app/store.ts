@@ -12,6 +12,7 @@ import type { Condition } from '../core/rules/rules2024';
 import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision } from '../core/vision';
 import { hideAll, hideIn, rectPolygon, rememberSeen, revealAll, revealIn } from '../core/fogModel';
 import { lockedAreas, slugify } from '../core/persistence';
+import { newId, slugId } from '../core/documents';
 import type { Polygon } from '../core/poly/types';
 import { readFogLook, saveCoverFrom, saveFadeSeconds, saveFogEdge, saveFogMotion, saveFogQuality, saveFogSpeed, saveSoftEdges, type CoverFrom, type FogLook, type FogQuality } from './fog-settings';
 import { lookToWire } from '../render/fogOptions';
@@ -263,6 +264,13 @@ export function clearHistory(): void {
 }
 
 /** Replaces the whole scene (open campaign, switch scene, import map). */
+/** A new element id that no wall, area, light, template or token of the scene has (lowercase, random). */
+function freshId(prefix: string): string {
+  const sc = state.scene;
+  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.templates, ...sc.tokens].map((x) => x.id));
+  return newId(slugId(prefix, 'el').slice(0, 40), (id) => taken.has(id));
+}
+
 export function replaceScene(scene: Scene, opts: { resource: string; fileName: string; scenePath: string | null; sceneName: string; round?: number; turn?: number }): void {
   state.scene = scene;
   state.mapResource = opts.resource;
@@ -368,11 +376,10 @@ export function toggleDoor(id: string): void {
   emit();
 }
 
-let wallSeq = 0;
 export function addWall(kind: WallKind, a: Point, b: Point): void {
   if (Math.hypot(a.x - b.x, a.y - b.y) < 2) return;
   checkpoint();
-  const w: Wall = { id: `u${++wallSeq}`, kind, x1: a.x, y1: a.y, x2: b.x, y2: b.y, open: false };
+  const w: Wall = { id: freshId('wall'), kind, x1: a.x, y1: a.y, x2: b.x, y2: b.y, open: false };
   state.scene.walls.push(w);
   recomputeVision();
   emit();
@@ -393,7 +400,7 @@ export function addZone(x0: number, y0: number, x1: number, y1: number): void {
   const h = Math.abs(y1 - y0);
   if (w < 10 || h < 10) return;
   checkpoint();
-  const id = `z${state.scene.zones.length + 1}`;
+  const id = freshId('area');
   state.scene.zones.push({ id, name: `Zone ${state.scene.zones.length + 1}`, kind: 'area', rect: { x, y, w, h }, color: '#7fd9cf', discovered: true });
   state.selectedZoneId = id;
   emit();
@@ -504,7 +511,6 @@ export function addCalibrationPoint(p: Point): void {
   emit();
 }
 
-let tplSeq = 0;
 const TPL_COLORS: Record<TemplateShape, string> = { cone: '#e2554c', sphere: '#e2a03c', line: '#3f9de2', cube: '#a77bf3' };
 export function addTemplate(shape: TemplateShape, origin: Point, to: Point): AreaTemplate | null {
   const g = state.scene.map.grid;
@@ -512,7 +518,7 @@ export function addTemplate(shape: TemplateShape, origin: Point, to: Point): Are
   const sizeFt = Math.max(g.feetPerCell, Math.round(lenPx / g.cellWidth) * g.feetPerCell);
   if (lenPx < g.cellWidth * 0.4) return null;
   checkpoint();
-  const t: AreaTemplate = { id: `t${++tplSeq}`, shape, x: origin.x, y: origin.y, angle: Math.atan2(to.y - origin.y, to.x - origin.x), sizeFt, color: TPL_COLORS[shape] };
+  const t: AreaTemplate = { id: freshId('tpl'), shape, x: origin.x, y: origin.y, angle: Math.atan2(to.y - origin.y, to.x - origin.x), sizeFt, color: TPL_COLORS[shape] };
   state.scene.templates.push(t);
   emit();
   return t;
@@ -573,10 +579,9 @@ export function selectToken(id: string | null): void {
 
 /* ---------- Lights ---------- */
 
-let lightSeq = 0;
 export function addLight(p: Point): void {
   checkpoint();
-  const id = `light-${Date.now().toString(36)}-${++lightSeq}`;
+  const id = freshId('light');
   // A torch by default (2024: bright 20 ft, dim 20 ft further).
   state.scene.lights.push({ id, x: p.x, y: p.y, brightFt: 20, dimFt: 40, color: '#ffb14a', on: true });
   state.selectedLightId = id;
@@ -649,7 +654,7 @@ export function addCreatureToken(index: number, at?: Point): void {
   const m = state.scene.map;
   const p = snapPoint(at ?? { x: state.scene.table.centerX || m.widthPx / 2, y: state.scene.table.centerY || m.heightPx / 2 });
   const dex = Math.floor((c.abilities.dex - 10) / 2);
-  const id = `${creatureId}-${Date.now().toString(36)}`;
+  const id = freshId(creatureId);
   state.scene.tokens.push({
     id,
     name: same > 0 && c.role !== 'pc' ? `${c.name} ${same + 1}` : c.name,

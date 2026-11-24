@@ -77,3 +77,19 @@ describe('history', () => {
     expect(h.undo(2)).toBeNull();
   });
 });
+
+describe('map sidecar round trip', () => {
+  it('keeps the catalog data (tags, theme, type, POIs, assets)', () => {
+    const map = MapSidecarSchema.parse({
+      kind: 'map', schemaVersion: 1, name: 'Tavern', resource: 'library/tavern.webp', widthPx: 1000, heightPx: 800,
+      tags: ['town', 'inn'], biome: 'city', mapType: 'building', fogBiome: 'kueste', fogStrength: 0.5,
+      grid: { type: 'square', cellWidth: 50, cellHeight: 50, originX: 0, originY: 0, rotationDeg: 0, feetPerCell: 5 },
+      pois: [{ id: 'poi-bar', name: 'Bar', x: 10, y: 20, icon: 'flag' }],
+      assets: [{ id: 'asset-table', assetPath: 'library/table.webp', x: 1, y: 2, rotation: 15, scale: 1 }],
+    });
+    const scene = sceneFromDocuments(map, null, 'x');
+    const back = mapSidecarFromScene(scene, map.resource);
+    expect(back).toMatchObject({ tags: ['town', 'inn'], biome: 'city', mapType: 'building', fogBiome: 'kueste', fogStrength: 0.5, pois: map.pois, assets: map.assets });
+  });
+});
+

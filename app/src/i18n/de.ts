@@ -294,6 +294,8 @@ export const de: Partial<Record<MessageKey, string>> = {
   'panels.expandZone': 'Seite ausklappen',
   'panels.pin': 'Seite wieder andocken',
   'panels.resize': 'Größe ändern',
+  'log.newerFile': '{file} stammt aus einer neueren Version von Dungeon Crucible. Sie wird soweit möglich gezeigt, aber nicht verändert.',
+  'start.error.newer': 'Diese Kampagne stammt aus einer neueren Version von Dungeon Crucible. Aktualisiere die App, um sie zu öffnen.',
   'start.home': 'Startbildschirm (schließt die Kampagne)',
   'start.title': 'Kampagnen',
   'start.lead': 'Mach mit einer zuletzt benutzten Kampagne weiter, beginne eine neue oder hol eine von woanders.',

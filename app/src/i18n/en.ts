@@ -294,6 +294,8 @@ export const en = {
   'panels.expandZone': 'Expand side',
   'panels.pin': 'Dock the side again',
   'panels.resize': 'Resize',
+  'log.newerFile': '{file} was saved by a newer version of Dungeon Crucible. It is shown as far as possible but not changed.',
+  'start.error.newer': 'This campaign was saved by a newer version of Dungeon Crucible. Update the app to open it.',
   'start.home': 'Start screen (closes the campaign)',
   'start.title': 'Campaigns',
   'start.lead': 'Continue a recent campaign, start a new one, or bring one in from elsewhere.',

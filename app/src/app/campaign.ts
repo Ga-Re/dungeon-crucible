@@ -9,7 +9,9 @@
 import {
   BUILTIN_PREFIX, manifestFromState, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, slugify, tableFromManifest,
 } from '../core/persistence';
-import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MapSidecarSchema, SceneOverrideSchema, parseSidecar, type Creature, type MapSidecar } from '../core/sidecar';
+import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MapSidecarSchema, SceneOverrideSchema, type Creature, type MapSidecar } from '../core/sidecar';
+import { keepUnknown, readDocument, type DocumentKind } from '../core/documents';
+import type { z } from 'zod';
 import { DEFAULT_GRID } from '../core/grid';
 import type { Scene } from '../core/scene';
 import {
@@ -33,19 +35,42 @@ async function urlForResource(resource: string): Promise<string> {
   return assetUrl(await absolutePath(resource));
 }
 
-async function readJson<T>(rel: string, schema: Parameters<typeof parseSidecar<T>>[0]): Promise<T | null> {
+/* ---------------------------------------------------------------- documents (file rules) */
+
+/** What each document looked like when read: writing merges into it, so unknown fields survive. */
+const originals = new Map<string, unknown>();
+/** Documents from a newer app version: shown if possible, never written back. */
+const readOnly = new Set<string>();
+
+/** Reads a JSON document: version check, migration, validation. Problems are logged, never thrown. */
+async function readDoc<T>(rel: string, kind: DocumentKind, schema: z.ZodType<T>): Promise<T | null> {
   let text: string;
   try {
     text = await readText(rel);
   } catch {
     return null;
   }
-  const r = parseSidecar(schema, text);
-  if (!r.ok) {
-    log('log.invalidFile', { file: rel, error: r.errors[0] ?? '' });
-    return null;
+  const r = readDocument(kind, schema, text);
+  if (r.ok) {
+    originals.set(rel, r.raw);
+    readOnly.delete(rel);
+    return r.value;
   }
-  return r.value;
+  if (r.reason === 'newer') {
+    readOnly.add(rel);
+    log('log.newerFile', { file: rel });
+  } else {
+    log('log.invalidFile', { file: rel, error: r.errors[0] ?? '' });
+  }
+  return null;
+}
+
+/** Writes a JSON document, keeping the unknown fields it had; never one from a newer version. */
+async function writeDoc(rel: string, schema: z.ZodType, value: unknown): Promise<void> {
+  if (readOnly.has(rel)) return;
+  const out = keepUnknown(schema, originals.get(rel), value);
+  await writeText(rel, JSON.stringify(out, null, 2));
+  originals.set(rel, out);
 }
 
 function creaturePath(c: Creature): string {
@@ -128,7 +153,7 @@ async function openCampaign(info: CampaignInfo): Promise<void> {
   if (!ok) {
     await closeCampaignFolder();
     state.campaign = null;
-    notice(ERROR_KEYS.notCampaign);
+    notice(readOnly.has(CAMPAIGN_FILE) ? 'start.error.newer' : ERROR_KEYS.notCampaign);
   }
 }
 
@@ -204,6 +229,8 @@ export async function closeCampaign({ toStart = true } = {}): Promise<void> {
   state.campaign = null;
   state.scenes = [];
   state.creatures = [];
+  originals.clear();
+  readOnly.clear();
   replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
   if (toStart) {
     state.home = true;
@@ -215,13 +242,13 @@ export async function closeCampaign({ toStart = true } = {}): Promise<void> {
 /** Loads the campaign in `info`; false if the folder holds no campaign. */
 async function loadCampaign(info: CampaignInfo): Promise<boolean> {
   state.campaign = info;
-  const manifest = await readJson(CAMPAIGN_FILE, CampaignManifestSchema);
+  const manifest = await readDoc(CAMPAIGN_FILE, 'campaign', CampaignManifestSchema);
   if (!manifest) return false;
   state.campaign = { ...info, name: manifest.name };
   const files = await listFiles('creatures');
   const creatures: Creature[] = [];
   for (const f of files.filter((x) => x.endsWith('.dm.json'))) {
-    const c = await readJson(f, CreatureSchema);
+    const c = await readDoc(f, 'creature', CreatureSchema);
     if (c) creatures.push(c);
   }
   state.creatures = creatures;
@@ -244,9 +271,9 @@ export async function refreshSceneList(): Promise<void> {
 }
 
 export async function loadScene(scenePath: string, table: Partial<Scene['table']> = state.scene.table): Promise<void> {
-  const ov = await readJson(scenePath, SceneOverrideSchema);
+  const ov = await readDoc(scenePath, 'scene', SceneOverrideSchema);
   if (!ov) return;
-  const map = await readJson(ov.mapSidecar, MapSidecarSchema);
+  const map = await readDoc(ov.mapSidecar, 'map', MapSidecarSchema);
   if (!map) return;
   const url = await urlForResource(map.resource);
   const scene = sceneFromDocuments(map, ov, url, table);
@@ -277,11 +304,11 @@ export async function saveCampaign(force = false): Promise<void> {
     // A campaign without a map yet has no scene: only the manifest and creatures are written.
     if (state.scenePath) {
       const sidecar = mapSidecarPath(state.mapResource);
-      await writeText(sidecar, JSON.stringify(mapSidecarFromScene(s, state.mapResource), null, 2));
-      await writeText(state.scenePath, JSON.stringify({ ...sceneOverrideFromScene(s, state.sceneName, sidecar, { round: state.round, turn: state.turn }), ambience: sceneAmbience() }, null, 2));
+      await writeDoc(sidecar, MapSidecarSchema, mapSidecarFromScene(s, state.mapResource));
+      await writeDoc(state.scenePath, SceneOverrideSchema, { ...sceneOverrideFromScene(s, state.sceneName, sidecar, { round: state.round, turn: state.turn }), ambience: sceneAmbience() });
     }
-    for (const c of state.creatures) await writeText(creaturePath(c), JSON.stringify(c, null, 2));
-    await writeText(CAMPAIGN_FILE, JSON.stringify(manifestFromState(state.campaign.name, state.scenePath, s.table), null, 2));
+    for (const c of state.creatures) await writeDoc(creaturePath(c), CreatureSchema, c);
+    await writeDoc(CAMPAIGN_FILE, CampaignManifestSchema, manifestFromState(state.campaign.name, state.scenePath, s.table));
     state.dirty = false;
     state.lastSavedAt = Date.now();
   } catch (e) {

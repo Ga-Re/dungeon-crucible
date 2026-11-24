@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { CHALLENGE_RATINGS, CONDITIONS } from './rules/rules2024';
 import { fogEffectSchema, levelFogSchema } from './poly/types';
+import { idSchema } from './documents';
 
 export const SIDECAR_SUFFIX = '.dm.json';
 export const SCENE_SUFFIX = '.scene.json';
@@ -18,7 +19,8 @@ export function resourcePathForSidecar(sidecarPath: string): string | null {
   return sidecarPath.endsWith(SIDECAR_SUFFIX) ? sidecarPath.slice(0, -SIDECAR_SUFFIX.length) : null;
 }
 
-const id = z.string().min(1).max(64);
+/** Element ids: lowercase (they may name files; see `documents.ts`). */
+const id = idSchema;
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 const biome = z.enum(['nebel', 'schnee', 'wueste', 'asche', 'sumpf', 'kueste', 'arkan', 'dunkel']);
 

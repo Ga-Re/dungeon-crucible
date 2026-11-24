@@ -24,8 +24,8 @@ import {
   proficiencyBonusForLevel,
   savingThrowBonus,
 } from './rules/rules2024';
-import { buildPlayerFrame, MAX_FRAME_AGE_MS, parsePlayerFrame } from './projection';
-import { tokensVisibleToPlayers, updateVision } from './vision';
+import { buildPlayerFrame, MAX_FRAME_AGE_MS, parsePlayerFrame, playerLighting } from './projection';
+import { litSources, tokensVisibleToPlayers, updateVision } from './vision';
 import { createSampleScene } from '../sample/crypt';
 import { CreatureSchema, MapSidecarSchema, parseSidecar, resourcePathForSidecar, sidecarPathFor } from './sidecar';
 
@@ -230,7 +230,7 @@ describe('player projection (fail-closed)', () => {
 
 function frameOpts(seq: number, now: number, visible: ReturnType<typeof visiblePolygons>) {
   return {
-    seq, now, showGrid: true, memoryOpacity: 0.6, movementLocked: false, zoom: 1, visible, quick: false, activeTokenId: null, seedKey: 'builtin:crypt',
+    seq, now, showGrid: true, memoryOpacity: 0.6, movementLocked: false, zoom: 1, visible, quick: false, activeTokenId: null, seedKey: 'builtin:crypt', lights: [],
     look: { softEdges: true, fadeSeconds: 0.65, quality: 'medium' as const, edge: 1.2, motion: 1, speed: 5, coverFrom: 'middle' as const },
   };
 }
@@ -302,5 +302,26 @@ describe('light and sight (2024)', () => {
     s.ambient = 'lit';
     s.tokens = [pc({ visionFt: 0 })];
     expect(isInside(visiblePolygons(updateVision(s)), ftRight(150))).toBe(true);
+  });
+});
+
+describe('lighting on the TV (fail-closed)', () => {
+  it('shows glows only where players see now; a light out of sight gives nothing away', () => {
+    const scene = createSampleScene();
+    // The braziers are in the throne room, behind a closed door.
+    let visible = visiblePolygons(updateVision(scene));
+    let lit = playerLighting(scene, litSources(scene), [...scene.fog.revealed, ...visible]);
+    const brazierX = new Set(scene.lights.map((l) => l.x));
+    // Only Bram's torch in the hall glows; the braziers give nothing away.
+    expect(lit.glows).toHaveLength(1);
+    expect(lit.glows.some((g) => brazierX.has(g.x))).toBe(false);
+    expect(litSources(scene).length).toBe(3);
+    scene.walls.find((w) => w.id === 'd-throne')!.open = true;
+    visible = visiblePolygons(updateVision(scene));
+    lit = playerLighting(scene, litSources(scene), [...scene.fog.revealed, ...visible]);
+    expect(lit.darkness).toBeGreaterThan(0);
+    expect(lit.glows.some((g) => brazierX.has(g.x))).toBe(true);
+    scene.ambient = 'lit';
+    expect(playerLighting(scene, litSources(scene), visible)).toEqual({ darkness: 0, lit: [], glows: [] });
   });
 });

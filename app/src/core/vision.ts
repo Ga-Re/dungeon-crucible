@@ -21,13 +21,31 @@ export interface ViewerVision {
  * sight from the light ∩ its dim radius). Monsters' lights count too: players see what they light.
  */
 export function litAreas(scene: Scene, blockers = sightBlockers(scene.walls)): Polygon[] {
-  const sources: { x: number; y: number; ft: number }[] = [
-    ...scene.lights.filter((l) => l.on && l.dimFt > 0).map((l) => ({ x: l.x, y: l.y, ft: l.dimFt })),
-    ...scene.tokens.filter((t) => (t.lightFt ?? 0) > 0 && t.hp > 0).map((t) => ({ x: t.x, y: t.y, ft: (t.lightFt ?? 0) * 2 })),
+  return litSources(scene, blockers).flatMap((s) => s.area);
+}
+
+/** One shining light: where it is, how far bright and dim light reach (px), its colour and area. */
+export interface LitSource {
+  x: number;
+  y: number;
+  brightPx: number;
+  dimPx: number;
+  color: string;
+  /** Line of sight from the light ∩ its dim radius: light stops at walls. */
+  area: Polygon[];
+}
+
+/** Every light that is on, placed or carried by a token, with the area it lights. */
+export function litSources(scene: Scene, blockers = sightBlockers(scene.walls)): LitSource[] {
+  const sources = [
+    ...scene.lights.filter((l) => l.on && l.dimFt > 0).map((l) => ({ x: l.x, y: l.y, bright: l.brightFt, dim: l.dimFt, color: l.color })),
+    ...scene.tokens
+      .filter((t) => (t.lightFt ?? 0) > 0 && t.hp > 0)
+      .map((t) => ({ x: t.x, y: t.y, bright: t.lightFt ?? 0, dim: (t.lightFt ?? 0) * 2, color: '#ffb14a' })),
   ];
-  return sources.flatMap((s) => {
-    const r = feetToPx(scene, s.ft);
-    return sightPolygon(s, r, visibilityPolygon(s, r, blockers));
+  return sources.map((s) => {
+    const dimPx = feetToPx(scene, s.dim);
+    return { x: s.x, y: s.y, brightPx: feetToPx(scene, s.bright), dimPx, color: s.color, area: sightPolygon(s, dimPx, visibilityPolygon(s, dimPx, blockers)) };
   });
 }
 

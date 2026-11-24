@@ -122,6 +122,7 @@ export const writeText = (rel: string, content: string) => invoke<void>('write_t
 export const listFiles = (dir: string) => invoke<string[]>('list_files', { dir });
 export const absolutePath = (rel: string) => invoke<string>('absolute_path', { rel });
 export const importMapFileNative = () => invoke<ImportedFile | null>('import_map_file');
+export const importAudioFileNative = (sfx: boolean) => invoke<ImportedFile | null>('import_audio_file', { sfx });
 
 /** URL the webviews (DM and table) can load a campaign file from. */
 export async function assetUrl(absPath: string): Promise<string> {

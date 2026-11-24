@@ -15,6 +15,7 @@ import { useI18n } from '../i18n/i18n';
 import type { MessageKey } from '../i18n/en';
 import { drawDmOverlay, type OverlayState } from '../render/dmOverlay';
 import { fogOptions } from '../render/fogOptions';
+import { DARKNESS } from '../core/projection';
 import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
 import { TableView, type FrameSource } from '../table/TableView';
@@ -108,6 +109,12 @@ function DmMap() {
           id: k.id, name: k.label, x: k.x - (k.size * cell) / 2, y: k.y - (k.size * cell) / 2, width: k.size * cell, height: k.size * cell,
           color: k.ringColor, selected: k.id === state.selectedTokenId, hidden: k.hidden, active: k.id === active,
         })),
+      );
+      // The DM sees all light, unclipped (the TV gets only what players see, see projection.ts).
+      r.setLighting(
+        sc.ambient === 'lit'
+          ? null
+          : { darkness: DARKNESS, lit: state.lights.flatMap((l) => l.area), glows: state.lights.map((l) => ({ x: l.x, y: l.y, brightPx: l.brightPx, dimPx: l.dimPx, color: l.color, area: l.area })), softEdge: cell * 0.35 },
       );
       const editMode = state.ws === 'forge';
       if (editMode || state.dmFogHidden) {

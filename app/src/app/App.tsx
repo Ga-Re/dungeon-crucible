@@ -6,12 +6,14 @@ import { useI18n, LOCALES, translate, type Locale } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
 import { MapView, mapCommands } from '../panels/MapView';
 import {
-  BrowserPanel, CreaturePanel, DicePanel, EncounterPanel, FogPanel, InitiativePanel, LogPanel, MonitorMenu, PreviewPanel, PropertiesPanel, SoonPanel, TablePanel,
+  BrowserPanel, CreaturePanel, SoundPanel, DicePanel, EncounterPanel, FogPanel, InitiativePanel, LogPanel, MonitorMenu, PreviewPanel, PropertiesPanel, SoonPanel, TablePanel,
 } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
 import {
   clearTemplates, emit, fogAll, log, nextTurn, redo, removeLastUserWall, rotateTable, setFogMode, setGridType, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
+import { stopAll } from './soundboard';
+import { setMasterVolume, unlockAudioOnGesture } from './audio';
 import { importMapIntoCampaign, openCampaignDialog, reopenLastCampaign, saveCampaign, startAutosave } from './campaign';
 import { openTable, refreshMonitors, startFrameLoop } from './tableOutput';
 import { importMapFile } from './importMap';
@@ -33,6 +35,7 @@ const COMPONENTS: Record<PanelId, FunctionComponent<IDockviewPanelProps>> = {
   creature: () => <CreaturePanel />,
   atlas: () => <SoonPanel text="soon.atlas" />,
   vault: () => <SoonPanel text="soon.vault" />,
+  sound: () => <SoundPanel />,
 };
 
 export let dockApi: DockviewApi | null = null;
@@ -51,6 +54,8 @@ export function App() {
   useEffect(() => {
     startFrameLoop();
     startAutosave();
+    unlockAudioOnGesture();
+    setMasterVolume(state.soundboard.master);
     void refreshMonitors();
     log('log.opened');
     emit();
@@ -175,6 +180,8 @@ function Ribbon() {
       case 'fogmode:reveal': return setFogMode('reveal');
       case 'fogmode:hide': return setFogMode('hide');
       case 'panel:fog': return focusPanel('fog');
+      case 'panel:sound': return focusPanel('sound');
+      case 'audio:stop': return stopAll();
       case 'fog:revealAll': return fogAll(true);
       case 'walls:undo': return removeLastUserWall();
       case 'turn:next': return nextTurn();

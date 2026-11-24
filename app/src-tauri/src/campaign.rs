@@ -131,20 +131,25 @@ pub fn absolute_path(state: State<'_, CampaignState>, rel: String) -> Result<Str
 /// Picks an image or video map and copies it into `maps/` of the campaign.
 #[tauri::command]
 pub async fn import_map_file(app: AppHandle, state: State<'_, CampaignState>) -> Result<Option<ImportedFile>, String> {
-    let r = root(&state)?;
-    let Some(picked) = app
-        .dialog()
-        .file()
-        .add_filter("Maps", &["png", "jpg", "jpeg", "webp", "mp4", "webm"])
-        .blocking_pick_file()
-    else {
+    import_into(&app, &state, "Maps", &["png", "jpg", "jpeg", "webp", "mp4", "webm"], "maps")
+}
+
+/// Picks an audio file and copies it into `audio/` (ambience) or `audio/sfx/` (sound effects).
+#[tauri::command]
+pub async fn import_audio_file(app: AppHandle, state: State<'_, CampaignState>, sfx: bool) -> Result<Option<ImportedFile>, String> {
+    import_into(&app, &state, "Audio", &["mp3", "ogg", "oga", "opus", "wav", "m4a", "aac", "flac"], if sfx { "audio/sfx" } else { "audio" })
+}
+
+fn import_into(app: &AppHandle, state: &State<'_, CampaignState>, filter: &str, extensions: &[&str], folder: &str) -> Result<Option<ImportedFile>, String> {
+    let r = root(state)?;
+    let Some(picked) = app.dialog().file().add_filter(filter, extensions).blocking_pick_file() else {
         return Ok(None);
     };
     let src = picked.into_path().map_err(|e| e.to_string())?;
     let file_name = src.file_name().ok_or("Invalid file")?.to_string_lossy().into_owned();
-    let maps = r.join("maps");
-    fs::create_dir_all(&maps).map_err(|e| e.to_string())?;
-    let dest = unique_path(&maps, &file_name);
+    let dir = safe_join(&r, folder)?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dest = unique_path(&dir, &file_name);
     if src.canonicalize().ok() != dest.canonicalize().ok() {
         fs::copy(&src, &dest).map_err(|e| e.to_string())?;
     }

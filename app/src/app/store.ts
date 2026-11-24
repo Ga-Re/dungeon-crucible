@@ -9,7 +9,7 @@ import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
-import { updateVision, visiblePolygons, type ViewerVision } from '../core/vision';
+import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision } from '../core/vision';
 import { hideAll, hideIn, rectPolygon, rememberSeen, revealAll, revealIn } from '../core/fogModel';
 import { lockedAreas, slugify } from '../core/persistence';
 import type { Polygon } from '../core/poly/types';
@@ -20,6 +20,7 @@ import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
 import type { Creature } from '../core/sidecar';
 import type { MessageKey } from '../i18n/en';
+import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
 import { mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene } from '../core/persistence';
 import type { CampaignInfo } from '../platform/bridge';
@@ -55,6 +56,8 @@ export interface AppState {
   fogMode: 'reveal' | 'hide';
   /** What players see right now (fog polygons from token sight). */
   visible: Polygon[];
+  /** Lights that are on, with the areas they light. */
+  lights: LitSource[];
   /** The last fog change came from token movement (switches quickly, no ragged spread). */
   fogQuick: boolean;
   moveLock: boolean;
@@ -89,6 +92,7 @@ export interface AppState {
   lastSavedAt: number | null;
   canUndo: boolean;
   canRedo: boolean;
+  soundboard: SoundboardState;
   /** Increments whenever a different scene is loaded (views refit). */
   sceneVersion: number;
 }
@@ -110,6 +114,7 @@ function initial(): AppState {
     dmFogHidden: false,
     fogMode: 'reveal',
     visible: [],
+    lights: [],
     fogQuick: false,
     moveLock: false,
     selectedTokenId: null,
@@ -143,9 +148,11 @@ function initial(): AppState {
     canUndo: false,
     canRedo: false,
     sceneVersion: 0,
+    soundboard: initialSoundboard(),
   };
   s.vision = updateVision(scene);
   s.visible = visiblePolygons(s.vision);
+  s.lights = litSources(scene);
   scene.fog = rememberSeen(scene.fog, s.visible);
   return s;
 }
@@ -318,6 +325,7 @@ let lastRemember = 0;
 export function recomputeVision(final = true): void {
   state.vision = updateVision(state.scene);
   state.visible = visiblePolygons(state.vision);
+  state.lights = litSources(state.scene);
   const now = Date.now();
   if (final || now - lastRemember > 150) {
     state.scene.fog = rememberSeen(state.scene.fog, state.visible);
@@ -735,6 +743,7 @@ export function produceFrame(now: number): PlayerFrame {
     quick: state.fogQuick,
     activeTokenId: state.ws === 'play' ? initiativeOrder()[state.turn]?.id ?? null : null,
     seedKey: state.mapResource,
+    lights: state.lights,
   });
   return state.frame;
 }

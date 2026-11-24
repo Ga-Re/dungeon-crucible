@@ -25,7 +25,8 @@ pub fn run() {
             campaign::write_text,
             campaign::list_files,
             campaign::absolute_path,
-            campaign::import_map_file
+            campaign::import_map_file,
+            campaign::import_audio_file
         ])
         .on_page_load(|webview, payload| {
             // The table window has no permission to ask for data; the DM window resends the

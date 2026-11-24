@@ -132,6 +132,29 @@ export interface TokenShape {
   readonly color?: string | undefined;
 }
 
+/** Dungeon Crucible: one light's glow (map pixels), clipped to the area it lights. */
+export interface LightGlow {
+  readonly x: number;
+  readonly y: number;
+  readonly brightPx: number;
+  readonly dimPx: number;
+  readonly color: string;
+  readonly area: readonly Polygon[];
+}
+
+/**
+ * Dungeon Crucible: lighting between the map and the tokens, under the fog. `darkness` (0–1)
+ * darkens everything outside `lit`; each glow adds its colour inside its own lit area. It never
+ * makes fog transparent, so it cannot show hidden map areas.
+ */
+export interface Lighting {
+  readonly darkness: number;
+  readonly lit: readonly Polygon[];
+  readonly glows: readonly LightGlow[];
+  /** Soft edge of the darkness in map pixels. */
+  readonly softEdge: number;
+}
+
 /** A map's grid, in map pixels (the sidecar's calibration), and how its lines look. */
 export interface GridLines {
   readonly cellSizePx: number;
@@ -194,6 +217,8 @@ export interface Renderer {
    * cannot show more than the fog above it. `null` removes it.
    */
   setMemory(clear: readonly Polygon[] | null, options?: { opacity: number; softEdge?: number }): void;
+  /** Dungeon Crucible addition – light and darkness (see {@link Lighting}); `null` removes it. */
+  setLighting(lighting: Lighting | null): void;
   /**
    * Draws grid lines over the map (T-106b), under the fog – hidden areas stay covered, lines
    * included. `null` removes them.
@@ -252,6 +277,12 @@ export async function createRenderer(
   const gridLayer = new Graphics();
   world.addChild(gridLayer);
   let gridInput: GridLines | null = null;
+  // Lighting (Dungeon Crucible): above the grid, below the tokens and the fog.
+  const lightLayer = new Container();
+  world.addChild(lightLayer);
+  let lightInput: Lighting | null = null;
+  let lightBuiltFrom: string | null = null;
+  let glowTexture: Texture | null = null;
   // Tokens (T-107a): above the grid, below the fog.
   const tokenLayer = new Container();
   world.addChild(tokenLayer);
@@ -468,6 +499,37 @@ export async function createRenderer(
   };
   options.canvas.addEventListener("webglcontextlost", onContextLost);
   options.canvas.addEventListener("webglcontextrestored", onContextRestored);
+
+  const drawLighting = () => {
+    const key = JSON.stringify([lightInput, mapSize]);
+    if (key === lightBuiltFrom) return;
+    lightBuiltFrom = key;
+    // The glow texture is shared: destroy children without textures.
+    for (const child of lightLayer.removeChildren()) child.destroy({ children: true, context: true });
+    if (!lightInput) return;
+    if (lightInput.darkness > 0)
+      lightLayer.addChild(drawFog(lightInput.lit, { opacity: Math.min(0.95, lightInput.darkness), softEdge: lightInput.softEdge }, mapSize, rootResolution));
+    if (lightInput.glows.length === 0) return;
+    glowTexture ??= radialGlowTexture();
+    for (const glow of lightInput.glows) {
+      if (glow.dimPx <= 0 || glow.area.length === 0) continue;
+      const sprite = new Sprite(glowTexture);
+      sprite.anchor.set(0.5);
+      sprite.position.set(glow.x, glow.y);
+      sprite.width = sprite.height = glow.dimPx * 2;
+      sprite.tint = glow.color;
+      sprite.blendMode = "add";
+      // Brighter where the bright radius is a larger share of the dim one.
+      sprite.alpha = 0.22 + 0.25 * Math.min(1, glow.brightPx / glow.dimPx);
+      const mask = new Graphics();
+      for (const polygon of glow.area) {
+        mask.poly(flat(polygon.outer)).fill({ color: 0xffffff });
+        for (const hole of polygon.holes) mask.poly(flat(hole)).cut();
+      }
+      sprite.mask = mask;
+      lightLayer.addChild(mask, sprite);
+    }
+  };
 
   const drawMemory = () => {
     const key = JSON.stringify([memoryInput, mapSize]);
@@ -771,6 +833,7 @@ export async function createRenderer(
       fogBuiltFrom = null;
       if (fogInput) applyFog();
       drawMemory();
+      drawLighting();
       drawGrid();
       requestDraw();
     },
@@ -802,6 +865,7 @@ export async function createRenderer(
       fogBuiltFrom = null;
       if (fogInput) applyFog();
       drawMemory();
+      drawLighting();
       drawGrid();
       requestDraw();
     },
@@ -811,6 +875,11 @@ export async function createRenderer(
       fogInput = revealed ? { revealed, options: fogOptions ?? {} } : null;
       applyFog();
       gate.fogSet();
+      requestDraw();
+    },
+    setLighting(next) {
+      lightInput = next;
+      drawLighting();
       requestDraw();
     },
     setMemory(clear, memoryOptions) {
@@ -860,6 +929,9 @@ export async function createRenderer(
       replaceFog(null);
       memoryInput = null;
       drawMemory();
+      lightInput = null;
+      drawLighting();
+      glowTexture?.destroy(true);
       world.removeChild(gridLayer);
       gridLayer.destroy({ context: true });
       drawTokens([]);
@@ -1271,6 +1343,22 @@ function drawFog(
   const layer = drawHardFog(revealed, opacity);
   layer.addChild(soft);
   return layer;
+}
+
+/** A white radial glow (bright core, soft falloff) to be tinted per light. */
+function radialGlowTexture(): Texture {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("No 2D canvas for the light glow.");
+  const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, "rgba(255,255,255,1)");
+  gradient.addColorStop(0.45, "rgba(255,255,255,0.55)");
+  gradient.addColorStop(1, "rgba(255,255,255,0)");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+  return Texture.from(canvas);
 }
 
 /** Pixels a tile carries from its neighbours, so scaled sampling at its edge sees the real map. */

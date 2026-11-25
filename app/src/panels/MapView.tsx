@@ -11,6 +11,8 @@ import { circleArea, ellipseArea, strokeArea } from '../core/poly/shapes';
 import { areaContains, partFromDrag, partFromPoints, vertexAt, type VertexRef } from '../core/areas';
 import { AreaCommandPanel } from './AreaCommandPanel';
 import { WallCommandPanel } from './WallCommandPanel';
+import { assetShapes } from '../core/placement';
+import { refreshVault, requestAssetUrls } from '../app/vault';
 import { CalibrationPanel } from './CalibrationPanel';
 import { endsAt, nearestEnd, wallAt, type WallEnd } from '../core/walls';
 import type { Polygon } from '../core/poly/types';
@@ -129,6 +131,9 @@ function DmMap() {
       void map?.set(sc.map.imageUrl, sc.map.isVideo);
       // While calibrating, the grid is always shown: it is what is being adjusted.
       r.setGrid((state.showGrid || state.calibration) && sc.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: sc.map.grid.originX, offsetYPx: sc.map.grid.originY, alpha: 0.18 } : null);
+      // Placed assets: their files' URLs are looked up once, the first time they are shown.
+      requestAssetUrls([...new Set(sc.map.assets.map((a) => a.assetPath))]);
+      r.setAssets(assetShapes(sc.map.assets, state.assetInfo, sc.map.grid));
       const active = state.ws === 'play' ? initiativeOrder()[state.turn]?.id : undefined;
       r.setTokens(
         sc.tokens.map((k): TokenShape => ({
@@ -192,6 +197,12 @@ function DmMap() {
   useEffect(() => {
     if (sceneVersion > 0) mapCommands.fit();
   }, [sceneVersion]);
+
+  // Placed assets need the library's asset data (size, group, file): read when a scene opens.
+  const root = useStore((s) => s.root?.root);
+  useEffect(() => {
+    void refreshVault();
+  }, [sceneVersion, root]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {

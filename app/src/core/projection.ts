@@ -6,6 +6,7 @@
  * stale or missing fog results in black.
  */
 import { z } from 'zod';
+import type { AssetDraw } from './placement';
 import { clearArea, openArea } from './fogModel';
 import { polygonSchema, type Polygon } from './poly/types';
 import type { Scene } from './scene';
@@ -100,6 +101,8 @@ export const PlayerFrameSchema = z.object({
     z.object({ shape: z.enum(['cone', 'sphere', 'line', 'cube']), x: z.number(), y: z.number(), angle: z.number(), sizeFt: z.number().positive(), color: z.string() }),
   ),
   pings: z.array(z.object({ x: z.number(), y: z.number(), age: z.number().nonnegative() })),
+  /** Placed assets (DC-041): under the fog like the map; assets a scene hides are never sent. */
+  assets: z.array(z.object({ url: z.string(), video: z.boolean(), x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive(), rotation: z.number() })).default([]),
 });
 
 export type PlayerFrame = z.infer<typeof PlayerFrameSchema>;
@@ -119,6 +122,8 @@ export interface ProjectionOptions {
   seedKey: string;
   /** Lights that are on (from `litSources`). */
   lights: readonly LitSource[];
+  /** The scene's shown placed assets, as drawn (`assetShapes`). */
+  assets?: readonly AssetDraw[];
 }
 
 /** Light for the players: only inside what they see now, so a light in remembered or hidden areas gives nothing away. */
@@ -175,6 +180,7 @@ export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFram
     lighting: playerLighting(scene, o.lights, clearArea(scene.fog, o.visible)),
     templates: scene.templates.map((t) => ({ shape: t.shape, x: t.x, y: t.y, angle: t.angle, sizeFt: t.sizeFt, color: t.color })),
     pings: scene.pings.map((p) => ({ x: p.x, y: p.y, age: Math.max(0, o.now - p.at) })),
+    assets: (o.assets ?? []).map((a) => ({ url: a.url, video: a.video, x: a.x, y: a.y, width: a.width, height: a.height, rotation: a.rotation })),
   };
 }
 

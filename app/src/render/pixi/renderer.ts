@@ -132,6 +132,21 @@ export interface TokenShape {
   readonly color?: string | undefined;
 }
 
+/**
+ * Dungeon Crucible (DC-041): an asset placed on the map – its picture or looping video, centre,
+ * size before turning (map pixels) and turn in degrees.
+ */
+export interface AssetShape {
+  readonly id: string;
+  readonly url: string;
+  readonly video: boolean;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly rotation: number;
+}
+
 /** Dungeon Crucible: one light's glow (map pixels), clipped to the area it lights. */
 export interface LightGlow {
   readonly x: number;
@@ -231,6 +246,11 @@ export interface Renderer {
    * glide to their new place instead of jumping (T-233b: combat's snap).
    */
   setTokens(tokens: readonly TokenShape[], options?: { glide?: number }): void;
+  /**
+   * Dungeon Crucible (DC-041): draws placed assets over the map and grid, under light, tokens
+   * and fog – darkness and fog cover them like the map. Videos loop; replaces those drawn before.
+   */
+  setAssets(assets: readonly AssetShape[]): void;
   setCamera(camera: Camera): void;
   resize(size: Size): void;
   /** Resolves after the next draw has been submitted (for screenshots and tests). */
@@ -277,6 +297,80 @@ export async function createRenderer(
   const gridLayer = new Graphics();
   world.addChild(gridLayer);
   let gridInput: GridLines | null = null;
+  // Placed assets (Dungeon Crucible): above the grid, below light, tokens and fog.
+  const assetLayer = new Container();
+  world.addChild(assetLayer);
+  const builtAssets = new Map<string, { url: string; sprite: Sprite; width: number; height: number }>();
+  // One texture per file (and one looping video element per video file), kept until teardown.
+  const assetTextures = new Map<string, { texture: Promise<Texture | null>; video: HTMLVideoElement | null; ready: Texture | null }>();
+  let playingVideos = 0;
+  const loadAssetTexture = (url: string, isVideo: boolean) => {
+    let entry = assetTextures.get(url);
+    if (entry) return entry.texture;
+    if (isVideo) {
+      const video = document.createElement("video");
+      video.crossOrigin = "anonymous";
+      video.loop = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.src = url;
+      const texture = new Promise<Texture | null>((resolve) => {
+        video.onloadeddata = () => {
+          void video.play().catch(() => undefined);
+          resolve(Texture.from(video));
+        };
+        video.onerror = () => resolve(null);
+      });
+      entry = { texture, video, ready: null };
+    } else {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = url;
+      entry = { texture: img.decode().then(() => Texture.from(img), () => null), video: null, ready: null };
+    }
+    const own = entry;
+    void own.texture.then((t) => (own.ready = t));
+    assetTextures.set(url, own);
+    return own.texture;
+  };
+  const drawAssets = (next: readonly AssetShape[]) => {
+    const keep = new Set(next.map((a) => a.id));
+    for (const [id, built] of builtAssets) {
+      if (keep.has(id)) continue;
+      assetLayer.removeChild(built.sprite);
+      built.sprite.destroy();
+      builtAssets.delete(id);
+    }
+    next.forEach((a, index) => {
+      let built = builtAssets.get(a.id);
+      if (!built || built.url !== a.url) {
+        if (built) {
+          assetLayer.removeChild(built.sprite);
+          built.sprite.destroy();
+        }
+        const sprite = new Sprite();
+        sprite.anchor.set(0.5);
+        built = { url: a.url, sprite, width: a.width, height: a.height };
+        builtAssets.set(a.id, built);
+        const target = built;
+        void loadAssetTexture(a.url, a.video).then((texture) => {
+          if (destroyed || builtAssets.get(a.id) !== target || !texture) return;
+          sprite.texture = texture;
+          // The size was set for the empty sprite; the picture now fills it.
+          sprite.setSize(target.width, target.height);
+          requestDraw();
+        });
+      }
+      const sprite = built.sprite;
+      assetLayer.addChildAt(sprite, Math.min(index, assetLayer.children.length));
+      sprite.position.set(a.x, a.y);
+      sprite.angle = a.rotation;
+      built.width = a.width;
+      built.height = a.height;
+      if (sprite.texture !== Texture.EMPTY) sprite.setSize(a.width, a.height);
+    });
+    playingVideos = next.filter((a) => a.video).length;
+  };
   // Lighting (Dungeon Crucible): above the grid, below the tokens and the fog.
   const lightLayer = new Container();
   world.addChild(lightLayer);
@@ -794,9 +888,12 @@ export async function createRenderer(
         stepOutgoing();
         stepGlides();
         applyCamera();
+        // Looping asset videos: their frames go to the GPU, and the next draw follows.
+        if (playingVideos > 0) for (const t of assetTextures.values()) if (t.video) t.ready?.source.update();
         app.render();
         gate.drawn();
         showVideo();
+        if (playingVideos > 0) requestDraw();
       } catch (error) {
         // ADR-0010: on renderer errors the raw video must not stay visible.
         gate.renderFailed();
@@ -896,6 +993,10 @@ export async function createRenderer(
       drawMemory();
       requestDraw();
     },
+    setAssets(next) {
+      drawAssets(next);
+      requestDraw();
+    },
     setTokens(next, tokenOptions) {
       drawTokens(next, tokenOptions?.glide ?? 0);
       requestDraw();
@@ -944,6 +1045,13 @@ export async function createRenderer(
       world.removeChild(gridLayer);
       gridLayer.destroy({ context: true });
       drawTokens([]);
+      drawAssets([]);
+      for (const entry of assetTextures.values()) {
+        entry.video?.pause();
+        entry.video?.removeAttribute("src");
+        void entry.texture.then((tex) => tex?.destroy(true));
+      }
+      assetTextures.clear();
       gate.destroyed();
       hideVideo();
       video?.removeEventListener("resize", onVideoResize);

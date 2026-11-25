@@ -7,7 +7,7 @@ import type { Point } from '../core/geometry';
 import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
-import { footprintOf, hitsPlacement, nextVariant, rotateBy, scaleBy, snapPlacement } from '../core/placement';
+import { assetShapes, footprintOf, hitsPlacement, nextVariant, rotateBy, scaleBy, snapPlacement } from '../core/placement';
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
 import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision } from '../core/vision';
@@ -1528,6 +1528,8 @@ export function produceFrame(now: number): PlayerFrame {
     activeTokenId: state.ws === 'play' ? initiativeOrder()[state.turn]?.id ?? null : null,
     seedKey: state.mapResource,
     lights: tv.lights,
+    // Only the scene's shown placements: assets it hides never reach the TV.
+    assets: assetShapes(tv.scene.map.assets, state.assetInfo, tv.scene.map.grid),
   });
   return state.frame;
 }

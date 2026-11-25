@@ -75,3 +75,31 @@ export function nextVariant(group: readonly string[], current: string): string {
   const i = sorted.indexOf(current);
   return sorted.length === 0 ? current : sorted[(i + 1) % sorted.length];
 }
+
+/** An asset as drawn (renderer and TV frame): its picture, centre, size before turning, turn. */
+export interface AssetDraw {
+  id: string;
+  url: string;
+  video: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+}
+
+/** The placed assets that can be drawn: those whose file is known (a missing one shows nothing). */
+export function assetShapes(
+  placements: readonly MapAssetPlacement[],
+  info: Readonly<Record<string, { url: string | null; video: boolean; sizeCells?: { w: number; h: number } }>>,
+  grid: GridConfig,
+): AssetDraw[] {
+  const out: AssetDraw[] = [];
+  for (const p of placements) {
+    const i = info[p.assetPath];
+    if (!i?.url) continue;
+    const fp = footprintOf(p, i.sizeCells, grid);
+    out.push({ id: p.id, url: i.url, video: i.video, x: fp.cx, y: fp.cy, width: fp.w, height: fp.h, rotation: fp.rotation });
+  }
+  return out;
+}

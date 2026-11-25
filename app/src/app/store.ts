@@ -8,6 +8,7 @@ import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type Grid
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
+import { masonrySightWalls, toggledMasonryDoor, withMasonry } from '../core/build/sight';
 import type { InteriorTrigger } from '../core/sidecar';
 import { randomChoices, rollPlacement, type PlaceOptions } from '../core/assetObjects';
 import { drawnPlacements, footprintPolygon, interiorChanges, interiorOf, interiorWalls } from '../core/interiors';
@@ -955,6 +956,16 @@ export function moveToken(id: string, p: Point, final: boolean): void {
 }
 
 export function toggleDoor(id: string): void {
+  const drawn = toggledMasonryDoor(state.scene.map.masonryDoors, state.scene.masonryDoorsOpen, id);
+  if (drawn) {
+    // A door on a drawn wall (E-33): scene state.
+    checkpoint();
+    state.scene.masonryDoorsOpen = drawn;
+    log(drawn[id] ? 'log.doorOpened' : 'log.doorClosed');
+    recomputeVision();
+    emit();
+    return;
+  }
   if (assetDoors(state.scene).some((d) => d.id === id)) {
     // An asset's door (E-29): scene state.
     checkpoint();
@@ -1552,11 +1563,25 @@ function applyInteriorTriggers(): void {
   }
 }
 
-/** The walls sight and light use (E-29): the scene's, cut open where placed assets bring doors, plus those doors. */
+/**
+ * The walls sight and light use: the scene's and those derived from drawn walls (E-33), cut open
+ * where placed assets bring doors, plus those doors (E-29).
+ */
 export function sightWalls(scene: Scene): readonly Wall[] {
   const placed = allPlacements(scene);
   const inner = interiorWalls(placed, state.assetInfo, scene.map.grid, scene.interiorsOn, scene.assetDoorsOpen);
-  return wallsWithAssetDoors(scene.walls, placed, state.assetInfo, scene.map.grid, scene.assetDoorsOpen, inner);
+  const walls = withMasonry(scene.walls, drawnWalls(scene));
+  return wallsWithAssetDoors(walls, placed, state.assetInfo, scene.map.grid, scene.assetDoorsOpen, inner);
+}
+
+/** The walls derived from the drawn walls (E-33): all layers in the Map Forge's own view, else the scene's active ones. */
+function drawnWalls(scene: Scene): Wall[] {
+  return masonrySightWalls(scene, scene === state.scene && state.layer === 'map');
+}
+
+/** The doors on drawn walls (E-33), as walls. */
+export function masonryDoors(scene: Scene): Wall[] {
+  return drawnWalls(scene).filter((w) => w.kind === 'door' || w.kind === 'secret-door');
 }
 
 /** The scene with the walls sight and light use (itself if no asset brings a door). */
@@ -2014,6 +2039,12 @@ export function discoverZone(id: string): void {
     if (w.kind !== 'secret-door') continue;
     const touches = [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }].some((p) => distanceToArea(z.shape, p) <= 1);
     if (touches) w.open = true;
+  }
+  // Secret doors on drawn walls touching it (E-33): opened and found.
+  for (const w of masonryDoors(state.scene)) {
+    if (w.kind !== 'secret-door' || w.open) continue;
+    const touches = [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }].some((p) => distanceToArea(z.shape, p) <= 1);
+    if (touches) state.scene.masonryDoorsOpen = toggledMasonryDoor(state.scene.map.masonryDoors, state.scene.masonryDoorsOpen, w.id) ?? state.scene.masonryDoorsOpen;
   }
   recomputeVision();
   for (const part of z.shape) state.scene.fog = revealIn(state.scene.fog, part, [], true);

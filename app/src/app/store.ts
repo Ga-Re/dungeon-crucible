@@ -32,6 +32,7 @@ import type { MapSidecar, SceneOverride } from '../core/sidecar';
 import type { CampaignInfo, RootInfo } from '../platform/bridge';
 import type { RecentCampaign } from './recent';
 import type { LibraryMap } from './library';
+import type { VaultState } from './vault';
 
 export type WorkspaceId = 'forge' | 'vault' | 'creatures' | 'atlas' | 'play';
 
@@ -126,6 +127,8 @@ export interface AppState {
   layer: ViewLayer;
   /** "Edit start state" in the Game-Orchestrator (E-17). */
   editStart: boolean;
+  /** The Asset Vault: catalog, filter, selection (E-27, DC-040). */
+  vault: VaultState;
   /** Recently used campaigns (start screen). */
   recent: RecentCampaign[];
   /** A message on the start screen (e.g. why an import failed). */
@@ -195,6 +198,7 @@ function initial(): AppState {
     editStart: false,
     recent: [],
     notice: null,
+    vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [] },
     soundboard: initialSoundboard(),
   };
   s.vision = updateVision(scene);

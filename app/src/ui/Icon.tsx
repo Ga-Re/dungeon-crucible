@@ -12,6 +12,7 @@ const PATHS = {
   door: 'M6 21V3h12v18 M3 21h18 M14.5 12h.5',
   secretdoor: 'M6 21V3h12v18 M3 21h18 M9 9l6 6M15 9l-6 6',
   window: 'M4 4h16v16H4z M12 4v16 M4 12h16',
+  star: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z',
   cliff: 'M3 8h18 M5 8l-1.5 3 M9 8l-1.5 3 M13 8l-1.5 3 M17 8l-1.5 3 M21 8l-1.5 3 M12 13v7 M9 17l3 3 3-3',
   zone: 'M4 4h4M12 4h4M20 4v4M20 12v4M20 20h-4M12 20H8M4 20v-4M4 12V8',
   import: 'M12 3v12M7 10l5 5 5-5M4 21h16',

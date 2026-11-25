@@ -20,6 +20,7 @@ import { openTable, moveTableTo } from '../app/tableOutput';
 import { importMapIntoCampaign, switchScene } from '../app/campaign';
 import { filterLibraryMaps, mapUsage, openLibraryMap, refreshLibraryMaps, trashLibraryMap, type MapUsage } from '../app/library';
 import { CREATURE_DRAG } from './MapView';
+import { VaultBrowser } from './VaultPanels';
 import { BUILTIN_PREFIX, BUILTIN_SFX, masterLevel } from '../app/audio';
 import { importAudio, setMaster, setTrackVolume, stopAll, toggleAmbience, trackFileName, triggerSfx } from '../app/soundboard';
 
@@ -54,9 +55,8 @@ export function BrowserPanel() {
       </div>
     );
   }
-  if (ws === 'vault' || ws === 'atlas') {
-    return <div className="panel-body hint">{t(ws === 'vault' ? 'soon.vault' : 'soon.atlas')}</div>;
-  }
+  if (ws === 'vault') return <VaultBrowser />;
+  if (ws === 'atlas') return <div className="panel-body hint">{t('soon.atlas')}</div>;
   return (
     <div className="panel-body">
       {ws === 'forge' && campaign && <LibraryMaps />}
@@ -750,7 +750,7 @@ export function CreaturePanel() {
   );
 }
 
-export function SoonPanel({ text }: { text: 'soon.atlas' | 'soon.vault' }) {
+export function SoonPanel({ text }: { text: 'soon.atlas' }) {
   const { t } = useI18n();
   return (
     <div className="panel-body">

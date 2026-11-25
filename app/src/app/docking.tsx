@@ -12,6 +12,7 @@ import {
   BrowserPanel, CreaturePanel, DicePanel, EncounterPanel, FogPanel, InitiativePanel, LogPanel, PreviewPanel, PropertiesPanel, SoonPanel, SoundPanel, TablePanel,
 } from '../panels/panels';
 import { PartyPanel } from '../panels/PartyPanel';
+import { AssetPropertiesPanel, VaultPanel } from '../panels/VaultPanels';
 import type { WorkspaceId } from './store';
 import { PANEL_TITLES, WORKSPACES, type PanelId } from './workspaces';
 
@@ -28,7 +29,8 @@ export const PANEL_CONTENT: Record<PanelId, () => ReactNode> = {
   encounter: () => <EncounterPanel />,
   creature: () => <CreaturePanel />,
   atlas: () => <SoonPanel text="soon.atlas" />,
-  vault: () => <SoonPanel text="soon.vault" />,
+  vault: () => <VaultPanel />,
+  asset: () => <AssetPropertiesPanel />,
   sound: () => <SoundPanel />,
   party: () => <PartyPanel />,
 };

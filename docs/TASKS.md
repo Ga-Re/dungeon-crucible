@@ -369,11 +369,21 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 
 ### 3.5 Asset-Vault und Kreaturen
 
-- **DC-040 Asset-Bibliothek** (E-27; T-178, T-179): Asset-Format Version 2 (Sidecar je Datei); Import mehrerer
+- ✓ **DC-040 Asset-Bibliothek** (E-27; T-178, T-179): Asset-Format Version 2 (Sidecar je Datei); Import mehrerer
   Dateien bzw. per Ziehen mit Duplikat-Erkennung, Art aus Dateityp, Größe aus „_2x2“; Asset-Vault mit
   Vorschau-Raster, Suche, Filtern (Art, Unterart, Umgebung, Tags, Sammlungen, Favoriten), Eigenschaften mit
   5-ft-Vorschau, Mehrfachauswahl, Stern, Sammlungen verwalten und Ziehen auf Sammlung; Audio der Bibliothek
   erscheint mit; Vorschaubild-Cache im App-Datenordner (Protokoll nur Bilder, nur DM-Fenster).
+  Erledigt: Asset-Format 2 (alte Audio-Sidecars werden als Geräusch-Assets gelesen, das Soundboard schreibt
+  Geräusch-Assets); Asset-Vault mit Katalog (Vorschaubilder auf Schachbrett, Größenregler, Suche, Stern,
+  Mehrfachauswahl mit Umschalt/Strg), Browser (Arten mit Anzahl, Favoriten, Umgebungen, Sammlungen anlegen,
+  umbenennen, löschen mit Bestätigung, Assets darauf ziehen), Eigenschaften (Name, Art, Unterart, Umgebungen,
+  Tags, Größe, Gruppe, Sammlungen, Favorit; bei mehreren: gemeinsame Werte, „verschieden“, Änderungen gelten für
+  alle) mit Vorschau auf dem 5-ft-Raster; Import per Dialog (mehrere Dateien) oder Ziehen ins Fenster (als Bytes,
+  nie als Pfad), Duplikate per Hash. Vorschaubilder erzeugt das DM-Fenster, der Hauptprozess hält sie im
+  App-Datenordner (nur PNG/WebP, Schlüssel aus Pfad/Größe/Zeit) – enger als freigegeben: ohne Änderung am
+  Asset-Protokoll. Die Kartenliste der Schmiede zeigt keine Assets mehr. Änderungen im Vault sind nicht
+  rückgängig machbar (direkt in die Sidecars). „Zuletzt benutzt“ kommt mit DC-041 (Platzieren).
 - **DC-040b Pack-Import** (E-27; T-231): Ordner wählen, Unterordner ankreuzen, Fortschritt und Abbrechen ohne
   halbe Dateien; Ordnernamen → Tags plus „pack: …“; Varianten (oak_01, oak_02 …) als Gruppe; Namenskonflikte
   automatisch umbenennen. Import aus Karte/Handout heraus kommt mit DC-041 bzw. den Handouts.

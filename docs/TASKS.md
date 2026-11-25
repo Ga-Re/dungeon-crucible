@@ -44,6 +44,7 @@ Geklärt im Interview mit dem DM (Skill `topic-interviewer`). „Wie DM“ heiß
 | E-25 | Kartenänderung und TV | Bis zu den Szenen-Tabs (DC-034) erscheinen Kartenänderungen aus der Kartenschmiede **sofort** auf dem TV; die Bestätigung vor dem Übernehmen kommt mit DC-034. | Übergang |
 | E-26 | Was die Kartenschmiede zeigt | **Nur die Karte** mit allem, was zu ihr gehört (Raster, Wände, Bereiche, Lichter, Props, Assets, Eigenschaften) und ihrem **Start-Nebel** (dort gemalt; jede neue Szene auf der Karte beginnt damit, je Szene anpassbar über E-17). **Tokens gehören zur Szene** und erscheinen in der Schmiede nicht. | – |
 | E-23 | Arbeitsweise | **Sammel-Branch** je Thema, ein PR am Ende, der DM gibt den Merge frei. Nachfragen bei Abhängigkeiten, Dateiformat/Ordnern, Abweichungen vom Plan, Sicherheit und wenn etwas nicht ganz klar ist. Regeln in `CLAUDE.md`; Skills `topic-interviewer`, `next-task`, `finish-task`, `ui-design` und Agent `reviewer` in `.claude/`. | DM: PR je Task, Agent merged selbst |
+| E-27 | Assets | **Bibliothek zuerst**, dann Pack-Import, Asset-Editor, Platzieren, Deckung, szeneneigene Assets. **Arten fest** (Prop, Kartenteil, Textur, Effekt, Lichtquelle, Geräusch, Handout) mit **Unterarten** als Vorschlag plus eigene; **Umgebungen** als Vorschlagsliste plus eigene, mehrere je Asset. Der **Asset-Vault** zeigt alle Bibliotheksdateien außer Karten und Kreaturen (auch Audio). **Sidecar je Datei** (Asset-Format Version 2): Name, Art, Unterart, Tags, Umgebungen, Größe in Feldern, Gruppe (Varianten), Sammlungen, Favorit, später Maske/Licht/Effekt-Verhalten; „zuletzt benutzt“ ist Geräte-Einstellung. Formate PNG, WebP, JPG, WebM (mit Transparenz), MP4. Import: mehrere Dateien/Ziehen, Pack mit Unterordner-Wahl, aus Karte/Handout heraus; Duplikate per Hash; Ordnernamen → Tags plus „pack: …“; Größe aus „_2x2“, Art aus Dateityp, Varianten gebündelt (je Datei ein Asset, gemeinsame Gruppe); Namenskonflikte automatisch umbenennen. Vault: Vorschau-Raster in der Mitte, Filter/Sammlungen links, Eigenschaften mit 5-ft-Vorschau rechts; Mehrfachauswahl, Stern, Ziehen auf Sammlung, Sammlungen verwalten. **Vorschaubild-Cache im App-Datenordner**; das Asset-Protokoll liefert daraus nur Bilder und nur an das DM-Fenster (DM-Freigabe Sicherheit). Editor in der Vault-Mitte: Größe, Deckungsmaske (Kreis/Polygon, Vorschlag aus Transparenz), Licht (hell/dämmrig, Farbe, Flackern), Effekt-Verhalten je Effekt einstellbar (Dauerschleife an/aus, einmal auslösen, mit Licht/Ton). Platzieren auf der Karte, Szenen blenden aus; **szeneneigene Assets** als Ausnahme zu DC-103 (Start oder Spiel, Maske/Licht nur in der Szene). TV: Assets unter dem Nebel, Effekte animiert, ausgeblendete nie. | Bibliothek vor Durchstich; Varianten je Datei statt gebündelt im Sidecar |
 
 **Bleibt aus Dungeon Crucible:** Pergament als drittes Theme, das eigene Docking mit echten Fenstern und
 Hover-Flyout (statt dockview und Kanten-Leisten), Export/Import ganzer Kampagnen als Archiv – beim Export wählbar:
@@ -368,16 +369,29 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 
 ### 3.5 Asset-Vault und Kreaturen
 
-- **DC-040 Asset-Bibliothek**: Import, Metadaten (Typ, Umgebung, Herkunft/Lizenz), Tags, Sammlungen, Favoriten,
-  Duplikat-Erkennung, Pack-Import (flach mit Tags statt Ordnerstruktur) (T-178, T-179, T-231).
-- **DC-041 Props auf der Karte**: platzieren, drehen in 15°-Schritten, skalieren, Sichtblocker aus Alpha (T-144).
+- **DC-040 Asset-Bibliothek** (E-27; T-178, T-179): Asset-Format Version 2 (Sidecar je Datei); Import mehrerer
+  Dateien bzw. per Ziehen mit Duplikat-Erkennung, Art aus Dateityp, Größe aus „_2x2“; Asset-Vault mit
+  Vorschau-Raster, Suche, Filtern (Art, Unterart, Umgebung, Tags, Sammlungen, Favoriten), Eigenschaften mit
+  5-ft-Vorschau, Mehrfachauswahl, Stern, Sammlungen verwalten und Ziehen auf Sammlung; Audio der Bibliothek
+  erscheint mit; Vorschaubild-Cache im App-Datenordner (Protokoll nur Bilder, nur DM-Fenster).
+- **DC-040b Pack-Import** (E-27; T-231): Ordner wählen, Unterordner ankreuzen, Fortschritt und Abbrechen ohne
+  halbe Dateien; Ordnernamen → Tags plus „pack: …“; Varianten (oak_01, oak_02 …) als Gruppe; Namenskonflikte
+  automatisch umbenennen. Import aus Karte/Handout heraus kommt mit DC-041 bzw. den Handouts.
+- **DC-109 Asset-Editor** (E-27; T-202): in der Vault-Mitte – Größe in Feldern, Deckungsmaske (Kreis/Polygon,
+  Vorschlag aus Transparenz), Licht (hell/dämmrig, Farbe, Flackern), Effekt-Verhalten (Dauerschleife an/aus,
+  einmal auslösen, mit Licht/Ton).
+- **DC-041 Assets auf der Karte** (E-27; T-144): in der Kartenschmiede platzieren (auch direkt eine Datei wählen),
+  drehen in 15°-Schritten, skalieren, Varianten durchschalten; auf dem TV unter dem Nebel, Effekte animiert;
+  Szenen blenden platzierte Assets aus wie andere Kartenelemente (DC-103).
+- **DC-110 Szeneneigene Assets** (E-27): Assets nur in einer Szene, beim Vorbereiten (Start) oder im Spiel
+  (Spielzustand, „Szene zurücksetzen“ entfernt sie); Maske und Licht gelten nur in dieser Szene.
 - **DC-042 Smart Prefabs, Innenräume als Asset-Varianten** (T-202, T-146).
 - **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
   Deckungsmaske eines Assets fest (Kreis oder Polygon auf dem Bild – Baum, Säule, Statue); ein platziertes Asset ist
   automatisch maskiert: Die Maske dreht und skaliert mit, sie wird nur am Asset geändert und gilt dann überall
   (DM-Entscheidung 2026-11-25: keine Anpassung je Platzierung). In der Sicht wirft Deckung Schatten nach hinten, das
   Objekt selbst bleibt sichtbar. Hängt an DC-040 (Bibliothek), einem Asset-Editor und DC-041 (platzieren); das
-  Asset-Thema beginnt mit einem Interview (Reihenfolge, Asset-Editor, Dateiformat, Licht hinter Deckung).
+  Asset-Thema: Interview geführt (E-27, 2026-11-25); Maske kommt aus DC-109, Platzieren aus DC-041.
 - **DC-043 Kreaturen global** in der Bibliothek (Werteblock-Editor umziehen); Spielercharaktere siehe DC-096.
 - **DC-044 Tokenbilder**: Token und Porträt, Token aus Porträt, Fraktionsring, ausgeschnittene Figur (T-203, T-208).
 - **DC-045 Klone, Begegnungsgruppen, Gestalten, SRD-Import, eigene Footprints** (T-204–207, T-241).

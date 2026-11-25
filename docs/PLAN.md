@@ -66,11 +66,13 @@ mit vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidunge
 - Assets platzieren (Stempel), Ebenen mit Sichtbarkeit
 - Nebel-Startzustand je Karte vorbereiten
 
-### 2.2 Asset-Vault
-- Eigenschaften: Name, Assetdatei, Tags, Typ, Größe in Feldern, Sichtblocker ja/nein
-- **Varianten** (Außen/Innen/Keller, Sommer/Winter, intakt/Ruine) mit Auslöser (Token nähert sich ≤ n Felder, betritt Zone, manuell) und Übergang (Überblenden, Dach ausblenden)
-- **Prop-Komposition**: Asset aus mehreren Props zusammensetzen, Gruppieren, Sichtblocker-Polygone pro Prop
-- Bibliothek mit Sammlungen, Tags, Suche
+### 2.2 Asset-Vault (E-27)
+- Katalog aller Bibliotheksdateien außer Karten und Kreaturen: Props, Kartenteile, Texturen, Effekte (animiert), Lichtquellen, Geräusche, Handouts – Vorschau-Raster, Suche, Filter, Sammlungen, Favoriten, Mehrfachauswahl
+- Eigenschaften: Name, Art und Unterart, Tags, Umgebungen, Größe in Feldern, Gruppe (Varianten), Sammlungen, Favorit – im Sidecar neben der Datei
+- Import: mehrere Dateien, Packs mit Unterordner-Wahl (Ordner → Tags), Duplikate per Hash, Größe aus „_2x2“
+- **Asset-Editor**: Größe, Deckungsmaske (Kreis/Polygon, Vorschlag aus Transparenz), Licht mit Flackern, Effekt-Verhalten
+- Platzieren auf der Karte (Kartenschmiede) und szeneneigen; auf dem TV unter dem Nebel
+- Später: **Varianten** mit Auslösern (Innen/Außen, intakt/Ruine), **Prop-Komposition**
 
 ### 2.3 Tokens & Kreaturen
 - 5e-Werteblock im **2024-Format**: RK, Initiative, TP (Formel + würfeln), Bewegung, Attribute mit Modifikator und Rettungswurf je Attribut, Fertigkeiten, Resistenzen/Immunitäten, Sinne, Sprachen, HG → EP, Übungsbonus

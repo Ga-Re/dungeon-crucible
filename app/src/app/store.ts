@@ -23,7 +23,7 @@ import type { Creature } from '../core/sidecar';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
-import { layerOf, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, type ViewLayer } from '../core/persistence';
+import { commitStart, layerOf, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, startOf, type ViewLayer } from '../core/persistence';
 import type { MapSidecar, SceneOverride } from '../core/sidecar';
 import type { CampaignInfo, RootInfo } from '../platform/bridge';
 import type { RecentCampaign } from './recent';
@@ -109,8 +109,10 @@ export interface AppState {
   mapDoc: MapSidecar | null;
   /** The open scene as in its file (its changes of the map and its state). */
   sceneDoc: SceneOverride | null;
-  /** What `scene` shows: the map (Map Forge) or the scene (every other workspace). */
+  /** What `scene` shows: the map (Map Forge), the scene's play state, or its start state. */
   layer: ViewLayer;
+  /** "Edit start state" in the Game-Orchestrator (E-17). */
+  editStart: boolean;
   /** Recently used campaigns (start screen). */
   recent: RecentCampaign[];
   /** A message on the start screen (e.g. why an import failed). */
@@ -174,6 +176,7 @@ function initial(): AppState {
     mapDoc: null,
     sceneDoc: null,
     layer: 'scene',
+    editStart: false,
     recent: [],
     notice: null,
     soundboard: initialSoundboard(),
@@ -245,7 +248,11 @@ export function markDirty(): void {
 function snapshot(): string {
   const s = state.scene;
   const map = mapSidecarFromScene(s, state.mapResource, state.layer, state.mapDoc);
-  const ov = state.layer === 'scene' ? sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, layerOf(state.sceneDoc)) : state.sceneDoc;
+  let ov = state.sceneDoc;
+  if (state.layer !== 'map') {
+    const fromView = sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, layerOf(state.sceneDoc));
+    ov = state.layer === 'start' && state.sceneDoc ? commitStart(state.sceneDoc, fromView, playingAmbience()) : { ...fromView, ...(state.sceneDoc?.start ? { start: state.sceneDoc.start } : {}) };
+  }
   return JSON.stringify({ map, ov });
 }
 
@@ -304,6 +311,7 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   state.scene = scene;
   state.mapDoc = opts.docs?.map ?? null;
   state.sceneDoc = opts.docs?.scene ?? null;
+  state.editStart = false;
   state.layer = layerFor(state.ws);
   viewVersion++;
   state.mapResource = opts.resource;
@@ -325,25 +333,55 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
 
 /** The Map Forge edits the map; every other workspace the scene (E-16). */
 export function layerFor(ws: WorkspaceId): ViewLayer {
-  return ws === 'forge' ? 'map' : 'scene';
+  if (ws === 'forge') return 'map';
+  return ws === 'play' && state.editStart ? 'start' : 'scene';
 }
 
-/** Takes what the view shows into the document of its layer (the map, or the scene's changes and state). */
+/** The ambience playing now, as a scene file stores it. */
+function playingAmbience(): { path: string; volume: number }[] {
+  return state.soundboard.ambience.filter((a) => a.playing).map((a) => ({ path: a.id, volume: a.volume }));
+}
+
+/**
+ * Takes what the view shows into the document of its layer: the map, the scene's play state, or
+ * its start state. The ambience playing belongs to the start while "edit start state" is on,
+ * else to the play state.
+ */
 export function commitView(): void {
   if (!state.mapDoc) return;
   const s = state.scene;
   const map = mapSidecarFromScene(s, state.mapResource, state.layer, state.mapDoc);
-  if (state.layer === 'scene') {
-    state.sceneDoc = {
-      ...sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, layerOf(state.sceneDoc)),
-      ambience: state.sceneDoc?.ambience ?? [],
-    };
+  const doc = state.sceneDoc;
+  if (doc && state.layer !== 'map') {
+    const fromView = sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, layerOf(doc));
+    if (state.layer === 'start') state.sceneDoc = commitStart(doc, fromView, playingAmbience());
+    else state.sceneDoc = { ...fromView, ambience: state.editStart ? doc.ambience : playingAmbience(), ...(doc.start ? { start: doc.start } : {}) };
+  } else if (doc) {
+    state.sceneDoc = state.editStart ? { ...doc, start: { ...startOf(doc), ambience: playingAmbience() } } : { ...doc, ambience: playingAmbience() };
   }
   state.mapDoc = map;
 }
 
-/** Shows the other layer: the map alone (Map Forge) or the scene on it. */
-function showLayer(layer: ViewLayer): void {
+/** Builds the view of the current layer from the documents (after a reset, a new start …). */
+export function refreshView(): void {
+  if (!state.mapDoc) return;
+  viewVersion++;
+  const table = state.scene.table;
+  state.scene = sceneFromDocuments(state.mapDoc, state.sceneDoc, state.scene.map.imageUrl, table, state.layer);
+  state.scene.table = table;
+  if (state.sceneDoc && state.layer === 'scene') {
+    state.round = state.sceneDoc.combat.round;
+    state.turn = state.sceneDoc.combat.turn;
+  }
+  state.selectedTokenId = null;
+  state.selectedZoneId = null;
+  state.selectedLightId = null;
+  state.wallStart = null;
+  recomputeVision();
+}
+
+/** Shows another layer: the map alone (Map Forge), the scene's play state, or its start state. */
+export function showLayer(layer: ViewLayer): void {
   if (layer === state.layer) return;
   commitView();
   state.layer = layer;
@@ -850,8 +888,15 @@ let tvCache: { version: number; scene: Scene; visible: Polygon[]; lights: LitSou
 function tvView(): { scene: Scene; visible: Polygon[]; lights: LitSource[] } {
   if (state.layer === 'scene' || !state.mapDoc) return { scene: state.scene, visible: state.visible, lights: state.lights };
   if (!tvCache || tvCache.version !== viewVersion) {
-    const map = mapSidecarFromScene(state.scene, state.mapResource, 'map', state.mapDoc);
-    const scene = sceneFromDocuments(map, state.sceneDoc, state.scene.map.imageUrl, state.scene.table, 'scene');
+    // Editing the map or the start state: the TV shows the play state, with the map (and the
+    // scene's changes of it) as they are being edited.
+    const map = mapSidecarFromScene(state.scene, state.mapResource, state.layer, state.mapDoc);
+    let ov = state.sceneDoc;
+    if (ov && state.layer === 'start') {
+      const fromView = sceneOverrideFromScene(state.scene, state.sceneName, ov.mapSidecar, { round: state.round, turn: state.turn }, map, layerOf(ov));
+      ov = { ...ov, overrides: fromView.overrides, added: fromView.added };
+    }
+    const scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, state.scene.table, 'scene');
     const vision = updateVision(scene);
     tvCache = { version: viewVersion, scene, visible: visiblePolygons(vision), lights: litSources(scene) };
   }

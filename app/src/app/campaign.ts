@@ -10,7 +10,7 @@
  * references into the library are relative to the root (`library/x.webp.dm.json`), so both stay
  * valid in another root folder and in archives.
  */
-import { manifestFromState, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneIssues, sceneOverrideFromScene, tableFromManifest, BUILTIN_PREFIX } from '../core/persistence';
+import { manifestFromState, mapSidecarFromScene, mapSidecarPath, resetToStart, sceneFromDocuments, sceneIssues, sceneOverrideFromScene, startOf, tableFromManifest, BUILTIN_PREFIX } from '../core/persistence';
 import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MapSidecarSchema, SceneOverrideSchema, type Creature, type MapSidecar, type SceneOverride } from '../core/sidecar';
 import { keepUnknown, readDocument, slugId, type DocumentKind } from '../core/documents';
 import type { z } from 'zod';
@@ -26,8 +26,8 @@ import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { commitView, emit, layerFor, log, onDirty, replaceScene, setWorkspace, state } from './store';
-import { applySceneAmbience, refreshAudioFiles, sceneAmbience, stopAll } from './soundboard';
+import { checkpoint, commitView, emit, layerFor, log, onDirty, refreshView, replaceScene, setWorkspace, showLayer, state } from './store';
+import { applySceneAmbience, refreshAudioFiles, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
 export const CREATURE_SUFFIX = '.creature.json';
@@ -235,6 +235,7 @@ export async function newCampaign(name: string, withSample: boolean): Promise<vo
     const map = (await readDoc(mapSidecarPath(resource), 'map', MapSidecarSchema, { quiet: true })) ?? mapSidecarFromScene(sample, resource, 'map');
     const ov = sceneOverrideFromScene(sceneFromDocuments(map, null, null, sample.table, 'scene'), 'Session 1', mapSidecarPath(resource), { round: 1, turn: 0 }, map);
     ov.tokens = sample.tokens.map((t) => ({ ...t, conditions: [...t.conditions] }));
+    ov.start = startOf(ov);
     await showDocs(map, ov, resource, { scenePath: 'scenes/session-1.scene.json' });
     await loadCreatures();
     for (const c of SAMPLE_CREATURES) if (!state.creatures.some((x) => creaturePath(x) === creaturePath(c))) state.creatures.push(structuredClone(c));
@@ -322,9 +323,39 @@ export async function refreshSceneList(): Promise<void> {
 async function showDocs(map: MapSidecar, ov: SceneOverride, resource: string, opts: { scenePath: string; table?: Partial<Scene['table']> }): Promise<void> {
   const url = await urlForResource(resource);
   const table = opts.table ?? state.scene.table;
+  // A scene opens in its play state.
+  state.editStart = false;
   const scene = sceneFromDocuments(map, ov, url, table, layerFor(state.ws));
   scene.table = { ...state.scene.table, ...table, centerX: scene.table.centerX, centerY: scene.table.centerY, blackout: state.scene.table.blackout };
   replaceScene(scene, { resource, fileName: resource, scenePath: opts.scenePath, sceneName: ov.name, round: ov.combat.round, turn: ov.combat.turn, docs: { map, scene: ov } });
+}
+
+/**
+ * "Edit start state" on or off (E-17): the view shows and edits the scene's start state, and the
+ * soundboard plays the start's ambience; off returns to the play state and its ambience. The TV
+ * keeps showing the play state.
+ */
+export async function setEditStart(on: boolean): Promise<void> {
+  if (on === state.editStart || !state.sceneDoc) return;
+  commitView();
+  state.editStart = on;
+  showLayer(layerFor(state.ws));
+  const doc = state.sceneDoc;
+  await applySceneAmbience(on ? startOf(doc).ambience : doc.ambience);
+  emit();
+}
+
+/** "Reset scene": the play state becomes the start state again (undoable). */
+export async function resetScene(): Promise<void> {
+  if (!state.sceneDoc) return;
+  if (state.editStart) await setEditStart(false);
+  checkpoint();
+  commitView();
+  state.sceneDoc = resetToStart(state.sceneDoc!);
+  refreshView();
+  await applySceneAmbience(state.sceneDoc.ambience);
+  log('log.sceneReset', { scene: state.sceneName });
+  emit();
 }
 
 /** Loads a scene of the open campaign (`scenes/x.scene.json`). */
@@ -333,6 +364,8 @@ export async function loadScene(scenePath: string, table: Partial<Scene['table']
   if (!ov) return;
   const map = await readDoc(ov.mapSidecar, 'map', MapSidecarSchema);
   if (!map) return;
+  // Older scenes start where they are when first opened (E-3); saved with the next save.
+  if (!ov.start) ov.start = startOf(ov);
   await showDocs(map, ov, map.resource, { scenePath, table });
   const issues = sceneIssues(map, ov);
   if (issues.orphaned.length > 0 || issues.invalid.length > 0) log('log.orphanedOverrides', { scene: ov.name, n: issues.orphaned.length + issues.invalid.length });
@@ -362,7 +395,7 @@ export async function saveCampaign(force = false): Promise<void> {
     commitView();
     if (state.scenePath && state.mapDoc && state.sceneDoc) {
       await writeDoc(mapSidecarPath(state.mapResource), MapSidecarSchema, state.mapDoc);
-      await writeDoc(campaignPath(state.scenePath), SceneOverrideSchema, { ...state.sceneDoc, ambience: sceneAmbience() });
+      await writeDoc(campaignPath(state.scenePath), SceneOverrideSchema, state.sceneDoc);
     }
     for (const c of state.creatures) await writeDoc(creaturePath(c), CreatureSchema, c);
     await writeDoc(campaignPath(CAMPAIGN_FILE), CampaignManifestSchema, manifestFromState(state.campaign.name, state.scenePath, s.table));
@@ -449,6 +482,7 @@ export async function openMapInNewScene(resource: string, sidecar: MapSidecar | 
   const pcs = (state.layer === 'scene' ? state.scene.tokens : (state.sceneDoc?.tokens ?? [])).filter((t) => t.kind === 'pc');
   const ov = sceneOverrideFromScene(sceneFromDocuments(map, null, url, state.scene.table, 'scene'), map.name, mapSidecarPath(resource), { round: 1, turn: 0 }, map);
   ov.tokens = pcs.map((t, i) => ({ ...t, conditions: [...t.conditions], x: map.widthPx / 2 + (i - 1) * map.grid.cellWidth, y: map.heightPx / 2 }));
+  ov.start = startOf(ov);
   await showDocs(map, ov, resource, { scenePath: freeScenePath(map.name) });
   await saveCampaign(true);
   await refreshSceneList();

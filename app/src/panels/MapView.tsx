@@ -62,6 +62,7 @@ function DmMap() {
   const ws = useStore((s) => s.ws);
   const sceneVersion = useStore((s) => s.sceneVersion);
   const mapPresent = useStore((s) => hasMap(s.scene));
+  const editStart = useStore((s) => s.editStart);
   const campaignOpen = useStore((s) => !!s.campaign);
   const dmFogHidden = useStore((s) => s.dmFogHidden);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -421,7 +422,11 @@ function DmMap() {
           )}
         </div>
       )}
-      <div className="map-badge">{dmFogHidden ? t('fog.hiddenInDm') : t(ws === 'forge' ? 'ws.forge' : 'ws.play')}</div>
+      {editStart && ws === 'play' ? (
+        <div className="map-badge start-state" role="status">{t('badge.startState')}</div>
+      ) : (
+        <div className="map-badge">{dmFogHidden ? t('fog.hiddenInDm') : t(ws === 'forge' ? 'ws.forge' : 'ws.play')}</div>
+      )}
     </div>
   );
 }

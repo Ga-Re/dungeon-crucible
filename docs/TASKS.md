@@ -203,8 +203,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   vor dem Übernehmen auf den TV kommt mit DC-034 (E-25).
 - **DC-103 Overrides bearbeiten**: je Element „Auf Karte zurücksetzen“, verwaiste Overrides anzeigen und aufräumen,
   Kennzeichnung geänderter Elemente im Orchestrator (T-145).
-- **DC-095 Start- und Spielzustand** (E-3): getrennt speichern, „Szene zurücksetzen“, Nebel-Startzustand;
-  bearbeitet im Orchestrator per Schalter „Startzustand bearbeiten“ (E-17).
+- ✓ **DC-095 Start- und Spielzustand** (E-3): die Szenendatei hält neben dem Spielzustand einen Block `start`
+  (Nebel, Tokens, Türen, Lichter, entdeckte Bereiche, Ambience); bearbeitet im Orchestrator per Schalter
+  „Startzustand bearbeiten“ (E-17, Hinweis auf der Karte; der TV zeigt weiter das Spiel). „Szene zurücksetzen“
+  (mit Rückfrage, rückgängig machbar) setzt den Spielzustand auf den Start, dazu Kampf und Initiative auf Runde 1,
+  entfernt Zauberschablonen und die Nebel-Art der Szene. Ältere Szenen starten beim ersten Öffnen im aktuellen
+  Zustand. Der Start-Nebel neuer Szenen kommt aus der Karte (DC-094).
 - **DC-096 Spielercharaktere** (E-1): global in der Bibliothek, Kampagne führt Spieler und verknüpft Figuren.
 - ✓ **DC-097 Archiv-Export mit Schalter**: nur Kampagne oder vollständig mit Bibliotheksdateien; Import legt
   Bibliotheksdateien ab (gleicher Inhalt wird nicht kopiert, Namenskonflikte bei Karten/Audio werden umbenannt und

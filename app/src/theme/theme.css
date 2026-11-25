@@ -298,3 +298,5 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .library-confirm p { margin: 0 0 6px; }
 .library-confirm ul { margin: 0 0 6px; padding-left: 16px; }
 .library-buttons { display: flex; gap: 6px; }
+/* "Edit start state" is on: the map shows the start, not the play state */
+.map-badge.start-state { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }

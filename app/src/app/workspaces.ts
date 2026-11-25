@@ -201,6 +201,13 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
         groups: [
           view,
           {
+            label: 'group.scene',
+            buttons: [
+              { id: 'toggle:editStart', icon: 'flag', label: 'tool.editStart' },
+              { id: 'scene:reset', icon: 'reset', label: 'tool.resetScene' },
+            ],
+          },
+          {
             label: 'group.combat',
             buttons: [
               { id: 'tool:ping', icon: 'ping', label: 'tool.ping', tool: 'ping' },

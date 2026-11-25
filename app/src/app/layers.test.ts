@@ -35,3 +35,35 @@ describe('map and scene layers in the app', () => {
     expect(state.sceneDoc!.added.walls).toEqual([]);
   });
 });
+
+describe('start state and reset (DC-095)', () => {
+  it('edits in the start state change only the start; the TV keeps the play state; reset brings the start back; undo', async () => {
+    const { resetScene, setEditStart } = await import('./campaign');
+    const { undo } = await import('./store');
+    setWorkspace('play');
+    const token = state.scene.tokens[0]!;
+    const playX = token.x;
+
+    // Edit the start: move the token there.
+    await setEditStart(true);
+    expect(state.layer).toBe('start');
+    state.scene.tokens.find((t) => t.id === token.id)!.x = playX + 140;
+    commitView();
+    expect(state.sceneDoc!.start!.tokens.find((t) => t.id === token.id)!.x).toBe(playX + 140);
+    expect(state.sceneDoc!.tokens.find((t) => t.id === token.id)!.x).toBe(playX);
+    expect(produceFrame(Date.now()).tokens.find((t) => t.id === token.id)!.x).toBe(playX);
+
+    // Back to play: unchanged.
+    await setEditStart(false);
+    expect(state.layer).toBe('scene');
+    expect(state.scene.tokens.find((t) => t.id === token.id)!.x).toBe(playX);
+
+    // Reset: the play state is the start state.
+    await resetScene();
+    expect(state.scene.tokens.find((t) => t.id === token.id)!.x).toBe(playX + 140);
+    expect(state.sceneDoc!.tokens.find((t) => t.id === token.id)!.x).toBe(playX + 140);
+
+    undo();
+    expect(state.scene.tokens.find((t) => t.id === token.id)!.x).toBe(playX);
+  });
+});

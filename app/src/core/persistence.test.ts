@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { History } from './history';
-import { lockedAreas, mapSidecarFromScene, mapSidecarPath, manifestFromState, sceneFromDocuments, sceneOverrideFromScene, slugify, tableFromManifest } from './persistence';
+import { commitStart, lockedAreas, mapSidecarFromScene, mapSidecarPath, manifestFromState, resetToStart, sceneFromDocuments, sceneOverrideFromScene, slugify, startOf, tableFromManifest } from './persistence';
 import { CampaignManifestSchema, MapSidecarSchema, SceneOverrideSchema } from './sidecar';
 import { createSampleScene } from '../sample/crypt';
 import { updateVision, visiblePolygons } from './vision';
@@ -134,6 +134,74 @@ describe('map and scene layers', () => {
     const again = mapSidecarFromScene(view, 'builtin:crypt', 'scene', map);
     expect(again.walls).toEqual(map.walls);
     expect(again.name).toBe('Renamed');
+  });
+});
+
+describe('start state and play state', () => {
+  function sceneFile() {
+    const sample = createSampleScene();
+    const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(sample, 'builtin:crypt', 'map'))));
+    const view = sceneFromDocuments(map, null, null);
+    view.tokens = sample.tokens;
+    const ov = SceneOverrideSchema.parse(JSON.parse(JSON.stringify(sceneOverrideFromScene(view, 'S', mapSidecarPath('builtin:crypt'), { round: 1, turn: 0 }, map))));
+    return { map, ov };
+  }
+
+  it('an older file without a start state starts where it is now', () => {
+    const { ov } = sceneFile();
+    expect(ov.start).toBeUndefined();
+    const start = startOf(ov);
+    expect(start.fog).toEqual(ov.fog);
+    expect(start.tokens).toEqual(ov.tokens);
+  });
+
+  it('the start view shows the start state; editing it never touches the play state', () => {
+    const { map, ov } = sceneFile();
+    // Play: the fighter is hurt, the door open, a template on the map, the fog look changed.
+    const play = sceneFromDocuments(map, ov, null);
+    play.tokens[0]!.hp = 1;
+    const door = play.walls.find((w) => w.kind === 'door')!;
+    door.open = true;
+    play.templates.push({ id: 'tpl-a', shape: 'cone', x: 0, y: 0, angle: 0, sizeFt: 15, color: '#e2554c' });
+    play.fogEffect = { biome: 'schnee', strength: 0.5 };
+    play.fog = revealAll(play.fog, 1000, 1000, []);
+    const played = { ...sceneOverrideFromScene(play, 'S', ov.mapSidecar, { round: 3, turn: 2 }, map), start: startOf(ov) };
+
+    // The start view: as planned, no templates, the map's fog look.
+    const startView = sceneFromDocuments(map, played, null, undefined, 'start');
+    expect(startView.tokens[0]!.hp).toBe(ov.tokens[0]!.hp);
+    expect(startView.walls.find((w) => w.id === door.id)!.open).toBe(false);
+    expect(startView.templates).toEqual([]);
+    expect(startView.fogEffect).toBeNull();
+
+    // Edit the start: the ghoul starts elsewhere.
+    startView.tokens.find((t) => t.id === 'ghoul')!.x = 5;
+    const next = commitStart(played, sceneOverrideFromScene(startView, 'S', ov.mapSidecar, { round: 1, turn: 0 }, map), [{ path: 'library/wind.ogg', volume: 0.5 }]);
+    expect(next.start!.tokens.find((t) => t.id === 'ghoul')!.x).toBe(5);
+    expect(next.start!.ambience).toEqual([{ path: 'library/wind.ogg', volume: 0.5 }]);
+    expect(next.tokens[0]!.hp).toBe(1);
+    expect(next.combat).toEqual({ round: 3, turn: 2 });
+    expect(next.fog).toEqual(played.fog);
+  });
+
+  it('reset scene: play state back to the start; combat, templates, fog look and ambience too', () => {
+    const { map, ov } = sceneFile();
+    const play = sceneFromDocuments(map, ov, null);
+    play.tokens[0]!.hp = 1;
+    play.templates.push({ id: 'tpl-a', shape: 'cone', x: 0, y: 0, angle: 0, sizeFt: 15, color: '#e2554c' });
+    play.fogEffect = { biome: 'schnee', strength: 0.5 };
+    const start = { ...startOf(ov), ambience: [{ path: 'library/drip.ogg', volume: 1 }] };
+    const played = { ...sceneOverrideFromScene(play, 'S', ov.mapSidecar, { round: 4, turn: 1 }, map), ambience: [{ path: 'library/battle.ogg', volume: 1 }], start };
+    const r = resetToStart(played);
+    expect(r.tokens[0]!.hp).toBe(ov.tokens[0]!.hp);
+    expect(r.templates).toEqual([]);
+    expect(r.combat).toEqual({ round: 1, turn: 0 });
+    expect(r.fogEffect).toBeUndefined();
+    expect(r.ambience).toEqual([{ path: 'library/drip.ogg', volume: 1 }]);
+    expect(r.fog).toEqual(start.fog);
+    expect(r.start).toEqual(start);
+    // The scene file stays valid.
+    expect(SceneOverrideSchema.safeParse(JSON.parse(JSON.stringify(r))).success).toBe(true);
   });
 });
 

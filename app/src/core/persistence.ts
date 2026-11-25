@@ -31,7 +31,66 @@ export function slugify(name: string): string {
   return s || 'untitled';
 }
 
-export type ViewLayer = 'map' | 'scene';
+/** What a view shows: the map (Map Forge), the scene's play state, or its start state. */
+export type ViewLayer = 'map' | 'scene' | 'start';
+
+export type SceneStart = NonNullable<SceneOverride['start']>;
+
+/** The start state of a scene file; older files without one start where they are now. */
+export function startOf(ov: SceneOverride): SceneStart {
+  if (ov.start) return ov.start;
+  return {
+    fog: copyFog(ov.fog),
+    tokens: ov.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
+    doors: { ...ov.doors },
+    lights: { ...ov.lights },
+    discoveredZones: [...ov.discoveredZones],
+    ambience: ov.ambience.map((a) => ({ ...a })),
+  };
+}
+
+/**
+ * The scene file after editing its start state: `fromView` is the file a start-state view
+ * produced (its changes of the map count for the scene; its state becomes the start), the play
+ * state of `previous` stays.
+ */
+export function commitStart(previous: SceneOverride, fromView: SceneOverride, ambience: SceneStart['ambience']): SceneOverride {
+  return {
+    ...previous,
+    overrides: fromView.overrides,
+    added: fromView.added,
+    start: {
+      fog: copyFog(fromView.fog),
+      tokens: fromView.tokens,
+      doors: fromView.doors,
+      lights: fromView.lights,
+      discoveredZones: fromView.discoveredZones,
+      ambience: ambience.map((a) => ({ ...a })),
+    },
+  };
+}
+
+/**
+ * "Reset scene": the play state becomes the start state again – fog, tokens, doors, lights,
+ * discovered areas, ambience; combat back to round 1; spell templates gone; the scene's live fog
+ * look back to the map's.
+ */
+export function resetToStart(ov: SceneOverride): SceneOverride {
+  const start = startOf(ov);
+  const { fogEffect: _fe, ...rest } = ov;
+  return {
+    ...rest,
+    fog: copyFog(start.fog),
+    tokens: start.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
+    doors: { ...start.doors },
+    lights: { ...start.lights },
+    discoveredZones: [...start.discoveredZones],
+    ambience: start.ambience.map((a) => ({ ...a })),
+    templates: [],
+    combat: { round: 1, turn: 0 },
+    start,
+  };
+}
 
 /** The map elements a view shows, without state (door open, light on, discovered). */
 export function elementsFromScene(scene: Pick<Scene, 'walls' | 'zones' | 'lights'>): MapElements {
@@ -132,13 +191,16 @@ export function lockedAreas(zones: readonly Zone[]): Polygon[] {
  */
 export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | null, imageUrl: string | null, table?: Partial<Scene['table']>, layer: ViewLayer = 'scene'): Scene {
   const onMap = layer === 'map';
-  const discovered = new Set(override?.discoveredZones ?? []);
+  // The start state shows the scene's start instead of its play state.
+  const st = layer === 'start' && override ? startOf(override) : null;
+  const state = st ? { ...override!, ...st, templates: [], fogEffect: undefined } : override;
+  const discovered = new Set(state?.discoveredZones ?? []);
   const elements = onMap ? elementsFromSidecar(map) : resolveElements(elementsFromSidecar(map), layerOf(override)).elements;
   const zones: Zone[] = elements.zones.map((z) => ({ ...z, rect: { ...z.rect }, discovered: z.kind !== 'secret' || (!onMap && discovered.has(z.id)) }));
   const startFog = map.startFog ? copyFog(map.startFog) : EMPTY_LEVEL_FOG;
-  const fog: LevelFog = onMap || !override ? startFog : copyFog(override.fog);
-  const doors = onMap ? {} : (override?.doors ?? {});
-  const lightsOn = onMap ? {} : (override?.lights ?? {});
+  const fog: LevelFog = onMap || !state ? startFog : copyFog(state.fog);
+  const doors = onMap ? {} : (state?.doors ?? {});
+  const lightsOn = onMap ? {} : (state?.lights ?? {});
   return {
     map: {
       id: slugify(map.name),
@@ -160,11 +222,11 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     zones,
     lights: elements.lights.map((l) => ({ ...l, on: lightsOn[l.id] ?? true })),
     ambient: map.ambient,
-    tokens: onMap ? [] : (override?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),
-    templates: onMap ? [] : (override?.templates ?? []).map((t) => ({ ...t })),
+    tokens: onMap ? [] : (state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),
+    templates: onMap ? [] : (state?.templates ?? []).map((t) => ({ ...t })),
     pings: [],
     fog,
-    fogEffect: !onMap && override?.fogEffect ? { ...override.fogEffect } : null,
+    fogEffect: !onMap && state?.fogEffect ? { ...state.fogEffect } : null,
     table: { ...DEFAULT_TABLE, centerX: map.widthPx / 2, centerY: map.heightPx / 2, ...table },
   };
 }

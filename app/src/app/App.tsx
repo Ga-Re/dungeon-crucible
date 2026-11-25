@@ -13,7 +13,8 @@ import {
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
-import { closeCampaign, importMapIntoCampaign, refreshRoot, saveCampaign, startAutosave } from './campaign';
+import { closeCampaign, importMapIntoCampaign, refreshRoot, saveCampaign, setEditStart, startAutosave } from './campaign';
+import { ResetSceneDialog } from './ResetSceneDialog';
 import { ExportDialog } from './ExportDialog';
 import { AppearanceControls } from './Appearance';
 import { StartScreen } from './StartScreen';
@@ -118,7 +119,8 @@ function Ribbon() {
   const { t } = useI18n();
   const ws = useStore((s) => s.ws);
   const tool = useStore((s) => s.tool);
-  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, grid: s.scene.map.grid.type, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden }));
+  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, grid: s.scene.map.grid.type, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart }));
+  const [resetting, setResetting] = useState(false);
   const [tab, setTab] = useState(0);
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState<DOMRect | null>(null);
@@ -138,6 +140,7 @@ function Ribbon() {
     if (b.id === 'fogmode:reveal') return flags.fogMode === 'reveal';
     if (b.id === 'fogmode:hide') return flags.fogMode === 'hide';
     if (b.id === 'fog:dmHide') return flags.dmFogHidden;
+    if (b.id === 'toggle:editStart') return flags.editStart;
     return false;
   };
 
@@ -148,6 +151,8 @@ function Ribbon() {
       case 'toggle:viewAsPlayer': return toggle('viewAsPlayer');
       case 'toggle:moveLock': return toggle('moveLock');
       case 'toggle:blackout': return toggleBlackout();
+      case 'toggle:editStart': return void setEditStart(!flags.editStart);
+      case 'scene:reset': return setResetting(true);
       case 'grid:square': return setGridType('square');
       case 'grid:hex-pointy': return setGridType('hex-pointy');
       case 'grid:hex-flat': return setGridType('hex-flat');
@@ -221,6 +226,7 @@ function Ribbon() {
       </div>
       <input ref={fileRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp,.mp4,.webm,image/png,image/jpeg,image/webp,video/mp4,video/webm" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importMapFile(f); e.target.value = ''; }} />
       {menu && <MonitorMenu anchor={menu} onClose={() => setMenu(null)} />}
+      {resetting && <ResetSceneDialog onClose={() => setResetting(false)} />}
     </section>
   );
 }

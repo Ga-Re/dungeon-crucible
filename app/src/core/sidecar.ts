@@ -187,6 +187,18 @@ export const SceneOverrideSchema = z.object({
   ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
   /** Changes of the map for this scene only, by element id: `{ hidden: true }` or changed fields (E-2). */
   overrides: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
+  /**
+   * The scene's start state (E-3): what "reset scene" returns to. Edited in the Orchestrator with
+   * "edit start state" (E-17). Missing in older files: the play state counts as the start.
+   */
+  start: z.object({
+    fog: levelFogSchema,
+    tokens: z.array(tokenSchema).default([]),
+    doors: z.record(z.string(), z.boolean()).default({}),
+    lights: z.record(z.string(), z.boolean()).default({}),
+    discoveredZones: z.array(z.string()).default([]),
+    ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
+  }).optional(),
   /** Walls, areas and lights that exist only in this scene (E-24). */
   added: z.object({ walls: z.array(mapWallSchema).default([]), zones: z.array(mapAreaSchema).default([]), lights: z.array(mapLightSchema).default([]) }).default({ walls: [], zones: [], lights: [] }),
 });

@@ -67,6 +67,8 @@ const PATHS = {
   home: 'M3 11l9-8 9 8 M5 9.5V21h14V9.5 M10 21v-6h4v6',
   export: 'M12 15V3M7 8l5-5 5 5M4 21h16',
   archive: 'M3 4h18v4H3z M5 8v12h14V8 M10 12h4',
+  flag: 'M5 21V4 M5 4h11l-2 4 2 4H5',
+  reset: 'M4 12a8 8 0 1 0 2.3-5.7 M4 4v5h5',
 } as const;
 
 export type IconName = keyof typeof PATHS;

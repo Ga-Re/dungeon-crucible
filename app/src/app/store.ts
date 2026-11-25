@@ -149,6 +149,8 @@ export interface AppState {
   interiorAsks: { id: string; name: string }[];
   /** Open documents as tabs (E-30, DC-034), in order; the active one is what `scene` shows. */
   tabs: DocTab[];
+  /** The tab shown: a scene's path, or `map:<resource>` for a map open on its own. */
+  activeTab: string | null;
   /** The scene on the TV (E-30): changed only by command; none: the TV is black. */
   tvScenePath: string | null;
   /** After switching tabs in the Orchestrator: "this scene on the TV?" waits for the DM's answer. */
@@ -231,6 +233,7 @@ function initial(): AppState {
     effectRuns: {},
     interiorAsks: [],
     tabs: [],
+    activeTab: null,
     tvScenePath: null,
     tvAsk: null,
     vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null },
@@ -369,9 +372,11 @@ function freshId(prefix: string): string {
  * Replaces the whole view (open campaign, switch scene, import map). `scene` must show
  * `layerFor(state.ws)`; `docs` are the map and scene as in their files (none: no map open).
  */
-export function replaceScene(scene: Scene, opts: { resource: string; fileName: string; scenePath: string | null; sceneName: string; round?: number; turn?: number; docs?: { map: MapSidecar | null; scene: SceneOverride | null } }): void {
-  // The scene shown so far stays open in its tab (E-30).
-  if (state.scenePath && state.scenePath !== opts.scenePath) stashSession();
+export function replaceScene(scene: Scene, opts: { resource: string; fileName: string; scenePath: string | null; sceneName: string; round?: number; turn?: number; docs?: { map: MapSidecar | null; scene: SceneOverride | null }; mapTab?: boolean }): void {
+  // The document shown so far stays open in its tab (E-30).
+  const tabId = opts.scenePath ?? (opts.mapTab ? mapTabId(opts.resource) : null);
+  if (state.activeTab && state.activeTab !== tabId) stashSession();
+  state.activeTab = tabId;
   state.scene = scene;
   state.mapDoc = opts.docs?.map ?? null;
   state.sceneDoc = opts.docs?.scene ?? null;
@@ -395,7 +400,7 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   // A scene of its own: its own undo history; the one before keeps its history in its tab.
   history = new History<string>(100);
   clearHistory();
-  if (opts.scenePath && !state.tabs.some((x) => x.id === opts.scenePath)) state.tabs = [...state.tabs, { id: opts.scenePath, kind: 'scene', name: opts.sceneName }];
+  if (tabId && !state.tabs.some((x) => x.id === tabId)) state.tabs = [...state.tabs, { id: tabId, kind: opts.scenePath ? 'scene' : 'map', name: opts.sceneName }];
   // With no scene on the TV, the scene opened goes there (E-30).
   if (opts.scenePath && !state.tvScenePath) state.tvScenePath = opts.scenePath;
   state.sceneVersion++;
@@ -404,16 +409,20 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
 
 /* ---------- Document tabs (E-30, DC-034) ---------- */
 
-/** An open document: for now a scene of the campaign, by its path. */
+/** An open document: a scene of the campaign (by its path) or a library map on its own (`map:<resource>`). */
 export interface DocTab {
   id: string;
-  kind: 'scene';
+  kind: 'scene' | 'map';
   name: string;
 }
 
-/** What an open scene keeps while another tab is shown: its files, its undo history and its unsaved state. */
+export function mapTabId(resource: string): string {
+  return `map:${resource}`;
+}
+
+/** What an open document keeps while another tab is shown: its files, its undo history and its unsaved state. */
 interface Session {
-  scenePath: string;
+  scenePath: string | null;
   sceneName: string;
   mapResource: string;
   mapFileName: string;
@@ -437,28 +446,38 @@ const openMaps = new Map<string, MapSidecar>();
 
 /** Puts the scene shown away into its tab (its view becomes its files again). */
 function stashSession(): void {
-  if (!state.scenePath) return;
+  if (!state.activeTab) return;
   dropCalibration();
   commitView();
   if (state.mapDoc) openMaps.set(state.mapResource, state.mapDoc);
-  sessions.set(state.scenePath, {
+  sessions.set(state.activeTab, {
     scenePath: state.scenePath, sceneName: state.sceneName, mapResource: state.mapResource, mapFileName: state.mapFileName, imageUrl: state.scene.map.imageUrl,
     sceneDoc: state.sceneDoc, mapDoc: state.mapDoc, round: state.round, turn: state.turn, editStart: state.editStart, history, dirty: state.dirty,
     effectRuns: state.effectRuns, interiorAsks: state.interiorAsks, center: { x: state.scene.table.centerX, y: state.scene.table.centerY },
   });
 }
 
-/** Whether a scene is open in a tab (shown or not). */
-export function isSceneOpen(scenePath: string): boolean {
-  return state.tabs.some((x) => x.id === scenePath);
+/** Whether a document is open in a tab (shown or not), by tab id. */
+export function isSceneOpen(tabId: string): boolean {
+  return state.tabs.some((x) => x.id === tabId);
 }
 
-/** Shows the open scene `scenePath` (put away by `stashSession`), in the current workspace's layer. */
-export function activateSession(scenePath: string): boolean {
-  const s = sessions.get(scenePath);
-  if (!s || scenePath === state.scenePath) return false;
+/**
+ * Shows the open document of tab `tabId` (put away by `stashSession`), in the current workspace's
+ * layer; a map on its own always in the Map Forge (E-30).
+ */
+export function activateSession(tabId: string): boolean {
+  const s = sessions.get(tabId);
+  if (!s || tabId === state.activeTab) return false;
   stashSession();
-  sessions.delete(scenePath);
+  sessions.delete(tabId);
+  state.activeTab = tabId;
+  if (!s.scenePath && state.ws !== 'forge') {
+    state.ws = 'forge';
+    state.areaCommand = null;
+    state.wallCommand = null;
+    state.tool = 'select';
+  }
   const mapDoc = openMaps.get(s.mapResource) ?? s.mapDoc;
   state.mapDoc = mapDoc;
   state.sceneDoc = s.sceneDoc;
@@ -499,20 +518,21 @@ export function activateSession(scenePath: string): boolean {
  * Closes the tab of `scenePath`: a tab in the background is just dropped (it was saved when it was
  * put away); the one shown gives way to its neighbour, or to no scene. The caller saves first.
  */
-export function closeSessionTab(scenePath: string): void {
-  const i = state.tabs.findIndex((x) => x.id === scenePath);
+export function closeSessionTab(tabId: string): void {
+  const i = state.tabs.findIndex((x) => x.id === tabId);
   if (i < 0) return;
-  state.tabs = state.tabs.filter((x) => x.id !== scenePath);
+  state.tabs = state.tabs.filter((x) => x.id !== tabId);
   // The TV's scene closed: the TV is black until another scene is put there.
-  if (scenePath === state.tvScenePath) setTvScene(null);
-  if (state.tvAsk === scenePath) state.tvAsk = null;
-  if (scenePath !== state.scenePath) {
-    sessions.delete(scenePath);
+  if (tabId === state.tvScenePath) setTvScene(null);
+  if (state.tvAsk === tabId) state.tvAsk = null;
+  if (tabId !== state.activeTab) {
+    sessions.delete(tabId);
     emit();
     return;
   }
   const next = state.tabs[Math.min(i, state.tabs.length - 1)];
-  // Nothing of the closed scene is kept: activating the next must not put it away again.
+  // Nothing of the closed document is kept: activating the next must not put it away again.
+  state.activeTab = null;
   state.scenePath = null;
   if (next && activateSession(next.id)) return;
   replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
@@ -523,6 +543,7 @@ export function clearTabs(): void {
   sessions.clear();
   openMaps.clear();
   state.tabs = [];
+  state.activeTab = null;
   state.tvScenePath = null;
   state.tvAsk = null;
 }
@@ -639,6 +660,20 @@ export function showLayer(layer: ViewLayer): void {
 }
 
 export function setWorkspace(ws: WorkspaceId): void {
+  // A map on its own is edited in the Map Forge only (E-30): elsewhere a scene is shown – the TV's,
+  // else the last scene tab.
+  const tab = state.tabs.find((x) => x.id === state.activeTab);
+  if (ws !== 'forge' && tab?.kind === 'map') {
+    const scene = state.tabs.find((x) => x.id === state.tvScenePath) ?? [...state.tabs].reverse().find((x) => x.kind === 'scene');
+    state.ws = ws;
+    if (scene && activateSession(scene.id)) {
+      state.areaCommand = null;
+      state.wallCommand = null;
+      state.tool = 'select';
+      emit();
+      return;
+    }
+  }
   state.ws = ws;
   state.areaCommand = null;
   state.wallCommand = null;

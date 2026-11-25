@@ -286,6 +286,7 @@ export const en = {
   'tv.ask': 'Put "{name}" on the TV too?',
   'tv.yes': 'On the TV',
   'tv.no': 'Not now',
+  'tabs.newScene': 'New scene on this map',
   'panels.menu': 'Windows',
   'panels.workspace': 'This workspace',
   'panels.more': 'More panels',

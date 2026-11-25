@@ -27,7 +27,7 @@ import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { activateSession, checkpoint, clearTabs, closeSessionTab, commitView, emit, isSceneOpen, layerFor, log, onDirty, openSceneDoc, refreshView, replaceScene, setTvScene, setWorkspace, showLayer, state } from './store';
+import { activateSession, checkpoint, clearTabs, closeSessionTab, commitView, emit, isSceneOpen, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, setTvScene, setWorkspace, showLayer, state } from './store';
 import { applySceneAmbience, refreshAudioFiles, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
@@ -430,9 +430,9 @@ export async function loadScene(scenePath: string, table: Partial<Scene['table']
   if (state.tvScenePath === scenePath) void applySceneAmbience(ov.ambience);
 }
 
-/** Shows scene `scenePath`: its tab if it is open (E-30), else it opens in a new tab. */
+/** Shows scene `scenePath` – or any open tab by its id: its tab if it is open (E-30), else it opens in a new tab. */
 export async function switchScene(scenePath: string): Promise<void> {
-  if (scenePath === state.scenePath) return;
+  if (scenePath === state.activeTab) return;
   await saveCampaign();
   // The TV stays on its scene (E-30); a scene the TV did not have yet is only shown here.
   const tvBefore = state.tvScenePath;
@@ -440,7 +440,7 @@ export async function switchScene(scenePath: string): Promise<void> {
   else await loadScene(scenePath);
   if (!tvBefore && state.tvScenePath) await applyTvAmbience();
   // In the Orchestrator the DM is asked whether this scene goes on the TV too.
-  if (state.ws === 'play' && state.tvScenePath && state.tvScenePath !== state.scenePath) state.tvAsk = state.scenePath;
+  if (state.ws === 'play' && state.scenePath && state.tvScenePath && state.tvScenePath !== state.scenePath) state.tvAsk = state.scenePath;
   emit();
   await saveCampaign();
 }
@@ -463,7 +463,7 @@ async function applyTvAmbience(): Promise<void> {
 
 /** Closes the tab of scene `scenePath` (saved first); the one shown gives way to its neighbour. */
 export async function closeScene(scenePath: string): Promise<void> {
-  if (scenePath === state.scenePath) await saveCampaign();
+  if (scenePath === state.activeTab) await saveCampaign();
   const wasTv = scenePath === state.tvScenePath;
   closeSessionTab(scenePath);
   if (wasTv) await applyTvAmbience();
@@ -479,12 +479,12 @@ export async function saveCampaign(force = false): Promise<void> {
     const s = state.scene;
     // A campaign without a map yet has no scene: only the manifest and creatures are written.
     commitView();
-    if (state.scenePath && state.mapDoc && state.sceneDoc) {
-      await writeDoc(mapSidecarPath(state.mapResource), MapSidecarSchema, state.mapDoc);
-      await writeDoc(campaignPath(state.scenePath), SceneOverrideSchema, state.sceneDoc);
-    }
+    // The document shown: a scene and its map, or a map open on its own (E-30).
+    if (state.mapDoc && (state.sceneDoc || !state.scenePath)) await writeDoc(mapSidecarPath(state.mapResource), MapSidecarSchema, state.mapDoc);
+    if (state.scenePath && state.sceneDoc) await writeDoc(campaignPath(state.scenePath), SceneOverrideSchema, state.sceneDoc);
     await saveCreatures();
-    await writeDoc(campaignPath(CAMPAIGN_FILE), CampaignManifestSchema, manifestFromState(state.campaign.name, state.scenePath, s.table, state.players));
+    // With a map on its own shown, the campaign keeps the scene on the TV as its scene.
+    await writeDoc(campaignPath(CAMPAIGN_FILE), CampaignManifestSchema, manifestFromState(state.campaign.name, state.scenePath ?? state.tvScenePath, s.table, state.players));
     state.dirty = false;
     state.lastSavedAt = Date.now();
   } catch (e) {
@@ -551,19 +551,54 @@ export async function openMapResource(resource: string): Promise<void> {
   await openMapInNewScene(resource, await readDoc(sidecar, 'map', MapSidecarSchema, { quiet: true }));
 }
 
-/** Starts a new scene of the open campaign on library map `resource` (with its sidecar if it has one). */
-export async function openMapInNewScene(resource: string, sidecar: MapSidecar | null = null): Promise<void> {
+/** Library map `resource` as in its sidecar, or a fresh sidecar for a picture that has none yet. */
+async function mapOf(resource: string, sidecar: MapSidecar | null): Promise<{ map: MapSidecar; url: string }> {
   const url = await urlForResource(resource);
-  let map = sidecar;
-  if (!map) {
-    const isVideo = /\.(mp4|webm)$/i.test(resource);
-    const { w, h } = await mediaSize(url, isVideo);
-    const name = resource.split('/').pop()!.replace(/\.[^.]+$/, '');
-    map = {
+  if (sidecar) return { map: sidecar, url };
+  const isVideo = /\.(mp4|webm)$/i.test(resource);
+  const { w, h } = await mediaSize(url, isVideo);
+  const name = resource.split('/').pop()!.replace(/\.[^.]+$/, '');
+  return {
+    url,
+    map: {
       kind: 'map', schemaVersion: MAP_VERSION, name, resource, isVideo, widthPx: w, heightPx: h,
       tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark',
-    };
+    },
+  };
+}
+
+/**
+ * Opens library map `resource` on its own as a tab in the Map Forge (E-30): no scene is made
+ * for it; "new scene on this map" makes one.
+ */
+export async function openMapTab(resource: string): Promise<void> {
+  if (!state.campaign) return;
+  await saveCampaign();
+  const id = mapTabId(resource);
+  if (isSceneOpen(id)) {
+    activateSession(id);
+    return;
   }
+  const { map, url } = await mapOf(resource, await readDoc(mapSidecarPath(resource), 'map', MapSidecarSchema, { quiet: true }));
+  state.ws = 'forge';
+  state.areaCommand = null;
+  state.wallCommand = null;
+  state.tool = 'select';
+  const scene = sceneFromDocuments(map, null, url, tvSettings(), 'map');
+  scene.table = { ...state.scene.table, centerX: scene.table.centerX, centerY: scene.table.centerY };
+  replaceScene(scene, { resource, fileName: resource, scenePath: null, sceneName: map.name, docs: { map, scene: null }, mapTab: true });
+}
+
+/** "New scene on this map" (E-30): a new scene on library map `resource`, with its walls, areas and lights. */
+export async function newSceneOnMap(resource: string): Promise<void> {
+  if (!state.campaign) return;
+  await saveCampaign();
+  await openMapInNewScene(resource, await readDoc(mapSidecarPath(resource), 'map', MapSidecarSchema, { quiet: true }));
+}
+
+/** Starts a new scene of the open campaign on library map `resource` (with its sidecar if it has one). */
+export async function openMapInNewScene(resource: string, sidecar: MapSidecar | null = null): Promise<void> {
+  const { map, url } = await mapOf(resource, sidecar);
   // A new scene starts with the map's start fog and the party: the characters of the players
   // present, with their hit points from the scene played so far (DC-096).
   const before = state.layer === 'scene' ? state.scene.tokens : (state.sceneDoc?.tokens ?? []);

@@ -14,7 +14,7 @@ import {
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
-import { closeCampaign, closeScene, importMapIntoCampaign, putOnTv, refreshRoot, saveCampaign, setEditStart, startAutosave, switchScene } from './campaign';
+import { closeCampaign, closeScene, importMapIntoCampaign, newSceneOnMap, putOnTv, refreshRoot, saveCampaign, setEditStart, startAutosave, switchScene } from './campaign';
 import { ResetSceneDialog } from './ResetSceneDialog';
 import { MapSettingsDialog } from './MapSettingsDialog';
 import { ExportDialog } from './ExportDialog';
@@ -321,7 +321,7 @@ function StatusBar() {
 function DocTabs() {
   const { t } = useI18n();
   const tabs = useStore((s) => s.tabs);
-  const active = useStore((s) => s.scenePath);
+  const active = useStore((s) => s.activeTab);
   const tv = useStore((s) => s.tvScenePath);
   const pending = useStore((s) => s.dirty || s.saving);
   const [menu, setMenu] = useState<{ id: string; at: DOMRect } | null>(null);
@@ -346,7 +346,7 @@ function DocTabs() {
             }}
           >
             <button role="tab" aria-selected={on} className="doc-tab-name" title={tab.name} onClick={() => void switchScene(tab.id)}>
-              <Icon name="map" />
+              <Icon name={tab.kind === 'map' ? 'map' : 'flag'} />
               <span>{tab.name}</span>
               {tab.id === tv && <span className="doc-tab-tv" title={t('tabs.onTv')} aria-label={t('tabs.onTv')}><Icon name="monitor" /></span>}
               {on && pending && <span className="doc-tab-dot" aria-label={t('tabs.unsaved')} />}
@@ -357,7 +357,11 @@ function DocTabs() {
       })}
       {menu && (
         <TabMenu at={menu.at} onClose={() => setMenu(null)}>
-          <button disabled={menu.id === tv} onClick={() => { void putOnTv(menu.id); setMenu(null); }}><Icon name="monitor" /><span>{t('tool.sceneToTv')}</span></button>
+          {menu.id.startsWith('map:') ? (
+            <button onClick={() => { void newSceneOnMap(menu.id.slice(4)); setMenu(null); }}><Icon name="plus" /><span>{t('tabs.newScene')}</span></button>
+          ) : (
+            <button disabled={menu.id === tv} onClick={() => { void putOnTv(menu.id); setMenu(null); }}><Icon name="monitor" /><span>{t('tool.sceneToTv')}</span></button>
+          )}
           <button onClick={(e) => { const at = menu.at; setMenu(null); if (menu.id === tv) setConfirm({ id: menu.id, at }); else void closeScene(menu.id); e.stopPropagation(); }}><Icon name="close" /><span>{t('tabs.close')}</span></button>
         </TabMenu>
       )}

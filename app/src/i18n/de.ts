@@ -286,6 +286,7 @@ export const de: Partial<Record<MessageKey, string>> = {
   'tv.ask': '„{name}“ auch auf den TV?',
   'tv.yes': 'Auf den TV',
   'tv.no': 'Jetzt nicht',
+  'tabs.newScene': 'Neue Szene auf dieser Karte',
   'panels.menu': 'Fenster',
   'panels.workspace': 'Dieser Arbeitsbereich',
   'panels.more': 'Weitere Panels',

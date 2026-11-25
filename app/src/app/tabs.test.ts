@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { sceneFromDocuments } from '../core/persistence';
 import { activateSession, answerTvAsk, checkpoint, clearTabs, closeSessionTab, commitView, moveToken, produceFrame, replaceScene, setTvScene, setWorkspace, state, undo } from './store';
 
 /** Scenes as tabs (E-30, DC-034 step 1): each keeps its state and undo history while another is shown. */
@@ -94,5 +95,26 @@ describe('scene tabs', () => {
     expect(state.tvScenePath).toBeNull();
     expect(produceFrame(Date.now()).blackout).toBe(true);
     expect(produceFrame(Date.now()).tokens).toEqual([]);
+  });
+
+  it('a map opens on its own as a tab in the Map Forge; the Orchestrator shows a scene instead', () => {
+    setWorkspace('play');
+    clearTabs();
+    open('scenes/a.scene.json', 'A');
+    replaceScene(sceneFromDocuments(base.map, null, null, undefined, 'map'), { resource: 'library/other.png', fileName: 'library/other.png', scenePath: null, sceneName: 'Other', docs: { map: structuredClone(base.map), scene: null }, mapTab: true });
+    expect(state.tabs.map((x) => [x.kind, x.name])).toEqual([['scene', 'A'], ['map', 'Other']]);
+    expect(state.activeTab).toBe('map:library/other.png');
+    expect(state.scenePath).toBeNull();
+    activateSession('scenes/a.scene.json');
+    // Back to the map: always the Map Forge.
+    activateSession('map:library/other.png');
+    expect(state.ws).toBe('forge');
+    expect(state.layer).toBe('map');
+    // The Orchestrator shows the scene on the TV instead.
+    setWorkspace('play');
+    expect(state.activeTab).toBe('scenes/a.scene.json');
+    expect(state.layer).toBe('scene');
+    // The TV never had the map.
+    expect(state.tvScenePath).toBe('scenes/a.scene.json');
   });
 });

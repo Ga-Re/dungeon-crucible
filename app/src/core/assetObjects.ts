@@ -109,3 +109,18 @@ export function catalogEntries<T extends Item>(items: readonly T[], objects: rea
   for (const it of items) if (!inObject.has(it.relPath)) out.push({ key: it.relPath, name: it.asset.name, object: null, variants: [it] });
   return out.sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));
 }
+
+/**
+ * A random variant of the object `relPath` belongs to (E-31, DC-115), from its variants that are
+ * no house's inside; an asset in no object is itself. `random` gives 0 ≤ x < 1.
+ */
+export function randomVariant(relPath: string, items: readonly Item[], objects: readonly ObjectFile[], random: () => number): string {
+  const o = objects.find((x) => x.doc.variants.some((v) => `library/${v.file}` === relPath));
+  if (!o) return relPath;
+  const paths = o.doc.variants.map((v) => `library/${v.file}`);
+  const mine = items.filter((i) => paths.includes(i.relPath));
+  const insides = new Set(mine.flatMap((i) => (i.asset.interior ? [i.asset.interior.asset] : [])));
+  const choice = mine.map((i) => i.relPath).filter((p) => !insides.has(p));
+  if (!choice.length) return relPath;
+  return choice[Math.min(choice.length - 1, Math.floor(random() * choice.length))];
+}

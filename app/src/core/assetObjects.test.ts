@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyObjects, catalogEntries, objectFileFor, objectsFromGroups, parseAssetObject, sharedOf } from './assetObjects';
+import { applyObjects, catalogEntries, objectFileFor, objectsFromGroups, parseAssetObject, randomVariant, sharedOf } from './assetObjects';
 import { ASSET_VERSION, type AssetSidecar } from './sidecar';
 
 /** Asset objects with variants (E-31, DC-112). */
@@ -69,5 +69,23 @@ describe('the catalog', () => {
   it('a variant listed whose file is gone is left out; an object with none left is not shown', () => {
     const entries = catalogEntries([rock], [obj]);
     expect(entries.map((e) => e.key)).toEqual(['library/rock.png']);
+  });
+});
+
+describe('a random variant (E-31, DC-115)', () => {
+  const barrels = [item('barrel_a.png', asset('a')), item('barrel_b.png', asset('b')), item('barrel_c.png', asset('c'))];
+  const obj = { relPath: 'library/barrel.object.json', doc: { kind: 'object' as const, schemaVersion: 1 as const, name: 'Barrel', assetKind: 'prop' as const, environments: [], collections: [], favorite: false, main: 'barrel_a.png', variants: barrels.map((b) => ({ file: b.relPath.slice(8), name: b.asset.name })) } };
+
+  it('picks among the variants by the random number; an asset in no object is itself', () => {
+    expect(randomVariant('library/barrel_a.png', barrels, [obj], () => 0)).toBe('library/barrel_a.png');
+    expect(randomVariant('library/barrel_a.png', barrels, [obj], () => 0.5)).toBe('library/barrel_b.png');
+    expect(randomVariant('library/barrel_a.png', barrels, [obj], () => 0.99)).toBe('library/barrel_c.png');
+    expect(randomVariant('library/rock.png', barrels, [obj], () => 0.99)).toBe('library/rock.png');
+  });
+
+  it('never the inside of a house', () => {
+    const house = [item('hut_roof.png', asset('roof', { interior: { asset: 'library/hut_in.png', walls: [], trigger: { mode: 'enter', nearFt: 10, confirm: false, leaveOff: true } } })), item('hut_in.png', asset('in'))];
+    const hut = { relPath: 'library/hut.object.json', doc: { ...obj.doc, name: 'Hut', main: 'hut_roof.png', variants: [{ file: 'hut_roof.png', name: 'roof' }, { file: 'hut_in.png', name: 'in' }] } };
+    expect(randomVariant('library/hut_roof.png', house, [hut], () => 0.99)).toBe('library/hut_roof.png');
   });
 });

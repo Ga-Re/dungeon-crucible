@@ -514,6 +514,8 @@ export const de: Partial<Record<MessageKey, string>> = {
   'picker.recent': 'Zuletzt benutzt',
   'picker.all': 'Alle platzierbaren Assets',
   'picker.empty': 'Noch keine Assets: importiere sie hier oder im Asset-Vault.',
+  'picker.random': 'Zufällige Variante',
+  'picker.randomHint': 'Ein Objekt wird als zufällige seiner Varianten platziert (nie die Innenansicht eines Hauses).',
   'picker.hint': 'Ein Asset auf die Karte ziehen. Ausgewählt auf der Karte: R / Umschalt+R drehen um 15°, + / − skalieren, V nächste Variante, Entf entfernt.',
   'picker.placeKey': 'Enter stellt es in die Mitte der Kartenansicht',
   'placed.title': 'Platziertes Asset',

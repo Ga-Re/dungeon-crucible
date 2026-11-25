@@ -514,6 +514,8 @@ export const en = {
   'picker.recent': 'Recently used',
   'picker.all': 'All placeable assets',
   'picker.empty': 'No assets yet: import some here or in the Asset Vault.',
+  'picker.random': 'Random variant',
+  'picker.randomHint': 'Placing an object places one of its variants at random (never a house\'s inside).',
   'picker.hint': 'Drag an asset onto the map. Selected on the map: R / Shift+R turn by 15°, + / − scale, V next variant, Delete removes.',
   'picker.placeKey': 'Enter places it in the middle of the map view',
   'placed.title': 'Placed asset',

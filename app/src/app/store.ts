@@ -9,6 +9,7 @@ import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
 import type { InteriorTrigger } from '../core/sidecar';
+import { randomVariant } from '../core/assetObjects';
 import { drawnPlacements, footprintPolygon, interiorChanges, interiorOf, interiorWalls } from '../core/interiors';
 import { rotateAboutAnchor, scaleAboutAnchor, snapAnchored } from '../core/anchor';
 import { assetShapes, footprintOf, hitsPlacement, nextVariant, snapPlacement } from '../core/placement';
@@ -145,6 +146,8 @@ export interface AppState {
   currentLayer: string;
   /** Play-once effects started in this session, by placement id → when (DC-110; not saved). */
   effectRuns: Record<string, number>;
+  /** "Random variant": placing an object places one of its variants at random (E-31; a device setting). */
+  randomVariant: boolean;
   /** Houses a player character came into whose interior waits for the DM's yes (E-29; not saved). */
   interiorAsks: { id: string; name: string }[];
   /** Open documents as tabs (E-30, DC-034), in order; the active one is what `scene` shows. */
@@ -172,6 +175,9 @@ export interface AppState {
   /** A message on the start screen (e.g. why an import failed). */
   notice: { key: MessageKey; params?: Record<string, string | number> } | null;
 }
+
+/** Device setting of "random variant" (E-31). */
+const RANDOM_KEY = 'dc.randomVariant';
 
 function initial(): AppState {
   const scene = createSampleScene();
@@ -242,6 +248,7 @@ function initial(): AppState {
     currentLayer: BASE_LAYER,
     effectRuns: {},
     interiorAsks: [],
+    randomVariant: readFlag(RANDOM_KEY),
     tabs: [],
     activeTab: null,
     creatureTab: null,
@@ -1568,7 +1575,9 @@ function setEditableAssets(list: MapAssetPlacement[]): void {
 }
 
 /** Places a library asset at `p` (snapped to the grid), as one undoable step: on the map in the Map Forge, else in the scene. */
-export function placeAsset(assetPath: string, p: Point): string | null {
+export function placeAsset(dropped: string, p: Point): string | null {
+  // An object placed with "random variant" on: one of its variants (E-31, DC-115).
+  const assetPath = state.randomVariant ? randomVariant(dropped, state.vault.items, state.vault.objects, Math.random) : dropped;
   checkpoint();
   const id = freshId('asset');
   const at = snappedPlace({ assetPath, scale: 1, rotation: 0 }, p);
@@ -1706,6 +1715,26 @@ export function activateAsset(id: string): boolean {
 export function anyAssetAt(p: Point): string | null {
   const hit = [...allPlacements(state.scene)].reverse().find((a) => hitsPlacement(footprint(a), p));
   return hit?.id ?? null;
+}
+
+/** A yes/no device setting; no storage: no. */
+function readFlag(key: string): boolean {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** "Random variant" on or off (E-31, DC-115), kept on this device. */
+export function setRandomVariant(on: boolean): void {
+  state.randomVariant = on;
+  try {
+    localStorage.setItem(RANDOM_KEY, on ? '1' : '0');
+  } catch {
+    /* a device setting only: not kept without storage */
+  }
+  emit();
 }
 
 const RECENT_KEY = 'dc.recentAssets';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  commitView, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset, setAssetInfo, setWorkspace, state, toggleHidden, undo,
+  commitView, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, placedPivot, turnPlacedAssetTo, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset, setAssetInfo, setWorkspace, state, toggleHidden, undo,
 } from './store';
 
 /** Placing assets in the Map Forge (DC-041). The sample crypt has 70 px cells. */
@@ -50,6 +50,13 @@ describe('placed assets', () => {
     moveAssetTo(id, { x: 7300, y: 6960 }, true);
     expect(a()).toMatchObject({ rotation: 180 });
     expect(Math.round(a().y)).toBe(6965);
+    // Turned by the handle (DC-113): freely, about the anchor too.
+    const pivot = placedPivot(id)!;
+    turnPlacedAssetTo(id, 197, true);
+    expect(a().rotation).toBe(197);
+    expect(placedPivot(id)!.x).toBeCloseTo(pivot.x, 6);
+    expect(placedPivot(id)!.y).toBeCloseTo(pivot.y, 6);
+    turnPlacedAssetTo(id, 180, true);
     rotatePlacedAsset(id, 90);
     // The anchor stays on the wall: the centre moved to its side.
     expect(Math.round(a().x)).toBe(7315 + 35);

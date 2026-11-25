@@ -11,8 +11,8 @@ import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetD
 import type { InteriorTrigger } from '../core/sidecar';
 import { randomVariant } from '../core/assetObjects';
 import { drawnPlacements, footprintPolygon, interiorChanges, interiorOf, interiorWalls } from '../core/interiors';
-import { rotateAboutAnchor, scaleAboutAnchor, snapAnchored } from '../core/anchor';
-import { assetShapes, footprintOf, hitsPlacement, nextVariant, snapPlacement } from '../core/placement';
+import { anchorPoint, rotateAboutAnchor, scaleAboutAnchor, snapAnchored } from '../core/anchor';
+import { assetShapes, footprintOf, hitsPlacement, nextVariant, snapPlacement, type Footprint } from '../core/placement';
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
 import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision, type VisionExtras } from '../core/vision';
@@ -1627,6 +1627,28 @@ export function rotatePlacedAsset(id: string, delta: number): void {
   // About the anchor (E-29); without one about the centre.
   Object.assign(a, rotateAboutAnchor(a, state.assetInfo[a.assetPath] ?? {}, state.scene.map.grid, delta));
   recomputeVision();
+  emit();
+}
+
+/** The point a placed asset turns about: its anchor (E-29), else its centre. */
+export function placedPivot(id: string): Point | null {
+  const a = placed(id);
+  return a ? anchorPoint(a, state.assetInfo[a.assetPath] ?? {}, state.scene.map.grid) : null;
+}
+
+/** The footprint of a placed asset the DM edits here, if any. */
+export function placedFootprint(id: string): Footprint | null {
+  const a = placed(id);
+  return a ? footprint(a) : null;
+}
+
+/** Turns a placed asset to `rotation` about its anchor (live while dragging the handle, DC-113; the caller sets the checkpoint). */
+export function turnPlacedAssetTo(id: string, rotation: number, final: boolean): void {
+  const a = placed(id);
+  if (!a) return;
+  Object.assign(a, rotateAboutAnchor(a, state.assetInfo[a.assetPath] ?? {}, state.scene.map.grid, rotation - a.rotation));
+  markDirty();
+  recomputeVision(final);
   emit();
 }
 

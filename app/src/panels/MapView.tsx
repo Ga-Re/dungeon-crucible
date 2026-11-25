@@ -26,7 +26,7 @@ import { hasMap } from '../core/emptyScene';
 import { importMapIntoCampaign, putOnTv } from '../app/campaign';
 import { Icon } from '../ui/Icon';
 import type { MessageKey } from '../i18n/en';
-import { drawDmOverlay, type OverlayState } from '../render/dmOverlay';
+import { drawDmOverlay, rotateHandleAt, type OverlayState } from '../render/dmOverlay';
 import { fogOptions } from '../render/fogOptions';
 import { DARKNESS } from '../core/projection';
 import { bindMap } from '../render/mapBinding';
@@ -36,7 +36,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
-  editableHere, shownInForge, activateAsset, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
+  editableHere, shownInForge, activateAsset, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -63,6 +63,7 @@ type Drag =
   | { kind: 'area-corner'; at: VertexRef }
   | { kind: 'wall-ends'; ends: WallEnd[]; to: Point; moved: boolean }
   | { kind: 'asset-move'; id: string; ox: number; oy: number; moved: boolean; activate?: boolean }
+  | { kind: 'asset-turn'; id: string; pivot: Point; from: number; start: number; moved: boolean }
   | { kind: 'calib-box'; a: Point }
   | { kind: 'calib-move'; last: Point }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
@@ -345,6 +346,18 @@ function DmMap() {
     return { x: (e.clientX - r.left - v.x) / v.zoom, y: (e.clientY - r.top - v.y) / v.zoom };
   };
 
+  /** A press on the turning handle of the selected asset (DC-113): it turns, freely, about its anchor. */
+  const startTurn = (p: Point): boolean => {
+    const id = state.selectedAssetId;
+    const fp = id ? placedFootprint(id) : null;
+    const pivot = id ? placedPivot(id) : null;
+    if (!id || !fp || !pivot) return false;
+    const h = rotateHandleAt(fp, view.current.zoom);
+    if (Math.hypot(h.x - p.x, h.y - p.y) > (HANDLE_PX * 1.2) / view.current.zoom) return false;
+    drag.current = { kind: 'asset-turn', id, pivot, from: angleOf(pivot, p), start: fp.rotation, moved: false };
+    return true;
+  };
+
   const finishPolygon = (free = false) => {
     const pts = polygonDraft.current;
     polygonDraft.current = [];
@@ -393,6 +406,8 @@ function DmMap() {
         // In a scene: a click on an asset switches its light or effect; the scene's own assets are
         // also selected and can be dragged (a click without moving still switches, DC-110).
         if (state.layer !== 'map') {
+          // The scene's own asset selected: its turning handle first.
+          if (startTurn(p)) return;
           const asset = anyAssetAt(p);
           if (asset) {
             const own = editableAssets().find((x) => x.id === asset);
@@ -424,6 +439,7 @@ function DmMap() {
             return;
           }
           selectWall(null);
+          if (startTurn(p)) return;
           // A placed asset: select it and drag it (DC-041).
           const asset = placedAssetAt(p);
           if (asset) {
@@ -527,6 +543,10 @@ function DmMap() {
       if (!d.moved) checkpoint();
       d.moved = true;
       moveAssetTo(d.id, { x: p.x + d.ox, y: p.y + d.oy }, false);
+    } else if (d.kind === 'asset-turn') {
+      if (!d.moved) checkpoint();
+      d.moved = true;
+      turnPlacedAssetTo(d.id, d.start + angleOf(d.pivot, p) - d.from, false);
     } else if (d.kind === 'wall-ends') {
       // The whole drag is one undoable step; a click without moving changes nothing.
       if (!d.moved) checkpoint();
@@ -564,6 +584,9 @@ function DmMap() {
       const q = toWorld(e);
       if (d.moved) moveAssetTo(d.id, { x: q.x + d.ox, y: q.y + d.oy }, true);
       else if (d.activate) activateAsset(d.id);
+    } else if (d.kind === 'asset-turn') {
+      const q = toWorld(e);
+      if (d.moved) turnPlacedAssetTo(d.id, d.start + angleOf(d.pivot, q) - d.from, true);
     } else if (d.kind === 'template') {
       addTemplate(d.shape, d.a, d.b);
     } else if (d.kind === 'fog-rect' || d.kind === 'fog-ellipse') {
@@ -806,4 +829,9 @@ function TvMapPending() {
       </div>
     </div>
   );
+}
+
+/** The direction from `pivot` to `p` in degrees, clockwise from up (as an asset's turn). */
+function angleOf(pivot: Point, p: Point): number {
+  return (Math.atan2(p.x - pivot.x, pivot.y - p.y) * 180) / Math.PI;
 }

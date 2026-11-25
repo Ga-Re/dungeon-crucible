@@ -51,7 +51,7 @@ export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brigh
 /** Version 2: areas are polygons (DC-013). */
 export const MAP_VERSION = 3;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
-export const SCENE_VERSION = 3;
+export const SCENE_VERSION = 4;
 
 export const MapSidecarSchema = z.object({
   kind: z.literal('map'),
@@ -205,11 +205,13 @@ export const SceneOverrideSchema = z.object({
   /** Light id → on. Lights not listed are on. */
   lights: z.record(z.string(), z.boolean()).default({}),
   discoveredZones: z.array(z.string()).default([]),
+  /** Map elements hidden in this scene's play state (DC-103), by id. */
+  hidden: z.array(z.string()).default([]),
   tokens: z.array(tokenSchema).default([]),
   templates: z.array(z.object({ id, shape: z.enum(['cone', 'sphere', 'line', 'cube']), x: z.number(), y: z.number(), angle: z.number(), sizeFt: z.number().positive(), color })).default([]),
   combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
   ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
-  /** Changes of the map for this scene only, by element id: `{ hidden: true }` or changed fields (E-2). */
+  /** Changes of the map for this scene only, by element id: the fields that differ (E-2). Hiding is state: `hidden`. */
   overrides: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
   /**
    * The scene's start state (E-3): what "reset scene" returns to. Edited in the Orchestrator with
@@ -222,6 +224,8 @@ export const SceneOverrideSchema = z.object({
     lights: z.record(z.string(), z.boolean()).default({}),
     discoveredZones: z.array(z.string()).default([]),
     ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
+    /** Map elements hidden from the start (prepared, e.g. a buried corridor). */
+    hidden: z.array(z.string()).default([]),
   }).optional(),
   /** Walls, areas and lights that exist only in this scene (E-24). */
   added: z.object({ walls: z.array(mapWallSchema).default([]), zones: z.array(mapAreaSchema).default([]), lights: z.array(mapLightSchema).default([]) }).default({ walls: [], zones: [], lights: [] }),

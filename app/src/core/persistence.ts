@@ -10,7 +10,7 @@
  */
 import { EMPTY_LEVEL_FOG } from './fogModel';
 import type { LevelFog, Polygon } from './poly/types';
-import { DEFAULT_TABLE, type Scene, type Zone } from './scene';
+import { DEFAULT_TABLE, type HiddenElements, type Scene, type Zone } from './scene';
 import { diffElements, resolveElements, type MapElements, type SceneLayer } from './mapLayers';
 import { MAP_VERSION, SCENE_VERSION, SCHEMA_VERSION, type CampaignManifest, type MapSidecar, type Player, type SceneOverride } from './sidecar';
 
@@ -46,6 +46,7 @@ export function startOf(ov: SceneOverride): SceneStart {
     lights: { ...ov.lights },
     discoveredZones: [...ov.discoveredZones],
     ambience: ov.ambience.map((a) => ({ ...a })),
+    hidden: [...ov.hidden],
   };
 }
 
@@ -66,13 +67,14 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
       lights: fromView.lights,
       discoveredZones: fromView.discoveredZones,
       ambience: ambience.map((a) => ({ ...a })),
+      hidden: fromView.hidden,
     },
   };
 }
 
 /**
  * "Reset scene": the play state becomes the start state again – fog, tokens, doors, lights,
- * discovered areas, ambience; combat back to round 1; spell templates gone; the scene's live fog
+ * discovered areas, hidden map elements, ambience; combat back to round 1; spell templates gone; the scene's live fog
  * look back to the map's.
  */
 export function resetToStart(ov: SceneOverride): SceneOverride {
@@ -86,14 +88,17 @@ export function resetToStart(ov: SceneOverride): SceneOverride {
     lights: { ...start.lights },
     discoveredZones: [...start.discoveredZones],
     ambience: start.ambience.map((a) => ({ ...a })),
+    hidden: [...start.hidden],
     templates: [],
     combat: { round: 1, turn: 0 },
     start,
   };
 }
 
-/** The map elements a view shows, without state (door open, light on, discovered). */
-export function elementsFromScene(scene: Pick<Scene, 'walls' | 'zones' | 'lights'>): MapElements {
+/** The map elements of a view, shown and hidden, without state (door open, light on, discovered). */
+export function elementsFromScene(view: Pick<Scene, 'walls' | 'zones' | 'lights'> & Partial<Pick<Scene, 'hidden'>>): MapElements {
+  const h = view.hidden;
+  const scene = h ? { walls: [...view.walls, ...h.walls], zones: [...view.zones, ...h.zones], lights: [...view.lights, ...h.lights] } : view;
   return {
     walls: scene.walls.map((w) => ({ id: w.id, kind: w.kind, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 })),
     zones: scene.zones.map((z) => ({ id: z.id, name: z.name, shape: copyShape(z.shape), secret: z.secret, color: z.color, ...(z.biome ? { biome: z.biome } : {}) })),
@@ -150,10 +155,15 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
 
 /**
  * The scene file for a view of the scene layer: its changes of `map` (by element id, plus its own
- * elements; orphaned overrides of `previous` are kept) and its state.
+ * elements; orphaned overrides and hidden ids of `previous` are kept) and its state.
  */
-export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: string, combat: { round: number; turn: number }, map: Pick<MapSidecar, 'walls' | 'zones' | 'lights'>, previous?: SceneLayer): SceneOverride {
-  const layer = diffElements(elementsFromSidecar(map), elementsFromScene(scene), previous);
+export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: string, combat: { round: number; turn: number }, map: Pick<MapSidecar, 'walls' | 'zones' | 'lights'>, previous?: SceneLayer & { hidden?: string[] }): SceneOverride {
+  const base = elementsFromSidecar(map);
+  const current = elementsFromScene(scene);
+  const layer = diffElements(base, current, previous);
+  // Hidden ids whose element is gone are kept too, until the DM cleans them up.
+  const known = elementIds(base, current);
+  const orphanedHidden = (previous?.hidden ?? []).filter((id) => !known.has(id));
   return {
     kind: 'scene',
     schemaVersion: SCENE_VERSION,
@@ -161,9 +171,10 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     mapSidecar,
     fog: copyFog(scene.fog),
     ...(scene.fogEffect ? { fogEffect: { ...scene.fogEffect } } : {}),
-    doors: Object.fromEntries(scene.walls.filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])),
-    lights: Object.fromEntries(scene.lights.map((l) => [l.id, l.on])),
-    discoveredZones: scene.zones.filter((z) => z.secret && z.discovered).map((z) => z.id),
+    doors: Object.fromEntries([...scene.walls, ...scene.hidden.walls].filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])),
+    lights: Object.fromEntries([...scene.lights, ...scene.hidden.lights].map((l) => [l.id, l.on])),
+    discoveredZones: [...scene.zones, ...scene.hidden.zones].filter((z) => z.secret && z.discovered).map((z) => z.id),
+    hidden: [...hiddenIds(scene.hidden), ...orphanedHidden],
     tokens: scene.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: scene.templates.map((t) => ({ ...t })),
     combat: { ...combat },
@@ -204,6 +215,11 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const fog: LevelFog = onMap || !state ? startFog : copyFog(state.fog);
   const doors = onMap ? {} : (state?.doors ?? {});
   const lightsOn = onMap ? {} : (state?.lights ?? {});
+  const hide = new Set(onMap ? [] : (state?.hidden ?? []));
+  const walls = elements.walls.map((w) => ({ ...w, open: w.kind === 'door' || w.kind === 'secret-door' ? (doors[w.id] ?? false) : undefined }));
+  const lights = elements.lights.map((l) => ({ ...l, on: lightsOn[l.id] ?? true }));
+  const shown = <T extends { id: string }>(xs: T[]) => xs.filter((x) => !hide.has(x.id));
+  const hiddenOf = <T extends { id: string }>(xs: T[]) => xs.filter((x) => hide.has(x.id));
   return {
     map: {
       id: slugify(map.name),
@@ -221,9 +237,10 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       pois: map.pois.map((p) => ({ ...p })),
       assets: map.assets.map((a) => ({ ...a, ...(a.variant === undefined ? {} : { variant: a.variant }) })),
     },
-    walls: elements.walls.map((w) => ({ ...w, open: w.kind === 'door' || w.kind === 'secret-door' ? (doors[w.id] ?? false) : undefined })),
-    zones,
-    lights: elements.lights.map((l) => ({ ...l, on: lightsOn[l.id] ?? true })),
+    walls: shown(walls),
+    zones: shown(zones),
+    lights: shown(lights),
+    hidden: { walls: hiddenOf(walls), zones: hiddenOf(zones), lights: hiddenOf(lights) },
     ambient: map.ambient,
     tokens: onMap ? [] : (state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: onMap ? [] : (state?.templates ?? []).map((t) => ({ ...t })),
@@ -234,10 +251,83 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   };
 }
 
-/** Overrides of a scene file that the map cannot take: their element is gone, or they are invalid. */
+/**
+ * Changes of a scene file that the map cannot take: overrides and hidden ids (play state and start)
+ * whose element is gone (`orphaned`), and overrides that would make their element invalid.
+ */
 export function sceneIssues(map: MapSidecar, override: SceneOverride | null): { orphaned: string[]; invalid: string[] } {
-  const r = resolveElements(elementsFromSidecar(map), layerOf(override));
-  return { orphaned: r.orphaned, invalid: r.invalid };
+  const base = elementsFromSidecar(map);
+  const layer = layerOf(override);
+  const r = resolveElements(base, layer);
+  const known = elementIds(base, layer.added);
+  const hidden = [...(override?.hidden ?? []), ...(override?.start?.hidden ?? [])].filter((id) => !known.has(id));
+  return { orphaned: [...new Set([...r.orphaned, ...hidden])].sort(), invalid: r.invalid };
+}
+
+function elementIds(...sets: MapElements[]): Set<string> {
+  return new Set(sets.flatMap((e) => [...e.walls, ...e.zones, ...e.lights].map((x) => x.id)));
+}
+
+/** "Clean up": the scene file without the changes the map cannot take (orphaned or invalid). */
+export function withoutOrphans(override: SceneOverride, map: MapSidecar): SceneOverride {
+  const { orphaned, invalid } = sceneIssues(map, override);
+  const drop = new Set([...orphaned, ...invalid]);
+  const keep = (ids: string[]) => ids.filter((id) => !drop.has(id));
+  return {
+    ...override,
+    overrides: Object.fromEntries(Object.entries(override.overrides).filter(([id]) => !drop.has(id))),
+    hidden: keep(override.hidden),
+    ...(override.start ? { start: { ...override.start, hidden: keep(override.start.hidden) } } : {}),
+  };
+}
+
+export function hiddenIds(h: HiddenElements): string[] {
+  return [...h.walls, ...h.zones, ...h.lights].map((x) => x.id);
+}
+
+/** How a scene's element differs from the map: hidden, changed fields, or only in this scene. */
+export interface ElementChange {
+  id: string;
+  kind: keyof MapElements;
+  status: 'hidden' | 'changed' | 'own';
+}
+
+/** Every element of a view that differs from the map `base`, in the order walls, areas, lights. */
+export function sceneChanges(base: MapElements, view: Scene): ElementChange[] {
+  const layer = diffElements(base, elementsFromScene(view));
+  const hidden = new Set(hiddenIds(view.hidden));
+  const out: ElementChange[] = [];
+  for (const kind of ['walls', 'zones', 'lights'] as const) {
+    for (const el of [...base[kind], ...layer.added[kind]]) {
+      const own = layer.added[kind].includes(el as never);
+      if (hidden.has(el.id)) out.push({ id: el.id, kind, status: 'hidden' });
+      else if (own) out.push({ id: el.id, kind, status: 'own' });
+      else if (layer.overrides[el.id]) out.push({ id: el.id, kind, status: 'changed' });
+    }
+  }
+  return out;
+}
+
+/**
+ * "Reset to map": the element `id` takes the map's fields again; its state (a door open, a light
+ * on, an area discovered) and whether it is hidden stay. Returns a new scene.
+ */
+export function resetElement(view: Scene, base: MapElements, id: string): Scene {
+  const fromMap = <T extends { id: string }>(xs: T[], kind: keyof MapElements): T[] =>
+    xs.map((x) => {
+      const b = (base[kind] as { id: string }[]).find((e) => e.id === id);
+      if (x.id !== id || !b) return x;
+      const state: Record<string, unknown> = {};
+      for (const k of ['open', 'on', 'discovered']) if (k in x) state[k] = (x as Record<string, unknown>)[k];
+      return { ...structuredClone(b), ...state } as unknown as T;
+    });
+  return {
+    ...view,
+    walls: fromMap(view.walls, 'walls'),
+    zones: fromMap(view.zones, 'zones'),
+    lights: fromMap(view.lights, 'lights'),
+    hidden: { walls: fromMap(view.hidden.walls, 'walls'), zones: fromMap(view.hidden.zones, 'zones'), lights: fromMap(view.hidden.lights, 'lights') },
+  };
 }
 
 export function tableFromManifest(m: CampaignManifest): Partial<Scene['table']> {

@@ -260,12 +260,18 @@ export function markDirty(): void {
   for (const f of dirtyListeners) f();
 }
 
+/** What a view of the scene was built from: its changes of the map and the hidden ids of the layer shown. */
+function previousLayer(doc: SceneOverride | null) {
+  if (!doc) return undefined;
+  return { ...layerOf(doc), hidden: state.layer === 'start' ? startOf(doc).hidden : doc.hidden };
+}
+
 function snapshot(): string {
   const s = state.scene;
   const map = mapSidecarFromScene(s, state.mapResource, state.layer, state.mapDoc);
   let ov = state.sceneDoc;
   if (state.layer !== 'map') {
-    const fromView = sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, layerOf(state.sceneDoc));
+    const fromView = sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, previousLayer(state.sceneDoc));
     ov = state.layer === 'start' && state.sceneDoc ? commitStart(state.sceneDoc, fromView, playingAmbience()) : { ...fromView, ...(state.sceneDoc?.start ? { start: state.sceneDoc.start } : {}) };
   }
   return JSON.stringify({ map, ov });
@@ -373,7 +379,7 @@ export function commitView(): void {
   const map = mapSidecarFromScene(s, state.mapResource, state.layer, state.mapDoc);
   const doc = state.sceneDoc;
   if (doc && state.layer !== 'map') {
-    const fromView = sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, layerOf(doc));
+    const fromView = sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, previousLayer(doc));
     if (state.layer === 'start') state.sceneDoc = commitStart(doc, fromView, playingAmbience());
     else state.sceneDoc = { ...fromView, ambience: state.editStart ? doc.ambience : playingAmbience(), ...(doc.start ? { start: doc.start } : {}) };
   } else if (doc) {
@@ -816,7 +822,8 @@ export function zoneAt(p: Point): string | null {
 }
 
 function locked(): Polygon[] {
-  return lockedAreas(state.scene.zones);
+  // A hidden secret area stays locked: hiding it must not let the fog reveal it.
+  return lockedAreas([...state.scene.zones, ...state.scene.hidden.zones]);
 }
 
 /** A DM fog tool: reveals or hides `area` (it spreads at the device's speed). */

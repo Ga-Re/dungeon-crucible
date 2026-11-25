@@ -4,7 +4,7 @@
  */
 import { EMPTY_LEVEL_FOG, rectPolygon, revealIn } from '../core/fogModel';
 import { DEFAULT_GRID } from '../core/grid';
-import { DEFAULT_TABLE, type Scene, type Token, type Wall, type Zone } from '../core/scene';
+import { DEFAULT_TABLE, noHidden, type Scene, type Token, type Wall, type Zone } from '../core/scene';
 
 import { CELL, COLS, ROWS, DOORS, ROOMS, cryptFloor } from './cryptLayout';
 
@@ -118,6 +118,7 @@ export function createSampleScene(): Scene {
     },
     walls,
     zones,
+    hidden: noHidden(),
     tokens,
     templates: [],
     pings: [],

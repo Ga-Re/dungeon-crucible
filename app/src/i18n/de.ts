@@ -292,6 +292,8 @@ export const de: Partial<Record<MessageKey, string>> = {
   'panels.expandZone': 'Seite ausklappen',
   'panels.pin': 'Seite wieder andocken',
   'panels.resize': 'Größe ändern',
+  'log.orphanedOverrides': 'Szene „{scene}“: {n} Änderung(en) passen nicht mehr zur Karte (Element fehlt) und werden nicht angewendet.',
+  'log.tokensInScene': 'Tokens gehören zu einer Szene: setze sie im Game-Orchestrator. Die Kartenschmiede zeigt nur die Karte.',
   'start.lead': 'Mach mit einer Kampagne weiter, beginne eine neue oder hol eine aus einem Archiv.',
   'start.importHint': 'Eine als .zip exportierte Kampagne; ihre Karten und Sounds kommen in deine Bibliothek',
   'start.setup.title': 'Wo sollen deine Kampagnen liegen?',

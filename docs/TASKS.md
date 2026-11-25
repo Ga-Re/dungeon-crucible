@@ -40,6 +40,9 @@ Geklärt im Interview mit dem DM (Skill `topic-interviewer`). „Wie DM“ heiß
 | E-20 | Gegenstände | Vorerst **nur im Handout-Stil** auf dem TV eingeblendet; kein eigenes Item-/Beute-System. | DM: Item-Karten (offen) |
 | E-21 | Papierkorb | Nur **von Hand** leeren (Ansicht mit Wiederherstellen und Leeren); nichts verschwindet automatisch. | DM: 30 Tage automatisch |
 | E-22 | Vorschau auf zusätzlichem Monitor | **Umschaltbar**: folgt der TV-Drehung oder immer aufrecht. | – |
+| E-24 | Szeneneigene Elemente | Eine Szene darf **eigene Wände, Lichter und Bereiche** haben, die es auf der Karte nicht gibt (z. B. ein eingestürzter Gang); die Karte bleibt unberührt. | DM: nur Overrides |
+| E-25 | Kartenänderung und TV | Bis zu den Szenen-Tabs (DC-034) erscheinen Kartenänderungen aus der Kartenschmiede **sofort** auf dem TV; die Bestätigung vor dem Übernehmen kommt mit DC-034. | Übergang |
+| E-26 | Was die Kartenschmiede zeigt | **Nur die Karte** mit allem, was zu ihr gehört (Raster, Wände, Bereiche, Lichter, Props, Assets, Eigenschaften) und ihrem **Start-Nebel** (dort gemalt; jede neue Szene auf der Karte beginnt damit, je Szene anpassbar über E-17). **Tokens gehören zur Szene** und erscheinen in der Schmiede nicht. | – |
 | E-23 | Arbeitsweise | **Sammel-Branch** je Thema, ein PR am Ende, der DM gibt den Merge frei. Nachfragen bei Abhängigkeiten, Dateiformat/Ordnern, Abweichungen vom Plan, Sicherheit und wenn etwas nicht ganz klar ist. Regeln in `CLAUDE.md`; Skills `topic-interviewer`, `next-task`, `finish-task`, `ui-design` und Agent `reviewer` in `.claude/`. | DM: PR je Task, Agent merged selbst |
 
 **Bleibt aus Dungeon Crucible:** Pergament als drittes Theme, das eigene Docking mit echten Fenstern und
@@ -193,8 +196,13 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   hinein, Duplikate per Hash erkennen; Kartenliste mit Suche (Name, Tags, Typ); Löschen mit Warnung und Papierkorb
   (benutzte Karten: nur das Bild, die Kartendaten bleiben) – erledigt. Offen: Vorschaubilder im Katalog
   (DC-093b), Tags in der Oberfläche bearbeiten (kommt mit DC-011), Papierkorb wiederherstellen (DC-035).
-- **DC-094 Karte/Szene mit Overrides** (E-2): Szene = Kartenverweis + Overrides je Element-ID + Zustand;
-  `resolveMap`; verwaiste Overrides melden; Kartenänderung an einer TV-Szene erst nach Bestätigung.
+- ✓ **DC-094 Karte/Szene mit Overrides** (E-2, E-16, E-24, E-26): Szene = Kartenverweis + Overrides je Element-ID
+  + eigene Elemente + Zustand (`resolveElements`/`diffElements`); die Kartenschmiede zeigt und bearbeitet die Karte
+  (ohne Tokens, mit Start-Nebel), jeder andere Arbeitsbereich die Szene; der TV zeigt in der Schmiede weiter die
+  Szene; verwaiste oder ungültige Overrides werden beim Öffnen gemeldet und bleiben in der Datei. Die Bestätigung
+  vor dem Übernehmen auf den TV kommt mit DC-034 (E-25).
+- **DC-103 Overrides bearbeiten**: je Element „Auf Karte zurücksetzen“, verwaiste Overrides anzeigen und aufräumen,
+  Kennzeichnung geänderter Elemente im Orchestrator (T-145).
 - **DC-095 Start- und Spielzustand** (E-3): getrennt speichern, „Szene zurücksetzen“, Nebel-Startzustand;
   bearbeitet im Orchestrator per Schalter „Startzustand bearbeiten“ (E-17).
 - **DC-096 Spielercharaktere** (E-1): global in der Bibliothek, Kampagne führt Spieler und verknüpft Figuren.
@@ -249,7 +257,8 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 
 - **DC-030, DC-031, DC-032** – gehen in DC-091 bis DC-095 auf.
 - **DC-033 Sessions und Unterszenen** im Browser (T-152, T-160a/b).
-- **DC-034 Dokument-Tabs** für offene Szenen/Karten, „Szene auf den TV“ nur auf Befehl (T-223a/b).
+- **DC-034 Dokument-Tabs** für offene Szenen/Karten, „Szene auf den TV“ nur auf Befehl; Kartenänderungen an
+  der Szene auf dem TV erst nach Bestätigung (E-25; T-223a/b, T-134b).
 - **DC-035 Papierkorb-Ansicht** mit Wiederherstellen (ohne Überschreiben) und „Papierkorb leeren“ von Hand; kein
   automatisches Löschen (E-21; T-122).
 - **DC-036 Konfliktkopien und Platzhalter** von Cloud-Sync erkennen (T-103a).

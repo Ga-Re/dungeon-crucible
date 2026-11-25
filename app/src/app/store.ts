@@ -23,7 +23,8 @@ import type { Creature } from '../core/sidecar';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
-import { mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene } from '../core/persistence';
+import { layerOf, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, type ViewLayer } from '../core/persistence';
+import type { MapSidecar, SceneOverride } from '../core/sidecar';
 import type { CampaignInfo, RootInfo } from '../platform/bridge';
 import type { RecentCampaign } from './recent';
 import type { LibraryMap } from './library';
@@ -104,6 +105,12 @@ export interface AppState {
   root: RootInfo | null;
   /** Maps of the library (Map Forge browser). */
   libraryMaps: LibraryMap[];
+  /** The open map as in its file (the map layer), updated from the view when it changes layer or is saved. */
+  mapDoc: MapSidecar | null;
+  /** The open scene as in its file (its changes of the map and its state). */
+  sceneDoc: SceneOverride | null;
+  /** What `scene` shows: the map (Map Forge) or the scene (every other workspace). */
+  layer: ViewLayer;
   /** Recently used campaigns (start screen). */
   recent: RecentCampaign[];
   /** A message on the start screen (e.g. why an import failed). */
@@ -164,6 +171,9 @@ function initial(): AppState {
     home: false,
     root: null,
     libraryMaps: [],
+    mapDoc: null,
+    sceneDoc: null,
+    layer: 'scene',
     recent: [],
     notice: null,
     soundboard: initialSoundboard(),
@@ -172,6 +182,9 @@ function initial(): AppState {
   s.visible = visiblePolygons(s.vision);
   s.lights = litSources(scene);
   scene.fog = rememberSeen(scene.fog, s.visible);
+  // The sample (browser mode) is a map and a scene on it, like a campaign's.
+  s.mapDoc = mapSidecarFromScene(scene, 'builtin:crypt', 'map');
+  s.sceneDoc = sceneOverrideFromScene(scene, s.sceneName, mapSidecarPath('builtin:crypt'), { round: 1, turn: 0 }, s.mapDoc);
   return s;
 }
 
@@ -220,17 +233,20 @@ export function onDirty(fn: () => void): () => void {
   return () => dirtyListeners.delete(fn);
 }
 
+/** Counts changes of the view (for the TV's scene while the Map Forge shows the map). */
+let viewVersion = 0;
+
 export function markDirty(): void {
+  viewVersion++;
   state.dirty = true;
   for (const f of dirtyListeners) f();
 }
 
 function snapshot(): string {
   const s = state.scene;
-  return JSON.stringify({
-    map: mapSidecarFromScene(s, state.mapResource),
-    ov: sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }),
-  });
+  const map = mapSidecarFromScene(s, state.mapResource, state.layer, state.mapDoc);
+  const ov = state.layer === 'scene' ? sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, layerOf(state.sceneDoc)) : state.sceneDoc;
+  return JSON.stringify({ map, ov });
 }
 
 /** Call before every undoable change. */
@@ -242,12 +258,14 @@ export function checkpoint(): void {
 }
 
 function restore(snap: string): void {
-  const { map, ov } = JSON.parse(snap);
+  const { map, ov } = JSON.parse(snap) as { map: MapSidecar; ov: SceneOverride | null };
   const keepTable = state.scene.table;
-  state.scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, keepTable);
+  state.scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, keepTable, state.layer);
   state.scene.table = keepTable;
-  state.round = ov.combat.round;
-  state.turn = ov.combat.turn;
+  if (ov) {
+    state.round = ov.combat.round;
+    state.turn = ov.combat.turn;
+  }
   recomputeVision();
   state.canUndo = history.canUndo;
   state.canRedo = history.canRedo;
@@ -278,8 +296,16 @@ function freshId(prefix: string): string {
   return newId(slugId(prefix, 'el').slice(0, 40), (id) => taken.has(id));
 }
 
-export function replaceScene(scene: Scene, opts: { resource: string; fileName: string; scenePath: string | null; sceneName: string; round?: number; turn?: number }): void {
+/**
+ * Replaces the whole view (open campaign, switch scene, import map). `scene` must show
+ * `layerFor(state.ws)`; `docs` are the map and scene as in their files (none: no map open).
+ */
+export function replaceScene(scene: Scene, opts: { resource: string; fileName: string; scenePath: string | null; sceneName: string; round?: number; turn?: number; docs?: { map: MapSidecar | null; scene: SceneOverride | null } }): void {
   state.scene = scene;
+  state.mapDoc = opts.docs?.map ?? null;
+  state.sceneDoc = opts.docs?.scene ?? null;
+  state.layer = layerFor(state.ws);
+  viewVersion++;
   state.mapResource = opts.resource;
   state.mapFileName = opts.fileName;
   state.scenePath = opts.scenePath;
@@ -297,10 +323,48 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
 
 /* ---------- Workspace & tools ---------- */
 
+/** The Map Forge edits the map; every other workspace the scene (E-16). */
+export function layerFor(ws: WorkspaceId): ViewLayer {
+  return ws === 'forge' ? 'map' : 'scene';
+}
+
+/** Takes what the view shows into the document of its layer (the map, or the scene's changes and state). */
+export function commitView(): void {
+  if (!state.mapDoc) return;
+  const s = state.scene;
+  const map = mapSidecarFromScene(s, state.mapResource, state.layer, state.mapDoc);
+  if (state.layer === 'scene') {
+    state.sceneDoc = {
+      ...sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, layerOf(state.sceneDoc)),
+      ambience: state.sceneDoc?.ambience ?? [],
+    };
+  }
+  state.mapDoc = map;
+}
+
+/** Shows the other layer: the map alone (Map Forge) or the scene on it. */
+function showLayer(layer: ViewLayer): void {
+  if (layer === state.layer) return;
+  commitView();
+  state.layer = layer;
+  viewVersion++;
+  if (!state.mapDoc) return;
+  const table = state.scene.table;
+  state.scene = sceneFromDocuments(state.mapDoc, state.sceneDoc, state.scene.map.imageUrl, table, layer);
+  state.scene.table = table;
+  state.selectedTokenId = null;
+  state.selectedZoneId = null;
+  state.selectedLightId = null;
+  state.wallStart = null;
+  recomputeVision();
+  clearHistory();
+}
+
 export function setWorkspace(ws: WorkspaceId): void {
   state.ws = ws;
   state.tool = 'select';
   state.wallStart = null;
+  showLayer(layerFor(ws));
   emit();
 }
 
@@ -653,6 +717,12 @@ function initialsOf(name: string): string {
 export function addCreatureToken(index: number, at?: Point): void {
   const c = state.creatures[index];
   if (!c) return;
+  // Tokens belong to scenes; the Map Forge shows the map alone.
+  if (state.layer === 'map') {
+    log('log.tokensInScene');
+    emit();
+    return;
+  }
   checkpoint();
   const creatureId = slugify(c.name);
   const same = state.scene.tokens.filter((t) => t.creatureId === creatureId).length;
@@ -753,7 +823,8 @@ export function produceFrame(now: number): PlayerFrame {
   // Drop pings older than 2 s.
   state.scene.pings = state.scene.pings.filter((p) => now - p.at < 2000);
   state.frameSeq++;
-  state.frame = buildPlayerFrame(state.scene, {
+  const tv = tvView();
+  state.frame = buildPlayerFrame(tv.scene, {
     seq: state.frameSeq,
     now,
     showGrid: state.showGrid,
@@ -761,13 +832,32 @@ export function produceFrame(now: number): PlayerFrame {
     movementLocked: state.moveLock,
     zoom: tableZoom(),
     look: lookToWire(state.fogLook),
-    visible: state.visible,
+    visible: tv.visible,
     quick: state.fogQuick,
     activeTokenId: state.ws === 'play' ? initiativeOrder()[state.turn]?.id ?? null : null,
     seedKey: state.mapResource,
-    lights: state.lights,
+    lights: tv.lights,
   });
   return state.frame;
+}
+
+let tvCache: { version: number; scene: Scene; visible: Polygon[]; lights: LitSource[] } | null = null;
+
+/**
+ * What the TV shows: the scene. While the Map Forge shows the map, that is the map being edited
+ * with the scene's changes and state (fog, tokens) – rebuilt only when something changed.
+ */
+function tvView(): { scene: Scene; visible: Polygon[]; lights: LitSource[] } {
+  if (state.layer === 'scene' || !state.mapDoc) return { scene: state.scene, visible: state.visible, lights: state.lights };
+  if (!tvCache || tvCache.version !== viewVersion) {
+    const map = mapSidecarFromScene(state.scene, state.mapResource, 'map', state.mapDoc);
+    const scene = sceneFromDocuments(map, state.sceneDoc, state.scene.map.imageUrl, state.scene.table, 'scene');
+    const vision = updateVision(scene);
+    tvCache = { version: viewVersion, scene, visible: visiblePolygons(vision), lights: litSources(scene) };
+  }
+  // Table settings (blackout, rotation, centre) stay live.
+  tvCache.scene.table = state.scene.table;
+  return tvCache;
 }
 
 export function setMapImage(url: string, isVideo: boolean, w: number, h: number, name: string): void {

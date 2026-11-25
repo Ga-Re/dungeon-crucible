@@ -86,7 +86,7 @@ export function BrowserPanel() {
             ))}
           </ul>
         </li>
-        <li>
+        {ws !== 'forge' && <li>
           <div className="tn"><Icon name="users" /><span className="nm">Tokens</span><span className="meta">{scene.tokens.length}</span></div>
           <ul>
             {scene.tokens.map((k) => (
@@ -99,9 +99,10 @@ export function BrowserPanel() {
               </li>
             ))}
           </ul>
-        </li>
+        </li>}
       </ul>
       {selZone && <ZoneActions id={selZone} />}
+      {ws !== 'forge' && <>
       <div className="sec" style={{ marginTop: 12 }}>{t('browser.creatures')}</div>
       <ul className="tree">
         {creatures.map((c, i) => (
@@ -115,6 +116,7 @@ export function BrowserPanel() {
           </li>
         ))}
       </ul>
+      </>}
     </div>
   );
 }

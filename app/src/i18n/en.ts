@@ -292,6 +292,8 @@ export const en = {
   'panels.expandZone': 'Expand side',
   'panels.pin': 'Dock the side again',
   'panels.resize': 'Resize',
+  'log.orphanedOverrides': 'Scene "{scene}": {n} change(s) no longer fit the map (its element is gone) and are not applied.',
+  'log.tokensInScene': 'Tokens belong to a scene: place them in the Game-Orchestrator. The Map Forge shows the map alone.',
   'start.lead': 'Continue a campaign, start a new one, or bring one in from an archive.',
   'start.importHint': 'A campaign exported as .zip; its maps and sounds go into your library',
   'start.setup.title': 'Where should your campaigns live?',

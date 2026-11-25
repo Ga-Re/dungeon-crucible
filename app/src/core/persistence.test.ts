@@ -4,7 +4,7 @@ import { lockedAreas, mapSidecarFromScene, mapSidecarPath, manifestFromState, sc
 import { CampaignManifestSchema, MapSidecarSchema, SceneOverrideSchema } from './sidecar';
 import { createSampleScene } from '../sample/crypt';
 import { updateVision, visiblePolygons } from './vision';
-import { rememberSeen, revealAll } from './fogModel';
+import { hideAll, rememberSeen, revealAll } from './fogModel';
 import { isInside } from './poly/fog';
 
 describe('persistence', () => {
@@ -18,7 +18,9 @@ describe('persistence', () => {
     scene.templates.push({ id: 't1', shape: 'cone', x: 10, y: 20, angle: 1, sizeFt: 15, color: '#e2554c' });
 
     const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(scene, 'builtin:crypt'))));
-    const ov = SceneOverrideSchema.parse(JSON.parse(JSON.stringify(sceneOverrideFromScene(scene, 'Session 3', mapSidecarPath('builtin:crypt'), { round: 2, turn: 3 }))));
+    const ov = SceneOverrideSchema.parse(JSON.parse(JSON.stringify(sceneOverrideFromScene(scene, 'Session 3', mapSidecarPath('builtin:crypt'), { round: 2, turn: 3 }, map))));
+    expect(ov.overrides).toEqual({});
+    expect(ov.added).toEqual({ walls: [], zones: [], lights: [] });
     const back = sceneFromDocuments(map, ov, 'builtin:crypt');
 
     expect(back.walls).toHaveLength(scene.walls.length);
@@ -90,6 +92,48 @@ describe('map sidecar round trip', () => {
     const scene = sceneFromDocuments(map, null, 'x');
     const back = mapSidecarFromScene(scene, map.resource);
     expect(back).toMatchObject({ tags: ['town', 'inn'], biome: 'city', mapType: 'building', fogBiome: 'kueste', fogStrength: 0.5, pois: map.pois, assets: map.assets });
+  });
+});
+
+describe('map and scene layers', () => {
+  it('the map layer shows the map: its start fog, no tokens, no scene changes', () => {
+    const scene = createSampleScene();
+    scene.fog = revealAll(scene.fog, 100, 100, []);
+    const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(scene, 'builtin:crypt', 'map'))));
+    expect(map.startFog?.revealed.length).toBeGreaterThan(0);
+    // The scene hides a wall and adds one.
+    const inScene = sceneFromDocuments(map, null, null);
+    const hidden = inScene.walls[0]!.id;
+    inScene.walls = inScene.walls.filter((w) => w.id !== hidden);
+    inScene.walls.push({ id: 'wall-rubble', kind: 'wall', x1: 0, y1: 0, x2: 10, y2: 0 });
+    inScene.fog = hideAll();
+    inScene.tokens = scene.tokens;
+    const ov = SceneOverrideSchema.parse(JSON.parse(JSON.stringify(sceneOverrideFromScene(inScene, 'S', 'library/crypt.builtin.dm.json', { round: 1, turn: 0 }, map))));
+    expect(ov.overrides).toEqual({ [hidden]: { hidden: true } });
+    expect(ov.added.walls.map((w) => w.id)).toEqual(['wall-rubble']);
+    // Scene layer: with the changes; map layer: without them, with the start fog and no tokens.
+    const sceneView = sceneFromDocuments(map, ov, null, undefined, 'scene');
+    expect(sceneView.walls.some((w) => w.id === hidden)).toBe(false);
+    expect(sceneView.walls.some((w) => w.id === 'wall-rubble')).toBe(true);
+    expect(sceneView.tokens.length).toBe(scene.tokens.length);
+    const mapView = sceneFromDocuments(map, ov, null, undefined, 'map');
+    expect(mapView.walls.some((w) => w.id === hidden)).toBe(true);
+    expect(mapView.walls.some((w) => w.id === 'wall-rubble')).toBe(false);
+    expect(mapView.tokens).toEqual([]);
+    expect(mapView.fog).toEqual(map.startFog);
+    // A new scene starts with the start fog.
+    expect(sceneFromDocuments(map, null, null).fog).toEqual(map.startFog);
+  });
+
+  it('a scene view never changes the map elements of the sidecar', () => {
+    const scene = createSampleScene();
+    const map = mapSidecarFromScene(scene, 'builtin:crypt', 'map');
+    const view = sceneFromDocuments(map, null, null, undefined, 'scene');
+    view.walls = [];
+    view.map.name = 'Renamed';
+    const again = mapSidecarFromScene(view, 'builtin:crypt', 'scene', map);
+    expect(again.walls).toEqual(map.walls);
+    expect(again.name).toBe('Renamed');
   });
 });
 

@@ -10,8 +10,8 @@
  * references into the library are relative to the root (`library/x.webp.dm.json`), so both stay
  * valid in another root folder and in archives.
  */
-import { manifestFromState, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, tableFromManifest, BUILTIN_PREFIX } from '../core/persistence';
-import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MapSidecarSchema, SceneOverrideSchema, type Creature, type MapSidecar } from '../core/sidecar';
+import { manifestFromState, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneIssues, sceneOverrideFromScene, tableFromManifest, BUILTIN_PREFIX } from '../core/persistence';
+import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MapSidecarSchema, SceneOverrideSchema, type Creature, type MapSidecar, type SceneOverride } from '../core/sidecar';
 import { keepUnknown, readDocument, slugId, type DocumentKind } from '../core/documents';
 import type { z } from 'zod';
 import { DEFAULT_GRID } from '../core/grid';
@@ -26,7 +26,7 @@ import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { emit, log, onDirty, replaceScene, setWorkspace, state } from './store';
+import { commitView, emit, layerFor, log, onDirty, replaceScene, setWorkspace, state } from './store';
 import { applySceneAmbience, refreshAudioFiles, sceneAmbience, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
@@ -229,9 +229,13 @@ export async function newCampaign(name: string, withSample: boolean): Promise<vo
   const slug = await createCampaignFolder(clean);
   state.campaign = { slug, name: clean };
   if (withSample) {
-    const scene = createSampleScene();
-    scene.map.imageUrl = 'builtin:crypt';
-    replaceScene(scene, { resource: 'builtin:crypt', fileName: 'builtin:crypt', scenePath: 'scenes/session-1.scene.json', sceneName: 'Session 1' });
+    // The crypt is a map like any other: the library has it once (with its walls, areas, lights).
+    const sample = createSampleScene();
+    const resource = 'builtin:crypt';
+    const map = (await readDoc(mapSidecarPath(resource), 'map', MapSidecarSchema, { quiet: true })) ?? mapSidecarFromScene(sample, resource, 'map');
+    const ov = sceneOverrideFromScene(sceneFromDocuments(map, null, null, sample.table, 'scene'), 'Session 1', mapSidecarPath(resource), { round: 1, turn: 0 }, map);
+    ov.tokens = sample.tokens.map((t) => ({ ...t, conditions: [...t.conditions] }));
+    await showDocs(map, ov, resource, { scenePath: 'scenes/session-1.scene.json' });
     await loadCreatures();
     for (const c of SAMPLE_CREATURES) if (!state.creatures.some((x) => creaturePath(x) === creaturePath(c))) state.creatures.push(structuredClone(c));
   } else {
@@ -311,16 +315,27 @@ export async function refreshSceneList(): Promise<void> {
   emit();
 }
 
+/**
+ * Shows a map and a scene on it in the layer of the current workspace (the Map Forge: the map;
+ * otherwise the scene) and makes them the open documents.
+ */
+async function showDocs(map: MapSidecar, ov: SceneOverride, resource: string, opts: { scenePath: string; table?: Partial<Scene['table']> }): Promise<void> {
+  const url = await urlForResource(resource);
+  const table = opts.table ?? state.scene.table;
+  const scene = sceneFromDocuments(map, ov, url, table, layerFor(state.ws));
+  scene.table = { ...state.scene.table, ...table, centerX: scene.table.centerX, centerY: scene.table.centerY, blackout: state.scene.table.blackout };
+  replaceScene(scene, { resource, fileName: resource, scenePath: opts.scenePath, sceneName: ov.name, round: ov.combat.round, turn: ov.combat.turn, docs: { map, scene: ov } });
+}
+
 /** Loads a scene of the open campaign (`scenes/x.scene.json`). */
 export async function loadScene(scenePath: string, table: Partial<Scene['table']> = state.scene.table): Promise<void> {
   const ov = await readDoc(campaignPath(scenePath), 'scene', SceneOverrideSchema);
   if (!ov) return;
   const map = await readDoc(ov.mapSidecar, 'map', MapSidecarSchema);
   if (!map) return;
-  const url = await urlForResource(map.resource);
-  const scene = sceneFromDocuments(map, ov, url, table);
-  scene.table = { ...state.scene.table, ...table, centerX: scene.table.centerX, centerY: scene.table.centerY, blackout: state.scene.table.blackout };
-  replaceScene(scene, { resource: map.resource, fileName: map.resource, scenePath, sceneName: ov.name, round: ov.combat.round, turn: ov.combat.turn });
+  await showDocs(map, ov, map.resource, { scenePath, table });
+  const issues = sceneIssues(map, ov);
+  if (issues.orphaned.length > 0 || issues.invalid.length > 0) log('log.orphanedOverrides', { scene: ov.name, n: issues.orphaned.length + issues.invalid.length });
   void applySceneAmbience(ov.ambience);
 }
 
@@ -344,10 +359,10 @@ export async function saveCampaign(force = false): Promise<void> {
   try {
     const s = state.scene;
     // A campaign without a map yet has no scene: only the manifest and creatures are written.
-    if (state.scenePath) {
-      const sidecar = mapSidecarPath(state.mapResource);
-      await writeDoc(sidecar, MapSidecarSchema, mapSidecarFromScene(s, state.mapResource));
-      await writeDoc(campaignPath(state.scenePath), SceneOverrideSchema, { ...sceneOverrideFromScene(s, state.sceneName, sidecar, { round: state.round, turn: state.turn }), ambience: sceneAmbience() });
+    commitView();
+    if (state.scenePath && state.mapDoc && state.sceneDoc) {
+      await writeDoc(mapSidecarPath(state.mapResource), MapSidecarSchema, state.mapDoc);
+      await writeDoc(campaignPath(state.scenePath), SceneOverrideSchema, { ...state.sceneDoc, ambience: sceneAmbience() });
     }
     for (const c of state.creatures) await writeDoc(creaturePath(c), CreatureSchema, c);
     await writeDoc(campaignPath(CAMPAIGN_FILE), CampaignManifestSchema, manifestFromState(state.campaign.name, state.scenePath, s.table));
@@ -430,10 +445,11 @@ export async function openMapInNewScene(resource: string, sidecar: MapSidecar | 
       tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark',
     };
   }
-  const scene = sceneFromDocuments(map, null, url, state.scene.table);
-  scene.tokens = state.scene.tokens.filter((t) => t.kind === 'pc').map((t, i) => ({ ...t, x: map.widthPx / 2 + (i - 1) * map.grid.cellWidth, y: map.heightPx / 2 }));
-  const scenePath = freeScenePath(map.name);
-  replaceScene(scene, { resource, fileName: resource, scenePath, sceneName: map.name });
+  // A new scene starts with the map's start fog; the player characters come along.
+  const pcs = (state.layer === 'scene' ? state.scene.tokens : (state.sceneDoc?.tokens ?? [])).filter((t) => t.kind === 'pc');
+  const ov = sceneOverrideFromScene(sceneFromDocuments(map, null, url, state.scene.table, 'scene'), map.name, mapSidecarPath(resource), { round: 1, turn: 0 }, map);
+  ov.tokens = pcs.map((t, i) => ({ ...t, conditions: [...t.conditions], x: map.widthPx / 2 + (i - 1) * map.grid.cellWidth, y: map.heightPx / 2 }));
+  await showDocs(map, ov, resource, { scenePath: freeScenePath(map.name) });
   await saveCampaign(true);
   await refreshSceneList();
 }

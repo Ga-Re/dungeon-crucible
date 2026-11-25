@@ -34,6 +34,18 @@ export const GridSchema = z.object({
   feetPerCell: z.number().positive(),
 });
 
+/** Map elements as built in the Map Forge (`open` of doors is scene state, kept only for old files). */
+export const mapWallSchema = z.object({ id, kind: z.enum(['wall', 'door', 'secret-door', 'window']), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(), open: z.boolean().optional() });
+export const mapAreaSchema = z.object({
+  id,
+  name: z.string(),
+  kind: z.enum(['room', 'area', 'poi', 'secret']),
+  rect: z.object({ x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }),
+  color,
+  biome: biome.optional(),
+});
+export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color });
+
 export const MapSidecarSchema = z.object({
   kind: z.literal('map'),
   schemaVersion: z.literal(SCHEMA_VERSION),
@@ -50,22 +62,13 @@ export const MapSidecarSchema = z.object({
   /** Strength of the biome's wind, particles and glow, 0…1 (Dungeon-Manager T-168). */
   fogStrength: z.number().min(0).max(1).default(1),
   grid: GridSchema,
-  walls: z.array(
-    z.object({ id, kind: z.enum(['wall', 'door', 'secret-door', 'window']), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(), open: z.boolean().optional() }),
-  ).default([]),
-  zones: z.array(
-    z.object({
-      id,
-      name: z.string(),
-      kind: z.enum(['room', 'area', 'poi', 'secret']),
-      rect: z.object({ x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }),
-      color,
-      biome: biome.optional(),
-    }),
-  ).default([]),
+  walls: z.array(mapWallSchema).default([]),
+  zones: z.array(mapAreaSchema).default([]),
   pois: z.array(z.object({ id, name: z.string(), x: z.number(), y: z.number(), icon: z.string().default('flag') })).default([]),
   /** Placed light sources; whether each is on is per scene. */
-  lights: z.array(z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color })).default([]),
+  lights: z.array(mapLightSchema).default([]),
+  /** What is revealed when a new scene starts on this map (painted in the Map Forge, E-26). */
+  startFog: levelFogSchema.optional(),
   /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */
   ambient: z.enum(['dark', 'lit']).default('dark'),
   assets: z.array(z.object({ id, assetPath: z.string(), variant: z.string().optional(), x: z.number(), y: z.number(), rotation: z.number().default(0), scale: z.number().positive().default(1) })).default([]),
@@ -182,6 +185,10 @@ export const SceneOverrideSchema = z.object({
   templates: z.array(z.object({ id, shape: z.enum(['cone', 'sphere', 'line', 'cube']), x: z.number(), y: z.number(), angle: z.number(), sizeFt: z.number().positive(), color })).default([]),
   combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
   ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
+  /** Changes of the map for this scene only, by element id: `{ hidden: true }` or changed fields (E-2). */
+  overrides: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
+  /** Walls, areas and lights that exist only in this scene (E-24). */
+  added: z.object({ walls: z.array(mapWallSchema).default([]), zones: z.array(mapAreaSchema).default([]), lights: z.array(mapLightSchema).default([]) }).default({ walls: [], zones: [], lights: [] }),
 });
 export type SceneOverride = z.infer<typeof SceneOverrideSchema>;
 

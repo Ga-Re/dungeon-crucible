@@ -105,6 +105,13 @@ export function filterAssets(items: readonly CatalogItem[], f: CatalogFilter): C
   });
 }
 
+/** The subkinds the assets of `kind` use, each with how many have it (E-31, DC-111); in the order of `label`. */
+export function subkindsOf(assets: readonly AssetSidecar[], kind: AssetKind, label: (s: string) => string = (s) => s): { subkind: string; n: number }[] {
+  const counts = new Map<string, number>();
+  for (const a of assets) if (a.assetKind === kind && a.subkind) counts.set(a.subkind, (counts.get(a.subkind) ?? 0) + 1);
+  return [...counts].map(([subkind, n]) => ({ subkind, n })).sort((a, b) => label(a.subkind).localeCompare(label(b.subkind)));
+}
+
 /** Every collection the items use, sorted, one spelling each. */
 export function collectionsOf(items: readonly CatalogItem[]): string[] {
   const seen = new Map<string, string>();

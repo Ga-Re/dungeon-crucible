@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import { addTags, removeTag } from '../core/catalog';
-import { collectionsOf, commonValue, ENVIRONMENTS, SUBKINDS } from '../core/assets';
+import { collectionsOf, commonValue, ENVIRONMENTS, SUBKINDS, subkindsOf } from '../core/assets';
 import { ASSET_KINDS, type AssetKind, type AssetSidecar } from '../core/sidecar';
 import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
@@ -20,7 +20,7 @@ import {
   shownEntries, toggleFavorite, updateSelectedAssets, type VaultItem,
   addVariant, objectOf, placedPathOf, removeVariant, renameObject, selectEntry, selectVariant, setMainVariant,
 } from '../app/vault';
-import type { CatalogEntry } from '../core/assetObjects';
+import { catalogEntries, type CatalogEntry } from '../core/assetObjects';
 
 /** Drag type for assets dragged from the catalog (onto a collection, later onto the map). */
 export const ASSET_DRAG = 'application/x-dc-assets';
@@ -279,15 +279,18 @@ function useThumbnail(item: Pick<VaultItem, 'relPath' | 'size' | 'mtimeMs'>): st
 
 export function VaultBrowser() {
   const { t } = useI18n();
-  const { env } = useLabels();
+  const { env, subkind: subLabel } = useLabels();
   const items = useStore((s) => s.vault.items);
+  const objects = useStore((s) => s.vault.objects);
   const filter = useStore((s) => s.vault.filter);
   const fresh = useStore((s) => s.vault.newCollections);
+  // Counted as the catalog shows them: an object once (its variants share kind, subkind, favourite).
+  const shownAssets = useMemo(() => catalogEntries(items, objects).map((e) => e.variants[0].asset), [items, objects]);
   const [naming, setNaming] = useState<{ from: string | null; value: string } | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const collections = useMemo(() => [...new Set([...collectionsOf(items), ...fresh])].sort((a, b) => a.localeCompare(b)), [items, fresh]);
   const environments = useMemo(() => [...new Set(items.flatMap((i) => i.asset.environments))].sort((a, b) => env(a).localeCompare(env(b))), [items]);
-  const count = (pred: (a: AssetSidecar) => boolean) => items.filter((i) => pred(i.asset)).length;
+  const count = (pred: (a: AssetSidecar) => boolean) => shownAssets.filter(pred).length;
   const kinds = filter.kinds ?? [];
   const toggleKind = (k: AssetKind) => setVaultFilter({ kinds: kinds.includes(k) ? kinds.filter((x) => x !== k) : [...kinds, k], subkind: undefined });
 
@@ -316,7 +319,7 @@ export function VaultBrowser() {
       <ul className="tree">
         <li>
           <button className={`tn ${kinds.length === 0 && !filter.favorites ? 'sel' : ''}`} onClick={() => setVaultFilter({ kinds: [], favorites: false, subkind: undefined })}>
-            <Icon name="archive" /><span className="nm">{t('vault.all')}</span><span className="meta">{items.length}</span>
+            <Icon name="archive" /><span className="nm">{t('vault.all')}</span><span className="meta">{shownAssets.length}</span>
           </button>
         </li>
         <li>
@@ -324,13 +327,31 @@ export function VaultBrowser() {
             <Icon name="star" /><span className="nm">{t('vault.favorites')}</span><span className="meta">{count((a) => a.favorite)}</span>
           </button>
         </li>
-        {ASSET_KINDS.map((k) => (
-          <li key={k}>
-            <button className={`tn ${kinds.includes(k) ? 'sel' : ''}`} aria-pressed={kinds.includes(k)} onClick={() => toggleKind(k)}>
-              <Icon name={KIND_ICONS[k]} /><span className="nm">{t(`assetKind.${k}` as MessageKey)}</span><span className="meta">{count((a) => a.assetKind === k)}</span>
-            </button>
-          </li>
-        ))}
+        {ASSET_KINDS.map((k) => {
+          const subs = subkindsOf(shownAssets, k, subLabel);
+          return (
+            <li key={k}>
+              <button className={`tn ${kinds.includes(k) && !filter.subkind ? 'sel' : ''}`} aria-pressed={kinds.includes(k)} onClick={() => toggleKind(k)}>
+                <Icon name={KIND_ICONS[k]} /><span className="nm">{t(`assetKind.${k}` as MessageKey)}</span><span className="meta">{count((a) => a.assetKind === k)}</span>
+              </button>
+              {/* Its subkinds (E-31, DC-111): a click shows only those. */}
+              {subs.length > 0 && (
+                <ul className="tree vault-subkinds">
+                  {subs.map(({ subkind, n }) => {
+                    const on = kinds.length === 1 && kinds[0] === k && filter.subkind === subkind;
+                    return (
+                      <li key={subkind}>
+                        <button className={`tn ${on ? 'sel' : ''}`} aria-pressed={on} onClick={() => setVaultFilter(on ? { kinds: [k], subkind: undefined } : { kinds: [k], subkind })}>
+                          <span className="nm">{subLabel(subkind)}</span><span className="meta">{n}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
+          );
+        })}
       </ul>
       {environments.length > 0 && (
         <>

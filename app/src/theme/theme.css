@@ -380,6 +380,9 @@ input[type='checkbox'] { accent-color: var(--accent); }
   background: var(--overlay); color: var(--fg-faint); cursor: pointer; opacity: 0; }
 .vault-card:hover .vault-star, .vault-card:focus-within .vault-star, .vault-star.on, .vault-star:focus-visible { opacity: 1; }
 .vault-star .ic { width: 15px; height: 15px; }
+/* Subkinds under their kind in the Vault's Browser (E-31). */
+.vault-subkinds { margin: 0 0 2px; padding-left: 22px; }
+.vault-subkinds .tn { padding-top: 2px; padding-bottom: 2px; font-size: 12px; }
 .vault-variants { margin-left: auto; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--panel); border: 1px solid var(--line); font-size: 10.5px; color: var(--fg-dim); text-align: center; }
 /* An object's variants (E-31) in the Properties panel. */
 .vault-variant-list { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 3px; }

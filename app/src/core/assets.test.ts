@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addToCollection, assetDefaults, collectionsOf, commonValue, filterAssets, kindFromFile, packDefaults, parseAssetSidecar, pixelsToCells, removeCollection, renameCollection, type CatalogItem,
+  addToCollection, assetDefaults, collectionsOf, subkindsOf, commonValue, filterAssets, kindFromFile, packDefaults, parseAssetSidecar, pixelsToCells, removeCollection, renameCollection, type CatalogItem,
 } from './assets';
 import { ASSET_VERSION, type AssetSidecar } from './sidecar';
 
@@ -109,5 +109,13 @@ describe('defaults from a pack (DC-040b)', () => {
 describe('outline in cells (DC-109)', () => {
   it('maps image pixels onto the footprint', () => {
     expect(pixelsToCells([[0, 0], [200, 100], [100, 200]], 200, 200, { w: 2, h: 2 })).toEqual([[0, 0], [2, 1], [1, 2]]);
+  });
+});
+
+describe('subkinds in the Browser (E-31, DC-111)', () => {
+  it('lists the subkinds of a kind with their numbers, by their label', () => {
+    const list = [asset({ subkind: 'building' }), asset({ subkind: 'building' }), asset({ subkind: 'nature' }), asset({}), asset({ assetKind: 'tile', subkind: 'floor' })];
+    expect(subkindsOf(list, 'prop')).toEqual([{ subkind: 'building', n: 2 }, { subkind: 'nature', n: 1 }]);
+    expect(subkindsOf(list, 'prop', (s) => (s === 'nature' ? 'A nature' : s)).map((x) => x.subkind)).toEqual(['nature', 'building']);
   });
 });

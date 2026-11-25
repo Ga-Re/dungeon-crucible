@@ -111,6 +111,11 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .doc-tab-name { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 4px 0 10px; height: 100%; background: none; border: none; color: inherit; font: inherit; cursor: pointer; }
 .doc-tab-name span:not(.doc-tab-dot) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-tab-name .ic { width: 13px; height: 13px; flex: none; }
+.doc-tab-tv { display: grid; place-items: center; color: var(--ok); flex: none; }
+.doc-tab-tv .ic { width: 13px; height: 13px; }
+.tab-menu { width: 240px; }
+.tab-confirm { margin: 6px 8px; font-size: 12px; color: var(--fg); }
+.tab-confirm-buttons { padding: 0 8px 6px; }
 .doc-tab-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
 .doc-tab-close { display: grid; place-items: center; width: 20px; height: 20px; margin-right: 4px; border: none; border-radius: 3px; background: none; color: var(--fg-faint); cursor: pointer; }
 .doc-tab-close:hover { background: var(--panel-2); color: var(--fg); }
@@ -206,6 +211,8 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .map-badge.player { color: var(--ok); }
 .interior-asks { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 6px; max-width: min(320px, calc(100% - 20px)); }
 .interior-ask { background: var(--panel); border: 1px solid var(--accent); border-radius: 4px; padding: 8px 10px; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--fg); }
+/* "On the TV too?" after switching tabs (E-30): bottom right, apart from the house questions. */
+.tv-ask { top: auto; bottom: 10px; }
 
 /* Preview */
 .preview { display: flex; flex-direction: column; height: 100%; }

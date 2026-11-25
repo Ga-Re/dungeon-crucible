@@ -375,7 +375,15 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Zustand, Effekte, Rückfragen); die Tab-Leiste in der Titelleiste zeigt die offenen Szenen (aktive mit Akzentlinie
   und Punkt, solange nicht gespeichert), Klick wechselt (vorher wird gespeichert), ✕ oder Mittelklick schließt;
   eine Szene aus dem Browser oder eine neue Karte öffnet sich als Tab. Szenen auf derselben Karte teilen deren
-  letzte Änderungen. Bis Schritt 2 folgt der TV noch dem aktiven Tab.
+  letzte Änderungen.
+  Erledigt (Schritt 2): Der TV wechselt nur per Befehl – „Szene auf den TV“ (Menüband Spiel › Szene, Kontextmenü
+  des Tabs); der Tab der TV-Szene trägt ein TV-Zeichen. Ist keine Szene auf dem TV, kommt die zuerst geöffnete
+  hin. Während ein anderer Tab gezeigt wird, baut der TV seine Szene aus deren Dateien (sie ändert sich im
+  Hintergrund nicht); die Tischmitte gehört zur Szene, Drehung/Schwärzung/Kalibrierung zum TV. Wechselt der DM im
+  Orchestrator auf eine andere Szene, fragt unten rechts „… auch auf den TV?“ (blockiert nicht). Schließen des
+  TV-Tabs fragt vorher, danach ist der TV schwarz (ohne Daten einer Szene im Bild). Die Hintergrundmusik gehört zur
+  TV-Szene (was die Spieler hören): ein Tab-Wechsel ändert sie nicht, „Auf den TV“ übernimmt die der Szene.
+  Nebenbei behoben: eine neu geöffnete Szene übernahm die Tischmitte der vorigen.
 - **DC-034b Kreaturen als Tabs** (E-30), **DC-034c Assets als Tabs**, **DC-034d Notizen und Handouts als Tabs** –
   auf der Tab-Leiste aus DC-034.
 - **DC-035 Papierkorb-Ansicht** mit Wiederherstellen (ohne Überschreiben) und „Papierkorb leeren“ von Hand; kein

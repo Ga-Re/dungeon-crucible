@@ -23,7 +23,7 @@ import { rectPolygon } from '../core/fogModel';
 import type { MapAssetPlacement, Scene, TemplateShape } from '../core/scene';
 import { useI18n } from '../i18n/i18n';
 import { hasMap } from '../core/emptyScene';
-import { importMapIntoCampaign } from '../app/campaign';
+import { importMapIntoCampaign, putOnTv } from '../app/campaign';
 import { Icon } from '../ui/Icon';
 import type { MessageKey } from '../i18n/en';
 import { drawDmOverlay, type OverlayState } from '../render/dmOverlay';
@@ -36,7 +36,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
-  editableHere, shownInForge, activateAsset, answerInteriorAsk, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
+  editableHere, shownInForge, activateAsset, answerInteriorAsk, answerTvAsk, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -630,6 +630,7 @@ function DmMap() {
       />
       {hintKey && mapPresent && <div className="map-hint">{t(hintKey)}</div>}
       {ws === 'play' && <InteriorAsks />}
+      {ws === 'play' && <TvAsk />}
       {ws === 'forge' && <AreaCommandPanel />}
       {ws === 'forge' && <WallCommandPanel />}
       {ws === 'forge' && <CalibrationPanel />}
@@ -767,6 +768,24 @@ function InteriorAsks() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** After switching tabs in the Orchestrator (E-30): "put this scene on the TV too?" – without blocking play. */
+function TvAsk() {
+  const { t } = useI18n();
+  const ask = useStore((s) => (s.tvAsk && s.tvAsk === s.scenePath ? s.sceneName : null));
+  if (!ask) return null;
+  return (
+    <div className="interior-asks tv-ask" role="status">
+      <div className="interior-ask">
+        <span>{t('tv.ask', { name: ask })}</span>
+        <div className="library-buttons">
+          <button className="btn sm pri" onClick={() => state.scenePath && void putOnTv(state.scenePath)}>{t('tv.yes')}</button>
+          <button className="btn sm" onClick={() => answerTvAsk(false)}>{t('tv.no')}</button>
+        </div>
+      </div>
     </div>
   );
 }

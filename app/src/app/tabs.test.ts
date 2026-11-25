@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activateSession, checkpoint, clearTabs, closeSessionTab, commitView, moveToken, replaceScene, setWorkspace, state, undo } from './store';
+import { activateSession, answerTvAsk, checkpoint, clearTabs, closeSessionTab, commitView, moveToken, produceFrame, replaceScene, setTvScene, setWorkspace, state, undo } from './store';
 
 /** Scenes as tabs (E-30, DC-034 step 1): each keeps its state and undo history while another is shown. */
 describe('scene tabs', () => {
@@ -62,5 +62,37 @@ describe('scene tabs', () => {
     activateSession('scenes/a.scene.json');
     expect(state.layer).toBe('map');
     expect(state.ws).toBe('forge');
+  });
+
+  it('the TV stays on its scene while another tab is shown, until a scene is put there; its tab closed, it is black', () => {
+    setWorkspace('play');
+    clearTabs();
+    open('scenes/a.scene.json', 'A');
+    // The first scene opened goes on the TV.
+    expect(state.tvScenePath).toBe('scenes/a.scene.json');
+    const pc = state.scene.tokens.find((t) => t.kind === 'pc')!;
+    const from = pc.x;
+    moveToken(pc.id, { x: from + 70, y: pc.y }, true);
+    // The TV centred on A somewhere: A keeps that centre; the other table settings are the TV's.
+    state.scene.table.centerX = 123;
+    open('scenes/b.scene.json', 'B');
+    expect(state.tvScenePath).toBe('scenes/a.scene.json');
+    expect(produceFrame(Date.now()).center.x).toBe(123);
+    expect(state.scene.table.centerX).not.toBe(123);
+    // The TV shows A (in the background): its character moved, B's did not.
+    const tvX = () => produceFrame(Date.now()).tokens.find((t) => t.id === pc.id)?.x;
+    expect(tvX()).toBe(from + 70);
+    moveToken(pc.id, { x: from - 70, y: pc.y }, true);
+    expect(tvX()).toBe(from + 70);
+    // A question answered with no changes nothing; the command puts B there.
+    state.tvAsk = 'scenes/b.scene.json';
+    answerTvAsk(false);
+    expect(state.tvScenePath).toBe('scenes/a.scene.json');
+    setTvScene('scenes/b.scene.json');
+    expect(tvX()).toBe(from - 70);
+    closeSessionTab('scenes/b.scene.json');
+    expect(state.tvScenePath).toBeNull();
+    expect(produceFrame(Date.now()).blackout).toBe(true);
+    expect(produceFrame(Date.now()).tokens).toEqual([]);
   });
 });

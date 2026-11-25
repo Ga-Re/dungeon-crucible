@@ -27,7 +27,7 @@ import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { activateSession, checkpoint, clearTabs, closeSessionTab, commitView, emit, isSceneOpen, layerFor, log, onDirty, refreshView, replaceScene, setWorkspace, showLayer, state } from './store';
+import { activateSession, checkpoint, clearTabs, closeSessionTab, commitView, emit, isSceneOpen, layerFor, log, onDirty, openSceneDoc, refreshView, replaceScene, setTvScene, setWorkspace, showLayer, state } from './store';
 import { applySceneAmbience, refreshAudioFiles, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
@@ -372,7 +372,7 @@ export async function refreshSceneList(): Promise<void> {
  */
 async function showDocs(map: MapSidecar, ov: SceneOverride, resource: string, opts: { scenePath: string; table?: Partial<Scene['table']> }): Promise<void> {
   const url = await urlForResource(resource);
-  const table = opts.table ?? state.scene.table;
+  const table = opts.table ?? tvSettings();
   // A scene opens in its play state.
   state.editStart = false;
   const scene = sceneFromDocuments(map, ov, url, table, layerFor(state.ws));
@@ -391,7 +391,8 @@ export async function setEditStart(on: boolean): Promise<void> {
   state.editStart = on;
   showLayer(layerFor(state.ws));
   const doc = state.sceneDoc;
-  await applySceneAmbience(on ? startOf(doc).ambience : doc.ambience);
+  // The soundboard plays the TV's scene: the start's ambience only for the scene on the TV.
+  if (state.scenePath === state.tvScenePath) await applySceneAmbience(on ? startOf(doc).ambience : doc.ambience);
   emit();
 }
 
@@ -403,13 +404,19 @@ export async function resetScene(): Promise<void> {
   commitView();
   state.sceneDoc = resetToStart(state.sceneDoc!);
   refreshView();
-  await applySceneAmbience(state.sceneDoc.ambience);
+  if (state.scenePath === state.tvScenePath) await applySceneAmbience(state.sceneDoc.ambience);
   log('log.sceneReset', { scene: state.sceneName });
   emit();
 }
 
 /** Loads a scene of the open campaign (`scenes/x.scene.json`). */
-export async function loadScene(scenePath: string, table: Partial<Scene['table']> = state.scene.table): Promise<void> {
+/** The TV's settings without the centre: a scene opened is centred on its own map. */
+function tvSettings(): Partial<Scene['table']> {
+  const { centerX: _x, centerY: _y, ...rest } = state.scene.table;
+  return rest;
+}
+
+export async function loadScene(scenePath: string, table: Partial<Scene['table']> = tvSettings()): Promise<void> {
   const ov = await readDoc(campaignPath(scenePath), 'scene', SceneOverrideSchema);
   if (!ov) return;
   const map = await readDoc(ov.mapSidecar, 'map', MapSidecarSchema);
@@ -419,31 +426,47 @@ export async function loadScene(scenePath: string, table: Partial<Scene['table']
   await showDocs(map, ov, map.resource, { scenePath, table });
   const issues = sceneIssues(map, ov);
   if (issues.orphaned.length > 0 || issues.invalid.length > 0) log('log.orphanedOverrides', { scene: ov.name, n: issues.orphaned.length + issues.invalid.length });
-  void applySceneAmbience(ov.ambience);
+  // The soundboard plays the TV's scene (E-30).
+  if (state.tvScenePath === scenePath) void applySceneAmbience(ov.ambience);
 }
 
 /** Shows scene `scenePath`: its tab if it is open (E-30), else it opens in a new tab. */
 export async function switchScene(scenePath: string): Promise<void> {
   if (scenePath === state.scenePath) return;
   await saveCampaign();
-  // Blackout during the switch so the table never shows a half-loaded scene.
-  const black = state.scene.table.blackout;
-  state.scene.table.blackout = true;
-  emit();
-  if (isSceneOpen(scenePath)) {
-    activateSession(scenePath);
-    if (state.sceneDoc) await applySceneAmbience(state.editStart ? startOf(state.sceneDoc).ambience : state.sceneDoc.ambience);
-  } else await loadScene(scenePath);
-  state.scene.table.blackout = black;
+  // The TV stays on its scene (E-30); a scene the TV did not have yet is only shown here.
+  const tvBefore = state.tvScenePath;
+  if (isSceneOpen(scenePath)) activateSession(scenePath);
+  else await loadScene(scenePath);
+  if (!tvBefore && state.tvScenePath) await applyTvAmbience();
+  // In the Orchestrator the DM is asked whether this scene goes on the TV too.
+  if (state.ws === 'play' && state.tvScenePath && state.tvScenePath !== state.scenePath) state.tvAsk = state.scenePath;
   emit();
   await saveCampaign();
+}
+
+/** Puts an open scene on the TV (E-30); the soundboard plays its ambience. */
+export async function putOnTv(scenePath: string | null): Promise<void> {
+  if (scenePath === state.tvScenePath) return;
+  await saveCampaign();
+  setTvScene(scenePath);
+  await applyTvAmbience();
+  await saveCampaign(true);
+}
+
+/** The soundboard plays the TV's scene: its play state's ambience (or none without a scene). */
+async function applyTvAmbience(): Promise<void> {
+  const doc = state.tvScenePath ? openSceneDoc(state.tvScenePath) : null;
+  const live = state.tvScenePath === state.scenePath;
+  await applySceneAmbience(doc ? (live && state.editStart ? startOf(doc).ambience : doc.ambience) : []);
 }
 
 /** Closes the tab of scene `scenePath` (saved first); the one shown gives way to its neighbour. */
 export async function closeScene(scenePath: string): Promise<void> {
   if (scenePath === state.scenePath) await saveCampaign();
+  const wasTv = scenePath === state.tvScenePath;
   closeSessionTab(scenePath);
-  if (state.sceneDoc) await applySceneAmbience(state.sceneDoc.ambience);
+  if (wasTv) await applyTvAmbience();
   // The campaign remembers the scene shown now.
   await saveCampaign(true);
 }
@@ -544,7 +567,7 @@ export async function openMapInNewScene(resource: string, sidecar: MapSidecar | 
   // A new scene starts with the map's start fog and the party: the characters of the players
   // present, with their hit points from the scene played so far (DC-096).
   const before = state.layer === 'scene' ? state.scene.tokens : (state.sceneDoc?.tokens ?? []);
-  const ov = sceneOverrideFromScene(sceneFromDocuments(map, null, url, state.scene.table, 'scene'), map.name, mapSidecarPath(resource), { round: 1, turn: 0 }, map);
+  const ov = sceneOverrideFromScene(sceneFromDocuments(map, null, url, tvSettings(), 'scene'), map.name, mapSidecarPath(resource), { round: 1, turn: 0 }, map);
   const taken = new Set<string>();
   ov.tokens = state.players.length === 0
     // A campaign without players yet: the player characters of the scene so far come along.

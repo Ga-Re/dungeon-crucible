@@ -14,7 +14,7 @@ import {
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
-import { closeCampaign, closeScene, importMapIntoCampaign, refreshRoot, saveCampaign, setEditStart, startAutosave, switchScene } from './campaign';
+import { closeCampaign, closeScene, importMapIntoCampaign, putOnTv, refreshRoot, saveCampaign, setEditStart, startAutosave, switchScene } from './campaign';
 import { ResetSceneDialog } from './ResetSceneDialog';
 import { MapSettingsDialog } from './MapSettingsDialog';
 import { ExportDialog } from './ExportDialog';
@@ -122,7 +122,7 @@ function Ribbon() {
   const { t } = useI18n();
   const ws = useStore((s) => s.ws);
   const tool = useStore((s) => s.tool);
-  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart }));
+  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart, onTv: !!s.scenePath && s.scenePath === s.tvScenePath }));
   const [resetting, setResetting] = useState(false);
   const mapSettings = useStore((s) => s.mapSettingsOpen);
   const [tab, setTab] = useState(0);
@@ -144,6 +144,7 @@ function Ribbon() {
     if (b.id === 'fogmode:hide') return flags.fogMode === 'hide';
     if (b.id === 'fog:dmHide') return flags.dmFogHidden;
     if (b.id === 'toggle:editStart') return flags.editStart;
+    if (b.id === 'scene:toTv') return flags.onTv;
     if (b.id === 'area:create') return tool === 'area';
     if (b.id === 'walls:draw') return tool === 'wall';
     if (b.id === 'grid:calibrate') return tool === 'calibrate';
@@ -159,6 +160,7 @@ function Ribbon() {
       case 'toggle:blackout': return toggleBlackout();
       case 'toggle:editStart': return void setEditStart(!flags.editStart);
       case 'scene:reset': return setResetting(true);
+      case 'scene:toTv': return void (state.scenePath && putOnTv(state.scenePath));
       case 'party:place': return placeParty();
       case 'map:settings': return openMapSettings();
       case 'area:create': return startAreaCommand();
@@ -313,29 +315,75 @@ function StatusBar() {
 
 /**
  * The open documents as tabs in the title bar (E-30, DC-034): a click shows one, the ✕ (or a
- * middle click) closes it. The one shown carries a dot while its changes are not saved yet.
+ * middle click) closes it, the context menu puts it on the TV. The TV's scene carries a TV mark;
+ * the one shown a dot while its changes are not saved yet. Closing the TV's scene asks first.
  */
 function DocTabs() {
   const { t } = useI18n();
   const tabs = useStore((s) => s.tabs);
   const active = useStore((s) => s.scenePath);
+  const tv = useStore((s) => s.tvScenePath);
   const pending = useStore((s) => s.dirty || s.saving);
+  const [menu, setMenu] = useState<{ id: string; at: DOMRect } | null>(null);
+  const [confirm, setConfirm] = useState<{ id: string; at: DOMRect } | null>(null);
   if (!tabs.length) return null;
+  const close = (id: string, el: HTMLElement) => {
+    if (id === tv) setConfirm({ id, at: el.closest('.doc-tab')!.getBoundingClientRect() });
+    else void closeScene(id);
+  };
   return (
     <div className="doc-tabs" role="tablist" aria-label={t('tabs.label')}>
       {tabs.map((tab) => {
         const on = tab.id === active;
         return (
-          <div key={tab.id} className={`doc-tab ${on ? 'on' : ''}`} onAuxClick={(e) => e.button === 1 && void closeScene(tab.id)}>
+          <div
+            key={tab.id}
+            className={`doc-tab ${on ? 'on' : ''}`}
+            onAuxClick={(e) => e.button === 1 && close(tab.id, e.currentTarget)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMenu({ id: tab.id, at: e.currentTarget.getBoundingClientRect() });
+            }}
+          >
             <button role="tab" aria-selected={on} className="doc-tab-name" title={tab.name} onClick={() => void switchScene(tab.id)}>
               <Icon name="map" />
               <span>{tab.name}</span>
+              {tab.id === tv && <span className="doc-tab-tv" title={t('tabs.onTv')} aria-label={t('tabs.onTv')}><Icon name="monitor" /></span>}
               {on && pending && <span className="doc-tab-dot" aria-label={t('tabs.unsaved')} />}
             </button>
-            <button className="doc-tab-close" title={t('tabs.close')} aria-label={`${t('tabs.close')}: ${tab.name}`} onClick={() => void closeScene(tab.id)}><Icon name="close" /></button>
+            <button className="doc-tab-close" title={t('tabs.close')} aria-label={`${t('tabs.close')}: ${tab.name}`} onClick={(e) => close(tab.id, e.currentTarget)}><Icon name="close" /></button>
           </div>
         );
       })}
+      {menu && (
+        <TabMenu at={menu.at} onClose={() => setMenu(null)}>
+          <button disabled={menu.id === tv} onClick={() => { void putOnTv(menu.id); setMenu(null); }}><Icon name="monitor" /><span>{t('tool.sceneToTv')}</span></button>
+          <button onClick={(e) => { const at = menu.at; setMenu(null); if (menu.id === tv) setConfirm({ id: menu.id, at }); else void closeScene(menu.id); e.stopPropagation(); }}><Icon name="close" /><span>{t('tabs.close')}</span></button>
+        </TabMenu>
+      )}
+      {confirm && (
+        <TabMenu at={confirm.at} onClose={() => setConfirm(null)}>
+          <p className="tab-confirm">{t('tabs.closeTv')}</p>
+          <div className="library-buttons tab-confirm-buttons">
+            <button className="btn sm danger" onClick={() => { void closeScene(confirm.id); setConfirm(null); }}>{t('tabs.closeAnyway')}</button>
+            <button className="btn sm" autoFocus onClick={() => setConfirm(null)}>{t('start.cancel')}</button>
+          </div>
+        </TabMenu>
+      )}
     </div>
   );
+}
+
+/** A small menu under a tab; a click elsewhere or Esc closes it. */
+function TabMenu({ at, onClose, children }: { at: DOMRect; onClose: () => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const doc = ref.current?.ownerDocument ?? document;
+    const click = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const id = setTimeout(() => doc.addEventListener('click', click), 0);
+    doc.addEventListener('keydown', key);
+    return () => { clearTimeout(id); doc.removeEventListener('click', click); doc.removeEventListener('keydown', key); };
+  }, [onClose]);
+  return <div ref={ref} className="menu tab-menu" role="menu" style={{ left: at.left, top: at.bottom + 2 }}>{children}</div>;
 }

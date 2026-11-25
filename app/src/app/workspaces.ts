@@ -198,6 +198,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
           {
             label: 'group.scene',
             buttons: [
+              { id: 'scene:toTv', icon: 'monitor', label: 'tool.sceneToTv' },
               { id: 'toggle:editStart', icon: 'flag', label: 'tool.editStart' },
               { id: 'scene:reset', icon: 'reset', label: 'tool.resetScene' },
               { id: 'tool:hide', icon: 'eyeoff', label: 'tool.hideElements', tool: 'hide' },

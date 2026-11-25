@@ -5,13 +5,14 @@ import { abilityModifier, ABILITIES, CONDITIONS, evaluateEncounter, proficiencyB
 import { d20Test } from '../core/rules/dice';
 import { playerOfToken } from '../core/party';
 import { useI18n } from '../i18n/i18n';
+import type { MessageKey } from '../i18n/en';
 import { TableView, type FrameSource } from '../table/TableView';
 import { BIOMES } from '../render/pixi/fog-living';
 import { FADE_MAX_SECONDS, FADE_STEP_SECONDS, FOG_EDGE, FOG_MOTION, FOG_QUALITIES, FOG_SPEED, speedOfStep, stepOfSpeed } from '../app/fog-settings';
 import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
-  addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, removeLight, removeToken, setAmbient, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
+  addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
   resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
@@ -74,7 +75,13 @@ export function BrowserPanel() {
           </li>
         )}
         <li>
-          <div className="tn"><Icon name="map" /><span className="nm">{scene.map.name}</span></div>
+          {ws === 'forge' ? (
+            <button className="tn" title={t('tool.mapSettings')} onDoubleClick={() => openMapSettings()} onKeyDown={(e) => e.key === 'Enter' && openMapSettings()}>
+              <Icon name="map" /><span className="nm">{scene.map.name}</span>
+            </button>
+          ) : (
+            <div className="tn"><Icon name="map" /><span className="nm">{scene.map.name}</span></div>
+          )}
           <ul>
             {scene.zones.map((z) => (
               <li key={z.id}>
@@ -128,11 +135,13 @@ function LibraryMaps() {
   const maps = useStore((s) => s.libraryMaps);
   const current = useStore((s) => s.mapResource);
   const sceneVersion = useStore((s) => s.sceneVersion);
+  // After a save the catalog data (name, tags …) may have changed.
+  const savedAt = useStore((s) => s.lastSavedAt);
   const [query, setQuery] = useState('');
   const [confirm, setConfirm] = useState<{ resource: string; usage: MapUsage[] } | null>(null);
   useEffect(() => {
     void refreshLibraryMaps();
-  }, [sceneVersion]);
+  }, [sceneVersion, savedAt]);
   const shown = filterLibraryMaps(maps, query);
   return (
     <div className="library">
@@ -212,7 +221,9 @@ export function PropertiesPanel() {
   return (
     <div className="panel-body">
       <div className="sec">{t('panel.map')}</div>
-      <div className="row"><label htmlFor="p-name">{t('props.name')}</label><input id="p-name" value={map.name} onChange={(e) => { map.name = e.target.value; emit(); }} /></div>
+      <div className="row"><label>{t('props.name')}</label><span>{map.name}</span></div>
+      <div className="row"><label>{t('mapSettings.type')}</label><span>{t(`mapType.${map.mapType}` as MessageKey)}{map.region ? ` · ${map.region}` : ''}</span></div>
+      {map.tags.length > 0 && <div className="row"><label>{t('props.tags')}</label><span className="prop-tags">{map.tags.map((tag) => <span key={tag} className="chip">{tag}</span>)}</span></div>}
       <div className="row"><label>{t('props.file')}</label><span className="mono hint">{file}</span></div>
       <div className="row"><label htmlFor="p-cell">{t('props.cellSize')}</label>
         <input id="p-cell" type="number" min={10} step={0.5} value={Number(map.grid.cellWidth.toFixed(2))} onChange={(e) => { const v = Number(e.target.value); if (v >= 10) { map.grid = { ...map.grid, cellWidth: v, cellHeight: v }; emit(); } }} />
@@ -222,12 +233,8 @@ export function PropertiesPanel() {
       </div>
       {map.widthPx > 0 && <div className="row"><label /><span className="hint mono">{map.widthPx}×{map.heightPx} px · {tileCount(map.widthPx, map.heightPx)} GPU tiles</span></div>}
       {cal && <div className="row"><label /><span className="hint">{t('props.calibrated', { w: cal.w.toFixed(1), h: cal.h.toFixed(1), r: cal.r.toFixed(2) })}</span></div>}
-      <div className="row"><label htmlFor="p-amb">{t('map.ambient')}</label>
-        <select id="p-amb" value={ambient} onChange={(e) => setAmbient(e.target.value as 'dark' | 'lit')}>
-          <option value="dark">{t('ambient.dark')}</option>
-          <option value="lit">{t('ambient.lit')}</option>
-        </select>
-      </div>
+      <div className="row"><label>{t('map.ambient')}</label><span>{t(ambient === 'lit' ? 'ambient.lit' : 'ambient.dark')}</span></div>
+      <button className="btn sm" onClick={() => openMapSettings()}><Icon name="sliders" />{t('tool.mapSettings')} …</button>
       {light && (
         <>
           <div className="sec">{t('light.title')}</div>

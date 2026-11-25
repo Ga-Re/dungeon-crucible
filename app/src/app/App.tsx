@@ -9,12 +9,13 @@ import { MonitorMenu } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
 import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, focusPanel, removeLegacyLayouts } from './docking';
 import {
-  clearTemplates, emit, fogAll, log, nextTurn, placeParty, redo, removeLastUserWall, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
+  clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, redo, removeLastUserWall, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
 import { closeCampaign, importMapIntoCampaign, refreshRoot, saveCampaign, setEditStart, startAutosave } from './campaign';
 import { ResetSceneDialog } from './ResetSceneDialog';
+import { MapSettingsDialog } from './MapSettingsDialog';
 import { ExportDialog } from './ExportDialog';
 import { AppearanceControls } from './Appearance';
 import { StartScreen } from './StartScreen';
@@ -121,6 +122,7 @@ function Ribbon() {
   const tool = useStore((s) => s.tool);
   const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart }));
   const [resetting, setResetting] = useState(false);
+  const mapSettings = useStore((s) => s.mapSettingsOpen);
   const [tab, setTab] = useState(0);
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState<DOMRect | null>(null);
@@ -153,6 +155,7 @@ function Ribbon() {
       case 'toggle:editStart': return void setEditStart(!flags.editStart);
       case 'scene:reset': return setResetting(true);
       case 'party:place': return placeParty();
+      case 'map:settings': return openMapSettings();
       case 'fit': return mapCommands.fit();
       case 'fog:hideAll': return fogAll(false);
       case 'fog:dmHide': return toggleDmFog();
@@ -224,6 +227,7 @@ function Ribbon() {
       <input ref={fileRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp,.mp4,.webm,image/png,image/jpeg,image/webp,video/mp4,video/webm" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importMapFile(f); e.target.value = ''; }} />
       {menu && <MonitorMenu anchor={menu} onClose={() => setMenu(null)} />}
       {resetting && <ResetSceneDialog onClose={() => setResetting(false)} />}
+      {mapSettings && <MapSettingsDialog onClose={() => openMapSettings(false)} />}
     </section>
   );
 }

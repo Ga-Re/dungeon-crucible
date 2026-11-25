@@ -6,7 +6,7 @@ import { useSyncExternalStore } from 'react';
 import type { Point } from '../core/geometry';
 import { applyCalibration, calibrateFromThreePoints, snapToCell, tableZoomForPhysicalGrid } from '../core/grid';
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
-import type { AreaTemplate, FogBiome, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
+import type { AreaTemplate, FogBiome, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
 import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision } from '../core/vision';
@@ -86,6 +86,8 @@ export interface AppState {
   creatures: Creature[];
   /** The open campaign's players and their characters (DC-096). */
   players: Player[];
+  /** The "Map settings" dialog is open (Map Forge, DC-011). */
+  mapSettingsOpen: boolean;
   selectedCreatureIdx: number;
   mapFileName: string;
   /** Map resource: path relative to the campaign folder or `builtin:<id>`. */
@@ -161,6 +163,7 @@ function initial(): AppState {
     frameSeq: 0,
     creatures: SAMPLE_CREATURES,
     players: [],
+    mapSettingsOpen: false,
     selectedCreatureIdx: 0,
     mapFileName: 'builtin: crypt-of-vhal-durn',
     mapResource: 'builtin:crypt',
@@ -733,11 +736,42 @@ export function selectLight(id: string | null): void {
   emit();
 }
 
-export function setAmbient(a: Scene['ambient']): void {
-  checkpoint();
-  state.scene.ambient = a;
-  recomputeVision();
+/** What the "Map settings" dialog edits (DC-011). */
+export interface MapSettings {
+  name: string;
+  mapType: MapType;
+  region: string;
+  tags: string[];
+  biome: FogBiome;
+  ambient: Scene['ambient'];
+}
+
+export function openMapSettings(open = true): void {
+  state.mapSettingsOpen = open && state.layer === 'map';
   emit();
+}
+
+export function currentMapSettings(): MapSettings {
+  const m = state.scene.map;
+  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient };
+}
+
+/** Applies the dialog as one undoable step; only in the Map Forge (the map's data). */
+export function applyMapSettings(s: MapSettings): boolean {
+  const name = s.name.trim();
+  if (state.layer !== 'map' || !name) return false;
+  checkpoint();
+  const m = state.scene.map;
+  m.name = name;
+  m.mapType = s.mapType;
+  m.region = s.region.trim();
+  m.tags = [...s.tags];
+  m.biome = s.biome;
+  state.scene.ambient = s.ambient;
+  recomputeVision();
+  markDirty();
+  emit();
+  return true;
 }
 
 /* ---------- Tokens from creatures ---------- */

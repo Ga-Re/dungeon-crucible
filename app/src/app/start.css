@@ -93,3 +93,16 @@
 
 /* Confirm moving a campaign to the trash */
 .start-confirm { display: flex; align-items: center; gap: 6px; padding: 0 6px; flex: none; }
+
+/* Map settings (DC-011) */
+.map-settings { width: min(520px, 100%); }
+.map-settings .start-field label, .map-settings .start-field > span { font-size: 11.5px; color: var(--fg-dim); }
+.map-settings select { width: 100%; height: 30px; font-size: 13.5px; }
+.ms-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 440px) { .ms-row { grid-template-columns: 1fr; } }
+.ms-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 30px; padding: 3px 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--input); }
+.ms-tags:focus-within { border-color: var(--sel); }
+.ms-tags .chip { display: inline-flex; align-items: center; gap: 4px; }
+.ms-tags .chip button { padding: 0 2px; border: 0; background: none; color: var(--fg-dim); cursor: pointer; }
+.ms-tags input { flex: 1; min-width: 100px; height: 22px; border: 0; background: transparent; }
+.ms-tags input:focus { outline: none; }

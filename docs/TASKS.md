@@ -195,7 +195,7 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - ◐ **DC-093 Bibliothek** (E-1): Karten, Audio, Kreaturen flach in `library/`, Sidecars daneben; Import kopiert
   hinein, Duplikate per Hash erkennen; Kartenliste mit Suche (Name, Tags, Typ); Löschen mit Warnung und Papierkorb
   (benutzte Karten: nur das Bild, die Kartendaten bleiben) – erledigt. Offen: Vorschaubilder im Katalog
-  (DC-093b), Tags in der Oberfläche bearbeiten (kommt mit DC-011), Papierkorb wiederherstellen (DC-035).
+  (DC-093b), Papierkorb wiederherstellen (DC-035). Tags bearbeiten: erledigt mit DC-011.
 - ✓ **DC-094 Karte/Szene mit Overrides** (E-2, E-16, E-24, E-26): Szene = Kartenverweis + Overrides je Element-ID
   + eigene Elemente + Zustand (`resolveElements`/`diffElements`); die Kartenschmiede zeigt und bearbeitet die Karte
   (ohne Tokens, mit Start-Nebel), jeder andere Arbeitsbereich die Szene; der TV zeigt in der Schmiede weiter die
@@ -240,8 +240,19 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 ### 3.2 Laufender Branch `feature/start-screen-map-forge`
 
 - **DC-010 Startbildschirm** – ✓ Schritt 1 erledigt; Umbau auf Wurzelordner folgt mit DC-092.
-- **DC-011 Karteneigenschaften** – Name, Tags, Biom, Kartentyp, Standard-Nebel; Herkunft und Lizenz (T-125);
-  Ambient-Sound und Übergang (T-176b). Nach DC-093/DC-095.
+- ✓ **DC-011 Karteneigenschaften**: Dialog „Karteneinstellungen“ in der Kartenschmiede (Menüband Karte › Karte,
+  Doppelklick auf die Karte im Browser, Knopf im Eigenschaften-Panel) mit Name, Kartentyp, Landschaft und Tags (mit
+  Vorschlägen aus der Bibliothek), Standard-Nebel und Umgebungslicht; Übernehmen ist ein rückgängig machbarer
+  Schritt. Das Eigenschaften-Panel zeigt die Karte nur noch an. Die Bibliothekssuche findet auch die Landschaft und
+  aktualisiert sich nach dem Speichern. DM-Entscheidungen (2026-11-25): Dialog statt Panel; Herkunft und Lizenz
+  entfallen; Sound wird DC-104, der Übergang DC-105.
+- **DC-104 Klangquellen auf der Karte** (DM-Wunsch 2026-11-25): Sounds aus der Bibliothek auf die Karte ziehen,
+  je Quelle ein Radius; überlagerte Radien spielen beide; einstellbar, ob eine Quelle zum Rand hin leiser wird;
+  dazu ein globaler Sound je Karte (z. B. Schneesturm, Wind). Später im Szeneneditor: Quellen ein-/ausschalten und
+  den globalen Sound bei Bedarf überschreiben. Offen (Interview zu Beginn): wessen Position zählt fürs Hören
+  (Spielerfiguren, Kartenmitte, TV-Ausschnitt), Verhältnis zur Szenen-Ambience, Dateiformat.
+- **DC-105 Szenenübergang** (T-135): Übergang beim Szenenwechsel auf dem TV (z. B. Ausblenden über Schwarz, Dauer),
+  danach als Standard je Karte (T-176b).
 - **DC-012 Kartenkatalog der Bibliothek** – geht in DC-093 auf.
 - **DC-013 Bereiche als Polygon/Ellipse/Lasso**, additiv zeichnen, bearbeiten, Biom-Override, Name, geheim
   (T-108c1, T-260); Begriff „Bereich“ (T-262); „Bereich anlegen“ als Befehls-Panel (E-6).

@@ -116,6 +116,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
         label: 'tab.map',
         groups: [
           { label: 'group.create', buttons: [{ id: 'map:import', icon: 'import', label: 'tool.importMap' }] },
+          { label: 'group.mapData', buttons: [{ id: 'map:settings', icon: 'sliders', label: 'tool.mapSettings' }] },
           {
             label: 'group.grid',
             buttons: [

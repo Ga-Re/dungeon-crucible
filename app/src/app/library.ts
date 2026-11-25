@@ -17,6 +17,8 @@ export interface LibraryMap {
   resource: string;
   name: string;
   tags: string[];
+  /** Landscape/theme, free text. */
+  region: string;
   mapType: MapType;
   isVideo: boolean;
 }
@@ -43,6 +45,7 @@ export async function refreshLibraryMaps(): Promise<void> {
       resource,
       name: side?.name ?? resource.slice('library/'.length).replace(/\.[^.]+$/, ''),
       tags: side?.tags ?? [],
+      region: side?.biome ?? '',
       mapType: side?.mapType ?? 'dungeon',
       isVideo: /\.(mp4|webm)$/i.test(resource),
     });
@@ -51,12 +54,12 @@ export async function refreshLibraryMaps(): Promise<void> {
   emit();
 }
 
-/** Library maps matching a search: words in name, tags or type, all of them (case-insensitive). */
+/** Library maps matching a search: words in name, tags, landscape or type, all of them (case-insensitive). */
 export function filterLibraryMaps(maps: readonly LibraryMap[], query: string): LibraryMap[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [...maps];
   return maps.filter((m) => {
-    const hay = [m.name, m.mapType, ...m.tags, m.resource].join(' ').toLowerCase();
+    const hay = [m.name, m.mapType, m.region, ...m.tags, m.resource].join(' ').toLowerCase();
     return words.every((w) => hay.includes(w));
   });
 }

@@ -7,8 +7,8 @@ import {
   BUILTIN_AMBIENCE, BUILTIN_PREFIX, playAmbience, playSfx, playSfxFile, setAmbienceVolume, setMasterVolume, stopAmbience, type BuiltinSfx,
 } from './audio';
 import { absolutePath, assetUrl, importToLibrary, isDesktop, listFiles, readText, writeText } from '../platform/bridge';
-import { readDocument } from '../core/documents';
-import { AudioSidecarSchema, type AudioSidecar } from '../core/sidecar';
+import { ASSET_VERSION, AssetSidecarSchema, type AssetSidecar } from '../core/sidecar';
+import { assetDefaults, parseAssetSidecar } from '../core/assets';
 import { emit, log, markDirty, state } from './store';
 
 export interface AmbienceEntry {
@@ -49,8 +49,9 @@ export async function refreshAudioFiles(): Promise<void> {
   for (const f of files) {
     let category: 'ambience' | 'sfx' = 'ambience';
     try {
-      const r = readDocument('audio', AudioSidecarSchema, await readText(`${f}.dm.json`));
-      if (r.ok) category = r.value.category;
+      // Sound assets (E-27); older audio sidecars are read as such.
+      const r = parseAssetSidecar(await readText(`${f}.dm.json`), f);
+      if (r.ok && r.value.subkind === 'sfx') category = 'sfx';
     } catch {
       /* no sidecar: ambience */
     }
@@ -118,15 +119,19 @@ export async function importAudio(sfx: boolean): Promise<void> {
   }
   const f = await importToLibrary('audio');
   if (!f) return;
-  const sidecar: AudioSidecar = { kind: 'audio', schemaVersion: 1, category: sfx ? 'sfx' : 'ambience', tags: [] };
-  let existing: AudioSidecar | null = null;
+  const subkind = sfx ? 'sfx' : 'ambience';
+  let existing: { asset: AssetSidecar; raw: Record<string, unknown> } | null = null;
   try {
-    const r = readDocument('audio', AudioSidecarSchema, await readText(`${f.relPath}.dm.json`));
-    if (r.ok) existing = r.value;
+    const r = parseAssetSidecar(await readText(`${f.relPath}.dm.json`), f.relPath);
+    if (r.ok) existing = { asset: r.value, raw: r.raw };
   } catch {
     /* none yet */
   }
-  if (!existing || existing.category !== sidecar.category) await writeText(`${f.relPath}.dm.json`, JSON.stringify({ ...(existing ?? {}), ...sidecar }, null, 2));
+  if (!existing || existing.asset.subkind !== subkind) {
+    const asset: AssetSidecar = existing?.asset ?? AssetSidecarSchema.parse({ kind: 'asset', schemaVersion: ASSET_VERSION, ...assetDefaults(f.relPath) });
+    // Unknown fields of the file survive (file rules).
+    await writeText(`${f.relPath}.dm.json`, JSON.stringify({ ...(existing?.raw ?? {}), ...asset, assetKind: 'sound', subkind }, null, 2));
+  }
   log('log.audioImported', { file: f.relPath });
   await refreshAudioFiles();
 }

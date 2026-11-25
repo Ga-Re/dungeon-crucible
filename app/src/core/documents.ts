@@ -15,7 +15,7 @@
 import { z } from 'zod';
 import { migrateArea, migrateAreaOverride } from './areas';
 
-export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' | 'audio' | 'session';
+export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' | 'session';
 
 /** Current version of each document kind. */
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
@@ -23,8 +23,7 @@ export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   map: 3,
   scene: 4,
   creature: 1,
-  asset: 1,
-  audio: 1,
+  asset: 2,
   session: 1,
 };
 
@@ -59,8 +58,13 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     },
   },
   creature: {},
-  asset: {},
-  audio: {},
+  // The first asset format (variants with props, never used by files) → E-27 (DC-040).
+  asset: {
+    1: (doc) => {
+      const { assetType, variants: _v, blocksSight: _b, ...rest } = doc;
+      return { ...rest, assetKind: 'prop', ...(typeof assetType === 'string' ? { subkind: assetType } : {}) };
+    },
+  },
   session: {},
 };
 

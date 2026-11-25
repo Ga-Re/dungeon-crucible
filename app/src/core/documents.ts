@@ -85,13 +85,15 @@ export function readDocument<T>(
 
 /* ---------------------------------------------------------------- unknown fields */
 
-/** Peels optional/default/nullable/readonly wrappers off a schema. */
+/** Peels optional/default/nullable/readonly wrappers and a `preprocess` step off a schema. */
 function unwrap(schema: z.ZodType): z.ZodType {
   let s = schema;
   for (let i = 0; i < 10; i++) {
-    const def = (s as unknown as { _zod?: { def?: { type?: string; innerType?: z.ZodType } } })._zod?.def;
+    const def = (s as unknown as { _zod?: { def?: { type?: string; innerType?: z.ZodType; out?: z.ZodType } } })._zod?.def;
     if (def && (def.type === 'optional' || def.type === 'default' || def.type === 'nullable' || def.type === 'readonly' || def.type === 'prefault' || def.type === 'nonoptional' || def.type === 'catch') && def.innerType) {
       s = def.innerType;
+    } else if (def?.type === 'pipe' && def.out) {
+      s = def.out;
     } else break;
   }
   return s;

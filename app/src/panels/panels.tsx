@@ -3,6 +3,7 @@ import { cellsVisibleOnTable, pixelsPerInch, ppiCorrectionFromMeasurement } from
 import { FOG_BIOMES, type TableRotation } from '../core/scene';
 import { abilityModifier, ABILITIES, CONDITIONS, evaluateEncounter, proficiencyBonusForCr, proficiencyBonusForLevel, xpForCr, type ChallengeRating } from '../core/rules/rules2024';
 import { d20Test } from '../core/rules/dice';
+import { playerOfToken } from '../core/party';
 import { useI18n } from '../i18n/i18n';
 import { TableView, type FrameSource } from '../table/TableView';
 import { BIOMES } from '../render/pixi/fog-living';
@@ -353,6 +354,7 @@ export function InitiativePanel() {
   const turn = useStore((s) => s.turn);
   const sel = useStore((s) => s.selectedTokenId);
   const lock = useStore((s) => s.moveLock);
+  const players = useStore((s) => s.players);
   const [amount, setAmount] = useState(5);
   const [condFor, setCondFor] = useState<string | null>(null);
   const order = initiativeOrder();
@@ -370,7 +372,7 @@ export function InitiativePanel() {
         return (
           <div key={k.id} className={`ini ${i === turn ? 'cur' : ''} ${open ? 'sel' : ''} ${k.hp <= 0 ? 'down' : ''}`} onClick={() => selectToken(k.id)}>
             <div className="iv">{k.initiative}</div>
-            <div className="nm"><span>{k.name}</span><span className={`tag ${k.kind !== 'pc' ? 'm' : ''}`}>{k.kind === 'pc' ? t('init.pc') : t('init.monster')}</span>{k.kind === 'pc' && lock && <Icon name="lock" />}</div>
+            <div className="nm"><span>{k.name}</span>{playerOfToken(players, k) && <span className="player">{playerOfToken(players, k)!.name}</span>}<span className={`tag ${k.kind !== 'pc' ? 'm' : ''}`}>{k.kind === 'pc' ? t('init.pc') : t('init.monster')}</span>{k.kind === 'pc' && lock && <Icon name="lock" />}</div>
             <div className="ac"><Icon name="shield" /><b>{k.ac}</b></div>
             <div className="sub"><span className="hp">{k.hp}/{k.maxHp}</span><div className="hpbar"><i style={{ width: `${p * 100}%`, background: p > 0.5 ? 'var(--ok)' : p > 0.25 ? 'var(--warn)' : 'var(--crit)' }} /></div></div>
             <div className="extra" onClick={(e) => e.stopPropagation()}>

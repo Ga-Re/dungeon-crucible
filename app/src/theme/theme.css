@@ -300,3 +300,11 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .library-buttons { display: flex; gap: 6px; }
 /* "Edit start state" is on: the map shows the start, not the play state */
 .map-badge.start-state { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+/* Party panel (DC-096) */
+.party-list { list-style: none; margin: 0 0 8px; padding: 0; }
+.party-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.2fr) auto; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px solid var(--line-soft); }
+.party-list li.absent .party-name, .party-list li.absent select { color: var(--fg-faint); }
+.party-list input.party-name, .party-list select { min-width: 0; height: 24px; }
+.party-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+.ini .player { color: var(--fg-faint); font-size: 11px; font-weight: 400; }

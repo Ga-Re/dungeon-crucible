@@ -7,6 +7,7 @@ export const SAMPLE_CREATURES: Creature[] = [
   {
     ...base,
     role: 'pc',
+    id: 'thorin-ironbeard',
     name: 'Thorin Ironbeard',
     size: 'medium',
     creatureType: 'humanoid',
@@ -32,6 +33,7 @@ export const SAMPLE_CREATURES: Creature[] = [
   {
     ...base,
     role: 'pc',
+    id: 'lyra-moonfeather',
     name: 'Lyra Moonfeather',
     size: 'medium',
     creatureType: 'humanoid',
@@ -55,6 +57,7 @@ export const SAMPLE_CREATURES: Creature[] = [
   {
     ...base,
     role: 'monster',
+    id: 'ash-wight',
     name: 'Ash Wight',
     size: 'medium',
     creatureType: 'undead',

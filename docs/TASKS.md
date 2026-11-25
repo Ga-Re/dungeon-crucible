@@ -209,17 +209,21 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   (mit Rückfrage, rückgängig machbar) setzt den Spielzustand auf den Start, dazu Kampf und Initiative auf Runde 1,
   entfernt Zauberschablonen und die Nebel-Art der Szene. Ältere Szenen starten beim ersten Öffnen im aktuellen
   Zustand. Der Start-Nebel neuer Szenen kommt aus der Karte (DC-094).
-- **DC-096 Spielercharaktere** (E-1): global in der Bibliothek, Kampagne führt Spieler und verknüpft Figuren.
+- ✓ **DC-096 Spielercharaktere** (E-1): Figuren sind Kreaturen der Bibliothek (Rolle SC) mit fester `id` (ältere
+  Dateien bekommen ihren Namen als id, so bleiben Token-Verweise gültig). `campaign.dm.json` führt `players`
+  (Name, verknüpfte Figur, am Tisch ja/nein). Panel „Gruppe“ im Orchestrator: Spieler anlegen, Figur wählen,
+  anwesend setzen, entfernen; „Gruppe platzieren“ (Panel und Menüband) setzt fehlende Figuren der Anwesenden in
+  die Szene (rückgängig machbar). Eine neue Szene bekommt die Gruppe, Figuren aus der bisherigen Szene mit ihren
+  TP und Zuständen; ohne Spieler wie bisher die SC der Szene. Die Initiative zeigt den Spielernamen (nur DM).
 - ✓ **DC-097 Archiv-Export mit Schalter**: nur Kampagne oder vollständig mit Bibliotheksdateien; Import legt
   Bibliotheksdateien ab (gleicher Inhalt wird nicht kopiert, Namenskonflikte bei Karten/Audio werden umbenannt und
   Verweise umgeschrieben).
 - **DC-098 Hex-Raster entfernen** (E-7) aus Raster, Einrasten, Messen, Schablonen, Kalibrierung und UI.
 - **DC-099 Systemsprache** als Standard (E-5).
-- **DC-100 Kreatur umbenennen**: alte Datei `library/<name>.creature.json` entfernen bzw. umbenennen (heute bleibt
-  sie liegen und erscheint doppelt).
-
-### 3.1 Sofort (Fehler und Risiken)
-
+- ✓ **DC-100 Kreatur umbenennen**: nach dem Umbenennen wird die neue Datei geschrieben und die alte kommt in den
+  Papierkorb; id, Token-Verweise und Spielerverknüpfungen bleiben (mit DC-096). Zwei Kreaturen gleichen Namens
+  bekommen getrennte Dateien. Nebenbei behoben: neu angelegte Dokumente wurden nach einer Änderung im Speicher
+  nicht mehr geschrieben.
 - **DC-001 Kartendaten beim Speichern nicht mehr verlieren** (Teil von DC-090). Tags, Biom, Kartentyp, POIs und Assets aus dem
   Sidecar beim Laden übernehmen und unverändert zurückschreiben; unbekannte Felder erhalten (zod `passthrough`).
   Test: Rundreise einer Datei mit allen Feldern.

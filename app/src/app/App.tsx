@@ -9,7 +9,7 @@ import { MonitorMenu } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
 import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, focusPanel, removeLegacyLayouts } from './docking';
 import {
-  clearTemplates, emit, fogAll, log, nextTurn, redo, removeLastUserWall, rotateTable, setFogMode, setGridType, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
+  clearTemplates, emit, fogAll, log, nextTurn, placeParty, redo, removeLastUserWall, rotateTable, setFogMode, setGridType, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
@@ -153,6 +153,7 @@ function Ribbon() {
       case 'toggle:blackout': return toggleBlackout();
       case 'toggle:editStart': return void setEditStart(!flags.editStart);
       case 'scene:reset': return setResetting(true);
+      case 'party:place': return placeParty();
       case 'grid:square': return setGridType('square');
       case 'grid:hex-pointy': return setGridType('hex-pointy');
       case 'grid:hex-flat': return setGridType('hex-flat');

@@ -11,6 +11,7 @@ import { MapView } from '../panels/MapView';
 import {
   BrowserPanel, CreaturePanel, DicePanel, EncounterPanel, FogPanel, InitiativePanel, LogPanel, PreviewPanel, PropertiesPanel, SoonPanel, SoundPanel, TablePanel,
 } from '../panels/panels';
+import { PartyPanel } from '../panels/PartyPanel';
 import type { WorkspaceId } from './store';
 import { PANEL_TITLES, WORKSPACES, type PanelId } from './workspaces';
 
@@ -29,6 +30,7 @@ export const PANEL_CONTENT: Record<PanelId, () => ReactNode> = {
   atlas: () => <SoonPanel text="soon.atlas" />,
   vault: () => <SoonPanel text="soon.vault" />,
   sound: () => <SoundPanel />,
+  party: () => <PartyPanel />,
 };
 
 function storage(): Storage | null {

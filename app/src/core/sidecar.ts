@@ -107,9 +107,10 @@ export type AssetSidecar = z.infer<typeof AssetSidecarSchema>;
 
 const scores = z.object({ str: z.number().int().min(1).max(30), dex: z.number().int().min(1).max(30), con: z.number().int().min(1).max(30), int: z.number().int().min(1).max(30), wis: z.number().int().min(1).max(30), cha: z.number().int().min(1).max(30) });
 
-/** 2024-style stat block, entered by the user. */
-export const CreatureSchema = z.object({
+const creatureObject = z.object({
   kind: z.literal('creature'),
+  /** Fixed id that tokens and players refer to; a rename keeps it (DC-096). */
+  id,
   schemaVersion: z.literal(SCHEMA_VERSION),
   role: z.enum(['pc', 'npc', 'monster']),
   name: z.string().min(1),
@@ -143,7 +144,23 @@ export const CreatureSchema = z.object({
   legendaryActions: z.array(z.object({ name: z.string(), text: z.string() })).default([]),
   token: z.object({ image: z.string().optional(), ringColor: color, lightFt: z.number().int().min(0).default(0) }),
 });
-export type Creature = z.infer<typeof CreatureSchema>;
+
+/**
+ * 2024-style stat block, entered by the user. Files written before creatures had an id get the
+ * one their tokens already use: the name as a slug.
+ */
+export const CreatureSchema = z.preprocess((raw) => {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw) || 'id' in raw) return raw;
+  const name = (raw as { name?: unknown }).name;
+  return typeof name === 'string' ? { ...raw, id: creatureIdFromName(name) } : raw;
+}, creatureObject);
+export type Creature = z.infer<typeof creatureObject>;
+
+/** The id an old creature file without one gets: its name as a slug (as its tokens refer to it). */
+export function creatureIdFromName(name: string): string {
+  const s = name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+  return s || 'creature';
+}
 
 const tokenSchema = z.object({
   id,
@@ -204,11 +221,23 @@ export const SceneOverrideSchema = z.object({
 });
 export type SceneOverride = z.infer<typeof SceneOverrideSchema>;
 
+/** A player of the campaign, linked to a character in the library (DC-096). */
+export const PlayerSchema = z.object({
+  id,
+  name: z.string(),
+  /** Id of a library creature; none while the player has no character yet. */
+  characterId: id.optional(),
+  /** At the table this session: only present players' characters are placed. */
+  present: z.boolean().default(true),
+});
+export type Player = z.infer<typeof PlayerSchema>;
+
 export const CampaignManifestSchema = z.object({
   kind: z.literal('campaign'),
   schemaVersion: z.literal(SCHEMA_VERSION),
   name: z.string().min(1),
   activeScene: z.string().nullable(),
+  players: z.array(PlayerSchema).default([]),
   table: z.object({
     diagonalInches: z.number().positive(),
     widthPx: z.number().int().positive(),

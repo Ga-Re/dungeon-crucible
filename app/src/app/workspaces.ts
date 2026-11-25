@@ -22,7 +22,7 @@ export interface RibbonTab {
 
 export type PanelId =
   | 'map' | 'browser' | 'properties' | 'fog' | 'initiative' | 'preview' | 'table'
-  | 'dice' | 'log' | 'encounter' | 'creature' | 'atlas' | 'vault' | 'sound';
+  | 'dice' | 'log' | 'encounter' | 'creature' | 'atlas' | 'vault' | 'sound' | 'party';
 
 export interface DefaultLayout {
   center: PanelId;
@@ -205,6 +205,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
             buttons: [
               { id: 'toggle:editStart', icon: 'flag', label: 'tool.editStart' },
               { id: 'scene:reset', icon: 'reset', label: 'tool.resetScene' },
+              { id: 'party:place', icon: 'users', label: 'tool.placeParty' },
             ],
           },
           {
@@ -250,7 +251,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
     layout: {
       center: 'map',
       left: ['browser', 'fog'],
-      right: ['initiative', 'table'],
+      right: ['initiative', 'party', 'table'],
       bottom: ['sound', 'dice', 'log'],
       floating: [{ id: 'preview', width: 360, height: 260 }],
     },
@@ -274,4 +275,5 @@ export const PANEL_TITLES: Record<PanelId, MessageKey> = {
   atlas: 'panel.atlas',
   vault: 'panel.vault',
   sound: 'panel.sound',
+  party: 'panel.party',
 };

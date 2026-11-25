@@ -12,7 +12,7 @@ import { EMPTY_LEVEL_FOG, rectPolygon } from './fogModel';
 import type { LevelFog, Polygon } from './poly/types';
 import { DEFAULT_TABLE, type Scene, type Zone } from './scene';
 import { diffElements, resolveElements, type MapElements, type SceneLayer } from './mapLayers';
-import { SCHEMA_VERSION, type CampaignManifest, type MapSidecar, type SceneOverride } from './sidecar';
+import { SCHEMA_VERSION, type CampaignManifest, type MapSidecar, type Player, type SceneOverride } from './sidecar';
 
 export const BUILTIN_PREFIX = 'builtin:';
 
@@ -246,12 +246,13 @@ export function tableFromManifest(m: CampaignManifest): Partial<Scene['table']> 
   };
 }
 
-export function manifestFromState(name: string, activeScene: string | null, table: Scene['table']): CampaignManifest {
+export function manifestFromState(name: string, activeScene: string | null, table: Scene['table'], players: Player[] = []): CampaignManifest {
   return {
     kind: 'campaign',
     schemaVersion: SCHEMA_VERSION,
     name,
     activeScene,
+    players,
     table: {
       diagonalInches: table.display.diagonalInches,
       widthPx: table.display.widthPx,

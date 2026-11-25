@@ -12,13 +12,14 @@
  */
 import { manifestFromState, mapSidecarFromScene, mapSidecarPath, resetToStart, sceneFromDocuments, sceneIssues, sceneOverrideFromScene, startOf, tableFromManifest, BUILTIN_PREFIX } from '../core/persistence';
 import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MapSidecarSchema, SceneOverrideSchema, type Creature, type MapSidecar, type SceneOverride } from '../core/sidecar';
-import { keepUnknown, readDocument, slugId, type DocumentKind } from '../core/documents';
+import { keepUnknown, newId, readDocument, slugId, type DocumentKind } from '../core/documents';
+import { partyForNewScene } from '../core/party';
 import type { z } from 'zod';
 import { DEFAULT_GRID } from '../core/grid';
 import type { Scene } from '../core/scene';
 import {
   absolutePath, assetUrl, chooseRoot, createCampaignFolder, exportCampaignArchive, importCampaignArchive, importToLibrary, isDesktop, listCampaignFolders, listFiles,
-  readText, rootInfo, trashCampaignFolder, writeText, type CampaignError, type CampaignInfo,
+  readText, rootInfo, trashCampaignFolder, trashFile, writeText, type CampaignError, type CampaignInfo,
 } from '../platform/bridge';
 import { emptyScene } from '../core/emptyScene';
 import type { MessageKey } from '../i18n/en';
@@ -83,8 +84,10 @@ export async function writeDoc(rel: string, schema: z.ZodType, value: unknown): 
   const before = originals.get(rel);
   const out = keepUnknown(schema, before, value);
   if (before !== undefined && JSON.stringify(before) === JSON.stringify(out)) return;
-  await writeText(rel, JSON.stringify(out, null, 2));
-  originals.set(rel, out);
+  const text = JSON.stringify(out, null, 2);
+  await writeText(rel, text);
+  // A copy: `out` can share objects with `value`, which the app changes in place later.
+  originals.set(rel, JSON.parse(text));
 }
 
 /* ---------------------------------------------------------------- root folder */
@@ -204,7 +207,7 @@ export async function exportCampaign(withLibrary: boolean): Promise<void> {
   emit();
 }
 
-/** Library files the open campaign uses: maps of its scenes, ambience, creatures of its tokens. */
+/** Library files the open campaign uses: maps of its scenes, ambience, creatures of its tokens, its players' characters. */
 async function campaignLibraryFiles(): Promise<string[]> {
   const out = new Set<string>();
   for (const p of state.scenes) {
@@ -214,8 +217,9 @@ async function campaignLibraryFiles(): Promise<string[]> {
     if (map && map.resource.startsWith('library/')) out.add(map.resource);
     else if (ov.mapSidecar.startsWith('library/')) out.add(ov.mapSidecar.replace(/\.dm\.json$/, ''));
     for (const a of ov.ambience) if (a.path.startsWith('library/')) out.add(a.path);
-    for (const t of ov.tokens) if (t.creatureId) out.add(`library/${t.creatureId}${CREATURE_SUFFIX}`);
+    for (const t of ov.tokens) if (t.creatureId && creatureFiles.has(t.creatureId)) out.add(creatureFiles.get(t.creatureId)!);
   }
+  for (const p of state.players) if (p.characterId && creatureFiles.has(p.characterId)) out.add(creatureFiles.get(p.characterId)!);
   return [...out];
 }
 
@@ -238,7 +242,7 @@ export async function newCampaign(name: string, withSample: boolean): Promise<vo
     ov.start = startOf(ov);
     await showDocs(map, ov, resource, { scenePath: 'scenes/session-1.scene.json' });
     await loadCreatures();
-    for (const c of SAMPLE_CREATURES) if (!state.creatures.some((x) => creaturePath(x) === creaturePath(c))) state.creatures.push(structuredClone(c));
+    for (const c of SAMPLE_CREATURES) if (!state.creatures.some((x) => x.id === c.id)) state.creatures.push(structuredClone(c));
   } else {
     replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
     await loadCreatures();
@@ -273,6 +277,8 @@ export async function closeCampaign({ toStart = true } = {}): Promise<void> {
   state.campaign = null;
   state.scenes = [];
   state.creatures = [];
+  state.players = [];
+  creatureFiles.clear();
   originals.clear();
   readOnly.clear();
   replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
@@ -280,14 +286,56 @@ export async function closeCampaign({ toStart = true } = {}): Promise<void> {
   emit();
 }
 
-/** All creatures of the library (global). */
+/** The file each library creature was read from or last written to, by creature id. */
+const creatureFiles = new Map<string, string>();
+
+/** All creatures of the library (global). A second file with an id already read is reported, not used. */
 async function loadCreatures(): Promise<void> {
   const creatures: Creature[] = [];
+  creatureFiles.clear();
   for (const f of (await listFiles('library')).filter((x) => x.endsWith(CREATURE_SUFFIX))) {
     const c = await readDoc(f, 'creature', CreatureSchema);
-    if (c) creatures.push(c);
+    if (!c) continue;
+    if (creatureFiles.has(c.id)) {
+      log('log.duplicateCreature', { file: f, other: creatureFiles.get(c.id)! });
+      continue;
+    }
+    creatureFiles.set(c.id, f);
+    creatures.push(c);
   }
   state.creatures = creatures.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Writes the library creatures. A creature's file is named after it; after a rename the new file
+ * is written and the old one goes to the trash, so the library holds each creature once (DC-100).
+ */
+async function saveCreatures(): Promise<void> {
+  const files = new Map<Creature, string>();
+  const taken = new Set<string>();
+  for (const c of state.creatures) {
+    let file = creaturePath(c);
+    // Two creatures with the same name: the second file also carries the id.
+    if (taken.has(file)) file = file.replace(CREATURE_SUFFIX, `-${c.id}${CREATURE_SUFFIX}`);
+    taken.add(file);
+    files.set(c, file);
+  }
+  const renamed: string[] = [];
+  for (const [c, file] of files) {
+    const before = creatureFiles.get(c.id);
+    if (before && before !== file) {
+      // The unknown fields of the old file move along to the new one.
+      if (originals.has(before)) originals.set(file, originals.get(before)!);
+      renamed.push(before);
+    }
+    await writeDoc(file, CreatureSchema, c);
+    creatureFiles.set(c.id, file);
+  }
+  for (const old of renamed) {
+    if (taken.has(old)) continue;
+    await trashFile(old, false);
+    originals.delete(old);
+  }
 }
 
 /** Loads campaign `info.slug`; false if its folder holds no (readable) campaign. */
@@ -296,6 +344,7 @@ async function loadCampaign(info: CampaignInfo): Promise<boolean> {
   const manifest = await readDoc(campaignPath(CAMPAIGN_FILE), 'campaign', CampaignManifestSchema);
   if (!manifest) return false;
   state.campaign = { ...info, name: manifest.name };
+  state.players = manifest.players;
   await loadCreatures();
   state.selectedCreatureIdx = 0;
   if (manifest.activeScene) await loadScene(manifest.activeScene, tableFromManifest(manifest));
@@ -397,8 +446,8 @@ export async function saveCampaign(force = false): Promise<void> {
       await writeDoc(mapSidecarPath(state.mapResource), MapSidecarSchema, state.mapDoc);
       await writeDoc(campaignPath(state.scenePath), SceneOverrideSchema, state.sceneDoc);
     }
-    for (const c of state.creatures) await writeDoc(creaturePath(c), CreatureSchema, c);
-    await writeDoc(campaignPath(CAMPAIGN_FILE), CampaignManifestSchema, manifestFromState(state.campaign.name, state.scenePath, s.table));
+    await saveCreatures();
+    await writeDoc(campaignPath(CAMPAIGN_FILE), CampaignManifestSchema, manifestFromState(state.campaign.name, state.scenePath, s.table, state.players));
     state.dirty = false;
     state.lastSavedAt = Date.now();
   } catch (e) {
@@ -478,10 +527,23 @@ export async function openMapInNewScene(resource: string, sidecar: MapSidecar | 
       tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark',
     };
   }
-  // A new scene starts with the map's start fog; the player characters come along.
-  const pcs = (state.layer === 'scene' ? state.scene.tokens : (state.sceneDoc?.tokens ?? [])).filter((t) => t.kind === 'pc');
+  // A new scene starts with the map's start fog and the party: the characters of the players
+  // present, with their hit points from the scene played so far (DC-096).
+  const before = state.layer === 'scene' ? state.scene.tokens : (state.sceneDoc?.tokens ?? []);
   const ov = sceneOverrideFromScene(sceneFromDocuments(map, null, url, state.scene.table, 'scene'), map.name, mapSidecarPath(resource), { round: 1, turn: 0 }, map);
-  ov.tokens = pcs.map((t, i) => ({ ...t, conditions: [...t.conditions], x: map.widthPx / 2 + (i - 1) * map.grid.cellWidth, y: map.heightPx / 2 }));
+  const taken = new Set<string>();
+  ov.tokens = state.players.length === 0
+    // A campaign without players yet: the player characters of the scene so far come along.
+    ? before.filter((t) => t.kind === 'pc').map((t, i) => ({ ...structuredClone(t), x: map.widthPx / 2 + (i - 1) * map.grid.cellWidth, y: map.heightPx / 2 }))
+    : partyForNewScene(state.players, state.creatures, before, {
+    at: { x: map.widthPx / 2, y: map.heightPx / 2 },
+    cell: map.grid.cellWidth,
+    newId: (prefix) => {
+      const id = newId(prefix.slice(0, 40), (x) => taken.has(x));
+      taken.add(id);
+      return id;
+    },
+  });
   ov.start = startOf(ov);
   await showDocs(map, ov, resource, { scenePath: freeScenePath(map.name) });
   await saveCampaign(true);

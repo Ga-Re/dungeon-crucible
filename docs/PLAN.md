@@ -134,7 +134,7 @@ Dungeon Crucible/                 (Wurzelordner)
     krypta.webp                   krypta.webp.dm.json
     gasthaus.webp                 gasthaus.webp.dm.json
     hoehlenwind.ogg               hoehlenwind.ogg.dm.json
-    thorin.dm.json                (Kreatur/Spielercharakter)
+    thorin.creature.json          (Kreatur/Spielercharakter, feste id)
   campaigns/
     asche-von-vhal/
       campaign.dm.json            (Spieler und verknüpfte Figuren)

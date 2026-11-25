@@ -11,7 +11,7 @@ import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
 import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision } from '../core/vision';
 import { hideAll, hideIn, rectPolygon, rememberSeen, revealAll, revealIn } from '../core/fogModel';
-import { lockedAreas, slugify } from '../core/persistence';
+import { lockedAreas } from '../core/persistence';
 import { newId, slugId } from '../core/documents';
 import type { Polygon } from '../core/poly/types';
 import { readFogLook, saveCoverFrom, saveFadeSeconds, saveFogEdge, saveFogMotion, saveFogQuality, saveFogSpeed, saveSoftEdges, type CoverFrom, type FogLook, type FogQuality } from './fog-settings';
@@ -19,7 +19,8 @@ import { lookToWire } from '../render/fogOptions';
 import type { MonitorInfo } from '../platform/bridge';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import type { Creature } from '../core/sidecar';
+import type { Creature, Player } from '../core/sidecar';
+import { missingPartyTokens, tokenFromCreature } from '../core/party';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
@@ -83,6 +84,8 @@ export interface AppState {
   frame: PlayerFrame | null;
   frameSeq: number;
   creatures: Creature[];
+  /** The open campaign's players and their characters (DC-096). */
+  players: Player[];
   selectedCreatureIdx: number;
   mapFileName: string;
   /** Map resource: path relative to the campaign folder or `builtin:<id>`. */
@@ -157,6 +160,7 @@ function initial(): AppState {
     frame: null,
     frameSeq: 0,
     creatures: SAMPLE_CREATURES,
+    players: [],
     selectedCreatureIdx: 0,
     mapFileName: 'builtin: crypt-of-vhal-durn',
     mapResource: 'builtin:crypt',
@@ -744,11 +748,60 @@ export function setAmbient(a: Scene['ambient']): void {
 
 /* ---------- Tokens from creatures ---------- */
 
-const SIZE_CELLS: Record<string, number> = { tiny: 1, small: 1, medium: 1, large: 2, huge: 3, gargantuan: 4 };
+/** Where new tokens go: the centre of what the TV shows, else of the map. */
+function tableCentre(): Point {
+  const m = state.scene.map;
+  return { x: state.scene.table.centerX || m.widthPx / 2, y: state.scene.table.centerY || m.heightPx / 2 };
+}
 
-function initialsOf(name: string): string {
-  const parts = name.split(/\s+/).filter(Boolean);
-  return ((parts[0]?.[0] ?? '?') + (parts[1]?.[0] ?? parts[0]?.[1] ?? '')).toUpperCase();
+/* ---------- Players of the campaign (DC-096) ---------- */
+
+/** A new player without a character yet; returns its id. */
+export function addPlayer(name: string): string {
+  const id = newId('player', (x) => state.players.some((p) => p.id === x));
+  state.players = [...state.players, { id, name, present: true }];
+  markDirty();
+  emit();
+  return id;
+}
+
+export function updatePlayer(id: string, patch: Partial<Omit<Player, 'id'>>): void {
+  state.players = state.players.map((p) => {
+    if (p.id !== id) return p;
+    const next = { ...p, ...patch };
+    if (!next.characterId) delete next.characterId;
+    return next;
+  });
+  markDirty();
+  emit();
+}
+
+/** Removes a player from the campaign; the character stays in the library and its tokens stay. */
+export function removePlayer(id: string): void {
+  state.players = state.players.filter((p) => p.id !== id);
+  markDirty();
+  emit();
+}
+
+/** "Place party": the present players' characters that the scene does not have yet (DC-096). */
+export function placeParty(): void {
+  if (state.layer === 'map') {
+    log('log.tokensInScene');
+    emit();
+    return;
+  }
+  const c = snapPoint(tableCentre());
+  const added = missingPartyTokens(state.players, state.creatures, state.scene.tokens, { at: c, cell: state.scene.map.grid.cellWidth, newId: freshId });
+  if (added.length === 0) {
+    log('log.partyComplete');
+    emit();
+    return;
+  }
+  checkpoint();
+  state.scene.tokens.push(...added);
+  log('log.partyPlaced', { count: added.length });
+  recomputeVision();
+  emit();
 }
 
 /** Puts a creature from the library on the map; initiative is rolled (d20 + Dex). */
@@ -762,32 +815,9 @@ export function addCreatureToken(index: number, at?: Point): void {
     return;
   }
   checkpoint();
-  const creatureId = slugify(c.name);
-  const same = state.scene.tokens.filter((t) => t.creatureId === creatureId).length;
-  const base = initialsOf(c.name);
-  const label = c.role === 'pc' || same === 0 ? base : `${base.slice(0, 1)}${same + 1}`;
-  const m = state.scene.map;
-  const p = snapPoint(at ?? { x: state.scene.table.centerX || m.widthPx / 2, y: state.scene.table.centerY || m.heightPx / 2 });
-  const dex = Math.floor((c.abilities.dex - 10) / 2);
-  const id = freshId(creatureId);
-  state.scene.tokens.push({
-    id,
-    name: same > 0 && c.role !== 'pc' ? `${c.name} ${same + 1}` : c.name,
-    label: label.slice(0, 4),
-    kind: c.role === 'pc' ? 'pc' : c.role === 'npc' ? 'npc' : 'monster',
-    x: p.x,
-    y: p.y,
-    size: SIZE_CELLS[c.size] ?? 1,
-    ringColor: c.token.ringColor,
-    visionFt: c.senses.darkvision,
-    lightFt: c.token.lightFt || undefined,
-    hp: c.hp,
-    maxHp: c.hp,
-    ac: c.ac,
-    initiative: 1 + Math.floor(Math.random() * 20) + dex,
-    conditions: [],
-    creatureId,
-  });
+  const same = state.scene.tokens.filter((t) => t.creatureId === c.id).length;
+  const id = freshId(c.id);
+  state.scene.tokens.push(tokenFromCreature(c, id, snapPoint(at ?? tableCentre()), same));
   state.selectedTokenId = id;
   log('log.tokenAdded', { name: c.name });
   recomputeVision();

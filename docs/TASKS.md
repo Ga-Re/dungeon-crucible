@@ -105,7 +105,7 @@ Startzustand), dann die Kartenschmiede auf dieser Basis.
 | Wände, Türen, Geheimtüren, Fenster | ✗ | ✓ | DC weiter (DM: Stufe 5) |
 | Wände bearbeiten (auswählen, verschieben, löschen) | ✗ | ✓ | DC-014: Befehls-Panel „Wände zeichnen“, Gelenke, Ketten |
 | Lichtquellen der Karte | ✗ | ✓ | |
-| Klippen/Galerien (Einweg), Deckung (Kreis/Polygon) | ✗ | ◐ | T-193; DC-014: Klippen ✓, Deckung offen |
+| Klippen/Galerien (Einweg), Deckung (Kreis/Polygon) | ✗ | ◐ | T-193; DC-014: Klippen ✓; Deckung am Asset: DC-108 |
 | Automatische Wände, Leck-Prüfung, Testfigur | ✗ | ✗ | T-141, T-194 |
 | Parametrische Räume, Gelände mit Bewegungskosten, Treppen | ✗ | ✗ | T-195–197 |
 | Kartenvarianten (Tag/Nacht), Zuschneiden, Bildanpassung | ✗ | ✗ | T-191, T-192 |
@@ -280,7 +280,7 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   ziehen (eingerastet, Alt frei; danach wird die Form bereinigt), Löschen mit Rückfrage im Panel (Szenen-Overrides
   verwaisen); OK ändert den Bereich unter derselben ID als ein Schritt. Das Eigenschaften-Panel zeigt den Bereich
   nur noch an. Nicht umgesetzt: das Panel verschieben (bleibt oben rechts); Ellipsen zeigen viele Eckgriffe.
-- ◐ **DC-014 Wände bearbeiten**: auswählen, Endpunkte verschieben, löschen, Ketten; Objekte als Polygon; Einweg-Wände
+- ✓ **DC-014 Wände bearbeiten**: auswählen, Endpunkte verschieben, löschen, Ketten; Objekte als Polygon; Einweg-Wände
   (Klippen/Galerien) und Deckung (T-193). DM-Entscheidungen (2026-11-25): drei Schritte auf `feature/map-forge`
   (1. Bearbeiten und Ketten, 2. Einweg-Wände, 3. Deckung); „Wände zeichnen“ als Befehls-Panel (Art, Kette,
   OK/Abbrechen), Bearbeiten direkt mit „Auswählen“ (Endpunkte ziehen, Entf löscht, Art im Eigenschaften-Panel);
@@ -302,7 +302,8 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   hat eigene Blocker). Im Zeichnen-Panel als fünfte Art (kettet), „Richtung umdrehen“ dort und im
   Eigenschaften-Panel; auf der Karte mit Schraffur und Pfeil zur unteren Seite. Karte und Szene sind
   `schemaVersion` 3 (Migration ohne Datenänderung: ältere App-Versionen schreiben solche Dateien nicht zurück).
-  Offen: Schritt 3 Deckung.
+  Schritt 3 (Deckung) entfällt hier – DM-Entscheidung (2026-11-25): Die Deckungsmaske gehört zum Asset und wird im
+  Asset-Editor festgelegt; weiter mit DC-108.
 - **DC-107 Kontextsensitiver Karten-Editor** (DM-Wunsch 2026-11-25, `docs/KARTENEDITOR.md`): Dungeon- und
   Wildnis-/Stadtkarten selbst zeichnen – Wände, Wege, Flüsse, Gebäude, Türen, Brücken als editierbare Absichten
   (Intent-Modell mit Seeds), Regel-Pipeline für Ecken, Kreuzungen, Durchbrüche, Übergänge, handgezeichnete Optik und
@@ -349,6 +350,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Duplikat-Erkennung, Pack-Import (flach mit Tags statt Ordnerstruktur) (T-178, T-179, T-231).
 - **DC-041 Props auf der Karte**: platzieren, drehen in 15°-Schritten, skalieren, Sichtblocker aus Alpha (T-144).
 - **DC-042 Smart Prefabs, Innenräume als Asset-Varianten** (T-202, T-146).
+- **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
+  Deckungsmaske eines Assets fest (Kreis oder Polygon auf dem Bild – Baum, Säule, Statue); ein platziertes Asset ist
+  automatisch maskiert: Die Maske dreht und skaliert mit, sie wird nur am Asset geändert und gilt dann überall
+  (DM-Entscheidung 2026-11-25: keine Anpassung je Platzierung). In der Sicht wirft Deckung Schatten nach hinten, das
+  Objekt selbst bleibt sichtbar. Hängt an DC-040 (Bibliothek), einem Asset-Editor und DC-041 (platzieren); das
+  Asset-Thema beginnt mit einem Interview (Reihenfolge, Asset-Editor, Dateiformat, Licht hinter Deckung).
 - **DC-043 Kreaturen global** in der Bibliothek (Werteblock-Editor umziehen); Spielercharaktere siehe DC-096.
 - **DC-044 Tokenbilder**: Token und Porträt, Token aus Porträt, Fraktionsring, ausgeschnittene Figur (T-203, T-208).
 - **DC-045 Klone, Begegnungsgruppen, Gestalten, SRD-Import, eigene Footprints** (T-204–207, T-241).

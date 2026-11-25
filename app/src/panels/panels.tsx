@@ -18,7 +18,7 @@ import {
   setElementsLayer, setPlacementInteriorTrigger, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
-import { importMapIntoCampaign, switchScene } from '../app/campaign';
+import { importMapIntoCampaign, newSceneOnMap, switchScene } from '../app/campaign';
 import { filterLibraryMaps, mapUsage, openLibraryMap, refreshLibraryMaps, trashLibraryMap, type MapUsage } from '../app/library';
 import { CREATURE_DRAG } from './MapView';
 import { VaultBrowser } from './VaultPanels';
@@ -151,6 +151,8 @@ function LibraryMaps() {
   const savedAt = useStore((s) => s.lastSavedAt);
   const [query, setQuery] = useState('');
   const [confirm, setConfirm] = useState<{ resource: string; usage: MapUsage[] } | null>(null);
+  // The context menu of a map (E-30): a click opens the map on its own; a scene is made on request.
+  const [ctx, setCtx] = useState<string | null>(null);
   useEffect(() => {
     void refreshLibraryMaps();
   }, [sceneVersion, savedAt]);
@@ -171,13 +173,21 @@ function LibraryMaps() {
           {shown.map((m) => (
             <li key={m.resource}>
               <div className={`tn ${m.resource === current ? 'sel' : ''}`}>
-                <button className="library-open" title={m.resource} onClick={() => void openLibraryMap(m.resource)}>
+                <button className="library-open" title={m.resource} onClick={() => void openLibraryMap(m.resource)} onContextMenu={(e) => { e.preventDefault(); setCtx(ctx === m.resource ? null : m.resource); }}>
                   <Icon name={m.isVideo ? 'play' : 'map'} />
                   <span className="nm">{m.name}</span>
                   {m.tags.length > 0 && <span className="meta">{m.tags.join(', ')}</span>}
                 </button>
                 <button className="ab-btn" title={t('library.trash')} aria-label={`${t('library.trash')}: ${m.name}`} onClick={() => void mapUsage(m.resource).then((usage) => setConfirm({ resource: m.resource, usage }))}><Icon name="trash" /></button>
               </div>
+              {ctx === m.resource && (
+                <div className="library-confirm" role="menu">
+                  <div className="library-buttons">
+                    <button className="btn sm" role="menuitem" onClick={() => { setCtx(null); void newSceneOnMap(m.resource); }}><Icon name="plus" />{t('tabs.newScene')}</button>
+                    <button className="btn sm" onClick={() => setCtx(null)}>{t('start.cancel')}</button>
+                  </div>
+                </div>
+              )}
               {confirm?.resource === m.resource && (
                 <div className="library-confirm" role="alert">
                   {confirm.usage.length > 0 ? (

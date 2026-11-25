@@ -25,6 +25,7 @@ import type { Polygon } from '../core/poly/types';
 import { readFogLook, saveCoverFrom, saveFadeSeconds, saveFogEdge, saveFogMotion, saveFogQuality, saveFogSpeed, saveSoftEdges, type CoverFrom, type FogLook, type FogQuality } from './fog-settings';
 import { lookToWire } from '../render/fogOptions';
 import type { MonitorInfo } from '../platform/bridge';
+import { emptyScene } from '../core/emptyScene';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
 import type { AssetKind, AssetSidecar, Creature, MapLayer, Player } from '../core/sidecar';
@@ -146,6 +147,18 @@ export interface AppState {
   effectRuns: Record<string, number>;
   /** Houses a player character came into whose interior waits for the DM's yes (E-29; not saved). */
   interiorAsks: { id: string; name: string }[];
+  /** Open documents as tabs (E-30, DC-034), in order; the active one is what `scene` shows. */
+  tabs: DocTab[];
+  /** The tab shown: a scene's path, or `map:<resource>` for a map open on its own. */
+  activeTab: string | null;
+  /** The scene on the TV (E-30): changed only by command; none: the TV is black. */
+  tvScenePath: string | null;
+  /** After switching tabs in the Orchestrator: "this scene on the TV?" waits for the DM's answer. */
+  tvAsk: string | null;
+  /** The TV is black since the campaign was opened, until the DM puts a scene there or lifts the blackout (E-30). */
+  blackUntilRelease: boolean;
+  /** The map of the TV's scene was changed in the Map Forge: the TV keeps the map before, until "on the TV" (E-30). */
+  tvMapPending: boolean;
   /** The Asset Vault: catalog, filter, selection (E-27, DC-040). */
   vault: VaultState;
   /** Recently used campaigns (start screen). */
@@ -223,6 +236,12 @@ function initial(): AppState {
     currentLayer: BASE_LAYER,
     effectRuns: {},
     interiorAsks: [],
+    tabs: [],
+    activeTab: null,
+    tvScenePath: null,
+    tvAsk: null,
+    tvMapPending: false,
+    blackUntilRelease: false,
     vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null },
     soundboard: initialSoundboard(),
   };
@@ -273,7 +292,7 @@ export function log(key: MessageKey, params?: Record<string, string | number>): 
 
 /* ---------- Undo / redo & dirty tracking ---------- */
 
-const history = new History<string>(100);
+let history = new History<string>(100);
 const dirtyListeners = new Set<() => void>();
 
 export function onDirty(fn: () => void): () => void {
@@ -287,6 +306,8 @@ let viewVersion = 0;
 export function markDirty(): void {
   viewVersion++;
   state.dirty = true;
+  // A change of the TV scene's map waits for the DM before it reaches the TV (E-30).
+  if (state.layer === 'map' && state.tvScenePath && state.mapResource === tvResource()) state.tvMapPending = true;
   for (const f of dirtyListeners) f();
 }
 
@@ -359,7 +380,11 @@ function freshId(prefix: string): string {
  * Replaces the whole view (open campaign, switch scene, import map). `scene` must show
  * `layerFor(state.ws)`; `docs` are the map and scene as in their files (none: no map open).
  */
-export function replaceScene(scene: Scene, opts: { resource: string; fileName: string; scenePath: string | null; sceneName: string; round?: number; turn?: number; docs?: { map: MapSidecar | null; scene: SceneOverride | null } }): void {
+export function replaceScene(scene: Scene, opts: { resource: string; fileName: string; scenePath: string | null; sceneName: string; round?: number; turn?: number; docs?: { map: MapSidecar | null; scene: SceneOverride | null }; mapTab?: boolean }): void {
+  // The document shown so far stays open in its tab (E-30).
+  const tabId = opts.scenePath ?? (opts.mapTab ? mapTabId(opts.resource) : null);
+  if (state.activeTab && state.activeTab !== tabId) stashSession();
+  state.activeTab = tabId;
   state.scene = scene;
   state.mapDoc = opts.docs?.map ?? null;
   state.sceneDoc = opts.docs?.scene ?? null;
@@ -379,10 +404,252 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   layerInside = charactersInTriggers();
   interiorInside = charactersInHouses();
   state.interiorAsks = [];
+  state.effectRuns = {};
+  // A scene of its own: its own undo history; the one before keeps its history in its tab.
+  history = new History<string>(100);
   clearHistory();
+  if (tabId && !state.tabs.some((x) => x.id === tabId)) state.tabs = [...state.tabs, { id: tabId, kind: opts.scenePath ? 'scene' : 'map', name: opts.sceneName }];
   state.sceneVersion++;
   emit();
 }
+
+/* ---------- Document tabs (E-30, DC-034) ---------- */
+
+/** An open document: a scene of the campaign (by its path) or a library map on its own (`map:<resource>`). */
+export interface DocTab {
+  id: string;
+  kind: 'scene' | 'map';
+  name: string;
+  /** Put away with changes not saved yet (the tab shown tells by `dirty`). */
+  unsaved?: boolean;
+}
+
+export function mapTabId(resource: string): string {
+  return `map:${resource}`;
+}
+
+/** What an open document keeps while another tab is shown: its files, its undo history and its unsaved state. */
+interface Session {
+  scenePath: string | null;
+  sceneName: string;
+  mapResource: string;
+  mapFileName: string;
+  imageUrl: string | null;
+  sceneDoc: SceneOverride | null;
+  mapDoc: MapSidecar | null;
+  round: number;
+  turn: number;
+  editStart: boolean;
+  history: History<string>;
+  dirty: boolean;
+  effectRuns: Record<string, number>;
+  interiorAsks: { id: string; name: string }[];
+  /** Where the TV is centred on this scene's map (the other table settings belong to the TV). */
+  center: { x: number; y: number };
+  /** The layer its undo history was recorded in: shown in another one, the history starts anew. */
+  layer: ViewLayer;
+}
+
+const sessions = new Map<string, Session>();
+/** The maps of open scenes by resource: scenes on the same map share its latest edits. */
+const openMaps = new Map<string, MapSidecar>();
+
+/** Puts the scene shown away into its tab (its view becomes its files again). */
+function stashSession(): void {
+  if (!state.activeTab) return;
+  dropCalibration();
+  commitView();
+  if (state.mapDoc) openMaps.set(state.mapResource, state.mapDoc);
+  sessions.set(state.activeTab, {
+    scenePath: state.scenePath, sceneName: state.sceneName, mapResource: state.mapResource, mapFileName: state.mapFileName, imageUrl: state.scene.map.imageUrl,
+    sceneDoc: state.sceneDoc, mapDoc: state.mapDoc, round: state.round, turn: state.turn, editStart: state.editStart, history, dirty: state.dirty,
+    effectRuns: state.effectRuns, interiorAsks: state.interiorAsks, center: { x: state.scene.table.centerX, y: state.scene.table.centerY }, layer: state.layer,
+  });
+  if (state.dirty) {
+    const id = state.activeTab;
+    state.tabs = state.tabs.map((x) => (x.id === id ? { ...x, unsaved: true } : x));
+  }
+}
+
+/** The open documents put away with changes not saved yet: their files to write (E-30). */
+export function unsavedSessions(): { id: string; mapResource: string; mapDoc: MapSidecar | null; scenePath: string | null; sceneDoc: SceneOverride | null }[] {
+  return [...sessions.entries()].filter(([, s]) => s.dirty).map(([id, s]) => ({ id, mapResource: s.mapResource, mapDoc: openMaps.get(s.mapResource) ?? s.mapDoc, scenePath: s.scenePath, sceneDoc: s.sceneDoc }));
+}
+
+/** A document put away was saved. */
+export function sessionSaved(id: string): void {
+  const s = sessions.get(id);
+  if (s) s.dirty = false;
+  state.tabs = state.tabs.map((x) => (x.id === id && x.unsaved ? { id: x.id, kind: x.kind, name: x.name } : x));
+}
+
+/** The newest map of `resource` among the open documents (the one shown first), if one is open. */
+export function latestMap(resource: string): MapSidecar | null {
+  if (resource === state.mapResource && state.mapDoc) {
+    commitView();
+    return state.mapDoc;
+  }
+  return openMaps.get(resource) ?? null;
+}
+
+/** Whether a document is open in a tab (shown or not), by tab id. */
+export function isSceneOpen(tabId: string): boolean {
+  return state.tabs.some((x) => x.id === tabId);
+}
+
+/**
+ * Shows the open document of tab `tabId` (put away by `stashSession`), in the current workspace's
+ * layer; a map on its own always in the Map Forge (E-30).
+ */
+export function activateSession(tabId: string): boolean {
+  const s = sessions.get(tabId);
+  if (!s || tabId === state.activeTab) return false;
+  stashSession();
+  sessions.delete(tabId);
+  state.activeTab = tabId;
+  if (!s.scenePath && state.ws !== 'forge') {
+    state.ws = 'forge';
+    state.areaCommand = null;
+    state.wallCommand = null;
+    state.tool = 'select';
+  }
+  const mapDoc = openMaps.get(s.mapResource) ?? s.mapDoc;
+  state.mapDoc = mapDoc;
+  state.sceneDoc = s.sceneDoc;
+  state.scenePath = s.scenePath;
+  state.sceneName = s.sceneName;
+  state.mapResource = s.mapResource;
+  state.mapFileName = s.mapFileName;
+  state.round = s.round;
+  state.turn = s.turn;
+  state.editStart = s.editStart;
+  state.layer = layerFor(state.ws);
+  state.effectRuns = s.effectRuns;
+  state.interiorAsks = s.interiorAsks;
+  // Undo stays in the layer it was recorded in (as when switching layers): a map edit is not undone in a scene.
+  history = s.layer === state.layer ? s.history : new History<string>(100);
+  state.canUndo = history.canUndo;
+  state.canRedo = history.canRedo;
+  const table = { ...state.scene.table, centerX: s.center.x, centerY: s.center.y };
+  if (mapDoc) {
+    state.scene = sceneFromDocuments(mapDoc, s.sceneDoc, s.imageUrl, table, state.layer);
+    state.scene.table = table;
+  }
+  viewVersion++;
+  state.selectedTokenId = null;
+  state.selectedZoneId = null;
+  state.selectedLightId = null;
+  state.selectedAssetId = null;
+  clearWallEditing();
+  recomputeVision();
+  layerInside = charactersInTriggers();
+  interiorInside = charactersInHouses();
+  state.dirty = s.dirty;
+  state.tabs = state.tabs.map((x) => (x.id === tabId && x.unsaved ? { id: x.id, kind: x.kind, name: x.name } : x));
+  state.sceneVersion++;
+  // What was put away unsaved gets saved soon (autosave).
+  if (sessions.size && [...sessions.values()].some((x) => x.dirty)) for (const f of dirtyListeners) f();
+  emit();
+  return true;
+}
+
+/**
+ * Closes the tab of `scenePath`: a tab in the background is just dropped (it was saved when it was
+ * put away); the one shown gives way to its neighbour, or to no scene. The caller saves first.
+ */
+export function closeSessionTab(tabId: string): void {
+  const i = state.tabs.findIndex((x) => x.id === tabId);
+  if (i < 0) return;
+  state.tabs = state.tabs.filter((x) => x.id !== tabId);
+  // The TV's scene closed: the TV is black until another scene is put there.
+  if (tabId === state.tvScenePath) setTvScene(null);
+  if (state.tvAsk === tabId) state.tvAsk = null;
+  if (tabId !== state.activeTab) {
+    sessions.delete(tabId);
+    emit();
+    return;
+  }
+  const next = state.tabs[Math.min(i, state.tabs.length - 1)];
+  // Nothing of the closed document is kept: activating the next must not put it away again.
+  state.activeTab = null;
+  state.scenePath = null;
+  if (next && activateSession(next.id)) return;
+  replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
+}
+
+/** All tabs closed (the campaign closes). */
+export function clearTabs(): void {
+  sessions.clear();
+  openMaps.clear();
+  state.tabs = [];
+  state.activeTab = null;
+  state.tvScenePath = null;
+  state.tvAsk = null;
+}
+
+/** Puts scene `scenePath` on the TV (an open tab), or none (black). */
+export function setTvScene(scenePath: string | null): void {
+  if (scenePath && !isSceneOpen(scenePath)) return;
+  state.tvScenePath = scenePath;
+  state.tvAsk = null;
+  snapshotTvMap();
+  emit();
+}
+
+/** The map the TV shows (E-30): the TV scene's map as when it went there or was last taken over. */
+let tvMap: MapSidecar | null = null;
+
+/** The map resource of the TV's scene. */
+function tvResource(): string | null {
+  if (!state.tvScenePath) return null;
+  if (state.tvScenePath === state.scenePath) return state.mapResource;
+  return sessions.get(state.tvScenePath)?.mapResource ?? null;
+}
+
+/** The latest map of an open scene: as being edited if it is shown (its own tab or a tab of the same map). */
+function currentMapOf(scenePath: string): MapSidecar | null {
+  const resource = scenePath === state.scenePath ? state.mapResource : sessions.get(scenePath)?.mapResource;
+  if (!resource) return null;
+  if (resource === state.mapResource && state.mapDoc) return state.layer === 'map' ? mapSidecarFromScene(state.scene, state.mapResource, 'map', state.mapDoc) : state.mapDoc;
+  const s = sessions.get(scenePath);
+  return s ? (openMaps.get(s.mapResource) ?? s.mapDoc) : null;
+}
+
+/** The TV takes its scene's map as it is now. */
+function snapshotTvMap(): void {
+  const map = state.tvScenePath ? currentMapOf(state.tvScenePath) : null;
+  tvMap = map ? structuredClone(map) : null;
+  state.tvMapPending = false;
+  tvCache = null;
+  backgroundTv = null;
+}
+
+/** "On the TV": the changes of the TV scene's map go there (E-30). */
+export function applyMapToTv(): void {
+  if (!state.tvMapPending) return;
+  snapshotTvMap();
+  log('log.mapToTv');
+  emit();
+}
+
+/** The DM's answer to "this scene on the TV?". */
+export function answerTvAsk(yes: boolean): void {
+  if (yes && state.tvAsk) setTvScene(state.tvAsk);
+  state.tvAsk = null;
+  emit();
+}
+
+/** The scene the soundboard plays (E-30): the TV's, else – with nothing on the TV – the scene shown. */
+export function soundScene(): string | null {
+  return state.tvScenePath ?? state.scenePath;
+}
+
+/** The scene file of an open scene, shown or in its tab. */
+export function openSceneDoc(scenePath: string): SceneOverride | null {
+  if (scenePath === state.scenePath) return state.sceneDoc;
+  return sessions.get(scenePath)?.sceneDoc ?? null;
+}
+
 
 /* ---------- Workspace & tools ---------- */
 
@@ -419,13 +686,16 @@ function docsFromView(): { map: MapSidecar; ov: SceneOverride | null } {
   const s = cal ? { ...state.scene, map: { ...state.scene.map, grid: cal.before } } : state.scene;
   const map = mapSidecarFromScene(s, state.mapResource, state.layer, state.mapDoc);
   const doc = state.sceneDoc;
+  // The soundboard plays the TV's scene (E-30): another scene shown keeps its own ambience.
+  const live = state.scenePath !== null && state.scenePath === soundScene();
   if (state.layer !== 'map') {
     const fromView = sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, previousLayer(doc));
     if (!doc) return { map, ov: fromView };
-    if (state.layer === 'start') return { map, ov: commitStart(doc, fromView, playingAmbience()) };
-    return { map, ov: { ...fromView, ambience: state.editStart ? doc.ambience : playingAmbience(), ...(doc.start ? { start: doc.start } : {}) } };
+    if (state.layer === 'start') return { map, ov: commitStart(doc, fromView, live ? playingAmbience() : startOf(doc).ambience) };
+    return { map, ov: { ...fromView, ambience: state.editStart || !live ? doc.ambience : playingAmbience(), ...(doc.start ? { start: doc.start } : {}) } };
   }
   if (!doc) return { map, ov: null };
+  if (!live) return { map, ov: doc };
   return { map, ov: state.editStart ? { ...doc, start: { ...startOf(doc), ambience: playingAmbience() } } : { ...doc, ambience: playingAmbience() } };
 }
 
@@ -470,6 +740,22 @@ export function showLayer(layer: ViewLayer): void {
 }
 
 export function setWorkspace(ws: WorkspaceId): void {
+  // A map on its own is edited in the Map Forge only (E-30): elsewhere a scene is shown – the TV's,
+  // else the last scene tab.
+  const tab = state.tabs.find((x) => x.id === state.activeTab);
+  if (ws !== 'forge' && tab?.kind === 'map') {
+    const scene = state.tabs.find((x) => x.id === state.tvScenePath) ?? [...state.tabs].reverse().find((x) => x.kind === 'scene');
+    state.ws = ws;
+    state.areaCommand = null;
+    state.wallCommand = null;
+    state.tool = 'select';
+    if (!(scene && activateSession(scene.id))) {
+      // No scene open: nothing to show there; the map stays in its tab.
+      replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
+    }
+    emit();
+    return;
+  }
   state.ws = ws;
   state.areaCommand = null;
   state.wallCommand = null;
@@ -1932,6 +2218,8 @@ export function rotateTable(): void {
 
 export function toggleBlackout(): void {
   state.scene.table.blackout = !state.scene.table.blackout;
+  // Lifting the blackout releases the TV after the start (E-30).
+  if (!state.scene.table.blackout) state.blackUntilRelease = false;
   emit();
 }
 
@@ -1941,9 +2229,10 @@ export function updateTable(patch: Partial<Scene['table']>): void {
   emit();
 }
 
-export function tableZoom(): number {
+/** The TV's zoom for a true-size grid: of `grid` (the TV scene's), else of the scene shown. */
+export function tableZoom(grid = state.scene.map.grid): number {
   const t = state.scene.table;
-  return tableZoomForPhysicalGrid(state.scene.map.grid, t.display, t.inchesPerCell, t.ppiCorrection);
+  return tableZoomForPhysicalGrid(grid, t.display, t.inchesPerCell, t.ppiCorrection);
 }
 
 /** Builds the next frame for the table (and the preview). */
@@ -1951,41 +2240,62 @@ export function produceFrame(now: number): PlayerFrame {
   // Drop pings older than 2 s.
   state.scene.pings = state.scene.pings.filter((p) => now - p.at < 2000);
   state.frameSeq++;
-  const tv = tvView();
+  // No scene on the TV: black, and nothing of any scene in the frame.
+  const tv = tvView() ?? { scene: emptyScene({ ...state.scene.table, blackout: true }), visible: [], lights: [], turn: 0, resource: '', runs: {} };
   state.frame = buildPlayerFrame(tv.scene, {
     seq: state.frameSeq,
     now,
     showGrid: state.showGrid,
     memoryOpacity: state.memoryOpacity,
     movementLocked: state.moveLock,
-    zoom: tableZoom(),
+    zoom: tableZoom(tv.scene.map.grid),
     look: lookToWire(state.fogLook),
     visible: tv.visible,
     quick: state.fogQuick,
-    activeTokenId: state.ws === 'play' ? initiativeOrder()[state.turn]?.id ?? null : null,
-    seedKey: state.mapResource,
+    activeTokenId: state.ws === 'play' && tv.scene === state.scene ? initiativeOrder()[tv.turn]?.id ?? null : null,
+    seedKey: tv.resource,
     lights: tv.lights,
     // Only the scene's shown placements: assets it hides never reach the TV.
     // Houses as switched in the scene (E-29); the TV never sees through a roof.
-    assets: assetShapes(drawnPlacements(allPlacements(tv.scene), state.assetInfo, tv.scene.interiorsOn, false), state.assetInfo, tv.scene.map.grid, { effectsOn: tv.scene.effectsOn, runs: state.effectRuns }),
+    assets: assetShapes(drawnPlacements(allPlacements(tv.scene), state.assetInfo, tv.scene.interiorsOn, false), state.assetInfo, tv.scene.map.grid, { effectsOn: tv.scene.effectsOn, runs: tv.runs }),
     covers: assetExtras(tv.scene).covers,
   });
   return state.frame;
 }
 
-let tvCache: { version: number; scene: Scene; visible: Polygon[]; lights: LitSource[] } | null = null;
+interface TvView {
+  scene: Scene;
+  visible: Polygon[];
+  lights: LitSource[];
+  turn: number;
+  resource: string;
+  runs: Record<string, number>;
+}
+
+let tvCache: { version: string; scene: Scene; visible: Polygon[]; lights: LitSource[] } | null = null;
+let backgroundTv: { session: Session; info: Record<string, AssetInfo>; map: MapSidecar | null; view: TvView } | null = null;
 
 /**
- * What the TV shows: the scene. While the Map Forge shows the map, that is the map being edited
- * with the scene's changes and state (fog, tokens) – rebuilt only when something changed.
+ * What the TV shows: the TV's scene (E-30). The scene shown in the DM window in its play state is
+ * used as it is; while the Map Forge shows its map, that is the map being edited with the scene's
+ * changes and state (fog, tokens) – rebuilt only when something changed. A scene in a tab in the
+ * background is built from its files (it does not change while another tab is shown).
  */
-function tvView(): { scene: Scene; visible: Polygon[]; lights: LitSource[] } {
-  if (state.layer === 'scene' || !state.mapDoc) return { scene: state.scene, visible: state.visible, lights: state.lights };
-  if (!tvCache || tvCache.version !== viewVersion) {
-    // Editing the map or the start state: the TV shows the play state, with the map (and the
-    // scene's changes of it) as they are being edited.
-    const map = mapSidecarFromScene(state.scene, state.mapResource, state.layer, state.mapDoc);
-    let ov = state.sceneDoc;
+function tvView(): TvView | null {
+  // Without any scene file (the sample before a campaign is opened) the TV shows what is shown.
+  const untabbed = state.scenePath === null && state.tabs.length === 0;
+  if (!state.tvScenePath && !untabbed) return null;
+  if (state.tvScenePath && state.tvScenePath !== state.scenePath) return backgroundView(state.tvScenePath);
+  const own = { turn: state.turn, resource: state.mapResource, runs: state.effectRuns };
+  const pending = state.tvMapPending && tvMap;
+  if (!state.mapDoc || (state.layer === 'scene' && !pending)) return { scene: state.scene, visible: state.visible, lights: state.lights, ...own };
+  // The scene as shown (its state changes go to the TV at once), on the map the TV has.
+  const stamp = pending ? `p${version}` : `v${viewVersion}`;
+  if (!tvCache || tvCache.version !== stamp) {
+    // Editing the map or the start state: the TV shows the play state, with the map as the TV
+    // has it (its changes wait for the DM, E-30) and the scene's changes as they are being edited.
+    const map = pending ? tvMap! : mapSidecarFromScene(state.scene, state.mapResource, state.layer, state.mapDoc);
+    let ov = state.layer === 'scene' ? docsFromView().ov : state.sceneDoc;
     if (ov && state.layer === 'start') {
       const fromView = sceneOverrideFromScene(state.scene, state.sceneName, ov.mapSidecar, { round: state.round, turn: state.turn }, map, layerOf(ov));
       ov = { ...ov, overrides: fromView.overrides, added: fromView.added };
@@ -1994,11 +2304,29 @@ function tvView(): { scene: Scene; visible: Polygon[]; lights: LitSource[] } {
     const extras = assetExtras(scene);
     const seen = withAssetDoors(scene);
     const vision = updateVision(seen, extras);
-    tvCache = { version: viewVersion, scene, visible: visiblePolygons(vision), lights: litSources(seen, extras) };
+    tvCache = { version: stamp, scene, visible: visiblePolygons(vision), lights: litSources(seen, extras) };
   }
-  // Table settings (blackout, rotation, centre) stay live.
+  // Table settings (blackout, rotation, centre) and the DM's pings stay live.
   tvCache.scene.table = state.scene.table;
-  return tvCache;
+  tvCache.scene.pings = state.scene.pings;
+  return { ...tvCache, ...own };
+}
+
+function backgroundView(scenePath: string): TvView | null {
+  const s = sessions.get(scenePath);
+  if (!s) return null;
+  const map = tvMap ?? openMaps.get(s.mapResource) ?? s.mapDoc;
+  if (!map) return null;
+  if (!backgroundTv || backgroundTv.session !== s || backgroundTv.info !== state.assetInfo || backgroundTv.map !== map) {
+    const scene = sceneFromDocuments(map, s.sceneDoc, s.imageUrl, state.scene.table, 'scene');
+    const extras = assetExtras(scene);
+    const seen = withAssetDoors(scene);
+    const vision = updateVision(seen, extras);
+    backgroundTv = { session: s, info: state.assetInfo, map, view: { scene, visible: visiblePolygons(vision), lights: litSources(seen, extras), turn: s.turn, resource: s.mapResource, runs: s.effectRuns } };
+  }
+  // The TV's settings stay live; the centre is the scene's own.
+  backgroundTv.view.scene.table = { ...state.scene.table, centerX: s.center.x, centerY: s.center.y };
+  return backgroundTv.view;
 }
 
 export function setMapImage(url: string, isVideo: boolean, w: number, h: number, name: string): void {

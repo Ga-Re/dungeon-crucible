@@ -7,7 +7,7 @@ import { mapSidecarPath } from '../core/persistence';
 import { CampaignManifestSchema, MapSidecarSchema, SceneOverrideSchema, type MapSidecar } from '../core/sidecar';
 import type { MapType } from '../core/scene';
 import { isDesktop, listCampaignFolders, listFiles, readText, trashFile } from '../platform/bridge';
-import { openMapResource } from './campaign';
+import { openMapTab } from './campaign';
 import { emit, state } from './store';
 
 const MAP_FILE = /\.(png|jpe?g|webp|mp4|webm)$/i;
@@ -118,4 +118,4 @@ export async function trashLibraryMap(resource: string): Promise<void> {
 }
 
 /** Opens a library map in the open campaign (its scene, or a new one). */
-export const openLibraryMap = openMapResource;
+export const openLibraryMap = openMapTab;

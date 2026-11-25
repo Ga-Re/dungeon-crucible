@@ -113,6 +113,11 @@ export interface AppState {
   mapFileName: string;
   /** Map resource: path relative to the campaign folder or `builtin:<id>`. */
   mapResource: string;
+  /**
+   * The open map's own file (E-32): its sidecar `<picture>.dm.json`, or a map file
+   * `library/<name>.map.json` on a picture other maps may share. '' without a map.
+   */
+  mapFile: string;
   campaign: CampaignInfo | null;
   scenePath: string | null;
   sceneName: string;
@@ -231,6 +236,7 @@ function initial(): AppState {
     selectedCreatureIdx: 0,
     mapFileName: 'builtin: crypt-of-vhal-durn',
     mapResource: 'builtin:crypt',
+    mapFile: mapSidecarPath('builtin:crypt'),
     campaign: null,
     scenePath: null,
     sceneName: 'Session 3',
@@ -341,7 +347,7 @@ export function markDirty(): void {
   viewVersion++;
   state.dirty = true;
   // A change of the TV scene's map waits for the DM before it reaches the TV (E-30).
-  if (state.layer === 'map' && state.tvScenePath && state.mapResource === tvResource()) state.tvMapPending = true;
+  if (state.layer === 'map' && state.tvScenePath && state.mapFile === tvMapFile()) state.tvMapPending = true;
   for (const f of dirtyListeners) f();
 }
 
@@ -414,9 +420,11 @@ function freshId(prefix: string): string {
  * Replaces the whole view (open campaign, switch scene, import map). `scene` must show
  * `layerFor(state.ws)`; `docs` are the map and scene as in their files (none: no map open).
  */
-export function replaceScene(scene: Scene, opts: { resource: string; fileName: string; scenePath: string | null; sceneName: string; round?: number; turn?: number; docs?: { map: MapSidecar | null; scene: SceneOverride | null }; mapTab?: boolean }): void {
+export function replaceScene(scene: Scene, opts: { resource: string; fileName: string; scenePath: string | null; sceneName: string; round?: number; turn?: number; docs?: { map: MapSidecar | null; scene: SceneOverride | null }; mapTab?: boolean; mapFile?: string }): void {
+  // The map's own file (E-32): given, else the scene's, else its picture's sidecar.
+  const mapFile = opts.mapFile ?? opts.docs?.scene?.mapSidecar ?? (opts.resource ? mapSidecarPath(opts.resource) : '');
   // The document shown so far stays open in its tab (E-30).
-  const tabId = opts.scenePath ?? (opts.mapTab ? mapTabId(opts.resource) : null);
+  const tabId = opts.scenePath ?? (opts.mapTab ? mapTabId(mapFile) : null);
   if (state.activeTab && state.activeTab !== tabId) stashSession();
   state.activeTab = tabId;
   // A map or scene opened: the Map Forge shows it, not the catalog (E-32); none: the catalog.
@@ -428,6 +436,7 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   state.layer = layerFor(state.ws);
   viewVersion++;
   state.mapResource = opts.resource;
+  state.mapFile = mapFile;
   state.mapFileName = opts.fileName;
   state.scenePath = opts.scenePath;
   state.sceneName = opts.sceneName;
@@ -498,8 +507,9 @@ export function closeCreatureTab(id: string): DocTab | null {
   return creatures[Math.min(before, creatures.length - 1)] ?? null;
 }
 
-export function mapTabId(resource: string): string {
-  return `map:${resource}`;
+/** The tab of a map open on its own, by its map file (E-32). */
+export function mapTabId(mapFile: string): string {
+  return `map:${mapFile}`;
 }
 
 /** What an open document keeps while another tab is shown: its files, its undo history and its unsaved state. */
@@ -507,6 +517,7 @@ interface Session {
   scenePath: string | null;
   sceneName: string;
   mapResource: string;
+  mapFile: string;
   mapFileName: string;
   imageUrl: string | null;
   sceneDoc: SceneOverride | null;
@@ -533,9 +544,9 @@ function stashSession(): void {
   if (!state.activeTab) return;
   dropCalibration();
   commitView();
-  if (state.mapDoc) openMaps.set(state.mapResource, state.mapDoc);
+  if (state.mapDoc) openMaps.set(state.mapFile, state.mapDoc);
   sessions.set(state.activeTab, {
-    scenePath: state.scenePath, sceneName: state.sceneName, mapResource: state.mapResource, mapFileName: state.mapFileName, imageUrl: state.scene.map.imageUrl,
+    scenePath: state.scenePath, sceneName: state.sceneName, mapResource: state.mapResource, mapFile: state.mapFile, mapFileName: state.mapFileName, imageUrl: state.scene.map.imageUrl,
     sceneDoc: state.sceneDoc, mapDoc: state.mapDoc, round: state.round, turn: state.turn, editStart: state.editStart, history, dirty: state.dirty,
     effectRuns: state.effectRuns, interiorAsks: state.interiorAsks, center: { x: state.scene.table.centerX, y: state.scene.table.centerY }, layer: state.layer,
   });
@@ -546,8 +557,8 @@ function stashSession(): void {
 }
 
 /** The open documents put away with changes not saved yet: their files to write (E-30). */
-export function unsavedSessions(): { id: string; mapResource: string; mapDoc: MapSidecar | null; scenePath: string | null; sceneDoc: SceneOverride | null }[] {
-  return [...sessions.entries()].filter(([, s]) => s.dirty).map(([id, s]) => ({ id, mapResource: s.mapResource, mapDoc: openMaps.get(s.mapResource) ?? s.mapDoc, scenePath: s.scenePath, sceneDoc: s.sceneDoc }));
+export function unsavedSessions(): { id: string; mapFile: string; mapDoc: MapSidecar | null; scenePath: string | null; sceneDoc: SceneOverride | null }[] {
+  return [...sessions.entries()].filter(([, s]) => s.dirty).map(([id, s]) => ({ id, mapFile: s.mapFile, mapDoc: openMaps.get(s.mapFile) ?? s.mapDoc, scenePath: s.scenePath, sceneDoc: s.sceneDoc }));
 }
 
 /** A document put away was saved. */
@@ -557,13 +568,13 @@ export function sessionSaved(id: string): void {
   state.tabs = state.tabs.map((x) => (x.id === id && x.unsaved ? { id: x.id, kind: x.kind, name: x.name } : x));
 }
 
-/** The newest map of `resource` among the open documents (the one shown first), if one is open. */
-export function latestMap(resource: string): MapSidecar | null {
-  if (resource === state.mapResource && state.mapDoc) {
+/** The newest state of map file `mapFile` among the open documents (the one shown first), if one is open. */
+export function latestMap(mapFile: string): MapSidecar | null {
+  if (mapFile === state.mapFile && state.mapDoc) {
     commitView();
     return state.mapDoc;
   }
-  return openMaps.get(resource) ?? null;
+  return openMaps.get(mapFile) ?? null;
 }
 
 /** Whether a document is open in a tab (shown or not), by tab id. */
@@ -588,12 +599,13 @@ export function activateSession(tabId: string): boolean {
     state.wallCommand = null;
     state.tool = 'select';
   }
-  const mapDoc = openMaps.get(s.mapResource) ?? s.mapDoc;
+  const mapDoc = openMaps.get(s.mapFile) ?? s.mapDoc;
   state.mapDoc = mapDoc;
   state.sceneDoc = s.sceneDoc;
   state.scenePath = s.scenePath;
   state.sceneName = s.sceneName;
   state.mapResource = s.mapResource;
+  state.mapFile = s.mapFile;
   state.mapFileName = s.mapFileName;
   state.round = s.round;
   state.turn = s.turn;
@@ -683,20 +695,20 @@ export function setTvScene(scenePath: string | null): void {
 /** The map the TV shows (E-30): the TV scene's map as when it went there or was last taken over. */
 let tvMap: MapSidecar | null = null;
 
-/** The map resource of the TV's scene. */
-function tvResource(): string | null {
+/** The map file of the TV's scene. */
+function tvMapFile(): string | null {
   if (!state.tvScenePath) return null;
-  if (state.tvScenePath === state.scenePath) return state.mapResource;
-  return sessions.get(state.tvScenePath)?.mapResource ?? null;
+  if (state.tvScenePath === state.scenePath) return state.mapFile;
+  return sessions.get(state.tvScenePath)?.mapFile ?? null;
 }
 
 /** The latest map of an open scene: as being edited if it is shown (its own tab or a tab of the same map). */
 function currentMapOf(scenePath: string): MapSidecar | null {
-  const resource = scenePath === state.scenePath ? state.mapResource : sessions.get(scenePath)?.mapResource;
-  if (!resource) return null;
-  if (resource === state.mapResource && state.mapDoc) return state.layer === 'map' ? mapSidecarFromScene(state.scene, state.mapResource, 'map', state.mapDoc) : state.mapDoc;
+  const file = scenePath === state.scenePath ? state.mapFile : sessions.get(scenePath)?.mapFile;
+  if (!file) return null;
+  if (file === state.mapFile && state.mapDoc) return state.layer === 'map' ? mapSidecarFromScene(state.scene, state.mapResource, 'map', state.mapDoc) : state.mapDoc;
   const s = sessions.get(scenePath);
-  return s ? (openMaps.get(s.mapResource) ?? s.mapDoc) : null;
+  return s ? (openMaps.get(s.mapFile) ?? s.mapDoc) : null;
 }
 
 /** The TV takes its scene's map as it is now. */
@@ -773,7 +785,7 @@ function docsFromView(): { map: MapSidecar; ov: SceneOverride | null } {
   // The soundboard plays the TV's scene (E-30): another scene shown keeps its own ambience.
   const live = state.scenePath !== null && state.scenePath === soundScene();
   if (state.layer !== 'map') {
-    const fromView = sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, previousLayer(doc));
+    const fromView = sceneOverrideFromScene(s, state.sceneName, state.mapFile, { round: state.round, turn: state.turn }, map, previousLayer(doc));
     if (!doc) return { map, ov: fromView };
     if (state.layer === 'start') return { map, ov: commitStart(doc, fromView, live ? playingAmbience() : startOf(doc).ambience) };
     return { map, ov: { ...fromView, ambience: state.editStart || !live ? doc.ambience : playingAmbience(), ...(doc.start ? { start: doc.start } : {}) } };
@@ -2516,7 +2528,7 @@ function tvView(): TvView | null {
 function backgroundView(scenePath: string): TvView | null {
   const s = sessions.get(scenePath);
   if (!s) return null;
-  const map = tvMap ?? openMaps.get(s.mapResource) ?? s.mapDoc;
+  const map = tvMap ?? openMaps.get(s.mapFile) ?? s.mapDoc;
   if (!map) return null;
   if (!backgroundTv || backgroundTv.session !== s || backgroundTv.info !== state.assetInfo || backgroundTv.map !== map) {
     const scene = sceneFromDocuments(map, s.sceneDoc, s.imageUrl, state.scene.table, 'scene');

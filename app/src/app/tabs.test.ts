@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sceneFromDocuments } from '../core/persistence';
+import { mapSidecarPath, sceneFromDocuments } from '../core/persistence';
 import { activateSession, addLight, answerTvAsk, applyMapToTv, placeAsset, setAssetInfo, tableZoom, checkpoint, clearTabs, closeSessionTab, commitView, moveToken, produceFrame, replaceScene, setTvScene, setWorkspace, state, undo } from './store';
 
 /** Scenes as tabs (E-30, DC-034 step 1): each keeps its state and undo history while another is shown. */
@@ -106,11 +106,11 @@ describe('scene tabs', () => {
     setTvScene('scenes/a.scene.json');
     replaceScene(sceneFromDocuments(base.map, null, null, undefined, 'map'), { resource: 'library/other.png', fileName: 'library/other.png', scenePath: null, sceneName: 'Other', docs: { map: structuredClone(base.map), scene: null }, mapTab: true });
     expect(state.tabs.map((x) => [x.kind, x.name])).toEqual([['scene', 'A'], ['map', 'Other']]);
-    expect(state.activeTab).toBe('map:library/other.png');
+    expect(state.activeTab).toBe('map:library/other.png.dm.json');
     expect(state.scenePath).toBeNull();
     activateSession('scenes/a.scene.json');
     // Back to the map: always the Map Forge.
-    activateSession('map:library/other.png');
+    activateSession('map:library/other.png.dm.json');
     expect(state.ws).toBe('forge');
     expect(state.layer).toBe('map');
     // The Orchestrator shows the scene on the TV instead.
@@ -153,7 +153,7 @@ describe('scene tabs', () => {
     const before = produceFrame(Date.now()).assets.length;
     setWorkspace('forge');
     replaceScene(sceneFromDocuments(base.map, null, null, undefined, 'map'), { resource: base.resource, fileName: base.fileName, scenePath: null, sceneName: 'Crypt', docs: { map: structuredClone(base.map), scene: null }, mapTab: true });
-    expect(state.activeTab).toBe(`map:${base.resource}`);
+    expect(state.activeTab).toBe(`map:${mapSidecarPath(base.resource)}`);
     placeAsset('library/barrel.png', { x: 315, y: 875 });
     expect(state.tvMapPending).toBe(true);
     expect(produceFrame(Date.now()).assets.length).toBe(before);
@@ -182,7 +182,7 @@ describe('scene tabs', () => {
     setWorkspace('play');
     expect(state.activeTab).toBeNull();
     expect(state.mapDoc).toBeNull();
-    expect(state.tabs.map((x) => x.id)).toEqual(['map:library/other.png']);
+    expect(state.tabs.map((x) => x.id)).toEqual(['map:library/other.png.dm.json']);
   });
 
   it('the TV is zoomed for the grid of its own scene, not of the tab shown', () => {

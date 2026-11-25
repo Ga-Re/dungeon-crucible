@@ -586,8 +586,14 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   ebenso Doppelklick, Enter, Rechtsklick › Öffnen), die Szenen der offenen Kampagne (öffnen) mit Hinweis auf andere
   Kampagnen, „Neue Szene auf dieser Karte“, Papierkorb mit Hinweis, wo benutzt. Die alte Kartenliste im Browser der
   Kartenschmiede entfällt.
-- **DC-118 Karten duplizieren** (E-32): eigene Kartendateien `library/<name>.map.json` (Lesen, Katalog, Szenen),
-  Duplizieren „nur die Karte“ / „mit allem“.
+- ✓ **DC-118 Karten duplizieren** (E-32): Eine Karte ist jetzt über ihre Kartendatei bestimmt (`state.mapFile`:
+  `bild.dm.json` oder eine Kopie `library/<name>.map.json` auf demselben Bild) – Speichern, Karten-Tabs, geteilte
+  Kartenstände, „Auf den TV übernehmen“ und neue Szenen richten sich danach; alte Tabs mit Bildpfad öffnen weiter.
+  Im Katalog „Duplizieren“ mit Name und „Nur die Karte“ (Bild, Raster, Typ, Tags, Landschaft, Nebel-Aussehen) oder
+  „Mit allem“ (auch Wände, Bereiche, Lichter, Assets, Ebenen, Punkte, Start-Nebel; neue IDs, Verweise – Ebene,
+  Auslöse-Bereich, Gegenebene – folgen); offene Änderungen werden vorher gespeichert. Kopien stehen mit „Kopie“ im
+  Katalog; eine unlesbare Kopie oder eine ohne Bild wird gemeldet und ausgelassen. Papierkorb: eine Kopie nur,
+  solange keine Szene sie benutzt; ein Bild nicht, solange Kopien es benutzen (Hinweis).
 - **DC-043 Kreaturen global** in der Bibliothek (Werteblock-Editor umziehen); Spielercharaktere siehe DC-096.
 - **DC-044 Tokenbilder**: Token und Porträt, Token aus Porträt, Fraktionsring, ausgeschnittene Figur (T-203, T-208).
 - **DC-045 Klone, Begegnungsgruppen, Gestalten, SRD-Import, eigene Footprints** (T-204–207, T-241).

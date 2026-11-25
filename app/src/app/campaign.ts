@@ -497,7 +497,7 @@ export async function loadScene(scenePath: string, table: Partial<Scene['table']
   const read = await readDoc(ov.mapSidecar, 'map', MapSidecarSchema);
   if (!read) return;
   // A map open in another tab may have changes newer than its file.
-  const map = latestMap(read.resource) ?? read;
+  const map = latestMap(ov.mapSidecar) ?? read;
   // Older scenes start where they are when first opened (E-3); saved with the next save.
   if (!ov.start) ov.start = startOf(ov);
   await showDocs(map, ov, map.resource, { scenePath, table });
@@ -633,14 +633,14 @@ async function writeCampaign(unsaved: ReturnType<typeof unsavedSessions>): Promi
     // A campaign without a map yet has no scene: only the manifest and creatures are written.
     commitView();
     // The document shown: a scene and its map, or a map open on its own (E-30).
-    if (state.mapDoc && (state.sceneDoc || !state.scenePath)) await writeDoc(mapSidecarPath(state.mapResource), MapSidecarSchema, state.mapDoc);
+    if (state.mapDoc && state.mapFile && (state.sceneDoc || !state.scenePath)) await writeDoc(state.mapFile, MapSidecarSchema, state.mapDoc);
     if (state.scenePath && state.sceneDoc) await writeDoc(campaignPath(state.scenePath), SceneOverrideSchema, state.sceneDoc);
     // Documents put away with changes (E-30); a map the shown document has too is written once, as shown.
-    const written = new Set(state.mapDoc ? [state.mapResource] : []);
+    const written = new Set(state.mapDoc ? [state.mapFile] : []);
     for (const u of unsaved) {
-      if (u.mapDoc && !written.has(u.mapResource)) {
-        await writeDoc(mapSidecarPath(u.mapResource), MapSidecarSchema, u.mapDoc);
-        written.add(u.mapResource);
+      if (u.mapDoc && u.mapFile && !written.has(u.mapFile)) {
+        await writeDoc(u.mapFile, MapSidecarSchema, u.mapDoc);
+        written.add(u.mapFile);
       }
       if (u.scenePath && u.sceneDoc) await writeDoc(campaignPath(u.scenePath), SceneOverrideSchema, u.sceneDoc);
       sessionSaved(u.id);
@@ -744,40 +744,63 @@ async function mapOf(resource: string, sidecar: MapSidecar | null): Promise<{ ma
  * Opens library map `resource` on its own as a tab in the Map Forge (E-30): no scene is made
  * for it; "new scene on this map" makes one.
  */
-export async function openMapTab(resource: string): Promise<void> {
+export async function openMapTab(mapOrPicture: string): Promise<void> {
   if (!state.campaign) return;
   await saveCampaign();
-  const id = mapTabId(resource);
+  // A map file (E-32), or a picture: its sidecar (tabs kept before map files were picture paths).
+  const mapFile = toMapFile(mapOrPicture);
+  const id = mapTabId(mapFile);
   if (isSceneOpen(id)) {
     activateSession(id);
     keepTabs();
     return;
   }
-  const { map, url } = await mapOf(resource, latestMap(resource) ?? (await readDoc(mapSidecarPath(resource), 'map', MapSidecarSchema, { quiet: true })));
+  const doc = latestMap(mapFile) ?? (await readDoc(mapFile, 'map', MapSidecarSchema, { quiet: true }));
+  // A map file must be readable; a picture without a sidecar yet gets a fresh one.
+  if (!doc && isMapFile(mapFile)) {
+    log('log.tabNotRestored', { name: mapFile.replace(/^library\//, '') });
+    emit();
+    return;
+  }
+  const resource = doc?.resource ?? mapOrPicture;
+  const { map, url } = await mapOf(resource, doc);
   state.ws = 'forge';
   state.areaCommand = null;
   state.wallCommand = null;
   state.tool = 'select';
   const scene = sceneFromDocuments(map, null, url, tvSettings(), 'map');
   scene.table = { ...state.scene.table, centerX: scene.table.centerX, centerY: scene.table.centerY };
-  replaceScene(scene, { resource, fileName: resource, scenePath: null, sceneName: map.name, docs: { map, scene: null }, mapTab: true });
+  replaceScene(scene, { resource, fileName: resource, scenePath: null, sceneName: map.name, docs: { map, scene: null }, mapTab: true, mapFile });
   keepTabs();
 }
 
-/** "New scene on this map" (E-30): a new scene on library map `resource`, with its walls, areas and lights. */
-export async function newSceneOnMap(resource: string): Promise<void> {
-  if (!state.campaign) return;
-  await saveCampaign();
-  await openMapInNewScene(resource, await readDoc(mapSidecarPath(resource), 'map', MapSidecarSchema, { quiet: true }));
+/** A map file `library/<name>.map.json` (E-32), not a picture's sidecar. */
+function isMapFile(path: string): boolean {
+  return path.endsWith('.map.json');
 }
 
-/** Starts a new scene of the open campaign on library map `resource` (with its sidecar if it has one). */
-export async function openMapInNewScene(resource: string, sidecar: MapSidecar | null = null): Promise<void> {
+/** The map file of a map given by its map file or its picture. */
+function toMapFile(mapOrPicture: string): string {
+  return isMapFile(mapOrPicture) || mapOrPicture.endsWith('.dm.json') ? mapOrPicture : mapSidecarPath(mapOrPicture);
+}
+
+/** "New scene on this map" (E-30): a new scene on a library map (map file or picture), with its walls, areas and lights. */
+export async function newSceneOnMap(mapOrPicture: string): Promise<void> {
+  if (!state.campaign) return;
+  await saveCampaign();
+  const mapFile = toMapFile(mapOrPicture);
+  const doc = latestMap(mapFile) ?? (await readDoc(mapFile, 'map', MapSidecarSchema, { quiet: true }));
+  if (!doc && isMapFile(mapFile)) return;
+  await openMapInNewScene(doc?.resource ?? mapOrPicture, doc, mapFile);
+}
+
+/** Starts a new scene of the open campaign on library map `resource` (with its sidecar if it has one; its own map file if a copy). */
+export async function openMapInNewScene(resource: string, sidecar: MapSidecar | null = null, mapFile = mapSidecarPath(resource)): Promise<void> {
   const { map, url } = await mapOf(resource, sidecar);
   // A new scene starts with the map's start fog and the party: the characters of the players
   // present, with their hit points from the scene played so far (DC-096).
   const before = state.layer === 'scene' ? state.scene.tokens : (state.sceneDoc?.tokens ?? []);
-  const ov = sceneOverrideFromScene(sceneFromDocuments(map, null, url, tvSettings(), 'scene'), map.name, mapSidecarPath(resource), { round: 1, turn: 0 }, map);
+  const ov = sceneOverrideFromScene(sceneFromDocuments(map, null, url, tvSettings(), 'scene'), map.name, mapFile, { round: 1, turn: 0 }, map);
   const taken = new Set<string>();
   ov.tokens = state.players.length === 0
     // A campaign without players yet: the player characters of the scene so far come along.

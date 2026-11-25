@@ -5,7 +5,6 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { countsOf, filterMaps, MAP_TYPES } from '../core/mapCatalog';
-import { mapSidecarPath } from '../core/persistence';
 import type { MapType } from '../core/scene';
 import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
@@ -13,7 +12,7 @@ import { Icon } from '../ui/Icon';
 import { useStore } from '../app/store';
 import { newSceneOnMap, switchScene } from '../app/campaign';
 import {
-  mapIsOpen, mapUsage, openLibraryMap, refreshLibraryMaps, selectCatalogMap, setMapFilter, trashLibraryMap, updateLibraryMap, type LibraryMap, type MapUsage,
+  duplicateLibraryMap, mapIsOpen, mapUsage, openLibraryMap, refreshLibraryMaps, selectCatalogMap, setMapFilter, trashBlocked, trashLibraryMap, updateLibraryMap, type LibraryMap, type MapUsage,
 } from '../app/library';
 import { useThumbnail } from './VaultPanels';
 
@@ -38,7 +37,7 @@ export function MapCatalogView() {
   const selected = useStore((s) => s.mapSelected);
   const thumbPx = useStore((s) => s.vault.thumbPx);
   const shown = useShownMaps();
-  const [menu, setMenu] = useState<{ resource: string; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ mapFile: string; x: number; y: number } | null>(null);
   useEffect(() => {
     void refreshLibraryMaps();
   }, []);
@@ -55,14 +54,14 @@ export function MapCatalogView() {
       ) : (
         <ul className="vault-grid" role="listbox" aria-label={t('mapCatalog.title')} style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${Math.max(thumbPx, 140)}px, 1fr))` }}>
           {shown.map((m) => (
-            <MapCard key={m.resource} map={m} selected={m.resource === selected} onMenu={(x, y) => setMenu({ resource: m.resource, x, y })} />
+            <MapCard key={m.mapFile} map={m} selected={m.mapFile === selected} onMenu={(x, y) => setMenu({ mapFile: m.mapFile, x, y })} />
           ))}
         </ul>
       )}
       {menu && (
         <CatalogMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)}>
-          <button role="menuitem" onClick={() => { setMenu(null); void openLibraryMap(menu.resource); }}><Icon name="map" /><span>{t('mapCatalog.open')}</span></button>
-          <button role="menuitem" onClick={() => { setMenu(null); void newSceneOnMap(menu.resource); }}><Icon name="plus" /><span>{t('tabs.newScene')}</span></button>
+          <button role="menuitem" onClick={() => { setMenu(null); void openLibraryMap(menu.mapFile); }}><Icon name="map" /><span>{t('mapCatalog.open')}</span></button>
+          <button role="menuitem" onClick={() => { setMenu(null); void newSceneOnMap(menu.mapFile); }}><Icon name="plus" /><span>{t('tabs.newScene')}</span></button>
         </CatalogMenu>
       )}
     </div>
@@ -79,18 +78,18 @@ function MapCard({ map, selected, onMenu }: { map: LibraryMap; selected: boolean
       aria-selected={selected}
       tabIndex={0}
       className={`vault-card ${selected ? 'sel' : ''}`}
-      onClick={() => selectCatalogMap(map.resource)}
-      onDoubleClick={() => void openLibraryMap(map.resource)}
+      onClick={() => selectCatalogMap(map.mapFile)}
+      onDoubleClick={() => void openLibraryMap(map.mapFile)}
       onContextMenu={(e) => {
         e.preventDefault();
-        selectCatalogMap(map.resource);
+        selectCatalogMap(map.mapFile);
         onMenu(e.clientX, e.clientY);
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') void openLibraryMap(map.resource);
+        if (e.key === 'Enter') void openLibraryMap(map.mapFile);
         else if (e.key === ' ') {
           e.preventDefault();
-          selectCatalogMap(map.resource);
+          selectCatalogMap(map.mapFile);
         }
       }}
       title={`${map.name} · ${typeLabel(map.mapType)}`}
@@ -99,6 +98,7 @@ function MapCard({ map, selected, onMenu }: { map: LibraryMap; selected: boolean
       <div className="vault-name">
         <Icon name={map.isVideo ? 'play' : 'map'} />
         <span>{map.name}</span>
+        {map.copy && <span className="vault-variants" title={t('mapCatalog.copyHint')}>{t('mapCatalog.copy')}</span>}
         {map.used && <span className="vault-variants" title={t('mapCatalog.used')}>{t('mapCatalog.usedShort')}</span>}
       </div>
     </li>
@@ -188,19 +188,22 @@ export function MapDetails() {
   const { t } = useI18n();
   const typeLabel = useTypeLabel();
   const resource = useStore((s) => s.mapSelected);
-  const map = useStore((s) => s.libraryMaps.find((m) => m.resource === s.mapSelected));
-  const scenes = useStore((s) => (s.mapSelected ? s.mapScenes[mapSidecarPath(s.mapSelected)] ?? [] : []));
+  const map = useStore((s) => s.libraryMaps.find((m) => m.mapFile === s.mapSelected));
+  const scenes = useStore((s) => (s.mapSelected ? s.mapScenes[s.mapSelected] ?? [] : []));
   const campaign = useStore((s) => s.campaign);
   useStore((s) => s.tabs);
   const [usage, setUsage] = useState<MapUsage[] | null>(null);
   const [confirm, setConfirm] = useState(false);
+  const [copying, setCopying] = useState<{ name: string; withAll: boolean } | null>(null);
   useEffect(() => {
     setConfirm(false);
+    setCopying(null);
     setUsage(null);
     if (resource) void mapUsage(resource).then(setUsage);
   }, [resource]);
   if (!map || !resource) return <div className="panel-body hint">{t('mapCatalog.noSelection')}</div>;
   const open = mapIsOpen(resource);
+  const blocked = usage ? trashBlocked(map, usage) : null;
   const editable = map.hasSidecar && !open;
   const others = usage ? usage.length - scenes.length : 0;
   return (
@@ -216,7 +219,8 @@ export function MapDetails() {
       </div>
       <DetailText label={t('props.tags')} value={map.tags.join(', ')} disabled={!editable} onCommit={(v) => void updateLibraryMap(resource, { tags: [...new Set(v.split(',').map((x) => x.trim()).filter(Boolean))] })} />
       {map.region && <div className="row"><label>{t('mapCatalog.region')}</label><span>{map.region}</span></div>}
-      <div className="row"><label>{t('props.file')}</label><span className="mono hint" title={resource}>{resource.replace(/^library\//, '')}</span></div>
+      <div className="row"><label>{t('props.file')}</label><span className="mono hint" title={map.resource}>{map.resource.replace(/^library\//, '')}</span></div>
+      {map.copy && <div className="row"><label>{t('mapCatalog.copy')}</label><span className="mono hint" title={map.mapFile}>{map.mapFile.replace(/^library\//, '')}</span></div>}
       {map.widthPx !== null && <div className="row"><label>{t('mapCatalog.size')}</label><span>{map.widthPx} × {map.heightPx} px</span></div>}
       {map.cellPx !== null && <div className="row"><label>{t('mapCatalog.grid')}</label><span>{Number(map.cellPx.toFixed(1))} px · {map.feetPerCell} ft</span></div>}
       {open && <p className="hint">{t('mapCatalog.openHint')}</p>}
@@ -237,6 +241,21 @@ export function MapDetails() {
         </>
       )}
       <div className="sec">{t('mapCatalog.manage')}</div>
+      {copying ? (
+        <div className="library-confirm">
+          <div className="row"><label htmlFor="mc-copy">{t('props.name')}</label><input id="mc-copy" value={copying.name} onChange={(e) => setCopying({ ...copying, name: e.target.value })} /></div>
+          <label className="cmd-check"><input type="radio" name="mc-copy-what" checked={!copying.withAll} onChange={() => setCopying({ ...copying, withAll: false })} />{t('mapCatalog.onlyMap')}</label>
+          <label className="cmd-check"><input type="radio" name="mc-copy-what" checked={copying.withAll} onChange={() => setCopying({ ...copying, withAll: true })} />{t('mapCatalog.withAll')}</label>
+          <p className="hint">{t('mapCatalog.copyHint')}</p>
+          <div className="library-buttons">
+            <button className="btn sm pri" onClick={() => void duplicateLibraryMap(resource, copying.name, copying.withAll).then(() => setCopying(null))}>{t('mapCatalog.duplicate')}</button>
+            <button className="btn sm" onClick={() => setCopying(null)}>{t('start.cancel')}</button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn sm" disabled={!map.hasSidecar} onClick={() => setCopying({ name: t('mapCatalog.copyName', { name: map.name }), withAll: false })}><Icon name="plus" />{t('mapCatalog.duplicate')}</button>
+      )}
+      {blocked && <p className="hint">{t(blocked === 'copyUsed' ? 'mapCatalog.copyUsed' : 'mapCatalog.pictureShared')}</p>}
       {confirm ? (
         <div className="library-confirm" role="alert">
           {usage && usage.length > 0 ? (
@@ -249,12 +268,12 @@ export function MapDetails() {
             <p>{t('library.unused')}</p>
           )}
           <div className="library-buttons">
-            <button className="btn sm danger" disabled={open} onClick={() => void trashLibraryMap(resource).then(() => setConfirm(false))}>{t('library.trashConfirm')}</button>
+            <button className="btn sm danger" disabled={open || !!blocked} onClick={() => void trashLibraryMap(resource).then(() => setConfirm(false))}>{t('library.trashConfirm')}</button>
             <button className="btn sm" onClick={() => setConfirm(false)}>{t('start.cancel')}</button>
           </div>
         </div>
       ) : (
-        <button className="btn sm danger" disabled={open} title={open ? t('mapCatalog.openHint') : undefined} onClick={() => setConfirm(true)}><Icon name="trash" />{t('library.trash')}</button>
+        <button className="btn sm danger" disabled={open || !!blocked} title={open ? t('mapCatalog.openHint') : undefined} onClick={() => setConfirm(true)}><Icon name="trash" />{t('library.trash')}</button>
       )}
     </div>
   );

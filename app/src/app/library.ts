@@ -5,6 +5,7 @@
 import { readDocument } from '../core/documents';
 import { DRAWN_RESOURCE, isDrawn, mapSidecarPath } from '../core/persistence';
 import { drawnBounds } from '../core/build/masonry';
+import { dmDrawing, type DmDrawing } from '../core/build/playerDrawing';
 import { DEFAULT_GRID } from '../core/grid';
 import { MAP_VERSION } from '../core/sidecar';
 import { CampaignManifestSchema, MapSidecarSchema, SceneOverrideSchema, type MapSidecar } from '../core/sidecar';
@@ -33,6 +34,8 @@ export interface LibraryMap {
   copy: boolean;
   /** A drawn map (E-33): its own map file, no picture – its drawn walls are its picture. */
   drawn: boolean;
+  /** A drawn map's drawing, for its preview in the catalog. */
+  drawing?: DmDrawing;
   /** The picture's file size and time (thumbnails). */
   size: number;
   mtimeMs: number;
@@ -69,7 +72,8 @@ export async function refreshLibraryMaps(): Promise<void> {
       const mapFile = `library/${e.name}`;
       const side = await readDoc(mapFile, 'map', MapSidecarSchema, { quiet: true });
       if (side && isDrawn(side.resource)) {
-        maps.push(catalogEntry(mapFile, side.resource, side, e, false, scenes, true));
+        const drawing = dmDrawing({ ...side, drawn: true }, {}) ?? undefined;
+        maps.push({ ...catalogEntry(mapFile, side.resource, side, e, false, scenes, true), drawing });
         continue;
       }
       const pic = side ? pictures.get(side.resource) : undefined;

@@ -15,6 +15,8 @@ import {
   createDrawnMap, duplicateLibraryMap, mapIsOpen, mapUsage, openLibraryMap, refreshLibraryMaps, selectCatalogMap, setMapFilter, trashBlocked, trashLibraryMap, updateLibraryMap, type LibraryMap, type MapUsage,
 } from '../app/library';
 import { useThumbnail } from './VaultPanels';
+import { drawingPreview } from '../render/drawnMap';
+import { buildTextures } from '../render/build/textures';
 
 function useTypeLabel() {
   const { t } = useI18n();
@@ -69,9 +71,29 @@ export function MapCatalogView() {
   );
 }
 
-/** A picture's thumbnail; a drawn map (E-33) has no picture to show. */
+/** A picture's thumbnail, or a drawn map's (E-33) preview painted from its walls. */
 function MapThumb({ map }: { map: LibraryMap }) {
-  return map.drawn ? <Icon name="wall" /> : <PictureThumb map={map} />;
+  return map.drawn ? <DrawnThumb map={map} /> : <PictureThumb map={map} />;
+}
+
+const drawnPreviews = new Map<string, string>();
+
+function DrawnThumb({ map, className }: { map: LibraryMap; className?: string }) {
+  const key = `${map.mapFile}:${map.mtimeMs}`;
+  const [url, setUrl] = useState<string | null>(drawnPreviews.get(key) ?? null);
+  useEffect(() => {
+    if (!map.drawing || drawnPreviews.has(key)) return;
+    let live = true;
+    void buildTextures().then((tex) => {
+      const src = drawingPreview(map.drawing!, map.cellPx ?? 70, tex, 320).toDataURL('image/webp', 0.8);
+      drawnPreviews.set(key, src);
+      if (live) setUrl(src);
+    });
+    return () => {
+      live = false;
+    };
+  }, [key, map.drawing, map.cellPx]);
+  return url ? <img className={className} src={url} alt="" draggable={false} /> : <Icon name="wall" />;
 }
 
 function PictureThumb({ map }: { map: LibraryMap }) {
@@ -219,7 +241,7 @@ export function MapDetails() {
   return (
     <div className="panel-body vault-props">
       <div className="sec">{t('panel.map')}</div>
-      {!map.drawn && <MapPreview map={map} />}
+      {map.drawn ? <DrawnThumb map={map} className="map-catalog-preview" /> : <MapPreview map={map} />}
       <DetailText label={t('props.name')} value={map.name} disabled={!editable} onCommit={(v) => v.trim() && void updateLibraryMap(mapFile, { name: v.trim() })} />
       <div className="row">
         <label htmlFor="mc-type">{t('mapSettings.type')}</label>
@@ -229,7 +251,7 @@ export function MapDetails() {
       </div>
       <DetailText label={t('props.tags')} value={map.tags.join(', ')} disabled={!editable} onCommit={(v) => void updateLibraryMap(mapFile, { tags: [...new Set(v.split(',').map((x) => x.trim()).filter(Boolean))] })} />
       {map.region && <div className="row"><label>{t('mapCatalog.region')}</label><span>{map.region}</span></div>}
-      <div className="row"><label>{t('props.file')}</label><span className="mono hint" title={map.resource}>{map.resource.replace(/^library\//, '')}</span></div>
+      <div className="row"><label>{t('props.file')}</label>{map.drawn ? <span className="hint">{t('props.drawnMap')}</span> : <span className="mono hint" title={map.resource}>{map.resource.replace(/^library\//, '')}</span>}</div>
       {map.copy && <div className="row"><label>{t('mapCatalog.copy')}</label><span className="mono hint" title={map.mapFile}>{map.mapFile.replace(/^library\//, '')}</span></div>}
       {map.widthPx !== null && <div className="row"><label>{t('mapCatalog.size')}</label><span>{map.widthPx} × {map.heightPx} px</span></div>}
       {map.cellPx !== null && <div className="row"><label>{t('mapCatalog.grid')}</label><span>{Number(map.cellPx.toFixed(1))} px · {map.feetPerCell} ft</span></div>}

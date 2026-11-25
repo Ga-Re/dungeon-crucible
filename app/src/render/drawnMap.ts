@@ -308,3 +308,38 @@ export function drawingDecals(drawing: Drawing | DmDrawing, tex: BuildTextures):
   }
   return out;
 }
+
+/** The drawing scaled by `k` (a small preview paints it at its own size, never as a full-size picture). */
+function scaled<D extends Drawing | DmDrawing>(d: D, k: number): D {
+  return {
+    ...d,
+    origin: { x: d.origin.x * k, y: d.origin.y * k },
+    width: d.width * k,
+    height: d.height * k,
+    masonry: d.masonry.map((w) => ({ ...w, thickness: w.thickness * k, points: w.points.map((p) => ({ x: p.x * k, y: p.y * k })) })),
+    doors: d.doors.map((x) => ({ ...x, at: x.at * k, width: x.width * k })),
+    cracks: d.cracks.map((x) => ({ ...x, at: x.at * k, width: x.width * k })),
+  };
+}
+
+/** A preview of a drawn map, at most `side` px on its longer side (the catalog's cards). */
+export function drawingPreview(drawing: Drawing | DmDrawing, cell: number, tex: BuildTextures, side: number): HTMLCanvasElement {
+  const k = Math.min(1, side / Math.max(drawing.width, drawing.height, 1));
+  const small = scaled(drawing, k);
+  const picture = paintedDrawing(small, true, cell * k, tex);
+  const c = document.createElement('canvas');
+  c.width = picture.width;
+  c.height = picture.height;
+  picture.paint(c.getContext('2d')!, 0, 0, c.width, c.height);
+  // Doors on top, as the map shows them.
+  const g = c.getContext('2d')!;
+  g.translate(-small.origin.x, -small.origin.y);
+  for (const d of drawingDecals(small, tex)) {
+    g.save();
+    g.translate(d.x, d.y);
+    g.rotate(d.rotation);
+    g.drawImage(d.image, -d.width / 2, -d.height / 2, d.width, d.height);
+    g.restore();
+  }
+  return c;
+}

@@ -368,7 +368,8 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     Texturen (2026-11-26): 11 Bilder mit Higgsfield (Seedream 5.5) erzeugt, als WebP (~650 KB) in
     `app/src/render/build/textures/`; Herkunft dort im README; Rechte laut DM durch den Higgsfield-Tarif geklärt.
     Mauern werden dunkler als jeder Boden gezeichnet (lesbar auch auf gleichem Stein).
-    Offen: Vorschaubild gezeichneter Karten im Katalog; bei sehr großen Karten nur geänderte
+    Katalog: gezeichnete Karten mit gemaltem Vorschaubild (verkleinert gemalt, nie in voller Größe), Karte und Details.
+    Offen: bei sehr großen Karten nur geänderte
     Kacheln neu malen; `npm run bench` (braucht das 4K-Testvideo und den TV).
   - **DC-107b Boden-Pinsel** mit sauberem Übergang an Mauern.
   - **DC-107c Eigene Mauern in Szenen** (Szene v8).

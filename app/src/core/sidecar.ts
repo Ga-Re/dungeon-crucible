@@ -25,7 +25,8 @@ const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 const biome = z.enum(['nebel', 'schnee', 'wueste', 'asche', 'sumpf', 'kueste', 'arkan', 'dunkel']);
 
 export const GridSchema = z.object({
-  type: z.enum(['square', 'hex-pointy', 'hex-flat']),
+  /** Square only (E-7). Maps saved with the removed hex grid are read as square grids. */
+  type: z.preprocess((v) => (v === 'hex-pointy' || v === 'hex-flat' ? 'square' : v), z.literal('square')),
   cellWidth: z.number().positive(),
   cellHeight: z.number().positive(),
   originX: z.number(),

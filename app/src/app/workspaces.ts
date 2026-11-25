@@ -119,9 +119,6 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
           {
             label: 'group.grid',
             buttons: [
-              { id: 'grid:square', icon: 'grid', label: 'tool.gridSquare' },
-              { id: 'grid:hex-pointy', icon: 'hex', label: 'tool.gridHexPointy' },
-              { id: 'grid:hex-flat', icon: 'hexflat', label: 'tool.gridHexFlat' },
               { id: 'tool:calibrate', icon: 'calib', label: 'tool.calibrate', tool: 'calibrate' },
               { id: 'toggle:snap', icon: 'magnet', label: 'tool.snap' },
             ],

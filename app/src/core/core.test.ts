@@ -27,7 +27,7 @@ import {
 import { buildPlayerFrame, MAX_FRAME_AGE_MS, parsePlayerFrame, playerLighting } from './projection';
 import { litSources, tokensVisibleToPlayers, updateVision } from './vision';
 import { createSampleScene } from '../sample/crypt';
-import { CreatureSchema, MapSidecarSchema, parseSidecar, resourcePathForSidecar, sidecarPathFor } from './sidecar';
+import { CreatureSchema, GridSchema, MapSidecarSchema, parseSidecar, resourcePathForSidecar, sidecarPathFor } from './sidecar';
 
 const seq = (...vals: number[]) => {
   let i = 0;
@@ -94,11 +94,10 @@ describe('cell addressing', () => {
     const g = { ...DEFAULT_GRID, cellWidth: 50, cellHeight: 50 };
     expect(cellAt(g, cellCenter(g, { col: 3, row: 7 }))).toEqual({ col: 3, row: 7 });
   });
-  it('round-trips hex cells', () => {
-    for (const type of ['hex-pointy', 'hex-flat'] as const) {
-      const g = { ...DEFAULT_GRID, type, cellWidth: 60, cellHeight: 60 };
-      expect(cellAt(g, cellCenter(g, { col: 4, row: 5 }))).toEqual({ col: 4, row: 5 });
-    }
+  it('reads a map saved with the removed hex grid as a square grid (E-7)', () => {
+    const old = { type: 'hex-flat', cellWidth: 60, cellHeight: 60, originX: 0, originY: 0, rotationDeg: 0, feetPerCell: 5 };
+    expect(GridSchema.parse(old).type).toBe('square');
+    expect(GridSchema.safeParse({ ...old, type: 'triangle' }).success).toBe(false);
   });
   it('counts diagonals as 5 ft (2024 rules)', () => {
     const g = { ...DEFAULT_GRID, cellWidth: 50, cellHeight: 50 };

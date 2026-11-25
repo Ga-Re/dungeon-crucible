@@ -218,7 +218,9 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - ✓ **DC-097 Archiv-Export mit Schalter**: nur Kampagne oder vollständig mit Bibliotheksdateien; Import legt
   Bibliotheksdateien ab (gleicher Inhalt wird nicht kopiert, Namenskonflikte bei Karten/Audio werden umbenannt und
   Verweise umgeschrieben).
-- **DC-098 Hex-Raster entfernen** (E-7) aus Raster, Einrasten, Messen, Schablonen, Kalibrierung und UI.
+- ✓ **DC-098 Hex-Raster entfernen** (E-7): Raster-Mathematik, Zeichnen (DM und TV), Schemas, Menüband,
+  Eigenschaften, Statusleiste, Texte und Icons kennen nur noch das Quadratraster (der Knopf „Quadrat“ entfällt
+  mit). Karten, die noch mit Hex gespeichert sind, werden als Quadratraster gelesen und so gespeichert.
 - **DC-099 Systemsprache** als Standard (E-5).
 - ✓ **DC-100 Kreatur umbenennen**: nach dem Umbenennen wird die neue Datei geschrieben und die alte kommt in den
   Papierkorb; id, Token-Verweise und Spielerverknüpfungen bleiben (mit DC-096). Zwei Kreaturen gleichen Namens

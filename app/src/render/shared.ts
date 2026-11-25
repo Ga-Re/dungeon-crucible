@@ -1,5 +1,5 @@
 /** Drawing helpers shared by the DM and table renderers. No DM state in here. */
-import { cellCenter, type GridConfig } from '../core/grid';
+import type { GridConfig } from '../core/grid';
 import type { TemplateShape } from '../core/scene';
 
 export function drawGrid(g: CanvasRenderingContext2D, grid: GridConfig, w: number, h: number, color: string, lineWidth: number): void {
@@ -7,38 +7,20 @@ export function drawGrid(g: CanvasRenderingContext2D, grid: GridConfig, w: numbe
   g.strokeStyle = color;
   g.lineWidth = lineWidth;
   g.beginPath();
-  if (grid.type === 'square') {
-    g.translate(grid.originX, grid.originY);
-    g.rotate((grid.rotationDeg * Math.PI) / 180);
-    const ext = Math.hypot(w, h);
-    const n0x = Math.floor(-ext / grid.cellWidth);
-    const n1x = Math.ceil(ext / grid.cellWidth);
-    const n0y = Math.floor(-ext / grid.cellHeight);
-    const n1y = Math.ceil(ext / grid.cellHeight);
-    for (let i = n0x; i <= n1x; i++) {
-      g.moveTo(i * grid.cellWidth, n0y * grid.cellHeight);
-      g.lineTo(i * grid.cellWidth, n1y * grid.cellHeight);
-    }
-    for (let j = n0y; j <= n1y; j++) {
-      g.moveTo(n0x * grid.cellWidth, j * grid.cellHeight);
-      g.lineTo(n1x * grid.cellWidth, j * grid.cellHeight);
-    }
-  } else {
-    const pointy = grid.type === 'hex-pointy';
-    const r = pointy ? grid.cellWidth / Math.sqrt(3) : grid.cellHeight / Math.sqrt(3);
-    const cols = Math.ceil(w / (pointy ? grid.cellWidth : grid.cellWidth * 0.75)) + 2;
-    const rows = Math.ceil(h / (pointy ? grid.cellHeight * 0.75 : grid.cellHeight)) + 2;
-    for (let row = -1; row < rows; row++) {
-      for (let col = -1; col < cols; col++) {
-        const c = cellCenter(grid, { col, row });
-        for (let i = 0; i < 6; i++) {
-          const a = (pointy ? Math.PI / 6 : 0) + (i * Math.PI) / 3 + (grid.rotationDeg * Math.PI) / 180;
-          const b = a + Math.PI / 3;
-          g.moveTo(c.x + Math.cos(a) * r, c.y + Math.sin(a) * r);
-          g.lineTo(c.x + Math.cos(b) * r, c.y + Math.sin(b) * r);
-        }
-      }
-    }
+  g.translate(grid.originX, grid.originY);
+  g.rotate((grid.rotationDeg * Math.PI) / 180);
+  const ext = Math.hypot(w, h);
+  const n0x = Math.floor(-ext / grid.cellWidth);
+  const n1x = Math.ceil(ext / grid.cellWidth);
+  const n0y = Math.floor(-ext / grid.cellHeight);
+  const n1y = Math.ceil(ext / grid.cellHeight);
+  for (let i = n0x; i <= n1x; i++) {
+    g.moveTo(i * grid.cellWidth, n0y * grid.cellHeight);
+    g.lineTo(i * grid.cellWidth, n1y * grid.cellHeight);
+  }
+  for (let j = n0y; j <= n1y; j++) {
+    g.moveTo(n0x * grid.cellWidth, j * grid.cellHeight);
+    g.lineTo(n1x * grid.cellWidth, j * grid.cellHeight);
   }
   g.stroke();
   g.restore();

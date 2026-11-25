@@ -9,7 +9,7 @@ import { MonitorMenu } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
 import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, focusPanel, removeLegacyLayouts } from './docking';
 import {
-  clearTemplates, emit, fogAll, log, nextTurn, placeParty, redo, removeLastUserWall, rotateTable, setFogMode, setGridType, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
+  clearTemplates, emit, fogAll, log, nextTurn, placeParty, redo, removeLastUserWall, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
@@ -119,7 +119,7 @@ function Ribbon() {
   const { t } = useI18n();
   const ws = useStore((s) => s.ws);
   const tool = useStore((s) => s.tool);
-  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, grid: s.scene.map.grid.type, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart }));
+  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart }));
   const [resetting, setResetting] = useState(false);
   const [tab, setTab] = useState(0);
   const [open, setOpen] = useState(false);
@@ -136,7 +136,6 @@ function Ribbon() {
     if (b.id === 'toggle:viewAsPlayer') return flags.viewAsPlayer;
     if (b.id === 'toggle:moveLock') return flags.moveLock;
     if (b.id === 'toggle:blackout') return flags.blackout;
-    if (b.id.startsWith('grid:')) return b.id.slice(5) === flags.grid;
     if (b.id === 'fogmode:reveal') return flags.fogMode === 'reveal';
     if (b.id === 'fogmode:hide') return flags.fogMode === 'hide';
     if (b.id === 'fog:dmHide') return flags.dmFogHidden;
@@ -154,9 +153,6 @@ function Ribbon() {
       case 'toggle:editStart': return void setEditStart(!flags.editStart);
       case 'scene:reset': return setResetting(true);
       case 'party:place': return placeParty();
-      case 'grid:square': return setGridType('square');
-      case 'grid:hex-pointy': return setGridType('hex-pointy');
-      case 'grid:hex-flat': return setGridType('hex-flat');
       case 'fit': return mapCommands.fit();
       case 'fog:hideAll': return fogAll(false);
       case 'fog:dmHide': return toggleDmFog();
@@ -292,7 +288,7 @@ function StatusBar() {
     <footer className="statusbar">
       <span>{t(WORKSPACES[ws].name)}</span>
       <span className="sep" />
-      <span>{t(`tool.${grid.type === 'square' ? 'gridSquare' : grid.type === 'hex-pointy' ? 'gridHexPointy' : 'gridHexFlat'}`)} · {grid.feetPerCell} ft · <span className="mono">{grid.cellWidth.toFixed(1)} px</span></span>
+      <span>{t('props.grid')} {grid.feetPerCell} ft · <span className="mono">{grid.cellWidth.toFixed(1)} px</span></span>
       <span className="sep" />
       <span>{t('status.explored')} <span className="mono">{explored} %</span></span>
       {ws === 'play' && (<><span className="sep" /><span>{t('init.round', { n: round })}</span></>)}

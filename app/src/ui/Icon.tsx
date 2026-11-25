@@ -15,8 +15,6 @@ const PATHS = {
   zone: 'M4 4h4M12 4h4M20 4v4M20 12v4M20 20h-4M12 20H8M4 20v-4M4 12V8',
   import: 'M12 3v12M7 10l5 5 5-5M4 21h16',
   grid: 'M3 3h18v18H3z M9 3v18M15 3v18M3 9h18M3 15h18',
-  hex: 'M12 2.5l8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5z',
-  hexflat: 'M2.5 12l4.75-8.2h9.5L21.5 12l-4.75 8.2h-9.5z',
   calib: 'M12 2v4M12 18v4M2 12h4M18 12h4 M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12z',
   magnet: 'M6 3v9a6 6 0 0 0 12 0V3h-4v9a2 2 0 0 1-4 0V3z M6 7h4M14 7h4',
   fit: 'M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5',

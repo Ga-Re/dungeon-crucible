@@ -443,11 +443,11 @@ function shapeFor(d: { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; cir
   return ellipseArea([d.a.x, d.a.y], [d.b.x, d.b.y]);
 }
 
-/** Wall/zone/template points snap to grid corners (square) or cell centres (hex). */
+/** Wall/zone/template points snap to grid corners (or cell centres on a rotated grid). */
 function snapCorner(p: Point): Point {
   if (!state.snap) return p;
   const g = state.scene.map.grid;
-  if (g.type !== 'square' || g.rotationDeg !== 0) return snapPoint(p);
+  if (g.rotationDeg !== 0) return snapPoint(p);
   return {
     x: Math.round((p.x - g.originX) / g.cellWidth) * g.cellWidth + g.originX,
     y: Math.round((p.y - g.originY) / g.cellHeight) * g.cellHeight + g.originY,

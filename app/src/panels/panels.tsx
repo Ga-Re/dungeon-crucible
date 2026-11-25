@@ -12,7 +12,7 @@ import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, removeLight, removeToken, setAmbient, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, setGridType, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
+  resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { importMapIntoCampaign, switchScene } from '../app/campaign';
@@ -214,15 +214,6 @@ export function PropertiesPanel() {
       <div className="sec">{t('panel.map')}</div>
       <div className="row"><label htmlFor="p-name">{t('props.name')}</label><input id="p-name" value={map.name} onChange={(e) => { map.name = e.target.value; emit(); }} /></div>
       <div className="row"><label>{t('props.file')}</label><span className="mono hint">{file}</span></div>
-      <div className="row"><label>{t('props.grid')}</label>
-        <div className="seg">
-          {(['square', 'hex-pointy', 'hex-flat'] as const).map((g) => (
-            <button key={g} className={map.grid.type === g ? 'on' : ''} onClick={() => setGridType(g)}>
-              {t(g === 'square' ? 'tool.gridSquare' : g === 'hex-pointy' ? 'tool.gridHexPointy' : 'tool.gridHexFlat')}
-            </button>
-          ))}
-        </div>
-      </div>
       <div className="row"><label htmlFor="p-cell">{t('props.cellSize')}</label>
         <input id="p-cell" type="number" min={10} step={0.5} value={Number(map.grid.cellWidth.toFixed(2))} onChange={(e) => { const v = Number(e.target.value); if (v >= 10) { map.grid = { ...map.grid, cellWidth: v, cellHeight: v }; emit(); } }} />
       </div>

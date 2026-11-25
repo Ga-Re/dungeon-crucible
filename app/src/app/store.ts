@@ -4,7 +4,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import type { Point } from '../core/geometry';
-import { applyCalibration, calibrateFromThreePoints, snapToCell, tableZoomForPhysicalGrid, type GridType } from '../core/grid';
+import { applyCalibration, calibrateFromThreePoints, snapToCell, tableZoomForPhysicalGrid } from '../core/grid';
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { rollDice, type RollResult } from '../core/rules/dice';
@@ -596,12 +596,6 @@ export function setBiomeStrength(v: number): void {
 export function resetSceneFogEffect(): void {
   checkpoint();
   state.scene.fogEffect = null;
-  emit();
-}
-
-export function setGridType(type: GridType): void {
-  checkpoint();
-  state.scene.map.grid = { ...state.scene.map.grid, type };
   emit();
 }
 

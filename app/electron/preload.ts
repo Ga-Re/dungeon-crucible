@@ -3,7 +3,7 @@
  * (types from elsewhere are fine) and is bundled into a single file.
  */
 import { contextBridge, ipcRenderer } from 'electron';
-import type { DcApi, FloatBounds } from '../src/platform/desktop-api';
+import type { DcApi, FloatBounds, PackProgress } from '../src/platform/desktop-api';
 
 function on(channel: string) {
   return (cb: () => void) => {
@@ -36,6 +36,21 @@ const api: DcApi = {
   createCampaign: (name) => ipcRenderer.invoke('campaigns:create', name),
   trashCampaign: (slug) => ipcRenderer.invoke('campaigns:trash', slug),
   importToLibrary: (kind) => ipcRenderer.invoke('library:import', kind),
+  listLibrary: () => ipcRenderer.invoke('library:list'),
+  importAssets: () => ipcRenderer.invoke('library:importAssets'),
+  importDropped: (fileName, bytes) => ipcRenderer.invoke('library:importDropped', fileName, bytes),
+  pickPack: () => ipcRenderer.invoke('library:pickPack'),
+  importPack: (token, folders) => ipcRenderer.invoke('library:importPack', token, folders),
+  cancelPack: (token) => ipcRenderer.invoke('library:cancelPack', token),
+  onPackProgress: (cb) => {
+    const listener = (_e: unknown, p: PackProgress) => cb(p);
+    ipcRenderer.on('library:packProgress', listener);
+    return () => {
+      ipcRenderer.removeListener('library:packProgress', listener);
+    };
+  },
+  readThumb: (key) => ipcRenderer.invoke('thumbs:read', key),
+  writeThumb: (key, bytes) => ipcRenderer.invoke('thumbs:write', key, bytes),
   exportCampaignArchive: (slug, name, libraryFiles) => ipcRenderer.invoke('archive:export', slug, name, libraryFiles),
   importCampaignArchive: () => ipcRenderer.invoke('archive:import'),
   setFloatBounds: (name, bounds) => ipcRenderer.send('float:bounds', name, bounds),

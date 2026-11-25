@@ -82,33 +82,44 @@ export const MapSidecarSchema = z.object({
 });
 export type MapSidecar = z.infer<typeof MapSidecarSchema>;
 
-/** Sidecar of an audio file in the library: what kind of sound it is. */
-export const AudioSidecarSchema = z.object({
-  kind: z.literal('audio'),
-  schemaVersion: z.literal(SCHEMA_VERSION),
-  category: z.enum(['ambience', 'sfx']).default('ambience'),
-  tags: z.array(z.string()).default([]),
-});
-export type AudioSidecar = z.infer<typeof AudioSidecarSchema>;
+/** What an asset is (E-27): the app treats each kind differently (editor, placing, TV). */
+export const ASSET_KINDS = ['prop', 'tile', 'texture', 'effect', 'light', 'sound', 'handout'] as const;
+export type AssetKind = (typeof ASSET_KINDS)[number];
 
+export const ASSET_VERSION = 2;
+
+/**
+ * Sidecar of a library file other than a map (E-27, DC-040): props, map pieces, textures,
+ * effects, light sources, sounds, handouts. `subkind` and `environments` hold a built-in key
+ * (shown translated) or the DM's own text; `group` joins variants of one thing.
+ */
 export const AssetSidecarSchema = z.object({
   kind: z.literal('asset'),
-  schemaVersion: z.literal(SCHEMA_VERSION),
+  schemaVersion: z.literal(ASSET_VERSION),
   name: z.string().min(1),
+  assetKind: z.enum(ASSET_KINDS),
+  subkind: z.string().min(1).optional(),
   tags: z.array(z.string()).default([]),
-  assetType: z.enum(['building', 'nature', 'dungeon', 'furniture', 'prop', 'vehicle']),
-  sizeCells: z.object({ w: z.number().positive(), h: z.number().positive() }),
-  blocksSight: z.boolean().default(false),
-  variants: z.array(
-    z.object({
-      id,
-      name: z.string(),
-      file: z.string(),
-      trigger: z.enum(['default', 'approach', 'enter-zone', 'manual']).default('default'),
-      triggerDistanceCells: z.number().positive().optional(),
-      props: z.array(z.object({ id, name: z.string(), file: z.string(), x: z.number(), y: z.number(), rotation: z.number().default(0), blocksSight: z.boolean().default(false) })).default([]),
-    }),
-  ).min(1),
+  environments: z.array(z.string()).default([]),
+  /** Footprint in grid cells (props, map pieces, effects …). */
+  sizeCells: z.object({ w: z.number().positive(), h: z.number().positive() }).optional(),
+  group: z.string().min(1).optional(),
+  collections: z.array(z.string()).default([]),
+  favorite: z.boolean().default(false),
+  /**
+   * Cover mask (DC-109): blocks sight and light behind it while the asset itself stays visible.
+   * In cells from the footprint's top left corner, so it turns and scales with the placed asset.
+   */
+  cover: z
+    .discriminatedUnion('shape', [
+      z.object({ shape: z.literal('circle'), x: z.number(), y: z.number(), r: z.number().positive() }),
+      z.object({ shape: z.literal('polygon'), points: z.array(z.tuple([z.number(), z.number()])).min(3) }),
+    ])
+    .optional(),
+  /** The light a light source (or an effect) brings: position in cells, radii in ft, flicker 0–1. */
+  light: z.object({ x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color, flicker: z.number().min(0).max(1).default(0) }).optional(),
+  /** How an effect plays: in a loop (switched on/off in the scene) and/or once on a click. */
+  effect: z.object({ loop: z.boolean().default(true), trigger: z.boolean().default(false) }).optional(),
 });
 export type AssetSidecar = z.infer<typeof AssetSidecarSchema>;
 

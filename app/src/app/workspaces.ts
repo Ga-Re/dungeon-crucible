@@ -22,7 +22,7 @@ export interface RibbonTab {
 
 export type PanelId =
   | 'map' | 'browser' | 'properties' | 'fog' | 'initiative' | 'preview' | 'table'
-  | 'dice' | 'log' | 'encounter' | 'creature' | 'atlas' | 'vault' | 'sound' | 'party';
+  | 'dice' | 'log' | 'encounter' | 'creature' | 'atlas' | 'vault' | 'asset' | 'assets' | 'sound' | 'party';
 
 export interface DefaultLayout {
   center: PanelId;
@@ -146,15 +146,15 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
       },
       fogTools,
     ],
-    layout: { center: 'map', left: ['browser'], right: ['properties', 'fog'], bottom: ['log'] },
+    layout: { center: 'map', left: ['browser', 'assets'], right: ['properties', 'fog'], bottom: ['log'] },
   },
   vault: {
     id: 'vault',
     icon: 'box',
     name: 'ws.vault',
     desc: 'ws.vault.desc',
-    tabs: [{ label: 'tab.asset', groups: [{ label: 'group.create', buttons: [{ id: 'soon', icon: 'plus', label: 'tool.newCreature' }] }] }],
-    layout: { center: 'vault', left: ['browser'], right: [], bottom: [] },
+    tabs: [{ label: 'tab.asset', groups: [{ label: 'group.create', buttons: [{ id: 'vault:import', icon: 'import', label: 'vault.import' }, { id: 'vault:pack', icon: 'archive', label: 'vault.importPack' }] }] }],
+    layout: { center: 'vault', left: ['browser'], right: ['asset'], bottom: ['log'] },
   },
   creatures: {
     id: 'creatures',
@@ -270,6 +270,8 @@ export const PANEL_TITLES: Record<PanelId, MessageKey> = {
   creature: 'panel.creature',
   atlas: 'panel.atlas',
   vault: 'panel.vault',
+  asset: 'panel.asset',
+  assets: 'panel.assets',
   sound: 'panel.sound',
   party: 'panel.party',
 };

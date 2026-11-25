@@ -6,10 +6,10 @@
 import type { PlayerFrame } from '../core/projection';
 import type { FloatingBackend } from '../dock/nativeWindows';
 import { assetUrlFor } from './asset-url';
-import type { CampaignInfo, DcApi, DcTableApi, LibraryImport, MonitorInfo, ScreenSetupInfo } from './desktop-api';
+import type { CampaignInfo, DcApi, DcTableApi, LibraryEntry, LibraryImport, MonitorInfo, ScreenSetupInfo } from './desktop-api';
 export type { CampaignError, CampaignListEntry, RootInfo } from './desktop-api';
 
-export type { CampaignInfo, LibraryImport, MonitorInfo };
+export type { CampaignInfo, LibraryEntry, LibraryImport, MonitorInfo };
 
 declare global {
   interface Window {
@@ -106,6 +106,15 @@ export const listCampaignFolders = () => dc().listCampaigns();
 export const createCampaignFolder = (name: string) => dc().createCampaign(name);
 export const trashCampaignFolder = (slug: string) => dc().trashCampaign(slug);
 export const importToLibrary = (kind: 'map' | 'audio') => dc().importToLibrary(kind);
+export const listLibrary = () => dc().listLibrary();
+export const importAssets = () => dc().importAssets();
+export const importDropped = (fileName: string, bytes: Uint8Array) => dc().importDropped(fileName, bytes);
+export const pickPack = () => dc().pickPack();
+export const importPack = (token: string, folders: string[]) => dc().importPack(token, folders);
+export const cancelPack = (token: string) => dc().cancelPack(token);
+export const onPackProgress = (cb: Parameters<DcApi['onPackProgress']>[0]) => dc().onPackProgress(cb);
+export const readThumb = (key: string) => dc().readThumb(key);
+export const writeThumb = (key: string, bytes: Uint8Array) => dc().writeThumb(key, bytes);
 export const exportCampaignArchive = (slug: string, name: string, libraryFiles: string[]) => dc().exportCampaignArchive(slug, name, libraryFiles);
 export const importCampaignArchive = () => dc().importCampaignArchive();
 

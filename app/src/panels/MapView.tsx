@@ -11,11 +11,14 @@ import { circleArea, ellipseArea, strokeArea } from '../core/poly/shapes';
 import { areaContains, partFromDrag, partFromPoints, vertexAt, type VertexRef } from '../core/areas';
 import { AreaCommandPanel } from './AreaCommandPanel';
 import { WallCommandPanel } from './WallCommandPanel';
+import { assetShapes, footprintOf, hitsPlacement, ROTATE_STEP } from '../core/placement';
+import { ASSET_DRAG } from './VaultPanels';
+import { refreshVault, requestAssetUrls } from '../app/vault';
 import { CalibrationPanel } from './CalibrationPanel';
 import { endsAt, nearestEnd, wallAt, type WallEnd } from '../core/walls';
 import type { Polygon } from '../core/poly/types';
 import { rectPolygon } from '../core/fogModel';
-import type { TemplateShape } from '../core/scene';
+import type { MapAssetPlacement, TemplateShape } from '../core/scene';
 import { useI18n } from '../i18n/i18n';
 import { hasMap } from '../core/emptyScene';
 import { importMapIntoCampaign } from '../app/campaign';
@@ -31,7 +34,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
-  currentChanges, toggleHidden,
+  assetExtras, currentChanges, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -39,7 +42,7 @@ import {
 export const CREATURE_DRAG = 'application/x-dc-creature';
 
 /** Commands other UI parts can trigger on the active map view. */
-export const mapCommands: { fit: () => void } = { fit: () => undefined };
+export const mapCommands: { fit: () => void; centre: () => Point | null } = { fit: () => undefined, centre: () => null };
 
 const HINTS: Partial<Record<string, MessageKey>> = {
   select: 'hint.select', pan: 'hint.pan', measure: 'hint.measure', ping: 'hint.ping', calibrate: 'hint.calibrate',
@@ -57,6 +60,7 @@ type Drag =
   | { kind: 'area-path'; path: Point[] }
   | { kind: 'area-corner'; at: VertexRef }
   | { kind: 'wall-ends'; ends: WallEnd[]; to: Point; moved: boolean }
+  | { kind: 'asset-move'; id: string; ox: number; oy: number; moved: boolean }
   | { kind: 'calib-box'; a: Point }
   | { kind: 'calib-move'; last: Point }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
@@ -112,6 +116,12 @@ function DmMap() {
       view.current = { zoom: z, x: (s.width - m.widthPx * z) / 2, y: (s.height - m.heightPx * z) / 2 };
     };
     mapCommands.fit = fit;
+    // The middle of what the map view shows, in map pixels (placing from the keyboard).
+    mapCommands.centre = () => {
+      const s = size();
+      const v = view.current;
+      return { x: (s.width / 2 - v.x) / v.zoom, y: (s.height / 2 - v.y) / v.zoom };
+    };
     fit();
 
     void createRenderer({ canvas, size: size(), resolution: window.devicePixelRatio || 1, background: '#0e0f11' }).then((r) => {
@@ -129,6 +139,9 @@ function DmMap() {
       void map?.set(sc.map.imageUrl, sc.map.isVideo);
       // While calibrating, the grid is always shown: it is what is being adjusted.
       r.setGrid((state.showGrid || state.calibration) && sc.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: sc.map.grid.originX, offsetYPx: sc.map.grid.originY, alpha: 0.18 } : null);
+      // Placed assets: their files' URLs are looked up once, the first time they are shown.
+      requestAssetUrls([...new Set(sc.map.assets.map((a) => a.assetPath))]);
+      r.setAssets(assetShapes(sc.map.assets, state.assetInfo, sc.map.grid));
       const active = state.ws === 'play' ? initiativeOrder()[state.turn]?.id : undefined;
       r.setTokens(
         sc.tokens.map((k): TokenShape => ({
@@ -193,6 +206,12 @@ function DmMap() {
     if (sceneVersion > 0) mapCommands.fit();
   }, [sceneVersion]);
 
+  // Placed assets need the library's asset data (size, group, file): read when a scene opens.
+  const root = useStore((s) => s.root?.root);
+  useEffect(() => {
+    void refreshVault();
+  }, [sceneVersion, root]);
+
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest('input,textarea,select,[contenteditable]')) return;
@@ -226,6 +245,16 @@ function DmMap() {
         if (state.wallCommand) undoWallPoint();
         else if (state.selectedTokenId) removeToken(state.selectedTokenId);
         else if (state.selectedWallIds.length) deleteSelectedWalls();
+        else if (state.selectedAssetId) deletePlacedAsset(state.selectedAssetId);
+      }
+      // A selected placed asset (Map Forge): R / Shift+R turn by 15°, + / − scale, V next variant.
+      const sel = state.selectedAssetId;
+      if (sel && !e.metaKey && !e.ctrlKey) {
+        const k = e.key.toLowerCase();
+        if (k === 'r') rotatePlacedAsset(sel, e.shiftKey ? -ROTATE_STEP : ROTATE_STEP);
+        else if (e.key === '+' || e.key === '=') scalePlacedAsset(sel, 1.25);
+        else if (e.key === '-') scalePlacedAsset(sel, 0.8);
+        else if (k === 'v') cycleAssetVariant(sel);
       }
       // "Nebel ausblenden" (N): DM window only; the TV never changes.
       if (e.key.toLowerCase() === 'n' && !e.ctrlKey && !e.metaKey) toggleDmFog();
@@ -262,6 +291,11 @@ function DmMap() {
       draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
       fogDraft,
       areaDraft: areaDraftOf(d),
+      assets: [
+        ...state.scene.map.assets.map((a) => placementLook(a, false)),
+        ...(state.layer === 'map' ? [] : state.scene.hidden.assets.map((a) => placementLook(a, true))),
+      ],
+      covers: state.ws === 'forge' ? (assetExtras(state.scene).covers ?? []) : [],
       changed: new Set(currentChanges().filter((c) => c.status === 'changed').map((c) => c.id)),
     };
   };
@@ -354,13 +388,24 @@ function DmMap() {
             drag.current = { kind: 'wall-ends', ends, to: p, moved: false };
             return;
           }
+          // Walls before assets: a floor tile under walls must not hide them from a click.
           const wall = wallAt(state.scene.walls, p, tol);
           if (wall || e.shiftKey) {
             selectWall(wall, e.shiftKey);
             selectZone(null);
+            selectPlacedAsset(null);
             return;
           }
           selectWall(null);
+          // A placed asset: select it and drag it (DC-041).
+          const asset = placedAssetAt(p);
+          if (asset) {
+            selectPlacedAsset(asset);
+            const a = state.scene.map.assets.find((x) => x.id === asset)!;
+            drag.current = { kind: 'asset-move', id: asset, ox: a.x - p.x, oy: a.y - p.y, moved: false };
+            return;
+          }
+          selectPlacedAsset(null);
         }
         selectZone(zoneAt(p));
         return;
@@ -451,6 +496,10 @@ function DmMap() {
     } else if (d.kind === 'calib-move') {
       moveCalibration(p.x - d.last.x, p.y - d.last.y);
       d.last = p;
+    } else if (d.kind === 'asset-move') {
+      if (!d.moved) checkpoint();
+      d.moved = true;
+      moveAssetTo(d.id, { x: p.x + d.ox, y: p.y + d.oy }, false);
     } else if (d.kind === 'wall-ends') {
       // The whole drag is one undoable step; a click without moving changes nothing.
       if (!d.moved) checkpoint();
@@ -484,6 +533,9 @@ function DmMap() {
       moveAreaCorner(d.at, cornerTarget(toWorld(e), e.altKey), true);
     } else if (d.kind === 'wall-ends') {
       if (d.moved) moveWallEnds(d.ends, d.to, true);
+    } else if (d.kind === 'asset-move') {
+      const q = toWorld(e);
+      if (d.moved) moveAssetTo(d.id, { x: q.x + d.ox, y: q.y + d.oy }, true);
     } else if (d.kind === 'template') {
       addTemplate(d.shape, d.a, d.b);
     } else if (d.kind === 'fog-rect' || d.kind === 'fog-ellipse') {
@@ -527,12 +579,19 @@ function DmMap() {
         }}
         onWheel={onWheel}
         onDragOver={(e) => {
-          if (e.dataTransfer.types.includes(CREATURE_DRAG)) {
+          const asset = e.dataTransfer.types.includes(ASSET_DRAG) && state.layer === 'map';
+          if (e.dataTransfer.types.includes(CREATURE_DRAG) || asset) {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'copy';
           }
         }}
         onDrop={(e) => {
+          const assets = e.dataTransfer.getData(ASSET_DRAG);
+          if (assets) {
+            e.preventDefault();
+            placeDropped(assets, toWorld(e));
+            return;
+          }
           const idx = e.dataTransfer.getData(CREATURE_DRAG);
           if (idx === '') return;
           e.preventDefault();
@@ -568,6 +627,39 @@ function DmMap() {
 }
 
 /** The map element under `p` for "hide / show": a light, else a wall, else an area – shown or hidden. */
+/** Assets dragged from the Assets panel or the Vault: placed at the drop point, a cell apart each. */
+function placeDropped(data: string, at: Point): void {
+  let paths: unknown;
+  try {
+    paths = JSON.parse(data);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(paths)) return;
+  const cell = state.scene.map.grid.cellWidth;
+  paths.filter((x): x is string => typeof x === 'string').forEach((path, i) => placeAsset(path, { x: at.x + i * cell, y: at.y }));
+}
+
+/** A placement as the overlay shows it. */
+function placementLook(a: MapAssetPlacement, hidden: boolean) {
+  const info = state.assetInfo[a.assetPath];
+  return {
+    fp: footprintOf(a, info?.sizeCells, state.scene.map.grid),
+    name: info?.name ?? a.assetPath.replace(/^library\//, ''),
+    selected: a.id === state.selectedAssetId,
+    // Missing: not in the library (the registry is filled once the Vault data is read).
+    missing: Object.keys(state.assetInfo).length > 0 && !info,
+    hidden,
+  };
+}
+
+/** The placed asset (shown or hidden in this scene) at `p`. */
+function placementAt(p: Point): string | null {
+  const sc = state.scene;
+  const all = [...sc.map.assets, ...sc.hidden.assets].reverse();
+  return all.find((a) => hitsPlacement(footprintOf(a, state.assetInfo[a.assetPath]?.sizeCells, sc.map.grid), p))?.id ?? null;
+}
+
 function elementAt(p: Point, tol: number): string | null {
   const sc = state.scene;
   const r = sc.map.grid.cellWidth * 0.45;
@@ -575,6 +667,8 @@ function elementAt(p: Point, tol: number): string | null {
   if (light) return light.id;
   const wall = wallAt([...sc.walls, ...sc.hidden.walls], p, tol);
   if (wall) return wall;
+  const asset = placementAt(p);
+  if (asset) return asset;
   return [...sc.zones, ...sc.hidden.zones].reverse().find((z) => areaContains(z.shape, p))?.id ?? null;
 }
 

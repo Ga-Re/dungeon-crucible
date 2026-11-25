@@ -137,3 +137,26 @@ describe('orphaned changes', () => {
     expect(sceneIssues(map, clean).orphaned).toEqual([]);
   });
 });
+
+describe('placed assets in a scene (DC-041)', () => {
+  const withAssets: MapSidecar = { ...map, assets: [
+    { id: 'p1', assetPath: 'library/oak.png', x: 100, y: 100, rotation: 0, scale: 1 },
+    { id: 'p2', assetPath: 'library/rock.png', x: 300, y: 100, rotation: 45, scale: 2 },
+  ] };
+
+  it('a scene hides a placed asset like other map elements; saving keeps the map whole', () => {
+    const s = sceneFromDocuments(withAssets, sceneDoc({ hidden: ['p1'] }), null);
+    expect(s.map.assets.map((a) => a.id)).toEqual(['p2']);
+    expect(s.hidden.assets.map((a) => a.id)).toEqual(['p1']);
+    expect(sceneOverrideFromScene(s, 'S', 'm', { round: 1, turn: 0 }, withAssets).hidden).toEqual(['p1']);
+    expect(mapSidecarFromScene(s, 'hall.png', 'scene', withAssets).assets.map((a) => a.id)).toEqual(['p1', 'p2']);
+    expect(sceneIssues(withAssets, sceneDoc({ hidden: ['p1'] })).orphaned).toEqual([]);
+    expect(sceneChanges(elementsFromSidecar(withAssets), s)).toContainEqual({ id: 'p1', kind: 'assets', status: 'hidden' });
+  });
+
+  it('the Map Forge saves the placed assets of its view', () => {
+    const s = sceneFromDocuments(withAssets, null, null, undefined, 'map');
+    s.map.assets = s.map.assets.filter((a) => a.id !== 'p2');
+    expect(mapSidecarFromScene(s, 'hall.png', 'map', withAssets).assets.map((a) => a.id)).toEqual(['p1']);
+  });
+});

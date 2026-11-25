@@ -6,10 +6,12 @@ import { useSyncExternalStore } from 'react';
 import type { Point } from '../core/geometry';
 import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
-import type { AreaTemplate, FogBiome, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
+import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
+import { assetShapes, footprintOf, hitsPlacement, nextVariant, rotateBy, scaleBy, snapPlacement } from '../core/placement';
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
-import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision } from '../core/vision';
+import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision, type VisionExtras } from '../core/vision';
+import { placementCovers, placementLights } from '../core/cover';
 import { hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
 import { lockedAreas } from '../core/persistence';
 import { newId, slugId } from '../core/documents';
@@ -21,7 +23,7 @@ import { lookToWire } from '../render/fogOptions';
 import type { MonitorInfo } from '../platform/bridge';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import type { Creature, Player } from '../core/sidecar';
+import type { AssetKind, AssetSidecar, Creature, Player } from '../core/sidecar';
 import { missingPartyTokens, tokenFromCreature } from '../core/party';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
@@ -32,6 +34,7 @@ import type { MapSidecar, SceneOverride } from '../core/sidecar';
 import type { CampaignInfo, RootInfo } from '../platform/bridge';
 import type { RecentCampaign } from './recent';
 import type { LibraryMap } from './library';
+import type { VaultState } from './vault';
 
 export type WorkspaceId = 'forge' | 'vault' | 'creatures' | 'atlas' | 'play';
 
@@ -126,6 +129,12 @@ export interface AppState {
   layer: ViewLayer;
   /** "Edit start state" in the Game-Orchestrator (E-17). */
   editStart: boolean;
+  /** What the app knows of each library asset placed on maps (size, group, URL …), by path (DC-041). */
+  assetInfo: Record<string, AssetInfo>;
+  /** The placed asset selected in the Map Forge. */
+  selectedAssetId: string | null;
+  /** The Asset Vault: catalog, filter, selection (E-27, DC-040). */
+  vault: VaultState;
   /** Recently used campaigns (start screen). */
   recent: RecentCampaign[];
   /** A message on the start screen (e.g. why an import failed). */
@@ -195,6 +204,9 @@ function initial(): AppState {
     editStart: false,
     recent: [],
     notice: null,
+    assetInfo: {},
+    selectedAssetId: null,
+    vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null },
     soundboard: initialSoundboard(),
   };
   s.vision = updateVision(scene);
@@ -293,6 +305,7 @@ function restore(snap: string): void {
   // Selected walls that the step back (or forward) took away are no longer selected.
   const walls = new Set(state.scene.walls.map((w) => w.id));
   state.selectedWallIds = state.selectedWallIds.filter((id) => walls.has(id));
+  if (state.selectedAssetId && !state.scene.map.assets.some((a) => a.id === state.selectedAssetId)) state.selectedAssetId = null;
   recomputeVision();
   state.canUndo = history.canUndo;
   state.canRedo = history.canRedo;
@@ -319,7 +332,7 @@ export function clearHistory(): void {
 /** A new element id that no wall, area, light, template or token of the scene has (lowercase, random). */
 function freshId(prefix: string): string {
   const sc = state.scene;
-  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.templates, ...sc.tokens].map((x) => x.id));
+  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.hidden.assets].map((x) => x.id));
   return newId(slugId(prefix, 'el').slice(0, 40), (id) => taken.has(id));
 }
 
@@ -485,10 +498,19 @@ let lastRemember = 0;
  * Recomputes token sight. What players see becomes memory fog once they leave it; the union is
  * throttled while dragging and always done for a final position.
  */
+let visionCost = 0;
+let visionAt = 0;
+
 export function recomputeVision(final = true): void {
-  state.vision = updateVision(state.scene);
+  // While dragging, a slow computation (many masks) runs less often; the final position always.
+  if (!final && Date.now() - visionAt < visionCost * 2) return;
+  const started = performance.now();
+  const extras = assetExtras(state.scene);
+  state.vision = updateVision(state.scene, extras);
   state.visible = visiblePolygons(state.vision);
-  state.lights = litSources(state.scene);
+  state.lights = litSources(state.scene, extras);
+  visionCost = performance.now() - started;
+  visionAt = Date.now();
   const now = Date.now();
   if (final || now - lastRemember > 150) {
     state.scene.fog = rememberSeen(state.scene.fog, state.visible);
@@ -549,6 +571,7 @@ function reversed<T extends Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>>(w: T): T {
 function clearWallEditing(): void {
   state.wallCommand = null;
   state.selectedWallIds = [];
+  state.selectedAssetId = null;
   state.calibration = null;
 }
 
@@ -640,6 +663,7 @@ export function cancelWallCommand(): void {
 export function selectWall(id: string | null, toggle = false): void {
   if (state.layer !== 'map') return;
   const sel = state.selectedWallIds;
+  if (id !== null) state.selectedAssetId = null;
   if (id === null) state.selectedWallIds = toggle ? sel : [];
   else if (toggle) state.selectedWallIds = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id];
   else state.selectedWallIds = [id];
@@ -801,6 +825,174 @@ export function finishAreaCommand(): boolean {
   return true;
 }
 
+/* ---------- Assets placed on the map (DC-041) ---------- */
+
+/** A library asset as placements need it: its size, variant group, picture (URL) and what it brings. */
+export interface AssetInfo {
+  name: string;
+  kind: AssetKind;
+  sizeCells?: { w: number; h: number };
+  group?: string;
+  /** Asset-protocol URL of the file; null until known or when the file is gone. */
+  url: string | null;
+  video: boolean;
+  cover?: AssetSidecar['cover'];
+  light?: AssetSidecar['light'];
+}
+
+export function setAssetInfo(info: Record<string, AssetInfo>): void {
+  state.assetInfo = info;
+  // Masks and lights of placed assets may have changed (DC-108) – here and in the TV's view.
+  viewVersion++;
+  recomputeVision();
+  emit();
+}
+
+/** A placed asset's file URL became known: only drawing changes, not sight. */
+export function setAssetUrl(path: string, url: string): void {
+  const cur = state.assetInfo[path];
+  if (!cur) return;
+  state.assetInfo = { ...state.assetInfo, [path]: { ...cur, url } };
+  emit();
+}
+
+/** What the scene's shown placed assets add to sight and light: their masks and lights (DC-108). */
+export function assetExtras(scene: Scene): VisionExtras {
+  const placed = scene.map.assets;
+  if (!placed.length) return {};
+  // The same lists while nothing changed: sight and light keep what they built for them.
+  const g = scene.map.grid;
+  const key = `${g.cellWidth},${g.cellHeight}|${placed.map((a) => `${a.assetPath},${a.x},${a.y},${a.rotation},${a.scale}`).join(';')}`;
+  if (extrasCache && extrasCache.key === key && extrasCache.info === state.assetInfo) return extrasCache.extras;
+  const extras = { covers: placementCovers(placed, state.assetInfo, g), lights: placementLights(placed, state.assetInfo, g) };
+  extrasCache = { key, info: state.assetInfo, extras };
+  return extras;
+}
+
+let extrasCache: { key: string; info: Record<string, AssetInfo>; extras: VisionExtras } | null = null;
+
+function footprint(a: MapAssetPlacement) {
+  return footprintOf(a, state.assetInfo[a.assetPath]?.sizeCells, state.scene.map.grid);
+}
+
+/** The placed asset at `p` (the topmost), if any. */
+export function placedAssetAt(p: Point): string | null {
+  const hit = [...state.scene.map.assets].reverse().find((a) => hitsPlacement(footprint(a), p));
+  return hit?.id ?? null;
+}
+
+function snappedCentre(a: Pick<MapAssetPlacement, 'assetPath' | 'scale' | 'rotation'>, p: Point): Point {
+  return state.snap ? snapPlacement(state.scene.map.grid, p, state.assetInfo[a.assetPath]?.sizeCells, a.scale, a.rotation) : p;
+}
+
+/** Places a library asset on the map at `p` (snapped to the grid), as one undoable step; Map Forge only. */
+export function placeAsset(assetPath: string, p: Point): string | null {
+  if (state.layer !== 'map') return null;
+  checkpoint();
+  const id = freshId('asset');
+  const at = snappedCentre({ assetPath, scale: 1, rotation: 0 }, p);
+  state.scene.map.assets.push({ id, assetPath, x: at.x, y: at.y, rotation: 0, scale: 1 });
+  state.selectedAssetId = id;
+  state.selectedWallIds = [];
+  state.selectedZoneId = null;
+  rememberRecentAsset(assetPath);
+  log('log.assetPlaced', { name: state.assetInfo[assetPath]?.name ?? assetPath });
+  recomputeVision();
+  emit();
+  return id;
+}
+
+export function selectPlacedAsset(id: string | null): void {
+  if (id && state.layer !== 'map') return;
+  state.selectedAssetId = id;
+  if (id) {
+    state.selectedWallIds = [];
+    state.selectedZoneId = null;
+  }
+  emit();
+}
+
+function placed(id: string): MapAssetPlacement | undefined {
+  return state.layer === 'map' ? state.scene.map.assets.find((a) => a.id === id) : undefined;
+}
+
+/** Moves a placed asset (live while dragging; `final` snaps it). The caller sets the checkpoint for a drag. */
+export function moveAssetTo(id: string, p: Point, final: boolean): void {
+  const a = placed(id);
+  if (!a) return;
+  const at = final ? snappedCentre(a, p) : p;
+  a.x = at.x;
+  a.y = at.y;
+  markDirty();
+  // Its mask and light move with it (DC-108).
+  recomputeVision(final);
+  emit();
+}
+
+export function rotatePlacedAsset(id: string, delta: number): void {
+  const a = placed(id);
+  if (!a) return;
+  checkpoint();
+  a.rotation = rotateBy(a.rotation, delta);
+  recomputeVision();
+  emit();
+}
+
+export function scalePlacedAsset(id: string, factor: number): void {
+  const a = placed(id);
+  if (!a) return;
+  checkpoint();
+  a.scale = scaleBy(a.scale, factor);
+  recomputeVision();
+  emit();
+}
+
+/** The next variant of the asset's group (same place, turn and scale). */
+export function cycleAssetVariant(id: string): void {
+  const a = placed(id);
+  const group = a && state.assetInfo[a.assetPath]?.group;
+  if (!a || !group) return;
+  const files = Object.entries(state.assetInfo).filter(([, i]) => i.group === group).map(([path]) => path);
+  const next = nextVariant(files, a.assetPath);
+  if (next === a.assetPath) return;
+  checkpoint();
+  a.assetPath = next;
+  rememberRecentAsset(next);
+  recomputeVision();
+  emit();
+}
+
+export function deletePlacedAsset(id: string): void {
+  const a = placed(id);
+  if (!a) return;
+  checkpoint();
+  state.scene.map.assets = state.scene.map.assets.filter((x) => x.id !== id);
+  if (state.selectedAssetId === id) state.selectedAssetId = null;
+  recomputeVision();
+  emit();
+}
+
+const RECENT_KEY = 'dc.recentAssets';
+const RECENT_MAX = 12;
+
+/** "Recently used" assets: a device setting (E-27), newest first. */
+export function recentAssets(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, RECENT_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberRecentAsset(path: string): void {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify([path, ...recentAssets().filter((p) => p !== path)].slice(0, RECENT_MAX)));
+  } catch {
+    /* a device setting only: no storage, no list */
+  }
+}
+
 /* ---------- Hiding map elements in a scene (DC-103) ---------- */
 
 /**
@@ -811,8 +1003,8 @@ export function toggleHidden(id: string): void {
   if (state.layer === 'map') return;
   const sc = state.scene;
   const h = sc.hidden;
-  const hide = [...sc.walls, ...sc.zones, ...sc.lights].some((x) => x.id === id);
-  if (!hide && ![...h.walls, ...h.zones, ...h.lights].some((x) => x.id === id)) return;
+  const hide = [...sc.walls, ...sc.zones, ...sc.lights, ...sc.map.assets].some((x) => x.id === id);
+  if (!hide && ![...h.walls, ...h.zones, ...h.lights, ...h.assets].some((x) => x.id === id)) return;
   checkpoint();
   // Moves the element (whichever kind it is) from one list to the other.
   const split = <T extends { id: string }>(from: T[], to: T[]): [T[], T[]] => [from.filter((x) => x.id !== id), [...to, ...from.filter((x) => x.id === id)]];
@@ -820,6 +1012,7 @@ export function toggleHidden(id: string): void {
     [sc.walls, h.walls] = split(sc.walls, h.walls);
     [sc.zones, h.zones] = split(sc.zones, h.zones);
     [sc.lights, h.lights] = split(sc.lights, h.lights);
+    [sc.map.assets, h.assets] = split(sc.map.assets, h.assets);
     state.selectedWallIds = state.selectedWallIds.filter((x) => x !== id);
     if (state.selectedZoneId === id) state.selectedZoneId = null;
     if (state.selectedLightId === id) state.selectedLightId = null;
@@ -827,6 +1020,7 @@ export function toggleHidden(id: string): void {
     [h.walls, sc.walls] = split(h.walls, sc.walls);
     [h.zones, sc.zones] = split(h.zones, sc.zones);
     [h.lights, sc.lights] = split(h.lights, sc.lights);
+    [h.assets, sc.map.assets] = split(h.assets, sc.map.assets);
   }
   log(hide ? 'log.elementHidden' : 'log.elementShown');
   recomputeVision();
@@ -1310,7 +1504,10 @@ export function removeToken(id: string): void {
 export function selectZone(id: string | null): void {
   state.selectedZoneId = id;
   // One kind of selection at a time in the Properties panel.
-  if (id) state.selectedWallIds = [];
+  if (id) {
+    state.selectedWallIds = [];
+    state.selectedAssetId = null;
+  }
   emit();
 }
 
@@ -1375,6 +1572,9 @@ export function produceFrame(now: number): PlayerFrame {
     activeTokenId: state.ws === 'play' ? initiativeOrder()[state.turn]?.id ?? null : null,
     seedKey: state.mapResource,
     lights: tv.lights,
+    // Only the scene's shown placements: assets it hides never reach the TV.
+    assets: assetShapes(tv.scene.map.assets, state.assetInfo, tv.scene.map.grid),
+    covers: assetExtras(tv.scene).covers,
   });
   return state.frame;
 }
@@ -1397,8 +1597,9 @@ function tvView(): { scene: Scene; visible: Polygon[]; lights: LitSource[] } {
       ov = { ...ov, overrides: fromView.overrides, added: fromView.added };
     }
     const scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, state.scene.table, 'scene');
-    const vision = updateVision(scene);
-    tvCache = { version: viewVersion, scene, visible: visiblePolygons(vision), lights: litSources(scene) };
+    const extras = assetExtras(scene);
+    const vision = updateVision(scene, extras);
+    tvCache = { version: viewVersion, scene, visible: visiblePolygons(vision), lights: litSources(scene, extras) };
   }
   // Table settings (blackout, rotation, centre) stay live.
   tvCache.scene.table = state.scene.table;

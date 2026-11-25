@@ -35,11 +35,17 @@ export async function refreshLibraryMaps(): Promise<void> {
   const maps: LibraryMap[] = [];
   for (const resource of files) {
     let side: MapSidecar | null = null;
+    let text: string | null = null;
     try {
-      const r = readDocument('map', MapSidecarSchema, await readText(mapSidecarPath(resource)));
-      if (r.ok) side = r.value;
+      text = await readText(mapSidecarPath(resource));
     } catch {
       /* no sidecar yet */
+    }
+    // Files the Asset Vault holds (asset or audio sidecar) are no maps (E-27).
+    if (text !== null && isAssetSidecar(text)) continue;
+    if (text !== null) {
+      const r = readDocument('map', MapSidecarSchema, text);
+      if (r.ok) side = r.value;
     }
     maps.push({
       resource,
@@ -52,6 +58,15 @@ export async function refreshLibraryMaps(): Promise<void> {
   }
   state.libraryMaps = maps.sort((a, b) => a.name.localeCompare(b.name));
   emit();
+}
+
+function isAssetSidecar(text: string): boolean {
+  try {
+    const kind = (JSON.parse(text) as { kind?: unknown }).kind;
+    return kind === 'asset' || kind === 'audio';
+  } catch {
+    return false;
+  }
 }
 
 /** Library maps matching a search: words in name, tags, landscape or type, all of them (case-insensitive). */

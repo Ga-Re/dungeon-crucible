@@ -44,6 +44,7 @@ Geklärt im Interview mit dem DM (Skill `topic-interviewer`). „Wie DM“ heiß
 | E-25 | Kartenänderung und TV | Bis zu den Szenen-Tabs (DC-034) erscheinen Kartenänderungen aus der Kartenschmiede **sofort** auf dem TV; die Bestätigung vor dem Übernehmen kommt mit DC-034. | Übergang |
 | E-26 | Was die Kartenschmiede zeigt | **Nur die Karte** mit allem, was zu ihr gehört (Raster, Wände, Bereiche, Lichter, Props, Assets, Eigenschaften) und ihrem **Start-Nebel** (dort gemalt; jede neue Szene auf der Karte beginnt damit, je Szene anpassbar über E-17). **Tokens gehören zur Szene** und erscheinen in der Schmiede nicht. | – |
 | E-23 | Arbeitsweise | **Sammel-Branch** je Thema, ein PR am Ende, der DM gibt den Merge frei. Nachfragen bei Abhängigkeiten, Dateiformat/Ordnern, Abweichungen vom Plan, Sicherheit und wenn etwas nicht ganz klar ist. Regeln in `CLAUDE.md`; Skills `topic-interviewer`, `next-task`, `finish-task`, `ui-design` und Agent `reviewer` in `.claude/`. | DM: PR je Task, Agent merged selbst |
+| E-27 | Assets | **Bibliothek zuerst**, dann Pack-Import, Asset-Editor, Platzieren, Deckung, szeneneigene Assets. **Arten fest** (Prop, Kartenteil, Textur, Effekt, Lichtquelle, Geräusch, Handout) mit **Unterarten** als Vorschlag plus eigene; **Umgebungen** als Vorschlagsliste plus eigene, mehrere je Asset. Der **Asset-Vault** zeigt alle Bibliotheksdateien außer Karten und Kreaturen (auch Audio). **Sidecar je Datei** (Asset-Format Version 2): Name, Art, Unterart, Tags, Umgebungen, Größe in Feldern, Gruppe (Varianten), Sammlungen, Favorit, später Maske/Licht/Effekt-Verhalten; „zuletzt benutzt“ ist Geräte-Einstellung. Formate PNG, WebP, JPG, WebM (mit Transparenz), MP4. Import: mehrere Dateien/Ziehen, Pack mit Unterordner-Wahl, aus Karte/Handout heraus; Duplikate per Hash; Ordnernamen → Tags plus „pack: …“; Größe aus „_2x2“, Art aus Dateityp, Varianten gebündelt (je Datei ein Asset, gemeinsame Gruppe); Namenskonflikte automatisch umbenennen. Vault: Vorschau-Raster in der Mitte, Filter/Sammlungen links, Eigenschaften mit 5-ft-Vorschau rechts; Mehrfachauswahl, Stern, Ziehen auf Sammlung, Sammlungen verwalten. **Vorschaubild-Cache im App-Datenordner**; das Asset-Protokoll liefert daraus nur Bilder und nur an das DM-Fenster (DM-Freigabe Sicherheit). Editor in der Vault-Mitte: Größe, Deckungsmaske (Kreis/Polygon, Vorschlag aus Transparenz), Licht (hell/dämmrig, Farbe, Flackern), Effekt-Verhalten je Effekt einstellbar (Dauerschleife an/aus, einmal auslösen, mit Licht/Ton). Platzieren auf der Karte, Szenen blenden aus; **szeneneigene Assets** als Ausnahme zu DC-103 (Start oder Spiel, Maske/Licht nur in der Szene). TV: Assets unter dem Nebel, Effekte animiert, ausgeblendete nie. | Bibliothek vor Durchstich; Varianten je Datei statt gebündelt im Sidecar |
 
 **Bleibt aus Dungeon Crucible:** Pergament als drittes Theme, das eigene Docking mit echten Fenstern und
 Hover-Flyout (statt dockview und Kanten-Leisten), Export/Import ganzer Kampagnen als Archiv – beim Export wählbar:
@@ -368,16 +369,81 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 
 ### 3.5 Asset-Vault und Kreaturen
 
-- **DC-040 Asset-Bibliothek**: Import, Metadaten (Typ, Umgebung, Herkunft/Lizenz), Tags, Sammlungen, Favoriten,
-  Duplikat-Erkennung, Pack-Import (flach mit Tags statt Ordnerstruktur) (T-178, T-179, T-231).
-- **DC-041 Props auf der Karte**: platzieren, drehen in 15°-Schritten, skalieren, Sichtblocker aus Alpha (T-144).
+- ✓ **DC-040 Asset-Bibliothek** (E-27; T-178, T-179): Asset-Format Version 2 (Sidecar je Datei); Import mehrerer
+  Dateien bzw. per Ziehen mit Duplikat-Erkennung, Art aus Dateityp, Größe aus „_2x2“; Asset-Vault mit
+  Vorschau-Raster, Suche, Filtern (Art, Unterart, Umgebung, Tags, Sammlungen, Favoriten), Eigenschaften mit
+  5-ft-Vorschau, Mehrfachauswahl, Stern, Sammlungen verwalten und Ziehen auf Sammlung; Audio der Bibliothek
+  erscheint mit; Vorschaubild-Cache im App-Datenordner (Protokoll nur Bilder, nur DM-Fenster).
+  Erledigt: Asset-Format 2 (alte Audio-Sidecars werden als Geräusch-Assets gelesen, das Soundboard schreibt
+  Geräusch-Assets); Asset-Vault mit Katalog (Vorschaubilder auf Schachbrett, Größenregler, Suche, Stern,
+  Mehrfachauswahl mit Umschalt/Strg), Browser (Arten mit Anzahl, Favoriten, Umgebungen, Sammlungen anlegen,
+  umbenennen, löschen mit Bestätigung, Assets darauf ziehen), Eigenschaften (Name, Art, Unterart, Umgebungen,
+  Tags, Größe, Gruppe, Sammlungen, Favorit; bei mehreren: gemeinsame Werte, „verschieden“, Änderungen gelten für
+  alle) mit Vorschau auf dem 5-ft-Raster; Import per Dialog (mehrere Dateien) oder Ziehen ins Fenster (als Bytes,
+  nie als Pfad), Duplikate per Hash. Vorschaubilder erzeugt das DM-Fenster, der Hauptprozess hält sie im
+  App-Datenordner (nur PNG/WebP, Schlüssel aus Pfad/Größe/Zeit) – enger als freigegeben: ohne Änderung am
+  Asset-Protokoll. Die Kartenliste der Schmiede zeigt keine Assets mehr. Änderungen im Vault sind nicht
+  rückgängig machbar (direkt in die Sidecars). „Zuletzt benutzt“ kommt mit DC-041 (Platzieren). Import einer
+  Datei, die die Bibliothek schon als Karte, unlesbar oder aus neuerer App-Version hat: bleibt unverändert,
+  Hinweis im Log (keine Umwandlung in ein Asset).
+- ✓ **DC-040b Pack-Import** (E-27; T-231): Ordner wählen, Unterordner ankreuzen, Fortschritt und Abbrechen ohne
+  halbe Dateien; Ordnernamen → Tags plus „pack: …“; Varianten (oak_01, oak_02 …) als Gruppe; Namenskonflikte
+  automatisch umbenennen. Import aus Karte/Handout heraus kommt mit DC-041 bzw. den Handouts.
+  Erledigt: „Pack importieren“ (Menüband Asset): Ordner im nativen Dialog wählen; Dialog mit Pack-Name und
+  Ordnerbaum (Häkchen, Unterordner folgen, Alle/Keine, Anzahl und Größe); Import Datei für Datei mit
+  Fortschritt und Abbrechen (bis dahin kopierte Dateien bleiben, keine halbe Datei: erst daneben schreiben, dann
+  verlinken); Duplikate über einen Größen-/Hash-Index der Bibliothek; Tags aus den Ordnern unter dem Pack plus
+  „pack: <Name>“, Varianten (nummerierte Geschwister im selben Ordner) mit Gruppe „<Pack>: <Grundname>“; Größe aus
+  „_2x2“. Versteckte Dateien, Sidecars, andere Dateitypen und Verknüpfungen werden übersprungen; das Fenster
+  kennt nur ein Kennzeichen des Packs und Ordnernamen aus dem Scan. Schon vorhandene Dateien bleiben
+  unverändert (keine Pack-Tags nachträglich).
+- ✓ **DC-109 Asset-Editor** (E-27; T-202): in der Vault-Mitte – Größe in Feldern, Deckungsmaske (Kreis/Polygon,
+  Vorschlag aus Transparenz), Licht (hell/dämmrig, Farbe, Flackern), Effekt-Verhalten (Dauerschleife an/aus,
+  einmal auslösen, mit Licht/Ton). DM-Entscheidungen (2026-11-25): Deckung hält auch Licht auf (wie Sicht); vorerst
+  nur volle Deckung.
+  Erledigt: Doppelklick auf ein Asset (oder „Asset bearbeiten …“ im Asset-Panel) öffnet es in der Vault-Mitte
+  auf dem 5-ft-Raster in seiner Größe; Befehls-Panel mit Größe, Deckungsmaske (Kreis aufziehen, Polygon klicken,
+  „Aus Umriss vorschlagen“ aus dem Alphakanal – größter Umriss, vereinfacht –, Griffe ziehen, Entfernen), Licht
+  (bei Lichtquellen immer, sonst „Bringt ein Licht mit“: hell/dämmrig, Farbe, Flackern, Position per Klick) und
+  bei Effekten Dauerschleife bzw. einmal auslösen; OK speichert, Abbrechen/Esc verwirft. Format: `cover`,
+  `light`, `effect` im Asset-Sidecar (Version 2, noch nicht in `main`, daher ohne Versionssprung); Masken und
+  Licht in Feld-Koordinaten der Grundfläche. Ton am Effekt kommt mit DC-104; wirksam werden Maske und Licht mit
+  DC-041/DC-108.
+- ✓ **DC-041 Assets auf der Karte** (E-27; T-144): in der Kartenschmiede platzieren (auch direkt eine Datei wählen),
+  drehen in 15°-Schritten, skalieren, Varianten durchschalten; auf dem TV unter dem Nebel, Effekte animiert;
+  Szenen blenden platzierte Assets aus wie andere Kartenelemente (DC-103).
+  Erledigt: Panel „Assets“ in der Kartenschmiede (zuletzt benutzt – Geräte-Einstellung –, Suche, Arten, Import);
+  Ziehen auf die Karte stellt das Asset in seiner Größe aus dem Vault (Felder × Zellgröße × Skalierung) und rastet
+  ein (bei Vierteldrehungen Kanten am Raster, sonst Mitte auf einer Zelle). Mit „Auswählen“: Klick wählt, Ziehen
+  verschiebt; R/Umschalt+R drehen um 15°, +/− skalieren, V nächste Variante der Gruppe, Entf entfernt; dasselbe im
+  Eigenschaften-Panel; alles rückgängig machbar. Darstellung als eigene Ebene über dem Raster, unter Licht, Tokens
+  und Nebel, im DM-Fenster und auf dem TV; Effekt-Videos laufen in Schleife. Der TV bekommt nur die nicht
+  ausgeblendeten Platzierungen (Projektion). Fehlt die Datei, zeigt die Schmiede einen Platzhalter. Ausblenden im
+  Orchestrator mit „Ein-/ausblenden“; Kartenformat unverändert (`assets` gab es schon). Maske und Licht der Assets
+  wirken mit DC-108; Effekte einmal auslösen kommt mit DC-110 bzw. dem Orchestrator.
+- **DC-110 Szeneneigene Assets** (E-27): Assets nur in einer Szene, beim Vorbereiten (Start) oder im Spiel
+  (Spielzustand, „Szene zurücksetzen“ entfernt sie); Maske und Licht gelten nur in dieser Szene.
 - **DC-042 Smart Prefabs, Innenräume als Asset-Varianten** (T-202, T-146).
-- **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
+- ✓ **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
   Deckungsmaske eines Assets fest (Kreis oder Polygon auf dem Bild – Baum, Säule, Statue); ein platziertes Asset ist
   automatisch maskiert: Die Maske dreht und skaliert mit, sie wird nur am Asset geändert und gilt dann überall
   (DM-Entscheidung 2026-11-25: keine Anpassung je Platzierung). In der Sicht wirft Deckung Schatten nach hinten, das
   Objekt selbst bleibt sichtbar. Hängt an DC-040 (Bibliothek), einem Asset-Editor und DC-041 (platzieren); das
-  Asset-Thema beginnt mit einem Interview (Reihenfolge, Asset-Editor, Dateiformat, Licht hinter Deckung).
+  Asset-Thema: Interview geführt (E-27, 2026-11-25); Maske kommt aus DC-109, Platzieren aus DC-041.
+  Erledigt: Masken platzierter Assets werden zu Polygonen auf der Karte (mit Drehung und Skalierung; Kreise als
+  Vieleck); ihre Kanten halten Sicht und Licht auf wie Wände; die Deckung selbst gilt als gesehen bzw. beleuchtet,
+  soweit Wände sie nicht verdecken (das Objekt bleibt sichtbar); wer in einer Maske steht (Figur oder Licht), für
+  den wirkt sie nicht. Lichter der Assets werden Lichtquellen an der gedrehten Position (immer an). DM-Sicht und
+  TV rechnen mit denselben Daten; ausgeblendete Assets zählen nicht. In der Schmiede zeigt das Overlay die Masken
+  gestrichelt. Robustheit: Flächen mit Deckung werden auf 1/100 px gerundet (die Clipping-Bibliothek lief bei fast
+  deckungsgleichen Kanten in eine Endlosrekursion); scheitert die Berechnung dennoch, rechnet die Figur bzw. das
+  Licht ohne Masken weiter. Offen: Asset-Lichter je Szene schalten und das Flackern darstellen.
+  Nach dem Review: Sicht mit vielen Masken beschleunigt (40 Masken ~120 statt ~600 ms, Test als Wächter); ein
+  Fehler der Clipping-Bibliothek lässt die Masken blockierend (schließt, statt zu öffnen).
+  DM-Entscheidungen (2026-11-25): Kartenschmiede-Änderungen (auch platzierte Assets) erscheinen bis DC-034 sofort
+  auf dem TV (E-25). Figuren in einer Maske (Zelt, Wagen) sind für die Spieler verborgen, bis eine ihrer Figuren
+  in derselben Maske steht – umgesetzt in der Projektion; die Innenansicht (Inneres zeigen, wenn jemand eintritt)
+  kommt über die Ebenen in Kartenschmiede und Szeneneditor (DC-101, Innenräume DC-042).
 - **DC-043 Kreaturen global** in der Bibliothek (Werteblock-Editor umziehen); Spielercharaktere siehe DC-096.
 - **DC-044 Tokenbilder**: Token und Porträt, Token aus Porträt, Fraktionsring, ausgeschnittene Figur (T-203, T-208).
 - **DC-045 Klone, Begegnungsgruppen, Gestalten, SRD-Import, eigene Footprints** (T-204–207, T-241).

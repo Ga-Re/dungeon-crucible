@@ -14,12 +14,13 @@ import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
+  cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { importMapIntoCampaign, switchScene } from '../app/campaign';
 import { filterLibraryMaps, mapUsage, openLibraryMap, refreshLibraryMaps, trashLibraryMap, type MapUsage } from '../app/library';
 import { CREATURE_DRAG } from './MapView';
+import { VaultBrowser } from './VaultPanels';
 import { BUILTIN_PREFIX, BUILTIN_SFX, masterLevel } from '../app/audio';
 import { importAudio, setMaster, setTrackVolume, stopAll, toggleAmbience, trackFileName, triggerSfx } from '../app/soundboard';
 
@@ -54,9 +55,8 @@ export function BrowserPanel() {
       </div>
     );
   }
-  if (ws === 'vault' || ws === 'atlas') {
-    return <div className="panel-body hint">{t(ws === 'vault' ? 'soon.vault' : 'soon.atlas')}</div>;
-  }
+  if (ws === 'vault') return <VaultBrowser />;
+  if (ws === 'atlas') return <div className="panel-body hint">{t('soon.atlas')}</div>;
   return (
     <div className="panel-body">
       {ws === 'forge' && campaign && <LibraryMaps />}
@@ -224,6 +224,7 @@ function SceneChanges() {
   const scene = useStore((s) => s.scene);
   const mapDoc = useStore((s) => s.mapDoc);
   const sceneDoc = useStore((s) => s.sceneDoc);
+  const assetInfo = useStore((s) => s.assetInfo);
   const [confirm, setConfirm] = useState(false);
   const issues = useMemo(() => (mapDoc && sceneDoc ? sceneIssues(mapDoc, sceneDoc) : { orphaned: [], invalid: [] }), [mapDoc, sceneDoc]);
   const stale = [...issues.orphaned, ...issues.invalid];
@@ -231,6 +232,10 @@ function SceneChanges() {
   const nameOf = (c: ElementChange): string => {
     if (c.kind === 'zones') return [...scene.zones, ...scene.hidden.zones].find((z) => z.id === c.id)?.name ?? c.id;
     if (c.kind === 'lights') return t('changes.light');
+    if (c.kind === 'assets') {
+      const a = [...scene.map.assets, ...scene.hidden.assets].find((x) => x.id === c.id);
+      return (a && assetInfo[a.assetPath]?.name) ?? t('panel.asset');
+    }
     const w = [...scene.walls, ...scene.hidden.walls].find((x) => x.id === c.id);
     return w ? t(`wall.kind.${w.kind}` as MessageKey) : c.id;
   };
@@ -241,7 +246,7 @@ function SceneChanges() {
         {changes.map((c) => (
           <li key={c.id}>
             <div className="tn">
-              <Icon name={c.kind === 'walls' ? 'wall' : c.kind === 'zones' ? 'zone' : 'light'} />
+              <Icon name={c.kind === 'walls' ? 'wall' : c.kind === 'zones' ? 'zone' : c.kind === 'assets' ? 'box' : 'light'} />
               <span className="nm">{nameOf(c)}</span>
               <span className="meta">{t(`changes.${c.status}` as MessageKey)}</span>
               {c.status === 'hidden' && <button className="ab-btn" title={t('changes.show')} aria-label={`${t('changes.show')}: ${nameOf(c)}`} onClick={() => toggleHidden(c.id)}><Icon name="eye" /></button>}
@@ -284,6 +289,7 @@ export function PropertiesPanel() {
   const light = useStore((s) => s.scene.lights.find((l) => l.id === selLight));
   const zone = state.scene.zones.find((z) => z.id === selZone);
   const selWalls = useStore((s) => s.selectedWallIds);
+  const placedAsset = useStore((s) => s.selectedAssetId);
   const allWalls = useStore((s) => s.scene.walls);
   const walls = allWalls.filter((w) => selWalls.includes(w.id));
   return (
@@ -313,7 +319,9 @@ export function PropertiesPanel() {
         </>
       )}
       <div className="sec">{t('props.selection')}</div>
-      {walls.length > 0 ? (
+      {placedAsset ? (
+        <PlacedAssetProperties id={placedAsset} />
+      ) : walls.length > 0 ? (
         <WallProperties walls={walls} />
       ) : zone ? (
         <>
@@ -347,6 +355,42 @@ function WallProperties({ walls }: { walls: readonly Wall[] }) {
       <p className="hint">{t('wall.editHint')}</p>
       <button className="btn sm danger" onClick={deleteSelectedWalls}><Icon name="trash" />{t('wall.delete')}</button>
     </>
+  );
+}
+
+/** The placed asset selected in the Map Forge (DC-041): its turn, scale, variant; remove it. */
+function PlacedAssetProperties({ id }: { id: string }) {
+  const { t } = useI18n();
+  const a = useStore((s) => s.scene.map.assets.find((x) => x.id === id));
+  const info = useStore((s) => (a ? s.assetInfo[a.assetPath] : undefined));
+  const hasVariants = useStore((s) => !!info?.group && Object.values(s.assetInfo).filter((i) => i.group === info.group).length > 1);
+  if (!a) return null;
+  return (
+    <>
+      <div className="row"><label>{t('placed.title')}</label><span>{info?.name ?? a.assetPath}</span></div>
+      {!info && <p className="hint">{t('placed.missing')}</p>}
+      <NumberRow id="pa-rot" label={t('placed.rotation')} value={a.rotation} step={15} onCommit={(v) => rotatePlacedAsset(id, v - a.rotation)} />
+      <NumberRow id="pa-scale" label={t('placed.scale')} value={a.scale} step={0.25} min={0.25} max={8} onCommit={(v) => v > 0 && scalePlacedAsset(id, v / a.scale)} />
+      {hasVariants && <button className="btn sm" onClick={() => cycleAssetVariant(id)}><Icon name="next" />{t('placed.variant')}</button>}
+      <button className="btn sm danger" onClick={() => deletePlacedAsset(id)}><Icon name="trash" />{t('placed.remove')}</button>
+      <p className="hint">{t('picker.hint')}</p>
+    </>
+  );
+}
+
+/** A number taken on Enter or when leaving the field (one undo step; an empty field changes nothing). */
+function NumberRow({ id, label, value, step, min, max, onCommit }: { id: string; label: string; value: number; step: number; min?: number; max?: number; onCommit: (v: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  const commit = () => {
+    const v = Number(draft);
+    if (draft.trim() === '' || !Number.isFinite(v) || v === value) setDraft(String(value));
+    else onCommit(v);
+  };
+  return (
+    <div className="row"><label htmlFor={id}>{label}</label>
+      <input id={id} type="number" step={step} min={min} max={max} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} />
+    </div>
   );
 }
 
@@ -750,7 +794,7 @@ export function CreaturePanel() {
   );
 }
 
-export function SoonPanel({ text }: { text: 'soon.atlas' | 'soon.vault' }) {
+export function SoonPanel({ text }: { text: 'soon.atlas' }) {
   const { t } = useI18n();
   return (
     <div className="panel-body">

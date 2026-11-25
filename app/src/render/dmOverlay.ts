@@ -4,6 +4,7 @@
  */
 import type { Point } from '../core/geometry';
 import type { GridBox } from '../core/grid';
+import type { Footprint } from '../core/placement';
 import { labelPoint } from '../core/areas';
 import type { Polygon } from '../core/poly/types';
 import type { HiddenElements, Scene, Wall, WallKind } from '../core/scene';
@@ -26,6 +27,10 @@ export interface OverlayState {
   selectedWallIds: readonly string[];
   /** "Draw walls": the pieces drawn so far and the one following the pointer. */
   wallDraft: { kind: WallKind; walls: readonly Omit<Wall, 'id'>[]; next: { a: Point; b: Point } | null } | null;
+  /** Placed assets for the DM (DC-041): their footprints, the selected one, missing files, hidden ones. */
+  assets: readonly { fp: Footprint; name: string; selected: boolean; missing: boolean; hidden: boolean }[];
+  /** Cover masks of placed assets (Map Forge, DC-108): dashed outlines. */
+  covers: readonly Polygon[];
   /** Elements whose fields this scene changed (DC-103): marked for the DM. */
   changed: ReadonlySet<string>;
   /** Where dragged wall ends are right now. */
@@ -134,6 +139,18 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     }
   }
 
+  for (const a of o.assets) drawPlacement(g, a, px);
+  if (o.covers.length) {
+    g.save();
+    g.strokeStyle = 'rgba(63,157,226,.8)';
+    g.fillStyle = 'rgba(63,157,226,.1)';
+    g.lineWidth = 1.5 * px;
+    g.setLineDash([6 * px, 4 * px]);
+    const path = areaPath(o.covers);
+    g.fill(path);
+    g.stroke(path);
+    g.restore();
+  }
   // Elements hidden in this scene: faint and dashed, so the DM can find and show them again.
   drawHidden(g, scene.hidden, px);
   // Changed elements: a small marker.
@@ -474,5 +491,47 @@ function drawChangedMark(g: CanvasRenderingContext2D, x: number, y: number, px: 
   g.closePath();
   g.fill();
   g.stroke();
+  g.restore();
+}
+
+/**
+ * A placed asset's footprint for the DM: the selected one outlined with its turn marked, one
+ * whose file is missing as a labelled placeholder, one hidden in this scene faint and dashed.
+ */
+function drawPlacement(g: CanvasRenderingContext2D, a: { fp: Footprint; name: string; selected: boolean; missing: boolean; hidden: boolean }, px: number): void {
+  if (!a.selected && !a.missing && !a.hidden) return;
+  const { cx, cy, w, h, rotation } = a.fp;
+  g.save();
+  g.translate(cx, cy);
+  g.rotate((rotation * Math.PI) / 180);
+  g.lineWidth = 2 * px;
+  if (a.hidden) {
+    g.globalAlpha = 0.55;
+    g.strokeStyle = 'rgba(200,200,210,.9)';
+    g.setLineDash([5 * px, 5 * px]);
+  } else if (a.missing) {
+    g.fillStyle = 'rgba(226,85,76,.12)';
+    g.fillRect(-w / 2, -h / 2, w, h);
+    g.strokeStyle = 'rgba(226,85,76,.85)';
+    g.setLineDash([6 * px, 4 * px]);
+  } else {
+    g.strokeStyle = '#3f9de2';
+  }
+  g.strokeRect(-w / 2, -h / 2, w, h);
+  if (a.selected) {
+    // Which way is "up" for the asset: a tick at its top edge.
+    g.setLineDash([]);
+    g.beginPath();
+    g.moveTo(0, -h / 2);
+    g.lineTo(0, -h / 2 - 12 * px);
+    g.stroke();
+  }
+  if (a.missing) {
+    g.setLineDash([]);
+    g.fillStyle = 'rgba(226,85,76,.95)';
+    g.font = `600 ${12 * px}px 'Barlow Semi Condensed', sans-serif`;
+    g.textAlign = 'center';
+    g.fillText(a.name, 0, 4 * px);
+  }
   g.restore();
 }

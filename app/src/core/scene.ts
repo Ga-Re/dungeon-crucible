@@ -161,10 +161,12 @@ export interface HiddenElements {
   walls: Wall[];
   zones: Zone[];
   lights: LightSource[];
+  /** Placed assets of the map (DC-041). */
+  assets: MapAssetPlacement[];
 }
 
 export function noHidden(): HiddenElements {
-  return { walls: [], zones: [], lights: [] };
+  return { walls: [], zones: [], lights: [], assets: [] };
 }
 
 export interface Scene {

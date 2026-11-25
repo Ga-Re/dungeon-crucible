@@ -33,6 +33,44 @@ export interface CampaignListEntry {
   modifiedAt: number;
 }
 
+/** A library file with its sidecar text (Asset Vault, DC-040). */
+export interface LibraryEntry {
+  /** File name in `library/`. */
+  name: string;
+  size: number;
+  mtimeMs: number;
+  /** Text of `<name>.dm.json`, if there is one. */
+  sidecar: string | null;
+}
+
+/** A pack folder the DM picked (DC-040b): its folders; the path stays in the main process. */
+export interface PackScanInfo {
+  /** Names this pack in later calls. */
+  token: string;
+  name: string;
+  folders: { path: string; files: number; bytes: number }[];
+}
+
+/** A file of a pack import: where it was in the pack, where it is in the library. */
+export interface PackImported {
+  packPath: string;
+  relPath: string;
+  reused: boolean;
+}
+
+/** What a pack import copied; `failed` names the file it stopped at, if one failed. */
+export interface PackImportResult {
+  files: PackImported[];
+  failed: string | null;
+}
+
+export interface PackProgress {
+  token: string;
+  done: number;
+  total: number;
+  file: string;
+}
+
 /** A file put into the library. */
 export interface LibraryImport {
   /** Path relative to the root folder (`library/<file>`), with forward slashes. */
@@ -117,6 +155,22 @@ export interface DcApi {
 
   /** Picks a map or audio file and puts it into the library (null: cancelled). */
   importToLibrary(kind: 'map' | 'audio'): Promise<LibraryImport | null>;
+  /** The library's files with their sidecars (Asset Vault). */
+  listLibrary(): Promise<LibraryEntry[]>;
+  /** Picks any number of asset files and puts them into the library ([] when cancelled). */
+  importAssets(): Promise<LibraryImport[]>;
+  /** Puts a dropped file into the library from its bytes (never from a path). */
+  importDropped(fileName: string, bytes: Uint8Array): Promise<LibraryImport>;
+  /** Picks a pack folder and lists its folders (null: cancelled). */
+  pickPack(): Promise<PackScanInfo | null>;
+  /** Imports the chosen folders of a picked pack; progress comes through `onPackProgress`. */
+  importPack(token: string, folders: string[]): Promise<PackImportResult>;
+  /** Stops a running pack import after the current file. */
+  cancelPack(token: string): Promise<void>;
+  onPackProgress(cb: (p: PackProgress) => void): () => void;
+  /** Thumbnail cache on this device (app data folder): by key, PNG/WebP only. */
+  readThumb(key: string): Promise<Uint8Array | null>;
+  writeThumb(key: string, bytes: Uint8Array): Promise<void>;
 
   /** Writes campaign `slug` as .zip; `libraryFiles` (root-relative) come along, [] = campaign only. */
   exportCampaignArchive(slug: string, name: string, libraryFiles: string[]): Promise<ExportResult | null>;

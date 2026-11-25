@@ -102,18 +102,24 @@ describe('cover stays fast (review)', () => {
     const s = createSampleScene();
     const placements = Array.from({ length: 40 }, (_, i) => ({ id: `t${i}`, assetPath: 'library/tree.png', x: 150 + (i % 8) * 3 * 70, y: 150 + Math.floor(i / 8) * 3 * 70, rotation: 0, scale: 1 }));
     const covers = placementCovers(placements, { 'library/tree.png': { sizeCells: { w: 2, h: 2 }, cover: { shape: 'circle', x: 1, y: 1, r: 0.6 } } }, s.map.grid);
-    // Median of a few runs each, on this machine: a ratio, not milliseconds, so a slow CI machine does not matter.
-    const median = (f: () => void) => {
+    // A ratio on this machine, not milliseconds, so a slow CI machine does not matter; the two are
+    // timed in turns, so load from other tests running in parallel hits both alike.
+    const time = (f: () => void) => {
+      const t0 = performance.now();
       f();
-      const times = [0, 1, 2, 3, 4].map(() => {
-        const t0 = performance.now();
-        f();
-        return performance.now() - t0;
-      });
-      return times.sort((a, b) => a - b)[2];
+      return performance.now() - t0;
     };
-    const plain = median(() => updateVision(s));
-    const withMasks = median(() => updateVision(s, { covers }));
+    updateVision(s);
+    updateVision(s, { covers });
+    const plainTimes: number[] = [];
+    const maskTimes: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      plainTimes.push(time(() => updateVision(s)));
+      maskTimes.push(time(() => updateVision(s, { covers })));
+    }
+    const median = (xs: number[]) => xs.sort((a, b) => a - b)[3];
+    const plain = median(plainTimes);
+    const withMasks = median(maskTimes);
     // About 8× here; the old way was 16× and more.
     expect(withMasks / plain).toBeLessThan(14);
   });

@@ -55,7 +55,8 @@ describe('a scene view', () => {
     const s = sceneFromDocuments(map, doc(), null);
     expect(ids(s.walls)).toEqual(['w-out']);
     expect(ids(s.lights)).toEqual([]);
-    expect(ids(allPlacements(s))).toEqual(['roof-1', 'rock']);
+    // In drawing order: the base layer's rock below the roof.
+    expect(ids(allPlacements(s))).toEqual(['rock', 'roof-1']);
     expect(ids(s.inactive.walls)).toEqual(['w-in']);
     const out = sceneOverrideFromScene(s, 'S', 'm', { round: 1, turn: 0 }, map);
     expect(out.hidden).toEqual([]);
@@ -68,7 +69,7 @@ describe('a scene view', () => {
     const s = sceneFromDocuments(map, doc({ layers: { inside: true, roof: false } }), null);
     expect(ids(s.walls)).toEqual(['w-out', 'w-in']);
     expect(ids(s.lights)).toEqual(['lamp']);
-    expect(ids(allPlacements(s))).toEqual(['rug', 'rock']);
+    expect(ids(allPlacements(s))).toEqual(['rock', 'rug']);
     expect(sceneOverrideFromScene(s, 'S', 'm', { round: 1, turn: 0 }, map).layers).toEqual({ inside: true, roof: false });
   });
 

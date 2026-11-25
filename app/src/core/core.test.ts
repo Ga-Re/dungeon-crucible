@@ -237,6 +237,16 @@ describe('player projection (fail-closed)', () => {
     expect(isInside(frame.fog.open, mid)).toBe(false);
     expect(isInside(frame.fog.clear, mid)).toBe(false);
   });
+  it('never sends an unfound secret door on a drawn wall (E-33)', () => {
+    const scene = createSampleScene();
+    scene.map.masonry = [{ id: 'm-a', points: [{ x: 0, y: 0 }, { x: 300, y: 0 }], closed: false, style: 'brick', thickness: 10, seed: 1 }];
+    scene.map.masonryDoors = [{ id: 'd-hidden', wall: 'm-a', at: 137, width: 40, secret: true, crack: false }];
+    const frame = buildPlayerFrame(scene, frameOpts(1, 0, visiblePolygons(updateVision(scene))));
+    expect(frame.map.drawn).toMatchObject({ doors: [], cracks: [] });
+    expect(JSON.stringify(frame)).not.toContain('137');
+    expect(JSON.stringify(frame)).not.toContain('d-hidden');
+    expect(parsePlayerFrame(frame, 0, 0).ok).toBe(true);
+  });
 });
 
 function frameOpts(seq: number, now: number, visible: ReturnType<typeof visiblePolygons>) {

@@ -293,7 +293,7 @@ function StatusBar() {
   const map = useStore((s) => s.scene.map);
   const round = useStore((s) => s.round);
   const grid = useStore((s) => s.scene.map.grid);
-  const explored = useMemo(() => Math.round(exploredShare(fog, visible, map.widthPx, map.heightPx) * 100), [fog, visible, map.widthPx, map.heightPx]);
+  const explored = useMemo(() => Math.round(exploredShare(fog, visible, map.widthPx, map.heightPx, 40, map.origin) * 100), [fog, visible, map.widthPx, map.heightPx, map.origin]);
   return (
     <footer className="statusbar">
       <span>{t(WORKSPACES[ws].name)}</span>

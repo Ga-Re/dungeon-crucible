@@ -2055,7 +2055,7 @@ export function discoverZone(id: string): void {
 export function fogAll(reveal: boolean): void {
   checkpoint();
   const m = state.scene.map;
-  state.scene.fog = reveal ? revealAll(state.scene.fog, m.widthPx, m.heightPx, locked()) : hideAll();
+  state.scene.fog = reveal ? revealAll(state.scene.fog, m.widthPx, m.heightPx, locked(), m.origin) : hideAll();
   state.fogQuick = false;
   recomputeVision();
   state.fogQuick = false;
@@ -2337,7 +2337,7 @@ export function applyMapSettings(s: MapSettings): boolean {
 /** Where new tokens go: the centre of what the TV shows, else of the map. */
 function tableCentre(): Point {
   const m = state.scene.map;
-  return { x: state.scene.table.centerX || m.widthPx / 2, y: state.scene.table.centerY || m.heightPx / 2 };
+  return { x: state.scene.table.centerX || (m.origin?.x ?? 0) + m.widthPx / 2, y: state.scene.table.centerY || (m.origin?.y ?? 0) + m.heightPx / 2 };
 }
 
 /* ---------- Players of the campaign (DC-096) ---------- */

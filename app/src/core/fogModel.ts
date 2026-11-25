@@ -20,8 +20,9 @@ export function rectPolygon(x0: number, y0: number, x1: number, y1: number): Pol
   return { outer: [[l, t], [r, t], [r, b], [l, b]], holes: [] };
 }
 
-export function mapPolygon(width: number, height: number): Polygon {
-  return rectPolygon(0, 0, width, height);
+/** The map's area; a drawn map's may start left of or above 0 (`origin`, E-33). */
+export function mapPolygon(width: number, height: number, origin: { x: number; y: number } = { x: 0, y: 0 }): Polygon {
+  return rectPolygon(origin.x, origin.y, origin.x + width, origin.y + height);
 }
 
 /** Removes `locked` (undiscovered secret rooms) from `area`. */
@@ -50,8 +51,8 @@ export function hideIn(fog: LevelFog, area: Polygon, remember = false): LevelFog
   return hideArea(fog, area, remember);
 }
 
-export function revealAll(fog: LevelFog, width: number, height: number, locked: readonly Polygon[]): LevelFog {
-  return revealIn(fog, mapPolygon(width, height), locked);
+export function revealAll(fog: LevelFog, width: number, height: number, locked: readonly Polygon[], origin?: { x: number; y: number }): LevelFog {
+  return revealIn(fog, mapPolygon(width, height, origin), locked);
 }
 
 /** Everything back to unexplored (memory fog included). */
@@ -90,13 +91,13 @@ export function seenNow(fog: LevelFog, visible: readonly Polygon[], p: { x: numb
 }
 
 /** Share of the map that is not unexplored, 0…1 (approximate, sampled on a coarse grid). */
-export function exploredShare(fog: LevelFog, visible: readonly Polygon[], width: number, height: number, samples = 40): number {
+export function exploredShare(fog: LevelFog, visible: readonly Polygon[], width: number, height: number, samples = 40, origin = { x: 0, y: 0 }): number {
   const open = openArea(fog, visible);
   if (open.length === 0) return 0;
   let hit = 0;
   for (let j = 0; j < samples; j++) {
     for (let i = 0; i < samples; i++) {
-      if (isInside(open, [((i + 0.5) / samples) * width, ((j + 0.5) / samples) * height])) hit++;
+      if (isInside(open, [origin.x + ((i + 0.5) / samples) * width, origin.y + ((j + 0.5) / samples) * height])) hit++;
     }
   }
   return hit / (samples * samples);

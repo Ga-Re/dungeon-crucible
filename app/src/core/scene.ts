@@ -148,6 +148,8 @@ export interface MapInfo {
   masonryDoors: BuildDoor[];
   /** Top left of a drawn map's area; none: 0, 0. */
   origin?: Point;
+  /** A drawn map (E-33): no picture, its drawn walls are its picture. */
+  drawn?: boolean;
 }
 
 export type MapType = 'dungeon' | 'building' | 'region' | 'world' | 'arena';

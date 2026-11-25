@@ -341,8 +341,15 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     `library/<name>.map.json` mit `resource: "drawn:"`, im Katalog gelistet; Türzustände und „gefunden“
     (`<id>:found`) im `doors` der Szene (keine neue Szenenversion); Duplizieren: bei einer gezeichneten Karte gehört
     die Zeichnung zu „nur die Karte“, über einem Bild gezeichnete Mauern nur zu „mit allem“ (DM 2026-11-25).
-    Offen: Anschluss an Sicht/Nebel/TV, Darstellung mit Texturen, Tab „Bauen“ mit Zeichnen und Bearbeiten,
-    „Neue gezeichnete Karte“ anlegen und öffnen, Messung, Prüfung in der App.
+    Anschluss: Sicht, Licht und Nebel nehmen die abgeleiteten Wände (Ebenen der Szene); Türen per Klick, eine
+    geöffnete Geheimtür bleibt gefunden, ebenso beim Entdecken eines geheimen Bereichs. Gezeichnete Karten öffnen
+    ohne Bild; der Renderer legt Karte, Raster, Licht, Erinnerung und Nebel an den Ursprung (`render/pixi/origin.ts`),
+    über Bildkarten liegt die Zeichnung als eigene Ebene. TV: `map.drawn` im Frame (Version 4) nur mit Mauern aktiver
+    Ebenen, sichtbaren Türen und eingeschalteten Rissen – eine unentdeckte Geheimtür wird nie gesendet (Test).
+    Geprüft in der App (Kartenschmiede, Spiel, TV). Vorläufige flache Optik (`render/drawnMap.ts`).
+    Offen: Darstellung mit Texturen (Riss sichtbar), Tab „Bauen“ mit Zeichnen und Bearbeiten (Ausdehnung dabei neu
+    berechnen), „Neue gezeichnete Karte“ im Katalog (Vorschaubild, Anzeige „Kartendatei“), sehr große Karten über
+    die Canvas-Grenze (~16 384 px) hinaus, Messung.
   - **DC-107b Boden-Pinsel** mit sauberem Übergang an Mauern.
   - **DC-107c Eigene Mauern in Szenen** (Szene v8).
   - Danach (eigene Pakete): Wege/Flüsse/Brücken, Räume und Dächer, Detailstreuung, Wildnis-/Stadt-Modus.

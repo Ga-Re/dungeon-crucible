@@ -304,6 +304,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       masonry: map.masonry.map(copyMasonry),
       masonryDoors: map.masonryDoors.map((d) => ({ ...d })),
       ...(map.origin ? { origin: { ...map.origin } } : {}),
+      ...(isDrawn(map.resource) ? { drawn: true } : {}),
     },
     walls: shownOn(walls),
     zones: shownOn(zones),
@@ -323,7 +324,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     pings: [],
     fog,
     fogEffect: !onMap && state?.fogEffect ? { ...state.fogEffect } : null,
-    table: { ...DEFAULT_TABLE, centerX: map.widthPx / 2, centerY: map.heightPx / 2, ...table },
+    table: { ...DEFAULT_TABLE, centerX: (map.origin?.x ?? 0) + map.widthPx / 2, centerY: (map.origin?.y ?? 0) + map.heightPx / 2, ...table },
   };
 }
 

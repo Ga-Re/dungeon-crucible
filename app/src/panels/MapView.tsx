@@ -31,6 +31,7 @@ import type { MessageKey } from '../i18n/en';
 import { drawDmOverlay, rotateHandleAt, type OverlayState } from '../render/dmOverlay';
 import { fogOptions } from '../render/fogOptions';
 import { DARKNESS } from '../core/projection';
+import { dmDrawing } from '../core/build/playerDrawing';
 import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
 import { TableView, type FrameSource } from '../table/TableView';
@@ -119,7 +120,9 @@ function DmMap() {
         return;
       }
       const z = Math.min((s.width - 40) / m.widthPx, (s.height - 40) / m.heightPx);
-      view.current = { zoom: z, x: (s.width - m.widthPx * z) / 2, y: (s.height - m.heightPx * z) / 2 };
+      // A drawn map's area may start left of or above 0 (E-33).
+      const o = m.origin ?? { x: 0, y: 0 };
+      view.current = { zoom: z, x: (s.width - m.widthPx * z) / 2 - o.x * z, y: (s.height - m.heightPx * z) / 2 - o.y * z };
     };
     mapCommands.fit = fit;
     // The middle of what the map view shows, in map pixels (placing from the keyboard).
@@ -142,7 +145,13 @@ function DmMap() {
     const push = (r: Renderer) => {
       const sc = state.scene;
       const cell = sc.map.grid.cellWidth;
-      void map?.set(sc.map.imageUrl, sc.map.isVideo);
+      // Drawn walls (E-33): a drawn map's picture, or drawn over the picture map; in a scene those of its active layers.
+      const drawing = dmDrawing(sc.map, sc.masonryDoorsOpen, state.layer === 'map' ? undefined : sc.layersOn);
+      if (sc.map.drawn && drawing) map?.setDrawn(drawing);
+      else {
+        void map?.set(sc.map.imageUrl, sc.map.isVideo);
+        map?.setOver(drawing);
+      }
       // While calibrating, the grid is always shown: it is what is being adjusted.
       r.setGrid((state.showGrid || state.calibration) && sc.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: sc.map.grid.originX, offsetYPx: sc.map.grid.originY, alpha: 0.18 } : null);
       // Placed assets: their files' URLs are looked up once, the first time they are shown.

@@ -78,7 +78,7 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
 
   g.strokeStyle = 'rgba(255,255,255,.15)';
   g.lineWidth = px;
-  g.strokeRect(0, 0, W, H);
+  g.strokeRect(scene.map.origin?.x ?? 0, scene.map.origin?.y ?? 0, W, H);
 
   for (const z of scene.zones) {
     // The area being edited shows as the command's draft instead.

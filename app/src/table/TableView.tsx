@@ -70,7 +70,12 @@ export function TableView({ source }: { source: FrameSource }) {
       if (f.seq !== lastSeq) {
         lastSeq = f.seq;
         const cell = f.map.grid.cellWidth;
-        void map?.set(f.map.imageUrl, f.map.isVideo);
+        // A drawn map (E-33) has no picture: its drawing is its picture; else it lies over the picture.
+        if (f.map.imageUrl === null && f.map.drawn) map?.setDrawn(f.map.drawn);
+        else {
+          void map?.set(f.map.imageUrl, f.map.isVideo);
+          map?.setOver(f.map.drawn);
+        }
         r.setGrid(f.map.showGrid && f.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: f.map.grid.originX, offsetYPx: f.map.grid.originY, color: '#000000', alpha: 0.35 } : null);
         r.setAssets(f.assets.map((a, i) => ({ ...a, id: `asset-${i}` })));
         r.setTokens(f.tokens.map((t): TokenShape => ({ id: t.id, name: t.label, x: t.x - (t.size * cell) / 2, y: t.y - (t.size * cell) / 2, width: t.size * cell, height: t.size * cell, color: t.ringColor, active: t.active })), { glide: 120 });

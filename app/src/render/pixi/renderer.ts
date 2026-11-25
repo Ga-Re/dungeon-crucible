@@ -27,6 +27,7 @@ import {
 } from "./token-look";
 import type { Camera, Size } from "./camera";
 import { disposeFog } from "./fog-dispose";
+import { shiftGrid, shiftLighting, shiftPolygons, ZERO, type Origin } from "./origin";
 import { easeOut, fadeProgress } from "./fog-fade";
 import { mapTiles } from "./map-tiles";
 import {
@@ -217,8 +218,17 @@ export function gridLinePositions(
  * frame – instead of every frame, so an idle DM window costs no GPU time.
  */
 export interface Renderer {
-  /** Replaces the map image (`null` removes it). The renderer owns the texture from now on. */
-  setMap(image: MapImage | null): void;
+  /**
+   * Replaces the map image (`null` removes it). The renderer owns the texture from now on.
+   * `origin`: where the image's top left lies in map pixels (a drawn map grows left and up,
+   * E-33); the map's area – grid, light, memory and fog – is built there too.
+   */
+  setMap(image: MapImage | null, origin?: Origin): void;
+  /**
+   * Dungeon Crucible (E-33): walls drawn over a picture map, as an image whose top left lies at
+   * `origin` – above the map, under the grid. `null` removes it.
+   */
+  setDrawing(image: MapImage | null, origin?: Origin): void;
   /**
    * Shows a video map (ADR-0010): `video` must lie directly under the canvas in the same
    * positioned box; the renderer sizes, transforms and shows it, the caller owns it (loading,
@@ -299,6 +309,9 @@ export async function createRenderer(
 
   const world = new Container();
   app.stage.addChild(world);
+  // Walls drawn over a picture map (E-33): right above the map (which goes in at index 0).
+  const drawingLayer = new Container();
+  world.addChild(drawingLayer);
   // Grid lines (T-106b): above the map (which goes in at index 0), below the fog (added last).
   const gridLayer = new Graphics();
   world.addChild(gridLayer);
@@ -494,6 +507,9 @@ export async function createRenderer(
   // Memory fog (Dungeon Crucible): above the tokens, below the fog (added last).
   const memoryLayer = new Container();
   world.addChild(memoryLayer);
+  // The fog on top of everything, in the map's own space like the other area layers (E-33).
+  const fogHost = new Container();
+  world.addChild(fogHost);
   let memoryInput: { readonly clear: readonly Polygon[]; readonly opacity: number; readonly softEdge: number } | null = null;
   let memoryBuiltFrom: string | null = null;
   // Per token id: what its look was built from, and the container drawn at its centre.
@@ -638,6 +654,21 @@ export async function createRenderer(
   // The map: one sprite, or a container of tiles for a map larger than the texture limit (T-127).
   let map: Container | null = null;
   let mapImageSize: Size | null = null;
+  // Where the map's area starts (E-33), and the area layers' inputs as given, in map pixels.
+  let origin: Origin = ZERO;
+  let rawFog: { readonly revealed: readonly Polygon[]; readonly options: FogOptions } | null = null;
+  let rawMemory: { readonly clear: readonly Polygon[]; readonly opacity: number; readonly softEdge: number } | null = null;
+  let rawLight: Lighting | null = null;
+  let rawGrid: GridLines | null = null;
+  /** The area layers' inputs in the map's own space, and the layers placed at the origin. */
+  const toMapSpace = () => {
+    fogInput = rawFog && { ...rawFog, revealed: shiftPolygons(rawFog.revealed, origin) };
+    memoryInput = rawMemory && { ...rawMemory, clear: shiftPolygons(rawMemory.clear, origin) };
+    lightInput = shiftLighting(rawLight, origin);
+    gridInput = shiftGrid(rawGrid, origin);
+    for (const layer of [fogHost, memoryLayer, lightLayer, gridLayer]) layer.position.set(origin.x, origin.y);
+    map?.position.set(origin.x, origin.y);
+  };
   let fog: Container | null = null;
   // The last fog asked for: rebuilt when the map changes, as soft edges follow the map's size.
   let fogInput: {
@@ -787,7 +818,7 @@ export async function createRenderer(
   } | null = null;
   const dropOutgoing = () => {
     if (!outgoing) return;
-    world.removeChild(outgoing.layer);
+    fogHost.removeChild(outgoing.layer);
     disposeFog(outgoing.layer);
     outgoing = null;
   };
@@ -796,11 +827,11 @@ export async function createRenderer(
     dropOutgoing();
     const old = fog;
     fog = next;
-    world.addChild(next);
+    fogHost.addChild(next);
     if (!old) return;
     // On top of the new layer, fading out.
-    world.removeChild(old);
-    world.addChild(old);
+    fogHost.removeChild(old);
+    fogHost.addChild(old);
     outgoing = { layer: old, start: now(), duration };
   };
   const stepOutgoing = () => {
@@ -813,11 +844,11 @@ export async function createRenderer(
   const replaceFog = (next: Container | null) => {
     dropOutgoing();
     if (fog) {
-      world.removeChild(fog);
+      fogHost.removeChild(fog);
       disposeFog(fog);
     }
     fog = next;
-    if (fog) world.addChild(fog);
+    if (fog) fogHost.addChild(fog);
   };
 
   /** A fade from the fog on screen to `target`, or `null` if this change must not fade. */
@@ -1026,7 +1057,7 @@ export async function createRenderer(
   };
 
   return {
-    setMap(image) {
+    setMap(image, at = ZERO) {
       if (image && video) {
         // An image map replaces a video map: hide it and make the canvas opaque again.
         hideVideo();
@@ -1047,6 +1078,9 @@ export async function createRenderer(
         world.addChildAt(map, 0);
       }
       mapSize = mapImageSize ? mapImageSize : video ? videoSize : null;
+      // A video map starts at 0, 0.
+      origin = image ? at : ZERO;
+      toMapSpace();
       // A new map never fades: its fog is there at once, also if the map's size and fog are
       // the same as before (a running fade must not freeze half-way).
       dropFade();
@@ -1056,6 +1090,14 @@ export async function createRenderer(
       drawMemory();
       drawLighting();
       drawGrid();
+      requestDraw();
+    },
+    setDrawing(image, at = ZERO) {
+      for (const child of drawingLayer.removeChildren()) child.destroy({ children: true, texture: true, textureSource: true });
+      if (image) {
+        drawingLayer.addChild(mapSprites(image, maxTextureSize));
+        drawingLayer.position.set(at.x, at.y);
+      }
       requestDraw();
     },
     setVideo(next) {
@@ -1080,6 +1122,8 @@ export async function createRenderer(
         next.style.transformOrigin = "0 0";
         next.style.visibility = "hidden";
         mapSize = videoSize;
+        origin = ZERO;
+        toMapSpace();
       } else if (!map) mapSize = null;
       dropFade();
       shownFog = null;
@@ -1093,18 +1137,21 @@ export async function createRenderer(
     setFog(revealed, fogOptions) {
       // The clock only runs while the fog drifts: an idle spell is no jump.
       if (!drifting()) livingAt = now();
-      fogInput = revealed ? { revealed, options: fogOptions ?? {} } : null;
+      rawFog = revealed ? { revealed, options: fogOptions ?? {} } : null;
+      toMapSpace();
       applyFog();
       gate.fogSet();
       requestDraw();
     },
     setLighting(next) {
-      lightInput = next;
+      rawLight = next;
+      toMapSpace();
       drawLighting();
       requestDraw();
     },
     setMemory(clear, memoryOptions) {
-      memoryInput = clear ? { clear, opacity: memoryOptions?.opacity ?? 0.5, softEdge: memoryOptions?.softEdge ?? 0 } : null;
+      rawMemory = clear ? { clear, opacity: memoryOptions?.opacity ?? 0.5, softEdge: memoryOptions?.softEdge ?? 0 } : null;
+      toMapSpace();
       drawMemory();
       requestDraw();
     },
@@ -1117,7 +1164,8 @@ export async function createRenderer(
       requestDraw();
     },
     setGrid(next) {
-      gridInput = next;
+      rawGrid = next;
+      toMapSpace();
       drawGrid();
       requestDraw();
     },
@@ -1159,6 +1207,7 @@ export async function createRenderer(
       glowTexture?.destroy(true);
       world.removeChild(gridLayer);
       gridLayer.destroy({ context: true });
+      for (const child of drawingLayer.removeChildren()) child.destroy({ children: true, texture: true, textureSource: true });
       drawTokens([]);
       drawAssets([]);
       for (const entry of assetTextures.values()) {

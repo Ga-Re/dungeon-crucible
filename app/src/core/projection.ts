@@ -13,8 +13,9 @@ import type { Scene } from './scene';
 import { tokensVisibleToPlayers, type LitSource } from './vision';
 import { intersection } from 'polyclip-ts';
 import { asGeom, fromClip } from './poly/polygon-clip';
+import { drawingSchema, playerDrawing } from './build/playerDrawing';
 
-export const FRAME_VERSION = 3;
+export const FRAME_VERSION = 4;
 
 /** How dark unlit areas look on a dark map (darkvision sees them, dimmed). */
 export const DARKNESS = 0.45;
@@ -64,6 +65,8 @@ export const PlayerFrameSchema = z.object({
       feetPerCell: z.number().positive(),
     }),
     showGrid: z.boolean(),
+    /** A map's drawn walls (E-33), only what players may know (`playerDrawing`). */
+    drawn: drawingSchema.nullable(),
   }),
   fog: z.object({
     /** Not covered by opaque fog. */
@@ -166,6 +169,7 @@ export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFram
       seedKey: o.seedKey,
       grid: { type: g.type, cellWidth: g.cellWidth, cellHeight: g.cellHeight, originX: g.originX, originY: g.originY, rotationDeg: g.rotationDeg, feetPerCell: g.feetPerCell },
       showGrid: o.showGrid,
+      drawn: playerDrawing(scene.map, scene.masonryDoorsOpen, scene.layersOn),
     },
     fog: {
       open: copy(openArea(scene.fog, o.visible)),

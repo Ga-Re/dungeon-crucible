@@ -287,6 +287,8 @@ export const de: Partial<Record<MessageKey, string>> = {
   'tv.yes': 'Auf den TV',
   'tv.no': 'Jetzt nicht',
   'tabs.newScene': 'Neue Szene auf dieser Karte',
+  'tabs.closeDraft': 'Dieses Asset hat Änderungen, die nicht mit OK gespeichert sind. Verwerfen?',
+  'tabs.discard': 'Verwerfen',
   'panels.menu': 'Fenster',
   'panels.workspace': 'Dieser Arbeitsbereich',
   'panels.more': 'Weitere Panels',

@@ -153,6 +153,8 @@ export interface AppState {
   activeTab: string | null;
   /** The creature tab shown in the Creatures workspace (E-30, DC-034b), if any. */
   creatureTab: string | null;
+  /** The asset tab shown in the Asset Vault (its editor, DC-034c), if any. */
+  assetTab: string | null;
   /** Where scene and map tabs are shown: the workspace last used for them. */
   sceneWs: 'forge' | 'play';
   /** The scene on the TV (E-30): changed only by command; none: the TV is black. */
@@ -243,12 +245,13 @@ function initial(): AppState {
     tabs: [],
     activeTab: null,
     creatureTab: null,
+    assetTab: null,
     sceneWs: 'play',
     tvScenePath: null,
     tvAsk: null,
     tvMapPending: false,
     blackUntilRelease: false,
-    vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null },
+    vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null, drafts: {} },
     soundboard: initialSoundboard(),
   };
   s.vision = updateVision(scene);
@@ -278,6 +281,12 @@ export function setFogMode(m: 'reveal' | 'hide'): void {
 export function emit(): void {
   version++;
   for (const l of listeners) l();
+}
+
+/** Calls `l` after every state change (outside React). */
+export function subscribe(l: () => void): () => void {
+  listeners.add(l);
+  return () => listeners.delete(l);
 }
 
 export function useStore<T>(select: (s: AppState) => T): T {
@@ -424,7 +433,7 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
 /** An open document: a scene of the campaign (by its path) or a library map on its own (`map:<resource>`). */
 export interface DocTab {
   id: string;
-  kind: 'scene' | 'map' | 'creature';
+  kind: 'scene' | 'map' | 'creature' | 'asset';
   name: string;
   /** Put away with changes not saved yet (the tab shown tells by `dirty`). */
   unsaved?: boolean;
@@ -608,9 +617,10 @@ export function closeSessionTab(tabId: string): void {
     emit();
     return;
   }
-  // The nearest scene or map takes its place (a creature tab shows no scene).
-  const docs = state.tabs.filter((x) => x.kind !== 'creature');
-  const before = state.tabs.slice(0, i).filter((x) => x.kind !== 'creature').length;
+  // The nearest scene or map takes its place (a creature or asset tab shows no scene).
+  const isDoc = (x: DocTab) => x.kind === 'scene' || x.kind === 'map';
+  const docs = state.tabs.filter(isDoc);
+  const before = state.tabs.slice(0, i).filter(isDoc).length;
   const next = docs[Math.min(before, docs.length - 1)];
   // Nothing of the closed document is kept: activating the next must not put it away again.
   state.activeTab = null;
@@ -626,6 +636,7 @@ export function clearTabs(): void {
   state.tabs = [];
   state.activeTab = null;
   state.creatureTab = null;
+  state.assetTab = null;
   state.tvScenePath = null;
   state.tvAsk = null;
 }

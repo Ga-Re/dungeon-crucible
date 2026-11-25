@@ -10,7 +10,7 @@ import { keepUnknown } from '../core/documents';
 import { ASSET_VERSION, AssetSidecarSchema, type AssetSidecar } from '../core/sidecar';
 import { absolutePath, assetUrl, cancelPack, importAssets, importDropped, importPack, isDesktop, listLibrary, onPackProgress, pickPack, writeText, type LibraryImport } from '../platform/bridge';
 import type { PackImported, PackScanInfo } from '../platform/desktop-api';
-import { emit, log, setAssetInfo, setAssetUrl, state, type AssetInfo } from './store';
+import { emit, log, setAssetInfo, setAssetUrl, setWorkspace, state, type AssetInfo } from './store';
 
 export interface VaultItem extends CatalogItem {
   size: number;
@@ -34,6 +34,8 @@ export interface VaultState {
   pack: PackDialog | null;
   /** The asset editor while open (DC-109): the asset's changes, saved on OK. */
   editor: AssetEditor | null;
+  /** Editors of asset tabs not shown (E-30, DC-034c): their drafts stay until OK or Cancel. */
+  drafts: Record<string, AssetEditor>;
 }
 
 export type EditorTool = 'select' | 'circle' | 'polygon' | 'light' | 'anchor' | 'door' | 'inner';
@@ -42,6 +44,8 @@ export interface AssetEditor {
   relPath: string;
   draft: AssetSidecar;
   tool: EditorTool;
+  /** The draft as opened (JSON): it differs once something was changed and not yet saved with OK. */
+  base: string;
 }
 
 export interface PackDialog {
@@ -302,9 +306,44 @@ export async function importDroppedFiles(files: readonly File[]): Promise<void> 
  * Opens the editor for an asset in the Vault's centre. A light source without a light gets one in
  * its middle (a torch), an effect without settings a loop – both only saved on OK.
  */
+export function assetTabId(relPath: string): string {
+  return `asset:${relPath}`;
+}
+
+/** Whether an asset editor's draft has changes not saved with OK yet. */
+export function draftChanged(e: AssetEditor): boolean {
+  return JSON.stringify(e.draft) !== e.base;
+}
+
+/** The editor shown goes back into its tab (its draft kept). */
+function putEditorAway(): void {
+  const e = state.vault.editor;
+  if (e) state.vault.drafts = { ...state.vault.drafts, [e.relPath]: e };
+  state.vault.editor = null;
+  state.assetTab = null;
+}
+
+/**
+ * Opens an asset in the editor as a tab (E-30, DC-034c), in the Asset Vault: a tab already open
+ * shows its draft as it was left.
+ */
 export function openAssetEditor(relPath: string): void {
   const item = state.vault.items.find((i) => i.relPath === relPath);
   if (!item) return;
+  if (state.vault.editor?.relPath !== relPath) putEditorAway();
+  const id = assetTabId(relPath);
+  if (!state.tabs.some((x) => x.id === id)) state.tabs = [...state.tabs, { id, kind: 'asset', name: item.asset.name }];
+  state.assetTab = id;
+  if (state.ws !== 'vault') setWorkspace('vault');
+  const kept = state.vault.drafts[relPath];
+  if (kept) {
+    const { [relPath]: _k, ...rest } = state.vault.drafts;
+    state.vault.drafts = rest;
+    state.vault.editor = kept;
+    state.vault.selected = [relPath];
+    emit();
+    return;
+  }
   const a = item.asset;
   const size = a.sizeCells ?? { w: 1, h: 1 };
   const draft: AssetSidecar = {
@@ -313,7 +352,7 @@ export function openAssetEditor(relPath: string): void {
     ...(a.assetKind === 'light' && !a.light ? { light: { x: size.w / 2, y: size.h / 2, brightFt: 20, dimFt: 40, color: '#ffb14a', flicker: 0.3 } } : {}),
     ...(a.assetKind === 'effect' && !a.effect ? { effect: { loop: true, trigger: false } } : {}),
   };
-  state.vault.editor = { relPath, draft, tool: 'select' };
+  state.vault.editor = { relPath, draft, tool: 'select', base: JSON.stringify(draft) };
   state.vault.selected = [relPath];
   emit();
 }
@@ -330,16 +369,35 @@ export function setEditorTool(tool: EditorTool): void {
   emit();
 }
 
-/** OK: writes the asset's sidecar and returns to the catalog; on a failed write the editor stays open. */
+/** OK: writes the asset's sidecar and returns to the catalog (the tab stays); on a failed write the editor stays open. */
 export async function saveAssetEditor(): Promise<void> {
   const e = state.vault.editor;
   if (!e || !(await updateAssets([e.relPath], () => e.draft))) return;
   state.vault.editor = null;
+  state.assetTab = null;
   emit();
 }
 
+/** "Back to the catalog": the editor goes back into its tab, its draft kept. */
+export function backToCatalog(): void {
+  putEditorAway();
+  emit();
+}
+
+/** Cancel: the draft is dropped and its tab closed. */
 export function closeAssetEditor(): void {
-  state.vault.editor = null;
+  const e = state.vault.editor;
+  if (e) closeAssetTab(e.relPath);
+}
+
+/** Closes an asset's tab, dropping its draft; the caller asks first if it has changes. */
+export function closeAssetTab(relPath: string): void {
+  const id = assetTabId(relPath);
+  state.tabs = state.tabs.filter((x) => x.id !== id);
+  if (state.vault.editor?.relPath === relPath) state.vault.editor = null;
+  const { [relPath]: _d, ...rest } = state.vault.drafts;
+  state.vault.drafts = rest;
+  if (state.assetTab === id) state.assetTab = null;
   emit();
 }
 

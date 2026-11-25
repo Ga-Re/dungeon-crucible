@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DcApi, LibraryEntry } from '../platform/desktop-api';
 import { refreshLibraryMaps } from './library';
 import { state } from './store';
-import { closeAssetEditor, openAssetEditor, saveAssetEditor, updateEditorDraft, closePackImport, runPackImport, startPackImport, togglePackFolder, deleteCollectionEverywhere, importVaultAssets, refreshVault, renameCollectionEverywhere, selectAsset, toggleFavorite, updateSelectedAssets } from './vault';
+import { backToCatalog, closeAssetTab, draftChanged, closeAssetEditor, openAssetEditor, saveAssetEditor, updateEditorDraft, closePackImport, runPackImport, startPackImport, togglePackFolder, deleteCollectionEverywhere, importVaultAssets, refreshVault, renameCollectionEverywhere, selectAsset, toggleFavorite, updateSelectedAssets } from './vault';
 
 /** The Asset Vault on a library kept in memory (DC-040). */
 let files: Map<string, string>;
@@ -227,5 +227,39 @@ describe('the asset editor (DC-109)', () => {
     expect(JSON.parse(files.get('library/torch.png.dm.json')!).light).toBeUndefined();
     openAssetEditor('library/portal.webm');
     expect(state.vault.editor!.draft.effect).toEqual({ loop: true, trigger: false });
+  });
+});
+
+/** Assets as tabs (E-30, DC-034c): each keeps its editor's draft until OK or Cancel. */
+describe('asset tabs', () => {
+  it('open the editor as a tab in the Vault; a draft left for the catalog or another asset stays', async () => {
+    await importVaultAssets();
+    await refreshVault();
+    state.tabs = [];
+    openAssetEditor('library/oak.png');
+    expect(state.ws).toBe('vault');
+    expect(state.tabs.map((t) => [t.kind, t.name])).toEqual([['asset', 'Oak']]);
+    updateEditorDraft((a) => ({ ...a, sizeCells: { w: 3, h: 3 } }));
+    backToCatalog();
+    expect(state.vault.editor).toBeNull();
+    expect(state.assetTab).toBeNull();
+    expect(draftChanged(state.vault.drafts['library/oak.png'])).toBe(true);
+    openAssetEditor('library/wind.ogg');
+    expect(state.tabs).toHaveLength(2);
+    // Back to the oak: its draft as it was left; not saved yet.
+    openAssetEditor('library/oak.png');
+    expect(state.vault.editor!.draft.sizeCells).toEqual({ w: 3, h: 3 });
+    expect(JSON.parse(files.get('library/oak.png.dm.json')!).sizeCells).toBeUndefined();
+    await saveAssetEditor();
+    expect(JSON.parse(files.get('library/oak.png.dm.json')!).sizeCells).toEqual({ w: 3, h: 3 });
+    // Saved: the tab stays, without a draft.
+    expect(state.tabs).toHaveLength(2);
+    expect(state.vault.drafts['library/oak.png']).toBeUndefined();
+    // Cancel drops the draft and closes the tab.
+    openAssetEditor('library/wind.ogg');
+    closeAssetEditor();
+    expect(state.tabs.map((t) => t.id)).toEqual(['asset:library/oak.png']);
+    closeAssetTab('library/oak.png');
+    expect(state.tabs).toEqual([]);
   });
 });

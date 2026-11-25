@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { exploredShare } from '../core/fogModel';
 import { DockHost } from '../dock/DockHost';
 import { floatingBackend } from '../platform/bridge';
-import { importVaultAssets, startPackImport } from './vault';
+import { draftChanged, importVaultAssets, startPackImport } from './vault';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
 import { mapCommands } from '../panels/MapView';
@@ -15,7 +15,7 @@ import {
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
-import { closeCampaign, closeScene, closeTab, importMapIntoCampaign, newCreature, newSceneOnMap, putOnTv, refreshRoot, saveCampaign, setEditStart, showTab, startAutosave } from './campaign';
+import { closeCampaign, closeTab, importMapIntoCampaign, newCreature, newSceneOnMap, putOnTv, refreshRoot, saveCampaign, setEditStart, showTab, startAutosave } from './campaign';
 import { ResetSceneDialog } from './ResetSceneDialog';
 import { MapSettingsDialog } from './MapSettingsDialog';
 import { ExportDialog } from './ExportDialog';
@@ -316,19 +316,30 @@ function DocTabs() {
   const { t } = useI18n();
   const tabs = useStore((s) => s.tabs);
   // In the Creatures workspace the creature shown; elsewhere the scene or map behind the tabs.
-  const active = useStore((s) => (s.ws === 'creatures' ? s.creatureTab : s.ws === 'forge' || s.ws === 'play' ? s.activeTab : null));
+  const active = useStore((s) => (s.ws === 'creatures' ? s.creatureTab : s.ws === 'vault' ? s.assetTab : s.ws === 'forge' || s.ws === 'play' ? s.activeTab : null));
   const creatures = useStore((s) => s.creatures);
+  const assets = useStore((s) => s.vault.items);
+  // Asset tabs whose draft has changes not saved with OK.
+  const editor = useStore((s) => s.vault.editor);
+  const drafts = useStore((s) => s.vault.drafts);
+  const changed = new Set([...(editor ? [editor] : []), ...Object.values(drafts)].filter(draftChanged).map((e) => `asset:${e.relPath}`));
   const tv = useStore((s) => s.tvScenePath);
   const pending = useStore((s) => s.dirty || s.saving);
   const [menu, setMenu] = useState<{ id: string; at: DOMRect } | null>(null);
-  const [confirm, setConfirm] = useState<{ id: string; at: DOMRect } | null>(null);
+  const [confirm, setConfirm] = useState<{ id: string; at: DOMRect; draft?: boolean } | null>(null);
   if (!tabs.length) return null;
   const close = (id: string, el: HTMLElement) => {
-    if (id === tv) setConfirm({ id, at: el.closest('.doc-tab')!.getBoundingClientRect() });
+    const at = el.closest('.doc-tab')!.getBoundingClientRect();
+    // The TV's scene and an asset with an unsaved draft ask first.
+    if (id === tv) setConfirm({ id, at });
+    else if (changed.has(id)) setConfirm({ id, at, draft: true });
     else void closeTab(id);
   };
   // A creature's tab carries its name as it is now (renamed in its stat block).
-  const nameOf = (tab: DocTab) => (tab.kind === 'creature' ? creatures.find((c) => `creature:${c.id}` === tab.id)?.name ?? tab.name : tab.name);
+  const nameOf = (tab: DocTab) =>
+    tab.kind === 'creature' ? creatures.find((c) => `creature:${c.id}` === tab.id)?.name ?? tab.name
+    : tab.kind === 'asset' ? assets.find((a) => `asset:${a.relPath}` === tab.id)?.asset.name ?? tab.name
+    : tab.name;
   return (
     <div className="doc-tabs" role="tablist" aria-label={t('tabs.label')}>
       {tabs.map((tab) => {
@@ -345,10 +356,10 @@ function DocTabs() {
             }}
           >
             <button role="tab" aria-selected={on} className="doc-tab-name" title={name} onClick={() => void showTab(tab.id)}>
-              <Icon name={tab.kind === 'map' ? 'map' : tab.kind === 'creature' ? 'token' : 'flag'} />
+              <Icon name={tab.kind === 'map' ? 'map' : tab.kind === 'creature' ? 'token' : tab.kind === 'asset' ? 'cube' : 'flag'} />
               <span>{name}</span>
               {tab.id === tv && <span className="doc-tab-tv" title={t('tabs.onTv')} aria-label={t('tabs.onTv')}><Icon name="monitor" /></span>}
-              {((on && pending) || tab.unsaved) && <span className="doc-tab-dot" aria-label={t('tabs.unsaved')} />}
+              {((on && pending && tab.kind !== 'asset') || tab.unsaved || changed.has(tab.id)) && <span className="doc-tab-dot" aria-label={t('tabs.unsaved')} />}
             </button>
             <button className="doc-tab-close" title={t('tabs.close')} aria-label={`${t('tabs.close')}: ${name}`} onClick={(e) => close(tab.id, e.currentTarget)}><Icon name="close" /></button>
           </div>
@@ -356,19 +367,19 @@ function DocTabs() {
       })}
       {menu && (
         <TabMenu at={menu.at} onClose={() => setMenu(null)}>
-          {menu.id.startsWith('creature:') ? null : menu.id.startsWith('map:') ? (
+          {menu.id.startsWith('creature:') || menu.id.startsWith('asset:') ? null : menu.id.startsWith('map:') ? (
             <button onClick={() => { void newSceneOnMap(menu.id.slice(4)); setMenu(null); }}><Icon name="plus" /><span>{t('tabs.newScene')}</span></button>
           ) : (
             <button disabled={menu.id === tv} onClick={() => { void putOnTv(menu.id); setMenu(null); }}><Icon name="monitor" /><span>{t('tool.sceneToTv')}</span></button>
           )}
-          <button onClick={(e) => { const at = menu.at; setMenu(null); if (menu.id === tv) setConfirm({ id: menu.id, at }); else void closeTab(menu.id); e.stopPropagation(); }}><Icon name="close" /><span>{t('tabs.close')}</span></button>
+          <button onClick={(e) => { const at = menu.at; setMenu(null); if (menu.id === tv) setConfirm({ id: menu.id, at }); else if (changed.has(menu.id)) setConfirm({ id: menu.id, at, draft: true }); else void closeTab(menu.id); e.stopPropagation(); }}><Icon name="close" /><span>{t('tabs.close')}</span></button>
         </TabMenu>
       )}
       {confirm && (
         <TabMenu at={confirm.at} onClose={() => setConfirm(null)}>
-          <p className="tab-confirm">{t('tabs.closeTv')}</p>
+          <p className="tab-confirm">{t(confirm.draft ? 'tabs.closeDraft' : 'tabs.closeTv')}</p>
           <div className="library-buttons tab-confirm-buttons">
-            <button className="btn sm danger" onClick={() => { void closeScene(confirm.id); setConfirm(null); }}>{t('tabs.closeAnyway')}</button>
+            <button className="btn sm danger" onClick={() => { void closeTab(confirm.id); setConfirm(null); }}>{t(confirm.draft ? 'tabs.discard' : 'tabs.closeAnyway')}</button>
             <button className="btn sm" autoFocus onClick={() => setConfirm(null)}>{t('start.cancel')}</button>
           </div>
         </TabMenu>

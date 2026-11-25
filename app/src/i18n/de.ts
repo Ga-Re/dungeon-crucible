@@ -290,6 +290,8 @@ export const de: Partial<Record<MessageKey, string>> = {
   'panels.expandZone': 'Seite ausklappen',
   'panels.pin': 'Seite wieder andocken',
   'panels.resize': 'Größe ändern',
+  'area.secret': 'geheim',
+  'area.color': 'Farbe',
   'group.mapData': 'Karte',
   'tool.mapSettings': 'Karteneinstellungen',
   'mapSettings.title': 'Karteneinstellungen',

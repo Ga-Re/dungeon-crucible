@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { rectPolygon } from './fogModel';
 import { EMPTY_LAYER, diffElements, resolveElements, type MapElements } from './mapLayers';
 
 function base(): MapElements {
@@ -7,7 +8,7 @@ function base(): MapElements {
       { id: 'wall-a', kind: 'wall', x1: 0, y1: 0, x2: 100, y2: 0 },
       { id: 'door-b', kind: 'door', x1: 100, y1: 0, x2: 150, y2: 0, open: true },
     ],
-    zones: [{ id: 'area-hall', name: 'Hall', kind: 'room', rect: { x: 0, y: 0, w: 200, h: 100 }, color: '#7fd9cf', biome: 'sumpf' }],
+    zones: [{ id: 'area-hall', name: 'Hall', shape: [rectPolygon(0, 0, 200, 100)], secret: false, color: '#7fd9cf', biome: 'sumpf' }],
     lights: [{ id: 'light-torch', x: 50, y: 50, brightFt: 20, dimFt: 40, color: '#ffb14a' }],
   };
 }
@@ -30,7 +31,7 @@ describe('resolveElements', () => {
       added: { walls: [{ id: 'wall-rubble', kind: 'wall', x1: 0, y1: 50, x2: 100, y2: 50 }], zones: [], lights: [] },
     });
     expect(r.elements.walls.map((w) => w.id)).toEqual(['door-b', 'wall-rubble']);
-    expect(r.elements.zones[0]).toEqual({ id: 'area-hall', name: 'Ruined hall', kind: 'room', rect: { x: 0, y: 0, w: 200, h: 100 }, color: '#7fd9cf' });
+    expect(r.elements.zones[0]).toEqual({ id: 'area-hall', name: 'Ruined hall', shape: [rectPolygon(0, 0, 200, 100)], secret: false, color: '#7fd9cf' });
     expect(r.elements.lights[0]!.brightFt).toBe(20);
     expect(r.orphaned).toEqual(['wall-gone']);
     expect(r.invalid).toEqual(['light-torch']);
@@ -52,7 +53,7 @@ describe('diffElements', () => {
         { id: 'door-b', kind: 'door', x1: 100, y1: 0, x2: 150, y2: 0, open: false },
         { id: 'wall-rubble', kind: 'wall', x1: 0, y1: 50, x2: 100, y2: 50 },
       ],
-      zones: [{ id: 'area-hall', name: 'Ruined hall', kind: 'room', rect: { x: 0, y: 0, w: 200, h: 100 }, color: '#7fd9cf' }],
+      zones: [{ id: 'area-hall', name: 'Ruined hall', shape: [rectPolygon(0, 0, 200, 100)], secret: false, color: '#7fd9cf' }],
       lights: [{ id: 'light-torch', x: 50, y: 50, brightFt: 20, dimFt: 40, color: '#ffb14a' }],
     };
     const layer = diffElements(b, current);
@@ -64,7 +65,7 @@ describe('diffElements', () => {
     const b = base();
     const edited = resolveElements(b, EMPTY_LAYER).elements;
     edited.walls = edited.walls.filter((w) => w.id !== 'door-b');
-    edited.zones[0] = { ...edited.zones[0]!, rect: { x: 10, y: 10, w: 50, h: 50 } };
+    edited.zones[0] = { ...edited.zones[0]!, shape: [rectPolygon(10, 10, 60, 60)] };
     edited.lights.push({ id: 'light-new', x: 1, y: 1, brightFt: 5, dimFt: 10, color: '#ffffff' });
     const again = resolveElements(b, diffElements(b, edited)).elements;
     expect(again).toEqual(edited);

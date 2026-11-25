@@ -3,6 +3,7 @@
  * (DM window only)" sit above the fog). Never used for the table.
  */
 import type { Point } from '../core/geometry';
+import { labelPoint } from '../core/areas';
 import type { Polygon } from '../core/poly/types';
 import type { Scene } from '../core/scene';
 import type { ViewerVision } from '../core/vision';
@@ -29,6 +30,28 @@ export interface OverlayState {
   fogDraft: { polygon: Polygon | null; path: Point[]; mode: 'reveal' | 'hide' } | null;
 }
 
+const labels = new WeakMap<readonly Polygon[], Point>();
+
+/** The name's place, computed once per shape (shapes are replaced, never changed in place). */
+function labelOf(shape: readonly Polygon[]): Point {
+  let p = labels.get(shape);
+  if (!p) {
+    p = labelPoint(shape);
+    labels.set(shape, p);
+  }
+  return p;
+}
+
+export function areaPath(shape: readonly Polygon[]): Path2D {
+  const path = new Path2D();
+  for (const polygon of shape)
+    for (const ring of [polygon.outer, ...polygon.holes]) {
+      ring.forEach(([x, y], i) => (i === 0 ? path.moveTo(x, y) : path.lineTo(x, y)));
+      path.closePath();
+    }
+  return path;
+}
+
 export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision: readonly ViewerVision[], view: OverlayView, dpr: number, o: OverlayState, now: number): void {
   const W = scene.map.widthPx;
   const H = scene.map.heightPx;
@@ -45,19 +68,22 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
   for (const z of scene.zones) {
     const sel = z.id === o.selectedZoneId;
     g.save();
+    // One even-odd path per area, so holes stay open.
+    const path = areaPath(z.shape);
     if (o.editMode) {
       g.fillStyle = hexToRgba(z.color, sel ? 0.2 : 0.08);
-      g.fillRect(z.rect.x, z.rect.y, z.rect.w, z.rect.h);
+      g.fill(path, 'evenodd');
     }
     g.strokeStyle = hexToRgba(z.color, o.editMode ? 0.85 : 0.35);
     g.lineWidth = (sel ? 3 : 1.5) * px;
-    g.setLineDash(z.kind === 'secret' ? [10 * px, 7 * px] : []);
-    g.strokeRect(z.rect.x + 4, z.rect.y + 4, z.rect.w - 8, z.rect.h - 8);
+    g.setLineDash(z.secret ? [10 * px, 7 * px] : []);
+    g.stroke(path);
     g.setLineDash([]);
     g.font = `600 ${Math.max(12, 13 * px)}px 'Barlow Semi Condensed', sans-serif`;
     g.fillStyle = hexToRgba(z.color, o.editMode ? 1 : 0.7);
     g.textBaseline = 'top';
-    g.fillText(`${z.kind === 'secret' ? '◆ ' : ''}${z.name.toUpperCase()}`, z.rect.x + 10, z.rect.y + 9);
+    const at = labelOf(z.shape);
+    g.fillText(`${z.secret ? '◆ ' : ''}${z.name.toUpperCase()}`, at.x, at.y);
     g.restore();
   }
 

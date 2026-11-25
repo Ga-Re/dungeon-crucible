@@ -290,6 +290,8 @@ export const en = {
   'panels.expandZone': 'Expand side',
   'panels.pin': 'Dock the side again',
   'panels.resize': 'Resize',
+  'area.secret': 'secret',
+  'area.color': 'Colour',
   'group.mapData': 'Map',
   'tool.mapSettings': 'Map settings',
   'mapSettings.title': 'Map settings',

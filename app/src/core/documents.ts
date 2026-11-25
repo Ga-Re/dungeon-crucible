@@ -13,14 +13,15 @@
  * Pure: no I/O, randomness injected.
  */
 import { z } from 'zod';
+import { migrateArea, migrateAreaOverride } from './areas';
 
 export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' | 'audio' | 'session';
 
 /** Current version of each document kind. */
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
-  map: 1,
-  scene: 1,
+  map: 2,
+  scene: 2,
   creature: 1,
   asset: 1,
   audio: 1,
@@ -31,8 +32,19 @@ type Raw = Record<string, unknown>;
 /** Migrations per kind: `[n]` turns a version-n document into version n+1. */
 export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>> = {
   campaign: {},
-  map: {},
-  scene: {},
+  // Areas: rectangle and kind → polygons and "secret" (DC-013).
+  map: { 1: (doc) => ({ ...doc, ...(Array.isArray(doc['zones']) ? { zones: doc['zones'].map(migrateArea) } : {}) }) },
+  // The same for the scene's own areas and its overrides of map areas.
+  scene: {
+    1: (doc) => {
+      const out: Raw = { ...doc };
+      const overrides = doc['overrides'];
+      if (isRecord(overrides)) out['overrides'] = Object.fromEntries(Object.entries(overrides).map(([k, v]) => [k, migrateAreaOverride(v)]));
+      const added = doc['added'];
+      if (isRecord(added) && Array.isArray(added['zones'])) out['added'] = { ...added, zones: added['zones'].map(migrateArea) };
+      return out;
+    },
+  },
   creature: {},
   asset: {},
   audio: {},

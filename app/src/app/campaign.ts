@@ -11,7 +11,7 @@
  * valid in another root folder and in archives.
  */
 import { manifestFromState, mapSidecarFromScene, mapSidecarPath, resetToStart, sceneFromDocuments, sceneIssues, sceneOverrideFromScene, startOf, tableFromManifest, BUILTIN_PREFIX } from '../core/persistence';
-import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MapSidecarSchema, SceneOverrideSchema, type Creature, type MapSidecar, type SceneOverride } from '../core/sidecar';
+import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MAP_VERSION, MapSidecarSchema, SceneOverrideSchema, type Creature, type MapSidecar, type SceneOverride } from '../core/sidecar';
 import { keepUnknown, newId, readDocument, slugId, type DocumentKind } from '../core/documents';
 import { partyForNewScene } from '../core/party';
 import type { z } from 'zod';
@@ -523,7 +523,7 @@ export async function openMapInNewScene(resource: string, sidecar: MapSidecar | 
     const { w, h } = await mediaSize(url, isVideo);
     const name = resource.split('/').pop()!.replace(/\.[^.]+$/, '');
     map = {
-      kind: 'map', schemaVersion: 1, name, resource, isVideo, widthPx: w, heightPx: h,
+      kind: 'map', schemaVersion: MAP_VERSION, name, resource, isVideo, widthPx: w, heightPx: h,
       tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark',
     };
   }

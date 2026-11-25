@@ -13,6 +13,7 @@ import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerV
 import { hideAll, hideIn, rectPolygon, rememberSeen, revealAll, revealIn } from '../core/fogModel';
 import { lockedAreas } from '../core/persistence';
 import { newId, slugId } from '../core/documents';
+import { areaContains, distanceToArea } from '../core/areas';
 import type { Polygon } from '../core/poly/types';
 import { readFogLook, saveCoverFrom, saveFadeSeconds, saveFogEdge, saveFogMotion, saveFogQuality, saveFogSpeed, saveSoftEdges, type CoverFrom, type FogLook, type FogQuality } from './fog-settings';
 import { lookToWire } from '../render/fogOptions';
@@ -517,19 +518,14 @@ export function addZone(x0: number, y0: number, x1: number, y1: number): void {
   if (w < 10 || h < 10) return;
   checkpoint();
   const id = freshId('area');
-  state.scene.zones.push({ id, name: `Zone ${state.scene.zones.length + 1}`, kind: 'area', rect: { x, y, w, h }, color: '#7fd9cf', discovered: true });
+  state.scene.zones.push({ id, name: `Zone ${state.scene.zones.length + 1}`, shape: [rectPolygon(x, y, x + w, y + h)], secret: false, color: '#7fd9cf', discovered: true });
   state.selectedZoneId = id;
   emit();
 }
 
 export function zoneAt(p: Point): string | null {
-  const z = [...state.scene.zones].reverse().find((z) => p.x >= z.rect.x && p.y >= z.rect.y && p.x <= z.rect.x + z.rect.w && p.y <= z.rect.y + z.rect.h);
+  const z = [...state.scene.zones].reverse().find((z) => areaContains(z.shape, p));
   return z?.id ?? null;
-}
-
-function zoneArea(id: string): Polygon | null {
-  const z = state.scene.zones.find((q) => q.id === id);
-  return z ? rectPolygon(z.rect.x, z.rect.y, z.rect.x + z.rect.w, z.rect.y + z.rect.h) : null;
 }
 
 function locked(): Polygon[] {
@@ -548,8 +544,12 @@ export function applyFogArea(area: Polygon | null, mode: 'reveal' | 'hide'): voi
 
 export function revealZone(id: string): void {
   const z = state.scene.zones.find((q) => q.id === id);
-  if (!z || (z.kind === 'secret' && !z.discovered)) return;
-  applyFogArea(zoneArea(id), 'reveal');
+  if (!z || (z.secret && !z.discovered)) return;
+  checkpoint();
+  // Aimed on purpose: every part of the area.
+  for (const part of z.shape) state.scene.fog = revealIn(state.scene.fog, part, locked(), true);
+  state.fogQuick = false;
+  emit();
 }
 
 /** Discovering a secret zone unlocks it, opens secret doors touching it and reveals it. */
@@ -560,12 +560,11 @@ export function discoverZone(id: string): void {
   z.discovered = true;
   for (const w of state.scene.walls) {
     if (w.kind !== 'secret-door') continue;
-    const touches = [w.x1, w.x2].some((x) => x >= z.rect.x - 1 && x <= z.rect.x + z.rect.w + 1) && [w.y1, w.y2].some((y) => y >= z.rect.y - 1 && y <= z.rect.y + z.rect.h + 1);
+    const touches = [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }].some((p) => distanceToArea(z.shape, p) <= 1);
     if (touches) w.open = true;
   }
   recomputeVision();
-  const area = zoneArea(id);
-  if (area) state.scene.fog = revealIn(state.scene.fog, area, [], true);
+  for (const part of z.shape) state.scene.fog = revealIn(state.scene.fog, part, [], true);
   state.fogQuick = false;
   emit();
 }

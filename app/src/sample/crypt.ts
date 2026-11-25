@@ -80,10 +80,10 @@ export function createSampleScene(): Scene {
   const zones: Zone[] = ROOMS.map((r) => ({
     id: r.id,
     name: r.name,
-    kind: r.kind,
-    rect: { x: r.r[0] * CELL, y: r.r[1] * CELL, w: r.r[2] * CELL, h: r.r[3] * CELL },
+    shape: [rectPolygon(r.r[0] * CELL, r.r[1] * CELL, (r.r[0] + r.r[2]) * CELL, (r.r[1] + r.r[3]) * CELL)],
+    secret: !!r.secret,
     color: r.color,
-    discovered: r.kind !== 'secret',
+    discovered: !r.secret,
     biome: r.id === 'crypt' ? 'sumpf' : undefined,
   }));
   // The entrance hall starts revealed.

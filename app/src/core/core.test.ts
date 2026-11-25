@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { areaBounds } from './areas';
 import { isVisibleFrom, visibilityPolygon } from './geometry';
 import {
   calibrateFromThreePoints,
@@ -132,8 +133,9 @@ describe('polygon fog with token sight', () => {
     const locked = lockedAreas(scene.zones);
     expect(locked).toHaveLength(1);
     const fog = revealAll(EMPTY_LEVEL_FOG, scene.map.widthPx, scene.map.heightPx, locked);
-    const secret = scene.zones.find((z) => z.kind === 'secret')!;
-    expect(isInside(fog.revealed, [secret.rect.x + secret.rect.w / 2, secret.rect.y + secret.rect.h / 2])).toBe(false);
+    const secret = scene.zones.find((z) => z.secret)!;
+    const c = areaBounds(secret.shape);
+    expect(isInside(fog.revealed, [c.x + c.w / 2, c.y + c.h / 2])).toBe(false);
     expect(isInside(fog.revealed, [100, 100])).toBe(true);
     // Aimed at on purpose (force), the DM may reveal it.
     expect(isInside(revealIn(EMPTY_LEVEL_FOG, mapPolygon(10, 10), locked, true).revealed, [5, 5])).toBe(true);
@@ -220,8 +222,9 @@ describe('player projection (fail-closed)', () => {
     const scene = createSampleScene();
     scene.fog = revealAll(scene.fog, scene.map.widthPx, scene.map.heightPx, lockedAreas(scene.zones));
     const frame = buildPlayerFrame(scene, frameOpts(1, 0, visiblePolygons(updateVision(scene))));
-    const secret = scene.zones.find((z) => z.kind === 'secret')!;
-    const mid: [number, number] = [secret.rect.x + secret.rect.w / 2, secret.rect.y + secret.rect.h / 2];
+    const secret = scene.zones.find((z) => z.secret)!;
+    const c = areaBounds(secret.shape);
+    const mid: [number, number] = [c.x + c.w / 2, c.y + c.h / 2];
     expect(isInside(frame.fog.open, mid)).toBe(false);
     expect(isInside(frame.fog.clear, mid)).toBe(false);
   });
@@ -241,7 +244,7 @@ describe('sidecars', () => {
     expect(resourcePathForSidecar('maps/crypt.webp')).toBeNull();
   });
   it('validates a map sidecar and reports errors', () => {
-    const ok = parseSidecar(MapSidecarSchema, JSON.stringify({ kind: 'map', schemaVersion: 1, name: 'Crypt', resource: 'maps/crypt.webp', widthPx: 2000, heightPx: 1400, grid: DEFAULT_GRID }));
+    const ok = parseSidecar(MapSidecarSchema, JSON.stringify({ kind: 'map', schemaVersion: 2, name: 'Crypt', resource: 'maps/crypt.webp', widthPx: 2000, heightPx: 1400, grid: DEFAULT_GRID }));
     expect(ok.ok).toBe(true);
     const bad = parseSidecar(CreatureSchema, JSON.stringify({ kind: 'creature', schemaVersion: 1, name: '' }));
     expect(bad.ok).toBe(false);

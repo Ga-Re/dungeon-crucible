@@ -88,7 +88,7 @@ export function BrowserPanel() {
                 <button className={`tn ${z.id === selZone ? 'sel' : ''}`} onClick={() => selectZone(z.id)}>
                   <span className="swatch" style={{ background: z.color }} />
                   <span className="nm">{z.name}</span>
-                  {z.kind === 'secret' && !z.discovered && <span className="meta" style={{ color: 'var(--arcane)' }}>secret</span>}
+                  {z.secret && !z.discovered && <span className="meta" style={{ color: 'var(--arcane)' }}>{t('area.secret')}</span>}
                 </button>
               </li>
             ))}
@@ -197,7 +197,7 @@ function ZoneActions({ id }: { id: string }) {
   if (!z) return null;
   return (
     <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-      {z.kind === 'secret' && !z.discovered ? (
+      {z.secret && !z.discovered ? (
         <button className="btn sm" onClick={() => discoverZone(id)}><Icon name="eye" />{t('tool.revealRoom')}</button>
       ) : (
         <button className="btn sm" onClick={() => revealZone(id)}><Icon name="room" />{t('tool.revealRoom')}</button>
@@ -249,12 +249,8 @@ export function PropertiesPanel() {
       {zone ? (
         <>
           <div className="row"><label htmlFor="z-name">{t('props.name')}</label><input id="z-name" value={zone.name} onChange={(e) => { zone.name = e.target.value; emit(); }} /></div>
-          <div className="row"><label htmlFor="z-kind">{t('props.type')}</label>
-            <select id="z-kind" value={zone.kind} onChange={(e) => { zone.kind = e.target.value as typeof zone.kind; emit(); }}>
-              <option value="room">Room</option><option value="area">Area</option><option value="poi">POI</option><option value="secret">Secret</option>
-            </select>
-          </div>
-          <div className="row"><label htmlFor="z-col">Color</label><input id="z-col" type="color" value={zone.color} onChange={(e) => { zone.color = e.target.value; emit(); }} /></div>
+          <div className="row"><label htmlFor="z-secret">{t('area.secret')}</label><input id="z-secret" type="checkbox" checked={zone.secret} onChange={(e) => { zone.secret = e.target.checked; emit(); }} /></div>
+          <div className="row"><label htmlFor="z-col">{t('area.color')}</label><input id="z-col" type="color" value={zone.color} onChange={(e) => { zone.color = e.target.value; emit(); }} /></div>
         </>
       ) : <p className="hint">{t('props.noSelection')}</p>}
     </div>

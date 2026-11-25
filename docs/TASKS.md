@@ -261,8 +261,15 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - **DC-105 Szenenübergang** (T-135): Übergang beim Szenenwechsel auf dem TV (z. B. Ausblenden über Schwarz, Dauer),
   danach als Standard je Karte (T-176b).
 - **DC-012 Kartenkatalog der Bibliothek** – geht in DC-093 auf.
-- **DC-013 Bereiche als Polygon/Ellipse/Lasso**, additiv zeichnen, bearbeiten, Biom-Override, Name, geheim
-  (T-108c1, T-260); Begriff „Bereich“ (T-262); „Bereich anlegen“ als Befehls-Panel (E-6).
+- ◐ **DC-013 Bereiche als Polygon/Ellipse/Lasso**, additiv zeichnen, bearbeiten, Biom-Override, Name, geheim
+  (T-108c1, T-260); Begriff „Bereich“ (T-262); „Bereich anlegen“ als Befehls-Panel (E-6). DM-Entscheidungen
+  (2026-11-25): Migration auf Version 2; nur „Bereich“ mit Schalter „geheim“; Ablauf wie Dungeon-Manager;
+  Bearbeiten = Eigenschaften, Form erweitern/abziehen, Ecken verschieben, löschen.
+  Erledigt (Schritt 1): Karten-Sidecar und Szene `schemaVersion` 2 – ein Bereich hat `shape` (Polygone mit
+  Löchern, mehrere Teile) und `secret` statt `rect`/`kind`; Version-1-Dateien, Szenen-Overrides und
+  szeneneigene Bereiche werden beim Lesen migriert und als Version 2 gespeichert; Nebel, Sperren geheimer
+  Bereiche, Overlay (gerade/ungerade Füllung, Name an einem Punkt innerhalb) und Treffer rechnen mit Polygonen.
+  Offen: Schritt 2 Befehls-Panel „Bereich anlegen“, Schritt 3 Bearbeiten.
 - **DC-014 Wände bearbeiten**: auswählen, Endpunkte verschieben, löschen, Ketten; Objekte als Polygon; Einweg-Wände
   (Klippen/Galerien) und Deckung (T-193).
 - **DC-015 Assets und Ebenen** – Props siehe DC-041, Stockwerke DC-020, Zeichenebenen DC-101 (E-18).

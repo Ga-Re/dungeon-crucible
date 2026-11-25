@@ -1,7 +1,7 @@
 /** Runtime scene model used by the DM window. Never sent to the table as a whole. */
 import type { Segment } from './geometry';
 import type { GridConfig, DisplaySpec } from './grid';
-import type { FogEffect, LevelFog } from './poly/types';
+import type { FogEffect, LevelFog, Polygon } from './poly/types';
 import type { Condition } from './rules/rules2024';
 
 export type WallKind = 'wall' | 'door' | 'secret-door' | 'window';
@@ -13,17 +13,17 @@ export interface Wall extends Segment {
   open?: boolean;
 }
 
-export type ZoneKind = 'room' | 'area' | 'poi' | 'secret';
 
 export interface Zone {
   id: string;
   name: string;
-  kind: ZoneKind;
-  /** Rectangle in map pixels. Polygons follow later. */
-  rect: { x: number; y: number; w: number; h: number };
+  /** Polygons with holes in map pixels, possibly several parts (DC-013). */
+  shape: Polygon[];
+  /** Locked in the fog until discovered. */
+  secret: boolean;
   color: string;
   biome?: FogBiome;
-  /** Secret zones stay locked in the fog until discovered. */
+  /** Secret areas stay locked in the fog until discovered. */
   discovered?: boolean;
 }
 

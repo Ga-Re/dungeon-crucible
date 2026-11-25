@@ -34,7 +34,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
-  currentChanges, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
+  assetExtras, currentChanges, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -289,6 +289,7 @@ function DmMap() {
         ...state.scene.map.assets.map((a) => placementLook(a, false)),
         ...(state.layer === 'map' ? [] : state.scene.hidden.assets.map((a) => placementLook(a, true))),
       ],
+      covers: state.ws === 'forge' ? (assetExtras(state.scene).covers ?? []) : [],
       changed: new Set(currentChanges().filter((c) => c.status === 'changed').map((c) => c.id)),
     };
   };

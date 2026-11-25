@@ -424,12 +424,20 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - **DC-110 Szeneneigene Assets** (E-27): Assets nur in einer Szene, beim Vorbereiten (Start) oder im Spiel
   (Spielzustand, „Szene zurücksetzen“ entfernt sie); Maske und Licht gelten nur in dieser Szene.
 - **DC-042 Smart Prefabs, Innenräume als Asset-Varianten** (T-202, T-146).
-- **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
+- ✓ **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
   Deckungsmaske eines Assets fest (Kreis oder Polygon auf dem Bild – Baum, Säule, Statue); ein platziertes Asset ist
   automatisch maskiert: Die Maske dreht und skaliert mit, sie wird nur am Asset geändert und gilt dann überall
   (DM-Entscheidung 2026-11-25: keine Anpassung je Platzierung). In der Sicht wirft Deckung Schatten nach hinten, das
   Objekt selbst bleibt sichtbar. Hängt an DC-040 (Bibliothek), einem Asset-Editor und DC-041 (platzieren); das
   Asset-Thema: Interview geführt (E-27, 2026-11-25); Maske kommt aus DC-109, Platzieren aus DC-041.
+  Erledigt: Masken platzierter Assets werden zu Polygonen auf der Karte (mit Drehung und Skalierung; Kreise als
+  Vieleck); ihre Kanten halten Sicht und Licht auf wie Wände; die Deckung selbst gilt als gesehen bzw. beleuchtet,
+  soweit Wände sie nicht verdecken (das Objekt bleibt sichtbar); wer in einer Maske steht (Figur oder Licht), für
+  den wirkt sie nicht. Lichter der Assets werden Lichtquellen an der gedrehten Position (immer an). DM-Sicht und
+  TV rechnen mit denselben Daten; ausgeblendete Assets zählen nicht. In der Schmiede zeigt das Overlay die Masken
+  gestrichelt. Robustheit: Flächen mit Deckung werden auf 1/100 px gerundet (die Clipping-Bibliothek lief bei fast
+  deckungsgleichen Kanten in eine Endlosrekursion); scheitert die Berechnung dennoch, rechnet die Figur bzw. das
+  Licht ohne Masken weiter. Offen: Asset-Lichter je Szene schalten und das Flackern darstellen.
 - **DC-043 Kreaturen global** in der Bibliothek (Werteblock-Editor umziehen); Spielercharaktere siehe DC-096.
 - **DC-044 Tokenbilder**: Token und Porträt, Token aus Porträt, Fraktionsring, ausgeschnittene Figur (T-203, T-208).
 - **DC-045 Klone, Begegnungsgruppen, Gestalten, SRD-Import, eigene Footprints** (T-204–207, T-241).

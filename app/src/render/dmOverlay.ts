@@ -29,6 +29,8 @@ export interface OverlayState {
   wallDraft: { kind: WallKind; walls: readonly Omit<Wall, 'id'>[]; next: { a: Point; b: Point } | null } | null;
   /** Placed assets for the DM (DC-041): their footprints, the selected one, missing files, hidden ones. */
   assets: readonly { fp: Footprint; name: string; selected: boolean; missing: boolean; hidden: boolean }[];
+  /** Cover masks of placed assets (Map Forge, DC-108): dashed outlines. */
+  covers: readonly Polygon[];
   /** Elements whose fields this scene changed (DC-103): marked for the DM. */
   changed: ReadonlySet<string>;
   /** Where dragged wall ends are right now. */
@@ -138,6 +140,17 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
   }
 
   for (const a of o.assets) drawPlacement(g, a, px);
+  if (o.covers.length) {
+    g.save();
+    g.strokeStyle = 'rgba(63,157,226,.8)';
+    g.fillStyle = 'rgba(63,157,226,.1)';
+    g.lineWidth = 1.5 * px;
+    g.setLineDash([6 * px, 4 * px]);
+    const path = areaPath(o.covers);
+    g.fill(path);
+    g.stroke(path);
+    g.restore();
+  }
   // Elements hidden in this scene: faint and dashed, so the DM can find and show them again.
   drawHidden(g, scene.hidden, px);
   // Changed elements: a small marker.

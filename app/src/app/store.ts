@@ -10,7 +10,8 @@ import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRo
 import { assetShapes, footprintOf, hitsPlacement, nextVariant, rotateBy, scaleBy, snapPlacement } from '../core/placement';
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
-import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision } from '../core/vision';
+import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision, type VisionExtras } from '../core/vision';
+import { placementCovers, placementLights } from '../core/cover';
 import { hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
 import { lockedAreas } from '../core/persistence';
 import { newId, slugId } from '../core/documents';
@@ -497,9 +498,10 @@ let lastRemember = 0;
  * throttled while dragging and always done for a final position.
  */
 export function recomputeVision(final = true): void {
-  state.vision = updateVision(state.scene);
+  const extras = assetExtras(state.scene);
+  state.vision = updateVision(state.scene, extras);
   state.visible = visiblePolygons(state.vision);
-  state.lights = litSources(state.scene);
+  state.lights = litSources(state.scene, extras);
   const now = Date.now();
   if (final || now - lastRemember > 150) {
     state.scene.fog = rememberSeen(state.scene.fog, state.visible);
@@ -831,7 +833,16 @@ export interface AssetInfo {
 
 export function setAssetInfo(info: Record<string, AssetInfo>): void {
   state.assetInfo = info;
+  // Masks and lights of placed assets may have changed (DC-108).
+  recomputeVision();
   emit();
+}
+
+/** What the scene's shown placed assets add to sight and light: their masks and lights (DC-108). */
+export function assetExtras(scene: Scene): VisionExtras {
+  const placed = scene.map.assets;
+  if (!placed.length) return {};
+  return { covers: placementCovers(placed, state.assetInfo, scene.map.grid), lights: placementLights(placed, state.assetInfo, scene.map.grid) };
 }
 
 function footprint(a: MapAssetPlacement) {
@@ -860,6 +871,7 @@ export function placeAsset(assetPath: string, p: Point): string | null {
   state.selectedZoneId = null;
   rememberRecentAsset(assetPath);
   log('log.assetPlaced', { name: state.assetInfo[assetPath]?.name ?? assetPath });
+  recomputeVision();
   emit();
   return id;
 }
@@ -886,6 +898,8 @@ export function moveAssetTo(id: string, p: Point, final: boolean): void {
   a.x = at.x;
   a.y = at.y;
   markDirty();
+  // Its mask and light move with it (DC-108).
+  recomputeVision(final);
   emit();
 }
 
@@ -894,6 +908,7 @@ export function rotatePlacedAsset(id: string, delta: number): void {
   if (!a) return;
   checkpoint();
   a.rotation = rotateBy(a.rotation, delta);
+  recomputeVision();
   emit();
 }
 
@@ -902,6 +917,7 @@ export function scalePlacedAsset(id: string, factor: number): void {
   if (!a) return;
   checkpoint();
   a.scale = scaleBy(a.scale, factor);
+  recomputeVision();
   emit();
 }
 
@@ -916,6 +932,7 @@ export function cycleAssetVariant(id: string): void {
   checkpoint();
   a.assetPath = next;
   rememberRecentAsset(next);
+  recomputeVision();
   emit();
 }
 
@@ -925,6 +942,7 @@ export function deletePlacedAsset(id: string): void {
   checkpoint();
   state.scene.map.assets = state.scene.map.assets.filter((x) => x.id !== id);
   if (state.selectedAssetId === id) state.selectedAssetId = null;
+  recomputeVision();
   emit();
 }
 
@@ -1552,8 +1570,9 @@ function tvView(): { scene: Scene; visible: Polygon[]; lights: LitSource[] } {
       ov = { ...ov, overrides: fromView.overrides, added: fromView.added };
     }
     const scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, state.scene.table, 'scene');
-    const vision = updateVision(scene);
-    tvCache = { version: viewVersion, scene, visible: visiblePolygons(vision), lights: litSources(scene) };
+    const extras = assetExtras(scene);
+    const vision = updateVision(scene, extras);
+    tvCache = { version: viewVersion, scene, visible: visiblePolygons(vision), lights: litSources(scene, extras) };
   }
   // Table settings (blackout, rotation, centre) stay live.
   tvCache.scene.table = state.scene.table;

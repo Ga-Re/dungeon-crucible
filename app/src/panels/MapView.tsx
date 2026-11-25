@@ -5,10 +5,10 @@
  */
 import { useEffect, useMemo, useRef } from 'react';
 import type { Point } from '../core/geometry';
-import { gridDistanceFeet } from '../core/grid';
+import { gridDistanceFeet, snapToCorner } from '../core/grid';
 import { clearArea, openArea } from '../core/fogModel';
 import { circleArea, ellipseArea, strokeArea } from '../core/poly/shapes';
-import { partFromDrag, partFromPoints } from '../core/areas';
+import { partFromDrag, partFromPoints, vertexAt, type VertexRef } from '../core/areas';
 import { AreaCommandPanel } from './AreaCommandPanel';
 import type { Polygon } from '../core/poly/types';
 import { rectPolygon } from '../core/fogModel';
@@ -25,7 +25,7 @@ import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
 import { TableView, type FrameSource } from '../table/TableView';
 import {
-  addCalibrationPoint, addPing, addTemplate, addWall, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, getVersion, initiativeOrder, log, moveToken,
+  addCalibrationPoint, addPing, addTemplate, addWall, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
 } from '../app/store';
 
@@ -49,6 +49,7 @@ type Drag =
   | { kind: 'measure'; a: Point; b: Point }
   | { kind: 'area-drag'; tool: 'rect' | 'ellipse'; a: Point; b: Point }
   | { kind: 'area-path'; path: Point[] }
+  | { kind: 'area-corner'; at: VertexRef }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
   | { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; invert: boolean; circle: boolean }
   | { kind: 'fog-path'; tool: 'fog-lasso' | 'fog-brush'; path: Point[]; invert: boolean };
@@ -241,7 +242,7 @@ function DmMap() {
     if (!c) return null;
     const part = d?.kind === 'area-drag' ? partFromDrag(d.tool, d.a, d.b, areaGrid(altHeld.current)) : null;
     const path = d?.kind === 'area-path' ? d.path : c.tool === 'polygon' && polygonDraft.current.length ? [...polygonDraft.current, mouse.current] : [];
-    return { shape: c.shape, part, path, color: c.color, subtract: c.op === 'subtract' };
+    return { shape: c.shape, part, path, color: c.color, subtract: c.op === 'subtract', editing: c.areaId };
   };
 
   const toWorld = (e: { clientX: number; clientY: number }): Point => {
@@ -322,7 +323,10 @@ function DmMap() {
       case 'area': {
         const c = state.areaCommand;
         if (!c) return;
-        if (c.tool === 'rect' || c.tool === 'ellipse') drag.current = { kind: 'area-drag', tool: c.tool, a: p, b: p };
+        // A corner of the shape is grabbed before anything new is drawn.
+        const at = polygonDraft.current.length === 0 ? vertexAt(c.shape, p, HANDLE_PX / view.current.zoom) : null;
+        if (at) drag.current = { kind: 'area-corner', at };
+        else if (c.tool === 'rect' || c.tool === 'ellipse') drag.current = { kind: 'area-drag', tool: c.tool, a: p, b: p };
         else if (c.tool === 'lasso') drag.current = { kind: 'area-path', path: [p] };
         else {
           const pts = polygonDraft.current;
@@ -372,6 +376,8 @@ function DmMap() {
     } else if (d.kind === 'token') {
       d.moved = true;
       moveToken(d.id, { x: p.x + d.ox, y: p.y + d.oy }, false);
+    } else if (d.kind === 'area-corner') {
+      moveAreaCorner(d.at, cornerTarget(p, e.altKey), false);
     } else if (d.kind === 'fog-path' || d.kind === 'area-path') {
       const last = d.path[d.path.length - 1];
       if (Math.hypot(last.x - p.x, last.y - p.y) * view.current.zoom > 4) d.path.push(p);
@@ -395,6 +401,8 @@ function DmMap() {
       drawAreaPart(partFromDrag(d.tool, d.a, d.b, areaGrid(e.altKey)));
     } else if (d.kind === 'area-path') {
       drawAreaPart(partFromPoints('lasso', d.path, null));
+    } else if (d.kind === 'area-corner') {
+      moveAreaCorner(d.at, cornerTarget(toWorld(e), e.altKey), true);
     } else if (d.kind === 'template') {
       addTemplate(d.shape, d.a, d.b);
     } else if (d.kind === 'fog-rect' || d.kind === 'fog-ellipse') {
@@ -424,7 +432,14 @@ function DmMap() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onDoubleClick={(e) => (state.tool === 'fog-polygon' || state.tool === 'area') && finishPolygon(e.altKey)}
+        onDoubleClick={(e) => {
+          if (state.tool === 'fog-polygon' || state.tool === 'area') finishPolygon(e.altKey);
+          // Map Forge: a double-click on an area edits it.
+          else if (state.tool === 'select' && state.ws === 'forge') {
+            const id = zoneAt(toWorld(e));
+            if (id) startAreaCommand(id);
+          }
+        }}
         onWheel={onWheel}
         onDragOver={(e) => {
           if (e.dataTransfer.types.includes(CREATURE_DRAG)) {
@@ -463,6 +478,15 @@ function DmMap() {
       )}
     </div>
   );
+}
+
+/** Screen pixels within which a corner of the area is grabbed. */
+const HANDLE_PX = 8;
+
+/** Where a dragged corner goes: the nearest grid corner, or exactly the pointer with Alt. */
+function cornerTarget(p: Point, free: boolean): Point {
+  const grid = areaGrid(free);
+  return grid ? snapToCorner(grid, p) : p;
 }
 
 /** The grid parts of an area snap to; none while Alt is held or snapping is off. */

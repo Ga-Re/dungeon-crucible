@@ -1,15 +1,16 @@
 /**
- * Command panel "Create area" (DC-013, E-6): over the map at its top right, not modal. The DM
- * picks a shape and draws parts on the map – added to the area or cut out of it – and sets name,
- * "secret", the fog look and the colour. Nothing is saved before OK; Cancel or Escape discards.
+ * Command panel "Create area" / "Edit area" (DC-013, E-6): over the map at its top right, not
+ * modal. The DM picks a shape and draws parts on the map – added to the area or cut out of it –
+ * drags its corners and sets name, "secret", the fog look and the colour. Nothing is saved before
+ * OK; Cancel or Escape discards. Editing also deletes the area (confirmed in the panel).
  */
-import type { KeyboardEvent } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import type { AreaTool } from '../core/areas';
 import { FOG_BIOMES, type FogBiome } from '../core/scene';
 import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
 import { Icon, type IconName } from '../ui/Icon';
-import { areaCommandProblem, cancelAreaCommand, finishAreaCommand, updateAreaCommand, useStore } from '../app/store';
+import { areaCommandProblem, cancelAreaCommand, deleteArea, finishAreaCommand, updateAreaCommand, useStore } from '../app/store';
 
 const TOOLS: { id: AreaTool; icon: IconName; label: MessageKey }[] = [
   { id: 'rect', icon: 'rect', label: 'area.shape.rect' },
@@ -21,7 +22,9 @@ const TOOLS: { id: AreaTool; icon: IconName; label: MessageKey }[] = [
 export function AreaCommandPanel() {
   const { t } = useI18n();
   const c = useStore((s) => s.areaCommand);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   if (!c) return null;
+  const editing = c.areaId;
   const problem = areaCommandProblem(c);
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -40,7 +43,7 @@ export function AreaCommandPanel() {
       }}
     >
       <div className="cmd-head">
-        <b id="area-cmd-title">{t('area.cmd.title')}</b>
+        <b id="area-cmd-title">{t(editing ? 'area.edit' : 'area.cmd.title')}</b>
         <button type="button" className="ab-btn" title={t('start.cancel')} aria-label={t('start.cancel')} onClick={cancelAreaCommand}><Icon name="close" /></button>
       </div>
       <div className="cmd-body">
@@ -77,9 +80,20 @@ export function AreaCommandPanel() {
             <input type="color" value={c.color} onChange={(e) => updateAreaCommand({ color: e.target.value })} />
           </label>
         </div>
+        {editing && <p className="hint">{t('area.hint.corners')}</p>}
         {problem && <p className="hint" role="status">{t(problem === 'name' ? 'area.cmd.needName' : 'area.cmd.needShape')}</p>}
+        {editing && confirmDelete === editing && (
+          <div className="library-confirm" role="alert">
+            <p>{t('area.deleteConfirm', { name: c.name || t('area.unnamed') })}</p>
+            <div className="library-buttons">
+              <button type="button" className="btn sm danger" onClick={() => deleteArea(editing)}>{t('area.delete')}</button>
+              <button type="button" className="btn sm" onClick={() => setConfirmDelete(null)}>{t('start.cancel')}</button>
+            </div>
+          </div>
+        )}
       </div>
       <div className="cmd-buttons">
+        {editing && <button type="button" className="btn danger cmd-delete" onClick={() => setConfirmDelete(editing)}><Icon name="trash" />{t('area.delete')}</button>}
         <button type="button" className="btn" onClick={cancelAreaCommand}>{t('start.cancel')}</button>
         <button type="submit" className="btn pri" disabled={problem !== null}>{t('area.cmd.ok')}</button>
       </div>

@@ -327,3 +327,5 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .cmd-two { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 8px; }
 .cmd-buttons { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--line-soft); }
 .cmd-buttons .btn { height: 26px; padding: 0 12px; }
+.cmd-buttons .cmd-delete { margin-right: auto; }
+.command-panel .library-confirm { margin: 0; }

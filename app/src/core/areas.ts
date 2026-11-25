@@ -153,3 +153,43 @@ export function partFromPoints(tool: 'polygon' | 'lasso', points: readonly Point
   if (ring.length > 1 && ring[0]![0] === ring.at(-1)![0] && ring[0]![1] === ring.at(-1)![1]) ring.pop();
   return ring.length >= 3 ? { outer: ring, holes: [] } : null;
 }
+
+/** A corner of a shape: which part, which ring (0 = outer, then the holes), which point. */
+export interface VertexRef {
+  part: number;
+  ring: number;
+  index: number;
+}
+
+/** The corner within `tolerance` (map pixels) of `p`, the nearest one; `null` if none. */
+export function vertexAt(shape: readonly Polygon[], p: Point, tolerance: number): VertexRef | null {
+  let best: VertexRef | null = null;
+  let bestD = tolerance;
+  shape.forEach((polygon, part) =>
+    [polygon.outer, ...polygon.holes].forEach((r, ring) =>
+      r.forEach(([x, y], index) => {
+        const d = Math.hypot(x - p.x, y - p.y);
+        if (d <= bestD) {
+          bestD = d;
+          best = { part, ring, index };
+        }
+      }),
+    ),
+  );
+  return best;
+}
+
+/** `shape` with one corner moved to `to` (a new shape; the old one is not changed). */
+export function moveVertex(shape: readonly Polygon[], at: VertexRef, to: Point): Polygon[] {
+  return shape.map((polygon, part) => {
+    const rings = [polygon.outer, ...polygon.holes].map((r, ring) =>
+      r.map((pt, index) => (part === at.part && ring === at.ring && index === at.index ? ([to.x, to.y] as [number, number]) : ([pt[0], pt[1]] as [number, number]))),
+    );
+    return { outer: rings[0]!, holes: rings.slice(1) };
+  });
+}
+
+/** A valid shape again after corners moved: crossing edges are resolved, overlapping parts joined. */
+export function normalizeShape(shape: readonly Polygon[]): Polygon[] {
+  return shape.reduce<Polygon[]>((out, polygon) => addShape(out, polygon), []);
+}

@@ -13,7 +13,7 @@ import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerV
 import { hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
 import { lockedAreas } from '../core/persistence';
 import { newId, slugId } from '../core/documents';
-import { addShape, areaContains, distanceToArea, subtractShape, type AreaTool } from '../core/areas';
+import { addShape, areaContains, distanceToArea, moveVertex, normalizeShape, subtractShape, type AreaTool, type VertexRef } from '../core/areas';
 import type { Polygon } from '../core/poly/types';
 import { readFogLook, saveCoverFrom, saveFadeSeconds, saveFogEdge, saveFogMotion, saveFogQuality, saveFogSpeed, saveSoftEdges, type CoverFrom, type FogLook, type FogQuality } from './fog-settings';
 import { lookToWire } from '../render/fogOptions';
@@ -518,8 +518,10 @@ export function removeLastUserWall(): void {
 
 /* ---------- "Create area" command (DC-013) ---------- */
 
-/** The running "create area" command: its options and the shape drawn so far (not saved yet). */
+/** The running "create area" or "edit area" command: options and shape so far (not saved yet). */
 export interface AreaCommand {
+  /** The area being edited; `null` creates a new one. */
+  areaId: string | null;
   tool: AreaTool;
   /** Whether a drawn part is added to the shape or cut out of it. */
   op: 'add' | 'subtract';
@@ -533,10 +535,18 @@ export interface AreaCommand {
 
 const AREA_COLOR = '#7fd9cf';
 
-/** Starts "create area" in the Map Forge (one command at a time: another tool ends it). */
-export function startAreaCommand(): void {
+/**
+ * Starts "create area" – or "edit area" for `areaId` – in the Map Forge (one command at a time:
+ * another tool ends it).
+ */
+export function startAreaCommand(areaId?: string): void {
   if (state.layer !== 'map') return;
-  state.areaCommand = { tool: 'rect', op: 'add', name: '', secret: false, biome: null, color: AREA_COLOR, shape: [] };
+  const z = areaId ? state.scene.zones.find((q) => q.id === areaId) : undefined;
+  if (areaId && !z) return;
+  state.areaCommand = z
+    ? { areaId: z.id, tool: 'rect', op: 'add', name: z.name, secret: z.secret, biome: z.biome ?? null, color: z.color, shape: z.shape }
+    : { areaId: null, tool: 'rect', op: 'add', name: '', secret: false, biome: null, color: AREA_COLOR, shape: [] };
+  if (z) state.selectedZoneId = z.id;
   state.tool = 'area';
   state.wallStart = null;
   emit();
@@ -563,19 +573,55 @@ export function areaCommandProblem(c: AreaCommand): 'name' | 'shape' | null {
   return null;
 }
 
-/** OK: saves the area as one undoable step under a new random id. */
+/** A corner of the shape moved (live while dragging; `done` cleans the shape up at the end). */
+export function moveAreaCorner(at: VertexRef, to: Point, done: boolean): void {
+  const c = state.areaCommand;
+  if (!c) return;
+  const moved = moveVertex(c.shape, at, to);
+  state.areaCommand = { ...c, shape: done ? normalizeShape(moved) : moved };
+  emit();
+}
+
+/** OK: saves the new area under a new random id, or the edited one, as one undoable step. */
 export function finishAreaCommand(): boolean {
   const c = state.areaCommand;
   if (!c || areaCommandProblem(c) || state.layer !== 'map') return false;
+  const fields = { name: c.name.trim(), shape: c.shape, secret: c.secret, color: c.color };
+  const existing = c.areaId ? state.scene.zones.find((z) => z.id === c.areaId) : undefined;
+  if (c.areaId && !existing) return false;
   checkpoint();
-  const id = freshId('area');
-  state.scene.zones.push({ id, name: c.name.trim(), shape: c.shape, secret: c.secret, color: c.color, ...(c.biome ? { biome: c.biome } : {}), discovered: !c.secret });
+  let id: string;
+  if (existing) {
+    id = existing.id;
+    Object.assign(existing, fields, { discovered: !c.secret || existing.discovered });
+    if (c.biome) existing.biome = c.biome;
+    else delete existing.biome;
+    log('log.areaChanged', { name: fields.name });
+  } else {
+    id = freshId('area');
+    state.scene.zones.push({ id, ...fields, ...(c.biome ? { biome: c.biome } : {}), discovered: !c.secret });
+    log('log.areaCreated', { name: fields.name });
+  }
   state.selectedZoneId = id;
   state.areaCommand = null;
   state.tool = 'select';
-  log('log.areaCreated', { name: c.name.trim() });
+  recomputeVision();
   emit();
   return true;
+}
+
+/** Deletes an area of the map (undoable). Scene overrides of it stay in their files, orphaned. */
+export function deleteArea(id: string): void {
+  const z = state.scene.zones.find((q) => q.id === id);
+  if (!z || state.layer !== 'map') return;
+  checkpoint();
+  state.scene.zones = state.scene.zones.filter((q) => q.id !== id);
+  if (state.selectedZoneId === id) state.selectedZoneId = null;
+  if (state.areaCommand?.areaId === id) state.areaCommand = null;
+  if (state.tool === 'area') state.tool = 'select';
+  log('log.areaDeleted', { name: z.name });
+  recomputeVision();
+  emit();
 }
 
 export function cancelAreaCommand(): void {

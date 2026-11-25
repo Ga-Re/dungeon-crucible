@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { rectPolygon } from '../core/fogModel';
-import { areaContains } from '../core/areas';
-import { commitView, drawAreaPart, finishAreaCommand, setTool, setWorkspace, startAreaCommand, state, undo, updateAreaCommand } from './store';
+import { areaBounds, areaContains, vertexAt } from '../core/areas';
+import { commitView, deleteArea, drawAreaPart, finishAreaCommand, moveAreaCorner, setTool, setWorkspace, startAreaCommand, state, undo, updateAreaCommand } from './store';
 
 /** The store starts with the sample crypt (browser mode). */
 describe('"create area" command (DC-013)', () => {
@@ -44,5 +44,41 @@ describe('"create area" command (DC-013)', () => {
     expect(state.areaCommand).toBeNull();
     startAreaCommand();
     expect(state.areaCommand).toBeNull();
+  });
+
+  it('edits an area: name, a part added, a corner moved; one undoable step, same id', () => {
+    setWorkspace('forge');
+    const hall = state.scene.zones.find((z) => z.id === 'hall')!;
+    const id = hall.id;
+    const before = JSON.stringify(hall);
+    const b = areaBounds(hall.shape);
+    startAreaCommand(id);
+    expect(state.areaCommand).toMatchObject({ areaId: id, name: hall.name });
+    updateAreaCommand({ name: 'Great hall' });
+    drawAreaPart(rectPolygon(b.x + b.w, b.y, b.x + b.w + 70, b.y + 70));
+    const corner = vertexAt(state.areaCommand!.shape, { x: b.x, y: b.y }, 1)!;
+    moveAreaCorner(corner, { x: b.x - 70, y: b.y - 70 }, true);
+    expect(finishAreaCommand()).toBe(true);
+
+    const edited = state.scene.zones.find((z) => z.id === id)!;
+    expect(edited.name).toBe('Great hall');
+    expect(areaContains(edited.shape, { x: b.x + b.w + 35, y: b.y + 35 })).toBe(true);
+    expect(areaBounds(edited.shape).x).toBe(b.x - 70);
+    expect(state.scene.zones.filter((z) => z.id === id)).toHaveLength(1);
+
+    undo();
+    expect(JSON.stringify(state.scene.zones.find((z) => z.id === id))).toBe(before);
+  });
+
+  it('deletes an area, undoably', () => {
+    setWorkspace('forge');
+    const n = state.scene.zones.length;
+    startAreaCommand('storage');
+    deleteArea('storage');
+    expect(state.scene.zones.some((z) => z.id === 'storage')).toBe(false);
+    expect(state.areaCommand).toBeNull();
+    expect(state.scene.zones).toHaveLength(n - 1);
+    undo();
+    expect(state.scene.zones.some((z) => z.id === 'storage')).toBe(true);
   });
 });

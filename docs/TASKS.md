@@ -261,7 +261,7 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - **DC-105 Szenenübergang** (T-135): Übergang beim Szenenwechsel auf dem TV (z. B. Ausblenden über Schwarz, Dauer),
   danach als Standard je Karte (T-176b).
 - **DC-012 Kartenkatalog der Bibliothek** – geht in DC-093 auf.
-- ◐ **DC-013 Bereiche als Polygon/Ellipse/Lasso**, additiv zeichnen, bearbeiten, Biom-Override, Name, geheim
+- ✓ **DC-013 Bereiche als Polygon/Ellipse/Lasso**, additiv zeichnen, bearbeiten, Biom-Override, Name, geheim
   (T-108c1, T-260); Begriff „Bereich“ (T-262); „Bereich anlegen“ als Befehls-Panel (E-6). DM-Entscheidungen
   (2026-11-25): Migration auf Version 2; nur „Bereich“ mit Schalter „geheim“; Ablauf wie Dungeon-Manager;
   Bearbeiten = Eigenschaften, Form erweitern/abziehen, Ecken verschieben, löschen.
@@ -275,8 +275,11 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   frei); Vorschau auf der Karte; OK speichert als ein rückgängig machbarer Schritt mit neuer zufälliger ID, Esc oder
   Abbrechen verwirft; ein anderes Werkzeug beendet den Befehl. Das alte Rechteck-Werkzeug „Zone“ ist entfernt,
   Texte sagen „Bereich“. Abweichung: „Abziehen“ ist ein Schalter im Panel, weil Alt fürs freie Zeichnen gilt.
-  Offen: Schritt 3 Bearbeiten (Eigenschaften, Form erweitern/abziehen, Ecken verschieben, löschen); das Panel ist
-  noch nicht verschiebbar.
+  Erledigt (Schritt 3): „Bereich bearbeiten“ per Doppelklick auf den Bereich (Browser oder Karte) oder aus dem
+  Eigenschaften-Panel – derselbe Befehl mit den Werten des Bereichs: Eigenschaften, Form erweitern/abziehen, Ecken
+  ziehen (eingerastet, Alt frei; danach wird die Form bereinigt), Löschen mit Rückfrage im Panel (Szenen-Overrides
+  verwaisen); OK ändert den Bereich unter derselben ID als ein Schritt. Das Eigenschaften-Panel zeigt den Bereich
+  nur noch an. Nicht umgesetzt: das Panel verschieben (bleibt oben rechts); Ellipsen zeigen viele Eckgriffe.
 - **DC-014 Wände bearbeiten**: auswählen, Endpunkte verschieben, löschen, Ketten; Objekte als Polygon; Einweg-Wände
   (Klippen/Galerien) und Deckung (T-193).
 - **DC-015 Assets und Ebenen** – Props siehe DC-041, Stockwerke DC-020, Zeichenebenen DC-101 (E-18).

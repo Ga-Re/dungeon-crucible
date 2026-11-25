@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_GRID } from './grid';
-import { addShape, areaBounds, partFromDrag, partFromPoints, areaContains, distanceToArea, labelPoint, migrateArea, migrateAreaOverride, subtractShape } from './areas';
+import { addShape, areaBounds, moveVertex, normalizeShape, partFromDrag, partFromPoints, vertexAt, areaContains, distanceToArea, labelPoint, migrateArea, migrateAreaOverride, subtractShape } from './areas';
 import { rectPolygon } from './fogModel';
 
 const square = (x: number, y: number, s: number) => rectPolygon(x, y, x + s, y + s);
@@ -108,5 +108,27 @@ describe('drawing an area part', () => {
     expect(partFromPoints('polygon', pts, grid)?.outer).toEqual([[0, 0], [30, 0], [30, 20]]);
     expect(partFromPoints('lasso', pts, grid)?.outer).toEqual([[1, 1], [2, 2], [29, 1], [31, 18]]);
     expect(partFromPoints('polygon', [{ x: 1, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 3 }], grid)).toBeNull();
+  });
+});
+
+describe('editing corners', () => {
+  it('finds the corner near a point and moves it', () => {
+    const shape = [rectPolygon(0, 0, 100, 100)];
+    const at = vertexAt(shape, { x: 98, y: 3 }, 6)!;
+    expect(at).toMatchObject({ part: 0, ring: 0 });
+    expect(shape[0]!.outer[at.index]).toEqual([100, 0]);
+    expect(vertexAt(shape, { x: 50, y: 50 }, 6)).toBeNull();
+    const moved = moveVertex(shape, at, { x: 120, y: -10 });
+    expect(moved[0]!.outer[at.index]).toEqual([120, -10]);
+    expect(shape[0]!.outer[at.index]).toEqual([100, 0]);
+  });
+
+  it('a moved corner that crosses edges is cleaned up into a valid shape', () => {
+    // Pulling a corner across the square makes a bow tie; cleaning gives two triangles.
+    const bow = moveVertex([rectPolygon(0, 0, 100, 100)], vertexAt([rectPolygon(0, 0, 100, 100)], { x: 100, y: 0 }, 1)!, { x: -50, y: 100 });
+    const clean = normalizeShape(bow);
+    expect(clean.length).toBeGreaterThanOrEqual(1);
+    for (const p of clean) expect(p.outer.length).toBeGreaterThanOrEqual(3);
+    expect(normalizeShape([rectPolygon(0, 0, 10, 10)])).toHaveLength(1);
   });
 });

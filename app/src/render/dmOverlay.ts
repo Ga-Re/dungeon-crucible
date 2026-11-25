@@ -26,7 +26,7 @@ export interface OverlayState {
   calibPoints: Point[];
   draftTemplate: TemplateLike | null;
   /** "Create area": the shape so far, the part being drawn and a polygon or lasso path (DC-013). */
-  areaDraft: { shape: Polygon[]; part: Polygon | null; path: Point[]; color: string; subtract: boolean } | null;
+  areaDraft: { shape: Polygon[]; part: Polygon | null; path: Point[]; color: string; subtract: boolean; editing: string | null } | null;
   /** Outline of a fog tool's shape while drawing. */
   fogDraft: { polygon: Polygon | null; path: Point[]; mode: 'reveal' | 'hide' } | null;
 }
@@ -67,6 +67,8 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
   g.strokeRect(0, 0, W, H);
 
   for (const z of scene.zones) {
+    // The area being edited shows as the command's draft instead.
+    if (z.id === o.areaDraft?.editing) continue;
     const sel = z.id === o.selectedZoneId;
     g.save();
     // One even-odd path per area, so holes stay open.
@@ -202,6 +204,18 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
       g.strokeStyle = hexToRgba(a.color, 1);
       g.stroke(path);
     }
+    // Corner handles: dragged to move a corner.
+    g.fillStyle = hexToRgba(a.color, 1);
+    g.strokeStyle = 'rgba(0,0,0,.6)';
+    g.lineWidth = px;
+    const h = 4 * px;
+    for (const polygon of a.shape)
+      for (const ring of [polygon.outer, ...polygon.holes])
+        for (const [x, y] of ring) {
+          g.fillRect(x - h, y - h, 2 * h, 2 * h);
+          g.strokeRect(x - h, y - h, 2 * h, 2 * h);
+        }
+    g.lineWidth = 2 * px;
     // The part being drawn: dashed, red when it cuts out.
     g.setLineDash([8 * px, 5 * px]);
     g.strokeStyle = a.subtract ? 'rgba(226,85,76,.95)' : hexToRgba(a.color, 0.95);

@@ -12,7 +12,7 @@ import { FADE_MAX_SECONDS, FADE_STEP_SECONDS, FOG_EDGE, FOG_MOTION, FOG_QUALITIE
 import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
-  addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
+  addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
   resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
@@ -85,7 +85,13 @@ export function BrowserPanel() {
           <ul>
             {scene.zones.map((z) => (
               <li key={z.id}>
-                <button className={`tn ${z.id === selZone ? 'sel' : ''}`} onClick={() => selectZone(z.id)}>
+                <button
+                  className={`tn ${z.id === selZone ? 'sel' : ''}`}
+                  onClick={() => selectZone(z.id)}
+                  // Map Forge: double-click or Enter edits the area.
+                  onDoubleClick={() => ws === 'forge' && startAreaCommand(z.id)}
+                  onKeyDown={(e) => e.key === 'Enter' && ws === 'forge' && startAreaCommand(z.id)}
+                >
                   <span className="swatch" style={{ background: z.color }} />
                   <span className="nm">{z.name}</span>
                   {z.secret && !z.discovered && <span className="meta" style={{ color: 'var(--arcane)' }}>{t('area.secret')}</span>}
@@ -248,9 +254,9 @@ export function PropertiesPanel() {
       <div className="sec">{t('props.selection')}</div>
       {zone ? (
         <>
-          <div className="row"><label htmlFor="z-name">{t('props.name')}</label><input id="z-name" value={zone.name} onChange={(e) => { zone.name = e.target.value; emit(); }} /></div>
-          <div className="row"><label htmlFor="z-secret">{t('area.secret')}</label><input id="z-secret" type="checkbox" checked={zone.secret} onChange={(e) => { zone.secret = e.target.checked; emit(); }} /></div>
-          <div className="row"><label htmlFor="z-col">{t('area.color')}</label><input id="z-col" type="color" value={zone.color} onChange={(e) => { zone.color = e.target.value; emit(); }} /></div>
+          <div className="row"><label>{t('props.name')}</label><span><span className="swatch" style={{ background: zone.color }} /> {zone.name}</span></div>
+          <div className="row"><label>{t('area.cmd.biome')}</label><span>{zone.biome ? t(`biome.${zone.biome}` as MessageKey) : t('area.cmd.biomeMap')}{zone.secret ? ` · ${t('area.secret')}` : ''}</span></div>
+          <button className="btn sm" onClick={() => startAreaCommand(zone.id)}><Icon name="zone" />{t('area.edit')} …</button>
         </>
       ) : <p className="hint">{t('props.noSelection')}</p>}
     </div>

@@ -8,7 +8,8 @@ import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type Grid
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
-import { interiorChanges, interiorOf, interiorWalls } from '../core/interiors';
+import type { InteriorTrigger } from '../core/sidecar';
+import { drawnPlacements, interiorChanges, interiorOf, interiorWalls } from '../core/interiors';
 import { rotateAboutAnchor, scaleAboutAnchor, snapAnchored } from '../core/anchor';
 import { assetShapes, footprintOf, hitsPlacement, nextVariant, snapPlacement } from '../core/placement';
 import { rollDice, type RollResult } from '../core/rules/dice';
@@ -1113,6 +1114,17 @@ export function setInterior(id: string, on: boolean): void {
   emit();
 }
 
+/** A placed house's own interior trigger, or none for its asset's (one undoable step). */
+export function setPlacementInteriorTrigger(id: string, trigger: InteriorTrigger | undefined): void {
+  const a = placed(id);
+  if (!a) return;
+  checkpoint();
+  if (trigger) a.interiorTrigger = { ...trigger };
+  else delete a.interiorTrigger;
+  markDirty();
+  emit();
+}
+
 /** The DM's answer to "show the interior?" after a player character came in. */
 export function answerInteriorAsk(id: string, yes: boolean): void {
   if (yes) setInterior(id, true);
@@ -1946,7 +1958,8 @@ export function produceFrame(now: number): PlayerFrame {
     seedKey: state.mapResource,
     lights: tv.lights,
     // Only the scene's shown placements: assets it hides never reach the TV.
-    assets: assetShapes(allPlacements(tv.scene), state.assetInfo, tv.scene.map.grid, { effectsOn: tv.scene.effectsOn, runs: state.effectRuns }),
+    // Houses as switched in the scene (E-29); the TV never sees through a roof.
+    assets: assetShapes(drawnPlacements(allPlacements(tv.scene), state.assetInfo, tv.scene.interiorsOn, false), state.assetInfo, tv.scene.map.grid, { effectsOn: tv.scene.effectsOn, runs: state.effectRuns }),
     covers: assetExtras(tv.scene).covers,
   });
   return state.frame;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readDocument } from './documents';
 import { DEFAULT_GRID } from './grid';
-import { interiorChanges, interiorOf, interiorWalls, shownAssetPath } from './interiors';
+import { drawnPlacements, interiorChanges, interiorOf, interiorWalls, ROOF_SEE_THROUGH, shownAssetPath } from './interiors';
 import { commitStart, resetToStart, sceneFromDocuments, sceneOverrideFromScene, startOf } from './persistence';
 import { AssetSidecarSchema, MapSidecarSchema, SceneOverrideSchema, SCENE_VERSION, type MapSidecar } from './sidecar';
 
@@ -45,6 +45,14 @@ describe('an interior', () => {
   it('while shown, the placement shows the inner asset', () => {
     expect(shownAssetPath(house, info, {})).toBe('library/house_roof.png');
     expect(shownAssetPath(house, info, { h1: true })).toBe('library/house_inside.png');
+  });
+
+  it('is drawn with the inner picture while shown; the DM may see through the roof to it, the TV never', () => {
+    const barrel = { ...house, id: 'b', assetPath: 'library/barrel.png' };
+    const drawn = (on: Record<string, boolean>, see: boolean) => drawnPlacements([house, barrel], info, on, see).map((p) => [p.id, p.assetPath, p.alpha]);
+    expect(drawn({}, false)).toEqual([['h1', 'library/house_roof.png', undefined], ['b', 'library/barrel.png', undefined]]);
+    expect(drawn({ h1: true }, true)).toEqual([['h1', 'library/house_inside.png', undefined], ['b', 'library/barrel.png', undefined]]);
+    expect(drawn({}, true)).toEqual([['h1:inner', 'library/house_inside.png', undefined], ['h1', 'library/house_roof.png', ROOF_SEE_THROUGH], ['b', 'library/barrel.png', undefined]]);
   });
 
   it('its walls and doors are on the map only while it is shown; doors open as the scene says', () => {

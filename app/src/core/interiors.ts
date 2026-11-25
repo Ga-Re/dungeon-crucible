@@ -82,3 +82,20 @@ export function interiorChanges(placements: readonly Placed[], info: InteriorInf
     inside,
   };
 }
+
+/** How opaque a roof is drawn while the DM sees through it. */
+export const ROOF_SEE_THROUGH = 0.45;
+
+/**
+ * The placements as drawn: a house showing its interior with its inner picture. With
+ * `seeThrough` (the DM's window only), a house showing its outside gets its inner picture below
+ * a see-through roof.
+ */
+export function drawnPlacements<P extends Placed>(placements: readonly P[], info: InteriorInfo, on: Readonly<Record<string, boolean>>, seeThrough: boolean): (P & { alpha?: number })[] {
+  return placements.flatMap((p): (P & { alpha?: number })[] => {
+    const i = info[p.assetPath]?.interior;
+    if (!i) return [p];
+    if (on[p.id]) return [{ ...p, assetPath: i.asset }];
+    return seeThrough ? [{ ...p, id: `${p.id}:inner`, assetPath: i.asset }, { ...p, alpha: ROOF_SEE_THROUGH }] : [p];
+  });
+}

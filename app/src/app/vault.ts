@@ -36,7 +36,7 @@ export interface VaultState {
   editor: AssetEditor | null;
 }
 
-export type EditorTool = 'select' | 'circle' | 'polygon' | 'light' | 'anchor' | 'door';
+export type EditorTool = 'select' | 'circle' | 'polygon' | 'light' | 'anchor' | 'door' | 'inner';
 
 export interface AssetEditor {
   relPath: string;

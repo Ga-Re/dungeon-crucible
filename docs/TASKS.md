@@ -447,7 +447,7 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   aufgeräumt (ein Licht nahe einer Wandecke brachte die Clipping-Bibliothek zum Abbruch); scheitert das Zuschneiden
   eines Lichts für den TV, bleibt es dort dunkel. Bekannt: PixiJS prüft beim ersten Video mit einem `data:`-Video,
   das die CSP blockiert – harmlose Meldung in der Konsole, Pixi nimmt den Standard.
-- ◐ **DC-042 Smart Prefabs, Innenräume als Asset-Varianten** (E-29; T-202, T-146). Masken, Lichter und Effekte
+- ✓ **DC-042 Smart Prefabs, Innenräume als Asset-Varianten** (E-29; T-202, T-146). Masken, Lichter und Effekte
   am Asset sind mit DC-108/DC-109/DC-110 erledigt. Schritte: 1. Anker (Drehpunkt, Einrasten an Raster und Wänden);
   2. Tür-Asset (Türlinie, schneidet die Wand auf); 3. Innenräume (Innen-Asset, Innenwände, Auslöser mit Abstand und
   Rückfrage, Überblendung, Dächer für den DM durchsichtig). Format: Asset V3, Karte V5, Szene V7.
@@ -463,6 +463,19 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   verschiebt bzw. schließt die Lücke. Öffnen/Schließen im Orchestrator per Klick auf Tür oder Asset (rückgängig
   machbar), gespeichert in den Türen der Szene unter `<Platzierung>:door` – dafür braucht es weder Karte V5 noch
   Szene V7. Der Anker rastet auch entlang der Wand auf das Halbfeld-Gitter (Türen sitzen mittig im Feld).
+  Erledigt (Schritt 3): Innenräume – Asset Version 3 mit `interior` (Innen-Asset aus der Gruppe, Innenwände,
+  -türen, -fenster in Feldern, Auslöser), Karte Version 5 (eigener Auslöser je Platzierung), Szene Version 7
+  (`interiors` im Spielzustand und im Start), jeweils mit Migration. Im Asset-Editor: „Hat einen Innenraum“ (nur mit
+  einem anderen Asset derselben Gruppe), Innen-Asset wählen, „Inneres zeigen und bearbeiten“ (Bühne zeigt das
+  Innenbild), Wand/Tür/Fenster aufziehen (Viertelfelder), letzte entfernen; Auslöser: nur per Klick, beim Betreten,
+  beim Nähern (Abstand in ft), „Vorher fragen“, „Wieder außen, wenn alle gegangen sind“. In der Kartenschmiede je
+  Platzierung „Wie am Asset“ oder ein eigener Auslöser. Im Orchestrator: Klick auf das Haus schaltet innen/außen
+  (rückgängig machbar, Protokoll); Spielerfiguren lösen beim Betreten/Nähern aus, mit Rückfrage als Hinweis mit
+  „Zeigen“/„Jetzt nicht“ oben rechts auf der Karte (blockiert nicht). Innen: Innenbild statt Dach, Deckungsmaske
+  aus, Innenwände zählen für Sicht und Licht, Innentüren öffnen per Klick (gespeichert unter `<Platzierung>:in<n>`).
+  Der Wechsel wird überblendet (DM-Fenster und TV). „DM sieht durch Dächer“ im Panel Nebel (Standard an): außen
+  zeigt das DM-Fenster das Innenbild unter einem halb durchsichtigen Dach; der TV nie. Die Kartenschmiede zeigt
+  Häuser immer von außen. Rückfrage nur beim Hineingehen; Verlassen schaltet ohne Rückfrage zurück.
 - ✓ **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
   Deckungsmaske eines Assets fest (Kreis oder Polygon auf dem Bild – Baum, Säule, Statue); ein platziertes Asset ist
   automatisch maskiert: Die Maske dreht und skaliert mit, sie wird nur am Asset geändert und gilt dann überall

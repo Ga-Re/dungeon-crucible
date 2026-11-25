@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activateAsset, answerInteriorAsk, assetExtras, commitView, moveToken, placeAsset, setAssetInfo, setWorkspace, sightWalls, state, undo } from './store';
+import { activateAsset, answerInteriorAsk, assetExtras, commitView, moveToken, placeAsset, setAssetInfo, setWorkspace, sightWalls, state, toggleDoor, undo } from './store';
 
 /** Houses with an interior in a scene (E-29, DC-042 step 3). The sample crypt has 70 px cells; the throne room spans cells 13–23 × 11–19. */
 describe('interiors in the Orchestrator', () => {
@@ -32,8 +32,12 @@ describe('interiors in the Orchestrator', () => {
     expect(state.scene.interiorsOn[id]).toBe(true);
     expect(assetExtras(state.scene).covers ?? []).toHaveLength(0);
     expect(sightWalls(state.scene).find((w) => w.id === `${id}:in0`)).toMatchObject({ kind: 'door', open: false });
+    // The inner door opens like any door; saved with the scene's doors.
+    toggleDoor(`${id}:in0`);
+    expect(sightWalls(state.scene).find((w) => w.id === `${id}:in0`)!.open).toBe(true);
     commitView();
     expect(state.sceneDoc!.interiors[id]).toBe(true);
+    expect(state.sceneDoc!.doors[`${id}:in0`]).toBe(true);
     moveToken(pc.id, from, true);
     expect(state.scene.interiorsOn[id]).toBe(false);
     expect(sightWalls(state.scene).some((w) => w.id === `${id}:in0`)).toBe(false);

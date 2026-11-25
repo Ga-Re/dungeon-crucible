@@ -29,7 +29,8 @@ const TOOLS: { id: EditorTool; icon: IconName; label: MessageKey }[] = [
   { id: 'polygon', icon: 'zone', label: 'editor.tool.polygon' },
 ];
 
-type Drag = { kind: 'circle-new'; at: Pt } | { kind: 'center' } | { kind: 'radius' } | { kind: 'corner'; index: number } | { kind: 'light' } | { kind: 'anchor' } | { kind: 'door-new'; at: Pt } | { kind: 'door-end'; end: 1 | 2 };
+type Drag = { kind: 'circle-new'; at: Pt } | { kind: 'center' } | { kind: 'radius' } | { kind: 'corner'; index: number } | { kind: 'light' } | { kind: 'anchor' } | { kind: 'door-new'; at: Pt } | { kind: 'door-end'; end: 1 | 2 } | { kind: 'inner-new'; at: Pt; to: Pt };
+type InnerKind = NonNullable<AssetSidecar['interior']>['walls'][number]['kind'];
 
 export function AssetEditorView() {
   const { t } = useI18n();
@@ -43,6 +44,13 @@ export function AssetEditorView() {
   const [path, setPath] = useState<Pt[]>([]);
   const [mouse, setMouse] = useState<Pt | null>(null);
   const [busy, setBusy] = useState(false);
+  // The interior (E-29): shown on the stage to draw its walls, doors and windows.
+  const [inside, setInside] = useState(false);
+  const [innerKind, setInnerKind] = useState<InnerKind>('wall');
+  const [innerImage, setInnerImage] = useState<string | null>(null);
+  const [innerDraft, setInnerDraft] = useState<[Pt, Pt] | null>(null);
+  const innerPath = draft.interior?.asset;
+  const showInside = inside && !!draft.interior;
   const drag = useRef<Drag | null>(null);
   const isVideo = /\.(webm|mp4)$/i.test(editor.relPath);
 
@@ -55,6 +63,15 @@ export function AssetEditorView() {
       live = false;
     };
   }, [editor.relPath]);
+
+  useEffect(() => {
+    let live = true;
+    setInnerImage(null);
+    if (innerPath && !/\.(webm|mp4)$/i.test(innerPath)) void absolutePath(innerPath).then(assetUrl).then((u) => live && setInnerImage(u));
+    return () => {
+      live = false;
+    };
+  }, [innerPath]);
 
   useEffect(() => {
     const key = (e: globalThis.KeyboardEvent) => {
@@ -129,6 +146,12 @@ export function AssetEditorView() {
       updateEditorDraft((a) => (a.light ? { ...a, light: { ...a.light, x: p[0], y: p[1] } } : a));
       return;
     }
+    if (tool === 'inner') {
+      const at = quarter(p);
+      drag.current = { kind: 'inner-new', at, to: at };
+      setInnerDraft([at, at]);
+      return;
+    }
     if (tool === 'door') {
       drag.current = { kind: 'door-new', at: quarter(p) };
       return;
@@ -165,6 +188,10 @@ export function AssetEditorView() {
     else if (d.kind === 'corner' && c?.shape === 'polygon') setCover({ ...c, points: c.points.map((q, i) => (i === d.index ? p : q)) });
     else if (d.kind === 'light') updateEditorDraft((a) => (a.light ? { ...a, light: { ...a.light, x: p[0], y: p[1] } } : a));
     else if (d.kind === 'anchor') setAnchor(p);
+    else if (d.kind === 'inner-new') {
+      d.to = quarter(p);
+      setInnerDraft([d.at, d.to]);
+    }
     else if (d.kind === 'door-new') {
       const q = quarter(p);
       if (q[0] !== d.at[0] || q[1] !== d.at[1]) setDoor({ x1: d.at[0], y1: d.at[1], x2: q[0], y2: q[1] });
@@ -175,6 +202,12 @@ export function AssetEditorView() {
   };
 
   const onUp = () => {
+    // The piece being drawn comes from the drag itself: the state may not have caught up yet.
+    if (drag.current?.kind === 'inner-new') {
+      const [[x1, y1], [x2, y2]] = [drag.current.at, drag.current.to];
+      if (x1 !== x2 || y1 !== y2) updateEditorDraft((a) => (a.interior ? { ...a, interior: { ...a.interior, walls: [...a.interior.walls, { kind: innerKind, x1, y1, x2, y2 }] } } : a));
+      setInnerDraft(null);
+    }
     if (drag.current?.kind === 'circle-new' || drag.current?.kind === 'door-new' || (drag.current?.kind === 'anchor' && tool === 'anchor')) setEditorTool('select');
     drag.current = null;
   };
@@ -234,7 +267,15 @@ export function AssetEditorView() {
         >
           <g className="asset-grid" strokeWidth={px}>{lines}</g>
           <rect className="asset-footprint" x={0} y={0} width={size.w} height={size.h} strokeWidth={2 * px} />
-          {(image ?? thumb) && <image href={image ?? thumb!} x={0} y={0} width={size.w} height={size.h} preserveAspectRatio="none" />}
+          {showInside
+            ? innerImage && <image href={innerImage} x={0} y={0} width={size.w} height={size.h} preserveAspectRatio="none" />
+            : (image ?? thumb) && <image href={image ?? thumb!} x={0} y={0} width={size.w} height={size.h} preserveAspectRatio="none" />}
+          {showInside && (
+            <g className="asset-inner" strokeWidth={4 * px}>
+              {draft.interior!.walls.map((w, i) => <line key={i} className={w.kind} x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} />)}
+              {innerDraft && <line className={innerKind} x1={innerDraft[0][0]} y1={innerDraft[0][1]} x2={innerDraft[1][0]} y2={innerDraft[1][1]} strokeDasharray={`${6 * px} ${4 * px}`} />}
+            </g>
+          )}
           {l && (
             <g className="asset-light">
               <circle cx={l.x} cy={l.y} r={l.dimFt / FT} strokeWidth={1.5 * px} strokeDasharray={`${6 * px} ${5 * px}`} style={{ stroke: l.color }} />
@@ -276,12 +317,13 @@ export function AssetEditorView() {
           )}
         </svg>
       </div>
-      <EditorPanel busy={busy} canSuggest={!!thumb} onSuggest={() => void suggest()} />
+      <EditorPanel busy={busy} canSuggest={!!thumb} onSuggest={() => void suggest()} inside={showInside} setInside={setInside} innerKind={innerKind} setInnerKind={setInnerKind} />
     </div>
   );
 }
 
-function EditorPanel({ busy, canSuggest, onSuggest }: { busy: boolean; canSuggest: boolean; onSuggest: () => void }) {
+function EditorPanel(props: { busy: boolean; canSuggest: boolean; onSuggest: () => void; inside: boolean; setInside: (on: boolean) => void; innerKind: InnerKind; setInnerKind: (k: InnerKind) => void }) {
+  const { busy, canSuggest, onSuggest } = props;
   const { t } = useI18n();
   const editor = useStore((s) => s.vault.editor)!;
   const { draft, tool } = editor;
@@ -414,6 +456,7 @@ function EditorPanel({ busy, canSuggest, onSuggest }: { busy: boolean; canSugges
         {draft.door && (
           <button type="button" className={`btn sm ${tool === 'door' ? 'pri' : ''}`} aria-pressed={tool === 'door'} onClick={() => setEditorTool(tool === 'door' ? 'select' : 'door')}><Icon name="door" />{t('editor.drawDoor')}</button>
         )}
+        <InteriorFields {...props} />
         {draft.assetKind === 'effect' && (
           <>
             <label className="cmd-check">
@@ -432,5 +475,89 @@ function EditorPanel({ busy, canSuggest, onSuggest }: { busy: boolean; canSugges
         <button type="submit" className="btn pri">{t('area.cmd.ok')}</button>
       </div>
     </form>
+  );
+}
+
+const INNER_KINDS: { id: InnerKind; label: MessageKey }[] = [
+  { id: 'wall', label: 'wall.kind.wall' },
+  { id: 'door', label: 'wall.kind.door' },
+  { id: 'window', label: 'wall.kind.window' },
+];
+
+/**
+ * A house's interior (E-29): another asset of its group shown inside, its walls, doors and windows
+ * drawn on that picture, and how it is triggered.
+ */
+function InteriorFields({ inside, setInside, innerKind, setInnerKind }: { inside: boolean; setInside: (on: boolean) => void; innerKind: InnerKind; setInnerKind: (k: InnerKind) => void }) {
+  const { t } = useI18n();
+  const editor = useStore((s) => s.vault.editor)!;
+  const items = useStore((s) => s.vault.items);
+  const { draft, tool } = editor;
+  const i = draft.interior;
+  const group = draft.group ? items.filter((x) => x.asset.group === draft.group && x.relPath !== editor.relPath) : [];
+  const setInterior = (patch: Partial<NonNullable<AssetSidecar['interior']>>) => updateEditorDraft((a) => (a.interior ? { ...a, interior: { ...a.interior, ...patch } } : a));
+  const setTrigger = (patch: Partial<NonNullable<AssetSidecar['interior']>['trigger']>) => i && setInterior({ trigger: { ...i.trigger, ...patch } });
+  const toggle = (on: boolean) =>
+    updateEditorDraft((a) => {
+      const { interior: _i, ...rest } = a;
+      if (!on || !group.length) return rest;
+      return { ...rest, interior: { asset: group[0].relPath, walls: [], trigger: { mode: 'enter', nearFt: 10, confirm: false, leaveOff: true } } };
+    });
+  return (
+    <>
+      <label className="cmd-check">
+        <input type="checkbox" checked={!!i} disabled={!i && !group.length} onChange={(e) => toggle(e.target.checked)} />
+        {t('editor.hasInterior')}
+      </label>
+      {!i && !group.length && <p className="hint">{t('editor.interiorNeedsGroup')}</p>}
+      {i && (
+        <>
+          <label className="cmd-field">
+            <span>{t('editor.interiorAsset')}</span>
+            <select value={i.asset} onChange={(e) => setInterior({ asset: e.target.value })}>
+              {group.map((x) => <option key={x.relPath} value={x.relPath}>{x.asset.name}</option>)}
+            </select>
+          </label>
+          <label className="cmd-check">
+            <input type="checkbox" checked={inside} onChange={(e) => { setInside(e.target.checked); if (!e.target.checked && tool === 'inner') setEditorTool('select'); }} />
+            {t('editor.showInside')}
+          </label>
+          {inside && (
+            <>
+              <div className="cmd-row" role="radiogroup" aria-label={t('editor.innerKind')}>
+                {INNER_KINDS.map((k) => (
+                  <button key={k.id} type="button" role="radio" aria-checked={innerKind === k.id} className={`btn sm ${innerKind === k.id ? 'on' : ''}`} onClick={() => setInnerKind(k.id)}>{t(k.label)}</button>
+                ))}
+              </div>
+              <div className="cmd-row">
+                <button type="button" className={`btn sm ${tool === 'inner' ? 'pri' : ''}`} aria-pressed={tool === 'inner'} onClick={() => setEditorTool(tool === 'inner' ? 'select' : 'inner')}><Icon name="wall" />{t('editor.drawInner')}</button>
+                <button type="button" className="btn sm" disabled={!i.walls.length} onClick={() => setInterior({ walls: i.walls.slice(0, -1) })}><Icon name="undo" />{t('editor.removeLastInner')}</button>
+              </div>
+              <p className="hint">{t('editor.innerCount', { n: i.walls.length })}</p>
+            </>
+          )}
+          <label className="cmd-field">
+            <span>{t('editor.trigger.mode')}</span>
+            <select value={i.trigger.mode} onChange={(e) => setTrigger({ mode: e.target.value as 'click' | 'enter' | 'near' })}>
+              <option value="click">{t('interior.mode.click')}</option>
+              <option value="enter">{t('interior.mode.enter')}</option>
+              <option value="near">{t('interior.mode.near')}</option>
+            </select>
+          </label>
+          {i.trigger.mode === 'near' && (
+            <label className="cmd-field">
+              <span>{t('interior.nearFt')}</span>
+              <input type="number" min={0} step={5} value={i.trigger.nearFt} onChange={(e) => setTrigger({ nearFt: Math.max(0, Number(e.target.value)) })} />
+            </label>
+          )}
+          {i.trigger.mode !== 'click' && (
+            <>
+              <label className="cmd-check"><input type="checkbox" checked={i.trigger.confirm} onChange={(e) => setTrigger({ confirm: e.target.checked })} />{t('interior.confirm')}</label>
+              <label className="cmd-check"><input type="checkbox" checked={i.trigger.leaveOff} onChange={(e) => setTrigger({ leaveOff: e.target.checked })} />{t('interior.leaveOff')}</label>
+            </>
+          )}
+        </>
+      )}
+    </>
   );
 }

@@ -124,6 +124,8 @@ export interface ProjectionOptions {
   lights: readonly LitSource[];
   /** The scene's shown placed assets, as drawn (`assetShapes`). */
   assets?: readonly AssetDraw[];
+  /** Their cover masks: figures inside one stay hidden until a character is in there too. */
+  covers?: readonly Polygon[];
 }
 
 /** Light for the players: only inside what they see now, so a light in remembered or hidden areas gives nothing away. */
@@ -135,7 +137,7 @@ export function playerLighting(scene: Scene, lights: readonly LitSource[], clear
 }
 
 export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFrame {
-  const visibleTokens = tokensVisibleToPlayers(scene.tokens, scene.fog, o.visible);
+  const visibleTokens = tokensVisibleToPlayers(scene.tokens, scene.fog, o.visible, o.covers);
   const g = scene.map.grid;
   const effect = scene.fogEffect ?? { biome: scene.map.biome, strength: scene.map.biomeStrength };
   const copy = (ps: readonly Polygon[]) => ps.map((p) => ({ outer: p.outer.map(([x, y]) => [x, y] as [number, number]), holes: p.holes.map((h) => h.map(([x, y]) => [x, y] as [number, number])) }));

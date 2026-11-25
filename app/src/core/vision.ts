@@ -224,10 +224,16 @@ export function visiblePolygons(vision: readonly ViewerVision[]): Polygon[] {
 }
 
 /** Tokens players may see: their own characters, plus others they see now that the DM has not hidden. */
-export function tokensVisibleToPlayers(tokens: readonly Token[], fog: LevelFog, visible: readonly Polygon[]): Token[] {
+export function tokensVisibleToPlayers(tokens: readonly Token[], fog: LevelFog, visible: readonly Polygon[], covers: readonly Polygon[] = []): Token[] {
+  // Masks a player character stands in: inside them, the players see (DM decision 2026-11-25).
+  const masks = covers.length ? masksOf(covers) : [];
+  const entered = masks.filter((m) => tokens.some((t) => t.kind === 'pc' && t.hp > 0 && pointInPolygon(t, m.pts)));
   return tokens.filter((t) => {
     if (t.hidden) return false;
     if (t.kind === 'pc') return true;
+    // A figure inside a mask (a tent, a wagon) stays hidden until a character is in there too.
+    const inside = masks.filter((m) => pointInPolygon(t, m.pts));
+    if (inside.length && !inside.some((m) => entered.includes(m))) return false;
     return seenNow(fog, visible, t);
   });
 }

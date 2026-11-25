@@ -1574,6 +1574,7 @@ export function produceFrame(now: number): PlayerFrame {
     lights: tv.lights,
     // Only the scene's shown placements: assets it hides never reach the TV.
     assets: assetShapes(tv.scene.map.assets, state.assetInfo, tv.scene.map.grid),
+    covers: assetExtras(tv.scene).covers,
   });
   return state.frame;
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isInside } from './poly/fog';
 import { placementCovers, placementLights } from './cover';
 import { DEFAULT_GRID } from './grid';
-import { litSources, updateVision, visiblePolygons } from './vision';
+import { litSources, tokensVisibleToPlayers, updateVision, visiblePolygons } from './vision';
 import { createSampleScene } from '../sample/crypt';
 
 /** Cover masks and lights of placed assets in sight and light (DC-108). 70 px cells. */
@@ -105,5 +105,24 @@ describe('cover stays fast (review)', () => {
     for (let i = 0; i < 3; i++) updateVision(s, { covers });
     // About 120 ms here; generous for slow CI machines – it was 600 ms before the fix.
     expect((performance.now() - t0) / 3).toBeLessThan(350);
+  });
+});
+
+describe('figures inside a mask (DM decision 2026-11-25)', () => {
+  it('are hidden from the players until one of their characters stands in the same mask', () => {
+    const s = createSampleScene();
+    s.walls = [];
+    s.lights = [];
+    s.ambient = 'lit';
+    const tent = placementCovers([placed({ assetPath: 'library/tent.png' })], { 'library/tent.png': { sizeCells: { w: 3, h: 3 }, cover: { shape: 'circle', x: 1.5, y: 1.5, r: 1.4 } } }, grid);
+    const pc = { id: 'v', name: 'V', label: 'V', kind: 'pc' as const, x: 600, y: 800, size: 1, ringColor: '#fff', visionFt: 0, hp: 10, maxHp: 10, ac: 10, initiative: 10, conditions: [] };
+    const bandit = { ...pc, id: 'b', kind: 'monster' as const, x: 1000, y: 800 };
+    s.tokens = [pc, bandit];
+    const seen = () => tokensVisibleToPlayers(s.tokens, s.fog, visiblePolygons(updateVision(s, { covers: tent })), tent).map((t) => t.id);
+    // The tent itself is seen, the bandit in it is not.
+    expect(seen()).toEqual(['v']);
+    // A character steps in: the bandit shows.
+    pc.x = 950;
+    expect(seen()).toEqual(['v', 'b']);
   });
 });

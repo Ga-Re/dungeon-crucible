@@ -438,6 +438,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   gestrichelt. Robustheit: Flächen mit Deckung werden auf 1/100 px gerundet (die Clipping-Bibliothek lief bei fast
   deckungsgleichen Kanten in eine Endlosrekursion); scheitert die Berechnung dennoch, rechnet die Figur bzw. das
   Licht ohne Masken weiter. Offen: Asset-Lichter je Szene schalten und das Flackern darstellen.
+  Nach dem Review: Sicht mit vielen Masken beschleunigt (40 Masken ~120 statt ~600 ms, Test als Wächter); ein
+  Fehler der Clipping-Bibliothek lässt die Masken blockierend (schließt, statt zu öffnen).
+  DM-Entscheidungen (2026-11-25): Kartenschmiede-Änderungen (auch platzierte Assets) erscheinen bis DC-034 sofort
+  auf dem TV (E-25). Figuren in einer Maske (Zelt, Wagen) sind für die Spieler verborgen, bis eine ihrer Figuren
+  in derselben Maske steht – umgesetzt in der Projektion; die Innenansicht (Inneres zeigen, wenn jemand eintritt)
+  kommt über die Ebenen in Kartenschmiede und Szeneneditor (DC-101, Innenräume DC-042).
 - **DC-043 Kreaturen global** in der Bibliothek (Werteblock-Editor umziehen); Spielercharaktere siehe DC-096.
 - **DC-044 Tokenbilder**: Token und Porträt, Token aus Porträt, Fraktionsring, ausgeschnittene Figur (T-203, T-208).
 - **DC-045 Klone, Begegnungsgruppen, Gestalten, SRD-Import, eigene Footprints** (T-204–207, T-241).

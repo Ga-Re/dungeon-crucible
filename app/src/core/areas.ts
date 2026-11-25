@@ -8,6 +8,8 @@
 import { difference, union } from 'polyclip-ts';
 import type { Point } from './geometry';
 import { rectPolygon } from './fogModel';
+import { snapToCorner, type GridConfig } from './grid';
+import { ellipseArea } from './poly/shapes';
 import { asGeom, fromClip } from './poly/polygon-clip';
 import { isInside } from './poly/fog';
 import type { Polygon, Ring } from './poly/types';
@@ -118,4 +120,36 @@ export function labelPoint(shape: readonly Polygon[], offset = { x: 10, y: 9 }):
   for (let y = b.y + offset.y; y <= b.y + b.h; y += step)
     for (let x = b.x + offset.x; x <= b.x + b.w; x += step) if (areaContains(shape, { x, y })) return { x, y };
   return { x: b.x, y: b.y };
+}
+
+/** The shapes "create area" draws with (DC-013). */
+export type AreaTool = 'rect' | 'ellipse' | 'polygon' | 'lasso';
+
+/** Smallest side of a part, in map pixels: a click is not a shape. */
+const MIN_SIDE = 4;
+
+/**
+ * A rectangle or ellipse dragged from `a` to `b`. With a `grid` its corners snap to the grid (an
+ * ellipse fills its snapped box); `null` draws freely (Alt held).
+ */
+export function partFromDrag(tool: 'rect' | 'ellipse', a: Point, b: Point, grid: GridConfig | null): Polygon | null {
+  const p = grid ? snapToCorner(grid, a) : a;
+  const q = grid ? snapToCorner(grid, b) : b;
+  if (Math.abs(q.x - p.x) < MIN_SIDE || Math.abs(q.y - p.y) < MIN_SIDE) return null;
+  return tool === 'rect' ? rectPolygon(p.x, p.y, q.x, q.y) : ellipseArea([p.x, p.y], [q.x, q.y]);
+}
+
+/**
+ * A polygon clicked point by point (snapped to the grid unless `grid` is `null`; points that snap
+ * onto the one before are dropped) or a lasso drawn freehand (never snapped).
+ */
+export function partFromPoints(tool: 'polygon' | 'lasso', points: readonly Point[], grid: GridConfig | null): Polygon | null {
+  const snapped = tool === 'polygon' && grid ? points.map((p) => snapToCorner(grid, p)) : [...points];
+  const ring: [number, number][] = [];
+  for (const p of snapped) {
+    const last = ring.at(-1);
+    if (!last || last[0] !== p.x || last[1] !== p.y) ring.push([p.x, p.y]);
+  }
+  if (ring.length > 1 && ring[0]![0] === ring.at(-1)![0] && ring[0]![1] === ring.at(-1)![1]) ring.pop();
+  return ring.length >= 3 ? { outer: ring, holes: [] } : null;
 }

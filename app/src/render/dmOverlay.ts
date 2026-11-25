@@ -21,11 +21,12 @@ export interface OverlayState {
   selectedZoneId: string | null;
   selectedLightId: string | null;
   measure: { a: Point; b: Point; ft: number } | null;
-  dragRect: { a: Point; b: Point } | null;
   wallPreview: { a: Point; b: Point } | null;
   brush: { p: Point; r: number } | null;
   calibPoints: Point[];
   draftTemplate: TemplateLike | null;
+  /** "Create area": the shape so far, the part being drawn and a polygon or lasso path (DC-013). */
+  areaDraft: { shape: Polygon[]; part: Polygon | null; path: Point[]; color: string; subtract: boolean } | null;
   /** Outline of a fog tool's shape while drawing. */
   fogDraft: { polygon: Polygon | null; path: Point[]; mode: 'reveal' | 'hide' } | null;
 }
@@ -190,6 +191,29 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     }
   }
 
+  if (o.areaDraft) {
+    const a = o.areaDraft;
+    g.save();
+    g.lineWidth = 2 * px;
+    if (a.shape.length) {
+      const path = areaPath(a.shape);
+      g.fillStyle = hexToRgba(a.color, 0.22);
+      g.fill(path, 'evenodd');
+      g.strokeStyle = hexToRgba(a.color, 1);
+      g.stroke(path);
+    }
+    // The part being drawn: dashed, red when it cuts out.
+    g.setLineDash([8 * px, 5 * px]);
+    g.strokeStyle = a.subtract ? 'rgba(226,85,76,.95)' : hexToRgba(a.color, 0.95);
+    if (a.part) g.stroke(areaPath([a.part]));
+    if (a.path.length > 1) {
+      g.beginPath();
+      a.path.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)));
+      g.stroke();
+    }
+    g.restore();
+  }
+
   if (o.fogDraft) {
     const col = o.fogDraft.mode === 'reveal' ? '226,160,60' : '120,150,255';
     g.save();
@@ -226,14 +250,6 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     g.stroke();
     g.setLineDash([]);
     label(g, `${ft} ft`, b.x + 14 * px, b.y - 14 * px, px);
-    g.restore();
-  }
-  if (o.dragRect) {
-    g.save();
-    g.strokeStyle = '#7fd9cf';
-    g.lineWidth = 2 * px;
-    g.setLineDash([6 * px, 4 * px]);
-    g.strokeRect(o.dragRect.a.x, o.dragRect.a.y, o.dragRect.b.x - o.dragRect.a.x, o.dragRect.b.y - o.dragRect.a.y);
     g.restore();
   }
   if (o.wallPreview) {

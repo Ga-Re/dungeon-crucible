@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addShape, areaBounds, areaContains, distanceToArea, labelPoint, migrateArea, migrateAreaOverride, subtractShape } from './areas';
+import { DEFAULT_GRID } from './grid';
+import { addShape, areaBounds, partFromDrag, partFromPoints, areaContains, distanceToArea, labelPoint, migrateArea, migrateAreaOverride, subtractShape } from './areas';
 import { rectPolygon } from './fogModel';
 
 const square = (x: number, y: number, s: number) => rectPolygon(x, y, x + s, y + s);
@@ -85,5 +86,27 @@ describe('reading version 1 files', () => {
     if (!r.ok) return;
     expect(r.value.overrides).toEqual({ hall: { shape: [rectPolygon(0, 0, 5, 5)], secret: true }, 'wall-a': { hidden: true } });
     expect(r.value.added.zones[0]).toMatchObject({ id: 'rubble', shape: [rectPolygon(1, 1, 3, 3)], secret: false });
+  });
+});
+
+describe('drawing an area part', () => {
+  const grid = { ...DEFAULT_GRID, cellWidth: 10, cellHeight: 10 };
+
+  it('a rectangle snaps its corners to the grid; without a grid it stays free', () => {
+    expect(partFromDrag('rect', { x: 3, y: 4 }, { x: 27, y: 36 }, grid)).toEqual(rectPolygon(0, 0, 30, 40));
+    expect(partFromDrag('rect', { x: 3, y: 4 }, { x: 27, y: 36 }, null)).toEqual(rectPolygon(3, 4, 27, 36));
+  });
+
+  it('an ellipse fills its snapped box; too small parts give nothing', () => {
+    const e = partFromDrag('ellipse', { x: 1, y: 1 }, { x: 39, y: 19 }, grid)!;
+    expect(areaBounds([e])).toEqual({ x: 0, y: 0, w: 40, h: 20 });
+    expect(partFromDrag('rect', { x: 1, y: 1 }, { x: 4, y: 4 }, grid)).toBeNull();
+  });
+
+  it('a polygon snaps its points (repeated ones dropped); a lasso stays free', () => {
+    const pts = [{ x: 1, y: 1 }, { x: 2, y: 2 }, { x: 29, y: 1 }, { x: 31, y: 18 }];
+    expect(partFromPoints('polygon', pts, grid)?.outer).toEqual([[0, 0], [30, 0], [30, 20]]);
+    expect(partFromPoints('lasso', pts, grid)?.outer).toEqual([[1, 1], [2, 2], [29, 1], [31, 18]]);
+    expect(partFromPoints('polygon', [{ x: 1, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 3 }], grid)).toBeNull();
   });
 });

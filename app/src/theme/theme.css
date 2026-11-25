@@ -308,3 +308,22 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .party-list input.party-name, .party-list select { min-width: 0; height: 24px; }
 .party-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
 .ini .player { color: var(--fg-faint); font-size: 11px; font-weight: 400; }
+
+/* Command panel over the map (E-6, DC-013): top right, not modal; above the map, below dialogs. */
+.command-panel { position: absolute; top: 10px; right: 10px; z-index: 20; width: min(270px, calc(100% - 20px)); max-height: calc(100% - 20px); display: flex; flex-direction: column; background: var(--shell); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35); font-size: 12px; }
+.cmd-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--line-soft); font-family: var(--font-head); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+.cmd-body { padding: 10px 12px; overflow: auto; display: flex; flex-direction: column; gap: 9px; }
+.cmd-body .hint { margin: 0; }
+.cmd-row { display: flex; gap: 4px; }
+.cmd-icon { width: 32px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 3px; color: var(--fg-dim); background: var(--panel-2); }
+.cmd-icon.on { border-color: var(--accent); background: var(--accent-soft); color: var(--fg); }
+.cmd-icon:focus-visible, .cmd-seg button:focus-visible { outline: 2px solid var(--sel); outline-offset: 1px; }
+.cmd-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cmd-field > span { color: var(--fg-dim); font-size: 11.5px; }
+.cmd-field input:not([type=color]), .cmd-field select { height: 26px; min-width: 0; width: 100%; }
+.cmd-field input[type=color] { height: 26px; width: 100%; padding: 0 2px; }
+.cmd-check { display: flex; align-items: center; gap: 6px; }
+.cmd-check input { accent-color: var(--accent); }
+.cmd-two { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 8px; }
+.cmd-buttons { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--line-soft); }
+.cmd-buttons .btn { height: 26px; padding: 0 12px; }

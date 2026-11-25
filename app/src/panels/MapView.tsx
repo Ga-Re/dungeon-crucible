@@ -8,6 +8,8 @@ import type { Point } from '../core/geometry';
 import { gridDistanceFeet } from '../core/grid';
 import { clearArea, openArea } from '../core/fogModel';
 import { circleArea, ellipseArea, strokeArea } from '../core/poly/shapes';
+import { partFromDrag, partFromPoints } from '../core/areas';
+import { AreaCommandPanel } from './AreaCommandPanel';
 import type { Polygon } from '../core/poly/types';
 import { rectPolygon } from '../core/fogModel';
 import type { TemplateShape } from '../core/scene';
@@ -23,7 +25,7 @@ import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
 import { TableView, type FrameSource } from '../table/TableView';
 import {
-  addCalibrationPoint, addPing, addTemplate, addWall, addZone, applyFogArea, checkpoint, getVersion, initiativeOrder, log, moveToken,
+  addCalibrationPoint, addPing, addTemplate, addWall, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
 } from '../app/store';
 
@@ -35,7 +37,7 @@ export const mapCommands: { fit: () => void } = { fit: () => undefined };
 
 const HINTS: Partial<Record<string, MessageKey>> = {
   select: 'hint.select', pan: 'hint.pan', measure: 'hint.measure', ping: 'hint.ping', calibrate: 'hint.calibrate',
-  zone: 'hint.zone', wall: 'hint.wall', door: 'hint.door', 'secret-door': 'hint.secretDoor', window: 'hint.window',
+  area: 'hint.area', wall: 'hint.wall', door: 'hint.door', 'secret-door': 'hint.secretDoor', window: 'hint.window',
   'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
   'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom', light: 'hint.light',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
@@ -45,7 +47,8 @@ type Drag =
   | { kind: 'pan'; sx: number; sy: number; vx: number; vy: number }
   | { kind: 'token'; id: string; ox: number; oy: number; start: Point; moved: boolean }
   | { kind: 'measure'; a: Point; b: Point }
-  | { kind: 'rect'; a: Point; b: Point }
+  | { kind: 'area-drag'; tool: 'rect' | 'ellipse'; a: Point; b: Point }
+  | { kind: 'area-path'; path: Point[] }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
   | { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; invert: boolean; circle: boolean }
   | { kind: 'fog-path'; tool: 'fog-lasso' | 'fog-brush'; path: Point[]; invert: boolean };
@@ -73,6 +76,8 @@ function DmMap() {
   const polygonDraft = useRef<Point[]>([]);
   const mouse = useRef<Point>({ x: 0, y: 0 });
   const space = useRef(false);
+  /** Alt held: area parts are drawn without snapping (shown so in the preview). */
+  const altHeld = useRef(false);
 
   useEffect(() => {
     const wrap = wrapRef.current!;
@@ -182,11 +187,17 @@ function DmMap() {
       if ((e.target as HTMLElement).closest('input,textarea,select,[contenteditable]')) return;
       if (e.code === 'Space') space.current = true;
       if (e.key === 'Escape') {
+        // A polygon being clicked goes first; then the running command.
+        const drawing = polygonDraft.current.length > 0 || drag.current !== null;
         state.wallStart = null;
         drag.current = null;
         polygonDraft.current = [];
+        if (!drawing && state.areaCommand) cancelAreaCommand();
       }
-      if (e.key === 'Enter') finishPolygon();
+      if (e.key === 'Enter') {
+        if (polygonDraft.current.length > 0) finishPolygon(e.altKey);
+        else if (state.areaCommand) finishAreaCommand();
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedTokenId) removeToken(state.selectedTokenId);
       // "Nebel ausblenden" (N): DM window only; the TV never changes.
       if (e.key.toLowerCase() === 'n' && !e.ctrlKey && !e.metaKey) toggleDmFog();
@@ -215,13 +226,22 @@ function DmMap() {
       selectedZoneId: state.selectedZoneId,
       selectedLightId: state.selectedLightId,
       measure: d?.kind === 'measure' ? { a: d.a, b: d.b, ft: gridDistanceFeet(state.scene.map.grid, d.a, d.b) } : null,
-      dragRect: d?.kind === 'rect' ? { a: d.a, b: d.b } : null,
       wallPreview: state.wallStart ? { a: state.wallStart, b: snapCorner(mouse.current) } : null,
       brush: state.tool === 'fog-brush' ? { p: mouse.current, r: state.brushCells * cell } : null,
       calibPoints: state.calibPoints,
       draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
       fogDraft,
+      areaDraft: areaDraftOf(d),
     };
+  };
+
+  /** "Create area": the shape so far and the part being drawn (snapped as it will be). */
+  const areaDraftOf = (d: Drag | null): OverlayState['areaDraft'] => {
+    const c = state.areaCommand;
+    if (!c) return null;
+    const part = d?.kind === 'area-drag' ? partFromDrag(d.tool, d.a, d.b, areaGrid(altHeld.current)) : null;
+    const path = d?.kind === 'area-path' ? d.path : c.tool === 'polygon' && polygonDraft.current.length ? [...polygonDraft.current, mouse.current] : [];
+    return { shape: c.shape, part, path, color: c.color, subtract: c.op === 'subtract' };
   };
 
   const toWorld = (e: { clientX: number; clientY: number }): Point => {
@@ -230,10 +250,11 @@ function DmMap() {
     return { x: (e.clientX - r.left - v.x) / v.zoom, y: (e.clientY - r.top - v.y) / v.zoom };
   };
 
-  const finishPolygon = () => {
+  const finishPolygon = (free = false) => {
     const pts = polygonDraft.current;
     polygonDraft.current = [];
-    if (pts.length >= 3) applyFogArea({ outer: pts.map((p) => [p.x, p.y] as [number, number]), holes: [] }, state.fogMode);
+    if (state.tool === 'area') drawAreaPart(partFromPoints('polygon', pts, areaGrid(free)));
+    else if (pts.length >= 3) applyFogArea({ outer: pts.map((p) => [p.x, p.y] as [number, number]), holes: [] }, state.fogMode);
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -244,7 +265,8 @@ function DmMap() {
       drag.current = { kind: 'pan', sx: e.clientX - r.left, sy: e.clientY - r.top, vx: view.current.x, vy: view.current.y };
       return;
     }
-    if ((e.altKey && !state.tool.startsWith('fog-')) || state.tool === 'ping') {
+    // Alt pings, except where it changes a drawing tool (fog: the other mode; area: no snapping).
+    if ((e.altKey && !state.tool.startsWith('fog-') && state.tool !== 'area') || state.tool === 'ping') {
       addPing(p);
       return;
     }
@@ -297,9 +319,18 @@ function DmMap() {
         else pts.push(p);
         return;
       }
-      case 'zone':
-        drag.current = { kind: 'rect', a: snapCorner(p), b: p };
+      case 'area': {
+        const c = state.areaCommand;
+        if (!c) return;
+        if (c.tool === 'rect' || c.tool === 'ellipse') drag.current = { kind: 'area-drag', tool: c.tool, a: p, b: p };
+        else if (c.tool === 'lasso') drag.current = { kind: 'area-path', path: [p] };
+        else {
+          const pts = polygonDraft.current;
+          if (pts.length >= 3 && Math.hypot(pts[0].x - p.x, pts[0].y - p.y) * view.current.zoom < 10) finishPolygon(e.altKey);
+          else pts.push(p);
+        }
         return;
+      }
       case 'reveal-room': {
         const z = zoneAt(p);
         if (z) revealZone(z);
@@ -330,6 +361,7 @@ function DmMap() {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    altHeld.current = e.altKey;
     const p = toWorld(e);
     mouse.current = p;
     const d = drag.current;
@@ -340,7 +372,7 @@ function DmMap() {
     } else if (d.kind === 'token') {
       d.moved = true;
       moveToken(d.id, { x: p.x + d.ox, y: p.y + d.oy }, false);
-    } else if (d.kind === 'fog-path') {
+    } else if (d.kind === 'fog-path' || d.kind === 'area-path') {
       const last = d.path[d.path.length - 1];
       if (Math.hypot(last.x - p.x, last.y - p.y) * view.current.zoom > 4) d.path.push(p);
     } else if (d.kind === 'fog-rect' || d.kind === 'fog-ellipse') {
@@ -351,7 +383,7 @@ function DmMap() {
     }
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
     const d = drag.current;
     drag.current = null;
     if (!d) return;
@@ -359,9 +391,10 @@ function DmMap() {
       const tk = state.scene.tokens.find((x) => x.id === d.id)!;
       moveToken(d.id, { x: tk.x, y: tk.y }, true);
       if (d.moved) log('log.moved', { name: tk.name, ft: gridDistanceFeet(state.scene.map.grid, d.start, tk) });
-    } else if (d.kind === 'rect') {
-      const b = snapCorner(d.b);
-      addZone(d.a.x, d.a.y, b.x, b.y);
+    } else if (d.kind === 'area-drag') {
+      drawAreaPart(partFromDrag(d.tool, d.a, d.b, areaGrid(e.altKey)));
+    } else if (d.kind === 'area-path') {
+      drawAreaPart(partFromPoints('lasso', d.path, null));
     } else if (d.kind === 'template') {
       addTemplate(d.shape, d.a, d.b);
     } else if (d.kind === 'fog-rect' || d.kind === 'fog-ellipse') {
@@ -391,7 +424,7 @@ function DmMap() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onDoubleClick={() => state.tool === 'fog-polygon' && finishPolygon()}
+        onDoubleClick={(e) => (state.tool === 'fog-polygon' || state.tool === 'area') && finishPolygon(e.altKey)}
         onWheel={onWheel}
         onDragOver={(e) => {
           if (e.dataTransfer.types.includes(CREATURE_DRAG)) {
@@ -409,6 +442,7 @@ function DmMap() {
         aria-label={t('panel.map')}
       />
       {hintKey && mapPresent && <div className="map-hint">{t(hintKey)}</div>}
+      {ws === 'forge' && <AreaCommandPanel />}
       {!mapPresent && (
         <div className="map-empty">
           <Icon name="map" />
@@ -429,6 +463,11 @@ function DmMap() {
       )}
     </div>
   );
+}
+
+/** The grid parts of an area snap to; none while Alt is held or snapping is off. */
+function areaGrid(free: boolean) {
+  return free || !state.snap ? null : state.scene.map.grid;
 }
 
 function modeFor(invert: boolean): 'reveal' | 'hide' {

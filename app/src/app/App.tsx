@@ -9,7 +9,7 @@ import { MonitorMenu } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
 import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, focusPanel, removeLegacyLayouts } from './docking';
 import {
-  clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, redo, removeLastUserWall, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
+  clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, redo, removeLastUserWall, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
@@ -142,6 +142,7 @@ function Ribbon() {
     if (b.id === 'fogmode:hide') return flags.fogMode === 'hide';
     if (b.id === 'fog:dmHide') return flags.dmFogHidden;
     if (b.id === 'toggle:editStart') return flags.editStart;
+    if (b.id === 'area:create') return tool === 'area';
     return false;
   };
 
@@ -156,6 +157,7 @@ function Ribbon() {
       case 'scene:reset': return setResetting(true);
       case 'party:place': return placeParty();
       case 'map:settings': return openMapSettings();
+      case 'area:create': return startAreaCommand();
       case 'fit': return mapCommands.fit();
       case 'fog:hideAll': return fogAll(false);
       case 'fog:dmHide': return toggleDmFog();

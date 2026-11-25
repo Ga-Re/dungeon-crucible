@@ -269,7 +269,14 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Löchern, mehrere Teile) und `secret` statt `rect`/`kind`; Version-1-Dateien, Szenen-Overrides und
   szeneneigene Bereiche werden beim Lesen migriert und als Version 2 gespeichert; Nebel, Sperren geheimer
   Bereiche, Overlay (gerade/ungerade Füllung, Name an einem Punkt innerhalb) und Treffer rechnen mit Polygonen.
-  Offen: Schritt 2 Befehls-Panel „Bereich anlegen“, Schritt 3 Bearbeiten.
+  Erledigt (Schritt 2): Befehls-Panel „Bereich anlegen“ (Menüband Bereiche) oben rechts über der Karte, nicht
+  modal: Form (Rechteck, Ellipse, Polygon, Lasso), Hinzufügen/Abziehen, Name, geheim, Nebel-Art, Farbe; Teile
+  verbinden sich, Abziehen schneidet aus (auch Löcher); Ecken rasten am Raster ein, Alt zeichnet frei (Lasso immer
+  frei); Vorschau auf der Karte; OK speichert als ein rückgängig machbarer Schritt mit neuer zufälliger ID, Esc oder
+  Abbrechen verwirft; ein anderes Werkzeug beendet den Befehl. Das alte Rechteck-Werkzeug „Zone“ ist entfernt,
+  Texte sagen „Bereich“. Abweichung: „Abziehen“ ist ein Schalter im Panel, weil Alt fürs freie Zeichnen gilt.
+  Offen: Schritt 3 Bearbeiten (Eigenschaften, Form erweitern/abziehen, Ecken verschieben, löschen); das Panel ist
+  noch nicht verschiebbar.
 - **DC-014 Wände bearbeiten**: auswählen, Endpunkte verschieben, löschen, Ketten; Objekte als Polygon; Einweg-Wände
   (Klippen/Galerien) und Deckung (T-193).
 - **DC-015 Assets und Ebenen** – Props siehe DC-041, Stockwerke DC-020, Zeichenebenen DC-101 (E-18).

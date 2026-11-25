@@ -129,7 +129,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
       },
       {
         label: 'tab.zones',
-        groups: [{ label: 'group.zones', buttons: [{ id: 'tool:select', icon: 'select', label: 'tool.select', tool: 'select' }, { id: 'tool:zone', icon: 'zone', label: 'tool.zone', tool: 'zone' }] }],
+        groups: [{ label: 'group.zones', buttons: [{ id: 'tool:select', icon: 'select', label: 'tool.select', tool: 'select' }, { id: 'area:create', icon: 'zone', label: 'tool.createArea' }] }],
       },
       {
         label: 'tab.walls',

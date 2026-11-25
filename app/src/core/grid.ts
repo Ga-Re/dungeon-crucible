@@ -176,6 +176,12 @@ export function cellCenter(grid: GridConfig, c: CellCoord): Point {
   return fromGridSpace(grid, { x: (c.col + 0.5) * grid.cellWidth, y: (c.row + 0.5) * grid.cellHeight });
 }
 
+/** Snaps a point to the nearest grid corner (also on a rotated grid). */
+export function snapToCorner(grid: GridConfig, p: Point): Point {
+  const g = toGridSpace(grid, p);
+  return fromGridSpace(grid, { x: Math.round(g.x / grid.cellWidth) * grid.cellWidth, y: Math.round(g.y / grid.cellHeight) * grid.cellHeight });
+}
+
 /** Snaps a point to the nearest cell centre. */
 export function snapToCell(grid: GridConfig, p: Point): Point {
   return cellCenter(grid, cellAt(grid, p));

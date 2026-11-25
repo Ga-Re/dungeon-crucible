@@ -10,10 +10,10 @@ import type { AreaTemplate, FogBiome, MapType, Scene, TableRotation, TemplateSha
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
 import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision } from '../core/vision';
-import { hideAll, hideIn, rectPolygon, rememberSeen, revealAll, revealIn } from '../core/fogModel';
+import { hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
 import { lockedAreas } from '../core/persistence';
 import { newId, slugId } from '../core/documents';
-import { areaContains, distanceToArea } from '../core/areas';
+import { addShape, areaContains, distanceToArea, subtractShape, type AreaTool } from '../core/areas';
 import type { Polygon } from '../core/poly/types';
 import { readFogLook, saveCoverFrom, saveFadeSeconds, saveFogEdge, saveFogMotion, saveFogQuality, saveFogSpeed, saveSoftEdges, type CoverFrom, type FogLook, type FogQuality } from './fog-settings';
 import { lookToWire } from '../render/fogOptions';
@@ -35,7 +35,7 @@ export type WorkspaceId = 'forge' | 'vault' | 'creatures' | 'atlas' | 'play';
 
 export type ToolId =
   | 'select' | 'pan' | 'measure' | 'ping' | 'calibrate'
-  | 'zone' | 'wall' | 'door' | 'secret-door' | 'window'
+  | 'area' | 'wall' | 'door' | 'secret-door' | 'window'
   | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
   | 'cone' | 'sphere' | 'line' | 'cube' | 'light';
 
@@ -69,6 +69,8 @@ export interface AppState {
   moveLock: boolean;
   selectedTokenId: string | null;
   selectedZoneId: string | null;
+  /** "Create area" while it runs (Map Forge, DC-013). */
+  areaCommand: AreaCommand | null;
   selectedLightId: string | null;
   turn: number;
   round: number;
@@ -147,6 +149,7 @@ function initial(): AppState {
     moveLock: false,
     selectedTokenId: null,
     selectedZoneId: null,
+    areaCommand: null,
     selectedLightId: null,
     turn: 0,
     round: 1,
@@ -408,6 +411,7 @@ export function showLayer(layer: ViewLayer): void {
 
 export function setWorkspace(ws: WorkspaceId): void {
   state.ws = ws;
+  state.areaCommand = null;
   state.tool = 'select';
   state.wallStart = null;
   showLayer(layerFor(ws));
@@ -415,6 +419,8 @@ export function setWorkspace(ws: WorkspaceId): void {
 }
 
 export function setTool(tool: ToolId): void {
+  // One command at a time: another tool ends "create area".
+  if (tool !== 'area') state.areaCommand = null;
   state.tool = tool;
   state.wallStart = null;
   state.calibPoints = [];
@@ -510,16 +516,72 @@ export function removeLastUserWall(): void {
   emit();
 }
 
-export function addZone(x0: number, y0: number, x1: number, y1: number): void {
-  const x = Math.min(x0, x1);
-  const y = Math.min(y0, y1);
-  const w = Math.abs(x1 - x0);
-  const h = Math.abs(y1 - y0);
-  if (w < 10 || h < 10) return;
+/* ---------- "Create area" command (DC-013) ---------- */
+
+/** The running "create area" command: its options and the shape drawn so far (not saved yet). */
+export interface AreaCommand {
+  tool: AreaTool;
+  /** Whether a drawn part is added to the shape or cut out of it. */
+  op: 'add' | 'subtract';
+  name: string;
+  secret: boolean;
+  /** The area's own fog look; none uses the map's. */
+  biome: FogBiome | null;
+  color: string;
+  shape: Polygon[];
+}
+
+const AREA_COLOR = '#7fd9cf';
+
+/** Starts "create area" in the Map Forge (one command at a time: another tool ends it). */
+export function startAreaCommand(): void {
+  if (state.layer !== 'map') return;
+  state.areaCommand = { tool: 'rect', op: 'add', name: '', secret: false, biome: null, color: AREA_COLOR, shape: [] };
+  state.tool = 'area';
+  state.wallStart = null;
+  emit();
+}
+
+export function updateAreaCommand(patch: Partial<Omit<AreaCommand, 'shape'>>): void {
+  if (!state.areaCommand) return;
+  state.areaCommand = { ...state.areaCommand, ...patch };
+  emit();
+}
+
+/** A part drawn on the map: added to the shape or cut out of it (not undoable step by step: OK saves all). */
+export function drawAreaPart(part: Polygon | null): void {
+  const c = state.areaCommand;
+  if (!c || !part) return;
+  state.areaCommand = { ...c, shape: c.op === 'add' ? addShape(c.shape, part) : subtractShape(c.shape, part) };
+  emit();
+}
+
+/** Why OK is not possible yet, if so. */
+export function areaCommandProblem(c: AreaCommand): 'name' | 'shape' | null {
+  if (!c.name.trim()) return 'name';
+  if (c.shape.length === 0) return 'shape';
+  return null;
+}
+
+/** OK: saves the area as one undoable step under a new random id. */
+export function finishAreaCommand(): boolean {
+  const c = state.areaCommand;
+  if (!c || areaCommandProblem(c) || state.layer !== 'map') return false;
   checkpoint();
   const id = freshId('area');
-  state.scene.zones.push({ id, name: `Zone ${state.scene.zones.length + 1}`, shape: [rectPolygon(x, y, x + w, y + h)], secret: false, color: '#7fd9cf', discovered: true });
+  state.scene.zones.push({ id, name: c.name.trim(), shape: c.shape, secret: c.secret, color: c.color, ...(c.biome ? { biome: c.biome } : {}), discovered: !c.secret });
   state.selectedZoneId = id;
+  state.areaCommand = null;
+  state.tool = 'select';
+  log('log.areaCreated', { name: c.name.trim() });
+  emit();
+  return true;
+}
+
+export function cancelAreaCommand(): void {
+  if (!state.areaCommand) return;
+  state.areaCommand = null;
+  if (state.tool === 'area') state.tool = 'select';
   emit();
 }
 

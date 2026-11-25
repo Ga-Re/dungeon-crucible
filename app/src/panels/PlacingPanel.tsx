@@ -44,6 +44,8 @@ export function PlacingPanel() {
             </select>
           </label>
         )}
+        {/* Random among one: the others are insides of houses (never placed at random). */}
+        {p.variant === 'random' && p.random.length < 2 && p.variants.length > 1 && <p className="hint">{t('placing.oneChoice')}</p>}
         <label className="cmd-check">
           <input type="checkbox" checked={o.randomRotation} onChange={(e) => setPlacing({ randomRotation: e.target.checked })} />
           {t('placing.randomRotation')}

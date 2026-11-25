@@ -527,6 +527,7 @@ export const en = {
   'placing.spread': 'Size ± %',
   'placing.snap': 'Snap to the grid',
   'placing.hint': 'Click on the map to place; the preview shows what comes next. Esc or a right click ends.',
+  'placing.oneChoice': 'At random, only one variant is possible: the others are the insides of houses.',
   'placing.done': 'Done',
   'picker.hint': 'Drag an asset onto the map – or click it and place it with each click on the map. Selected on the map: R / Shift+R turn by 15°, + / − scale, V next variant, Delete removes.',
   'picker.placeKey': 'Enter places it in the middle of the map view',

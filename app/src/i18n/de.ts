@@ -527,6 +527,7 @@ export const de: Partial<Record<MessageKey, string>> = {
   'placing.spread': 'Größe ± %',
   'placing.snap': 'Am Raster einrasten',
   'placing.hint': 'Auf die Karte klicken, um zu platzieren; die Vorschau zeigt, was als Nächstes kommt. Esc oder Rechtsklick beendet.',
+  'placing.oneChoice': 'Zufällig ist nur eine Variante möglich: die anderen sind Innenansichten von Häusern.',
   'placing.done': 'Fertig',
   'picker.hint': 'Ein Asset auf die Karte ziehen – oder anklicken und mit jedem Klick auf die Karte platzieren. Ausgewählt auf der Karte: R / Umschalt+R drehen um 15°, + / − skalieren, V nächste Variante, Entf entfernt.',
   'picker.placeKey': 'Enter stellt es in die Mitte der Kartenansicht',

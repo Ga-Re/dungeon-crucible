@@ -1,6 +1,6 @@
 /** Theme and language selection (app bar and start screen). */
 import { useEffect, useState } from 'react';
-import { useI18n, LOCALES, type Locale } from '../i18n/i18n';
+import { useI18n, LOCALES, resolveLocale, type LocaleSetting } from '../i18n/i18n';
 
 type Skin = 'dark' | 'light' | 'parchment';
 
@@ -15,7 +15,8 @@ function initialSkin(): Skin {
 }
 
 export function AppearanceControls() {
-  const { t, locale, setLocale } = useI18n();
+  const { t, setting, setLocale } = useI18n();
+  const system = LOCALES.find((l) => l.id === resolveLocale('system'))!.label;
   const [skin, setSkin] = useState<Skin>(initialSkin);
   useEffect(() => {
     document.documentElement.dataset.skin = skin;
@@ -32,7 +33,8 @@ export function AppearanceControls() {
         <option value="light">{t('app.theme')}: {t('theme.light')}</option>
         <option value="parchment">{t('app.theme')}: {t('theme.parchment')}</option>
       </select>
-      <select className="compact-select" aria-label={t('app.language')} value={locale} onChange={(e) => setLocale(e.target.value as Locale)}>
+      <select className="compact-select" aria-label={t('app.language')} value={setting} onChange={(e) => setLocale(e.target.value as LocaleSetting)}>
+        <option value="system">{t('app.languageSystem', { language: system })}</option>
         {LOCALES.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
       </select>
     </>

@@ -6,6 +6,7 @@ export const en = {
   'app.undo': 'Undo',
   'app.redo': 'Redo',
   'app.language': 'Language',
+  'app.languageSystem': 'System ({language})',
   'app.theme': 'Theme',
   'theme.dark': 'Dark',
   'theme.light': 'Light',

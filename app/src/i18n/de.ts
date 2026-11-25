@@ -7,6 +7,7 @@ export const de: Partial<Record<MessageKey, string>> = {
   'app.undo': 'Rückgängig',
   'app.redo': 'Wiederholen',
   'app.language': 'Sprache',
+  'app.languageSystem': 'System ({language})',
   'app.theme': 'Theme',
   'theme.dark': 'Dunkel',
   'theme.light': 'Hell',

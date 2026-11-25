@@ -221,7 +221,9 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - ✓ **DC-098 Hex-Raster entfernen** (E-7): Raster-Mathematik, Zeichnen (DM und TV), Schemas, Menüband,
   Eigenschaften, Statusleiste, Texte und Icons kennen nur noch das Quadratraster (der Knopf „Quadrat“ entfällt
   mit). Karten, die noch mit Hex gespeichert sind, werden als Quadratraster gelesen und so gespeichert.
-- **DC-099 Systemsprache** als Standard (E-5).
+- ✓ **DC-099 Systemsprache** als Standard (E-5): die Oberfläche nimmt die erste bevorzugte Sprache des Systems,
+  die sie kennt (Deutsch oder Englisch, sonst Englisch), und folgt einem Wechsel zur Laufzeit. Die Auswahl in der
+  Titelleiste bietet „System (…)“ als Standard und Deutsch/Englisch als feste Wahl; die Wahl gilt pro Gerät.
 - ✓ **DC-100 Kreatur umbenennen**: nach dem Umbenennen wird die neue Datei geschrieben und die alte kommt in den
   Papierkorb; id, Token-Verweise und Spielerverknüpfungen bleiben (mit DC-096). Zwei Kreaturen gleichen Namens
   bekommen getrennte Dateien. Nebenbei behoben: neu angelegte Dokumente wurden nach einer Änderung im Speicher

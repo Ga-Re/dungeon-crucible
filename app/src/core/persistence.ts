@@ -10,6 +10,7 @@
  */
 import { EMPTY_LEVEL_FOG } from './fogModel';
 import type { LevelFog, Polygon } from './poly/types';
+import { activeLayers, drawOrder, elementLayer } from './layers';
 import { DEFAULT_TABLE, type HiddenElements, type MapAssetPlacement, type Scene, type Zone } from './scene';
 import { diffElements, resolveElements, type MapElements, type SceneLayer } from './mapLayers';
 import { MAP_VERSION, SCENE_VERSION, SCHEMA_VERSION, type CampaignManifest, type MapSidecar, type Player, type SceneOverride } from './sidecar';
@@ -49,6 +50,7 @@ export function startOf(ov: SceneOverride): SceneStart {
     hidden: [...ov.hidden],
     assets: ov.assets.map((a) => ({ ...a })),
     effects: { ...ov.effects },
+    layers: { ...ov.layers },
   };
 }
 
@@ -72,6 +74,7 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
       hidden: fromView.hidden,
       assets: fromView.assets,
       effects: fromView.effects,
+      layers: fromView.layers,
     },
   };
 }
@@ -95,6 +98,7 @@ export function resetToStart(ov: SceneOverride): SceneOverride {
     hidden: [...start.hidden],
     assets: start.assets.map((a) => ({ ...a })),
     effects: { ...start.effects },
+    layers: { ...start.layers },
     templates: [],
     combat: { round: 1, turn: 0 },
     start,
@@ -102,13 +106,17 @@ export function resetToStart(ov: SceneOverride): SceneOverride {
 }
 
 /** The map elements of a view, shown and hidden, without state (door open, light on, discovered). */
-export function elementsFromScene(view: Pick<Scene, 'walls' | 'zones' | 'lights'> & Partial<Pick<Scene, 'hidden'>>): MapElements {
-  const h = view.hidden;
-  const scene = h ? { walls: [...view.walls, ...h.walls], zones: [...view.zones, ...h.zones], lights: [...view.lights, ...h.lights] } : view;
+export function elementsFromScene(view: Pick<Scene, 'walls' | 'zones' | 'lights'> & Partial<Pick<Scene, 'hidden' | 'inactive'>>): MapElements {
+  // Shown, hidden and on inactive layers: all are elements of the map.
+  const parts = [view, view.hidden, view.inactive].filter((x): x is Pick<Scene, 'walls' | 'zones' | 'lights'> => !!x);
+  const walls = parts.flatMap((p) => p.walls);
+  const zones = parts.flatMap((p) => p.zones);
+  const lights = parts.flatMap((p) => p.lights);
+  const onLayer = (el: { layer?: string }) => (el.layer ? { layer: el.layer } : {});
   return {
-    walls: scene.walls.map((w) => ({ id: w.id, kind: w.kind, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 })),
-    zones: scene.zones.map((z) => ({ id: z.id, name: z.name, shape: copyShape(z.shape), secret: z.secret, color: z.color, ...(z.biome ? { biome: z.biome } : {}) })),
-    lights: scene.lights.map((l) => ({ id: l.id, x: l.x, y: l.y, brightFt: l.brightFt, dimFt: l.dimFt, color: l.color })),
+    walls: walls.map((w) => ({ id: w.id, kind: w.kind, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, ...onLayer(w) })),
+    zones: zones.map((z) => ({ id: z.id, name: z.name, shape: copyShape(z.shape), secret: z.secret, color: z.color, ...(z.biome ? { biome: z.biome } : {}), ...onLayer(z) })),
+    lights: lights.map((l) => ({ id: l.id, x: l.x, y: l.y, brightFt: l.brightFt, dimFt: l.dimFt, color: l.color, ...onLayer(l) })),
   };
 }
 
@@ -152,8 +160,9 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     walls: elements.walls,
     zones: elements.zones,
     pois: m.pois.map((p) => ({ ...p })),
-    // Placed assets are edited in the Map Forge only; a scene's view may hide some (DC-041).
+    // Placed assets and layers are edited in the Map Forge only; a scene's view may leave some out.
     assets: (fromView ? m.assets : previous.assets).map((a) => ({ ...a })),
+    layers: (fromView ? m.layers : previous.layers).map((l) => ({ ...l, ...(l.trigger ? { trigger: { ...l.trigger } } : {}) })),
     lights: elements.lights,
     ambient: scene.ambient,
     ...(startFog ? { startFog: copyFog(startFog) } : {}),
@@ -169,10 +178,12 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
   const current = elementsFromScene(scene);
   const layer = diffElements(base, current, previous);
   // Hidden ids whose element is gone are kept too, until the DM cleans them up.
-  const known = new Set([...elementIds(base, current), ...scene.map.assets.map((a) => a.id), ...scene.ownAssets.map((a) => a.id), ...scene.hidden.assets.map((a) => a.id)]);
-  // The scene's own assets, shown or hidden – never the map's.
+  const off = [...scene.hidden.assets, ...scene.inactive.assets];
+  const known = new Set([...elementIds(base, current), ...scene.map.assets.map((a) => a.id), ...scene.ownAssets.map((a) => a.id), ...off.map((a) => a.id)]);
+  // The scene's own assets, shown, hidden or on an inactive layer – never the map's.
   const mapAssets = new Set(map.assets.map((a) => a.id));
-  const own = [...scene.ownAssets, ...scene.hidden.assets.filter((a) => !mapAssets.has(a.id))];
+  const own = [...scene.ownAssets, ...off.filter((a) => !mapAssets.has(a.id))];
+  const all = <K extends 'walls' | 'zones' | 'lights'>(k: K) => [...scene[k], ...scene.hidden[k], ...scene.inactive[k]] as Scene[K];
   const orphanedHidden = (previous?.hidden ?? []).filter((id) => !known.has(id));
   return {
     kind: 'scene',
@@ -181,12 +192,13 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     mapSidecar,
     fog: copyFog(scene.fog),
     ...(scene.fogEffect ? { fogEffect: { ...scene.fogEffect } } : {}),
-    doors: Object.fromEntries([...scene.walls, ...scene.hidden.walls].filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])),
-    lights: { ...Object.fromEntries([...scene.lights, ...scene.hidden.lights].map((l) => [l.id, l.on])), ...scene.assetLightsOn },
-    discoveredZones: [...scene.zones, ...scene.hidden.zones].filter((z) => z.secret && z.discovered).map((z) => z.id),
+    doors: Object.fromEntries(all('walls').filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])),
+    lights: { ...Object.fromEntries(all('lights').map((l) => [l.id, l.on])), ...scene.assetLightsOn },
+    discoveredZones: all('zones').filter((z) => z.secret && z.discovered).map((z) => z.id),
     hidden: [...hiddenIds(scene.hidden), ...orphanedHidden],
     assets: own.map((a) => ({ ...a })),
     effects: { ...scene.effectsOn },
+    layers: { ...scene.layersOn },
     tokens: scene.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: scene.templates.map((t) => ({ ...t })),
     combat: { ...combat },
@@ -232,6 +244,11 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const lights = elements.lights.map((l) => ({ ...l, on: lightsOn[l.id] ?? true }));
   const shown = <T extends { id: string }>(xs: T[]) => xs.filter((x) => !hide.has(x.id));
   const hiddenOf = <T extends { id: string }>(xs: T[]) => xs.filter((x) => hide.has(x.id));
+  // Elements on layers this scene has off (E-28): apart from the shown ones, unless hidden anyway.
+  const active = onMap ? null : activeLayers(map.layers, state?.layers ?? {});
+  const on = <T extends { layer?: string }>(x: T) => !active || active.has(elementLayer(x));
+  const shownOn = <T extends { id: string; layer?: string }>(xs: T[]) => shown(xs).filter(on);
+  const inactiveOf = <T extends { id: string; layer?: string }>(xs: T[]) => shown(xs).filter((x) => !on(x));
   const ownAssets = onMap ? [] : (state?.assets ?? []).map((a) => ({ ...a }));
   // Asset lights are stored with the map lights, by `<placement>:light`.
   const assetLightsOn = Object.fromEntries(Object.entries(lightsOn).filter(([id]) => id.endsWith(':light')));
@@ -250,13 +267,16 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       region: map.biome,
       mapType: map.mapType,
       pois: map.pois.map((p) => ({ ...p })),
-      assets: shown(map.assets.map((a) => ({ ...a, ...(a.variant === undefined ? {} : { variant: a.variant }) }))),
+      assets: shownOn(map.assets.map((a) => ({ ...a, ...(a.variant === undefined ? {} : { variant: a.variant }) }))),
+      layers: map.layers.map((l) => ({ ...l, ...(l.trigger ? { trigger: { ...l.trigger } } : {}) })),
     },
-    walls: shown(walls),
-    zones: shown(zones),
-    lights: shown(lights),
+    walls: shownOn(walls),
+    zones: shownOn(zones),
+    lights: shownOn(lights),
+    inactive: { walls: inactiveOf(walls), zones: inactiveOf(zones), lights: inactiveOf(lights), assets: inactiveOf([...map.assets.map((a) => ({ ...a })), ...ownAssets]) },
+    layersOn: onMap ? {} : { ...(state?.layers ?? {}) },
     hidden: { walls: hiddenOf(walls), zones: hiddenOf(zones), lights: hiddenOf(lights), assets: hiddenOf([...map.assets.map((a) => ({ ...a })), ...ownAssets]) },
-    ownAssets: shown(ownAssets),
+    ownAssets: shownOn(ownAssets),
     assetLightsOn,
     effectsOn: onMap ? {} : { ...(state?.effects ?? {}) },
     ambient: map.ambient,
@@ -378,7 +398,7 @@ export function manifestFromState(name: string, activeScene: string | null, tabl
   };
 }
 
-/** Every placed asset of a view: the map's (shown) and the scene's own (DC-110). */
+/** Every placed asset of a view – the map's (shown) and the scene's own (DC-110) – in drawing order by layer height (E-28). */
 export function allPlacements(scene: Pick<Scene, 'map' | 'ownAssets'>): MapAssetPlacement[] {
-  return [...scene.map.assets, ...scene.ownAssets];
+  return drawOrder([...scene.map.assets, ...scene.ownAssets], scene.map.layers);
 }

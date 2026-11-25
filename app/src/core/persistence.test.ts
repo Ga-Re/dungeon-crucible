@@ -85,7 +85,7 @@ describe('history', () => {
 describe('map sidecar round trip', () => {
   it('keeps the catalog data (tags, theme, type, POIs, assets)', () => {
     const map = MapSidecarSchema.parse({
-      kind: 'map', schemaVersion: 3, name: 'Tavern', resource: 'library/tavern.webp', widthPx: 1000, heightPx: 800,
+      kind: 'map', schemaVersion: 4, name: 'Tavern', resource: 'library/tavern.webp', widthPx: 1000, heightPx: 800,
       tags: ['town', 'inn'], biome: 'city', mapType: 'building', fogBiome: 'kueste', fogStrength: 0.5,
       grid: { type: 'square', cellWidth: 50, cellHeight: 50, originX: 0, originY: 0, rotationDeg: 0, feetPerCell: 5 },
       pois: [{ id: 'poi-bar', name: 'Bar', x: 10, y: 20, icon: 'flag' }],

@@ -23,11 +23,12 @@ import { lookToWire } from '../render/fogOptions';
 import type { MonitorInfo } from '../platform/bridge';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import type { AssetKind, AssetSidecar, Creature, Player } from '../core/sidecar';
+import type { AssetKind, AssetSidecar, Creature, MapLayer, Player } from '../core/sidecar';
 import { missingPartyTokens, tokenFromCreature } from '../core/party';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
+import { activeLayers, BASE_LAYER, drawOrder, triggerChanges } from '../core/layers';
 import { allPlacements, elementsFromSidecar, resetElement, sceneChanges, sceneIssues, withoutOrphans, type ElementChange } from '../core/persistence';
 import { commitStart, layerOf, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, startOf, type ViewLayer } from '../core/persistence';
 import type { MapSidecar, SceneOverride } from '../core/sidecar';
@@ -133,6 +134,8 @@ export interface AppState {
   assetInfo: Record<string, AssetInfo>;
   /** The placed asset selected in the Map Forge. */
   selectedAssetId: string | null;
+  /** The layer new elements go on in the Map Forge (E-28). */
+  currentLayer: string;
   /** Play-once effects started in this session, by placement id → when (DC-110; not saved). */
   effectRuns: Record<string, number>;
   /** The Asset Vault: catalog, filter, selection (E-27, DC-040). */
@@ -208,6 +211,7 @@ function initial(): AppState {
     notice: null,
     assetInfo: {},
     selectedAssetId: null,
+    currentLayer: BASE_LAYER,
     effectRuns: {},
     vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null },
     soundboard: initialSoundboard(),
@@ -360,6 +364,7 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   state.selectedZoneId = null;
   clearWallEditing();
   recomputeVision();
+  layerInside = charactersInTriggers();
   clearHistory();
   state.sceneVersion++;
   emit();
@@ -444,6 +449,7 @@ export function showLayer(layer: ViewLayer): void {
   state.selectedLightId = null;
   clearWallEditing();
   recomputeVision();
+  layerInside = charactersInTriggers();
   clearHistory();
 }
 
@@ -533,6 +539,8 @@ export function moveToken(id: string, p: Point, final: boolean): void {
   t.x = q.x;
   t.y = q.y;
   if (t.kind === 'pc') recomputeVision(final);
+  // A character that stepped into or out of a trigger area switches its layer (E-28).
+  if (final && t.kind === 'pc') applyLayerTriggers();
   emit();
 }
 
@@ -642,7 +650,7 @@ export function finishWallCommand(): boolean {
     for (const w of c.walls) {
       const id = freshId('wall');
       // Pieces are kept in click order while drawing; "flip" applies to the cliffs on OK.
-      state.scene.walls.push({ ...(c.flip && w.kind === 'cliff' ? reversed(w) : w), id });
+      state.scene.walls.push({ ...(c.flip && w.kind === 'cliff' ? reversed(w) : w), id, ...onCurrentLayer() });
       ids.push(id);
     }
     state.selectedWallIds = ids;
@@ -817,7 +825,7 @@ export function finishAreaCommand(): boolean {
     log('log.areaChanged', { name: fields.name });
   } else {
     id = freshId('area');
-    state.scene.zones.push({ id, ...fields, ...(c.biome ? { biome: c.biome } : {}), discovered: !c.secret });
+    state.scene.zones.push({ id, ...fields, ...(c.biome ? { biome: c.biome } : {}), discovered: !c.secret, ...onCurrentLayer() });
     log('log.areaCreated', { name: fields.name });
   }
   state.selectedZoneId = id;
@@ -826,6 +834,181 @@ export function finishAreaCommand(): boolean {
   recomputeVision();
   emit();
   return true;
+}
+
+/* ---------- Layers in the Map Forge (E-28, DC-101) ---------- */
+
+/** New elements of the Map Forge go on the current layer (none: the base layer). */
+function onCurrentLayer(): { layer?: string } {
+  return state.layer === 'map' && state.currentLayer !== BASE_LAYER && state.scene.map.layers.some((l) => l.id === state.currentLayer) ? { layer: state.currentLayer } : {};
+}
+
+/** Whether an element can be seen and changed in the Map Forge: its layer is neither hidden in the editor nor locked. */
+export function editableInForge(el: { layer?: string }): boolean {
+  if (!el.layer) return true;
+  const l = state.scene.map.layers.find((x) => x.id === el.layer);
+  return !l || (!l.editorHidden && !l.locked);
+}
+
+/** Whether a click may pick the element here: in the Map Forge only on layers neither hidden nor locked. */
+export function editableHere(el: { layer?: string }): boolean {
+  return state.layer !== 'map' || editableInForge(el);
+}
+
+/** Whether an element is drawn in the Map Forge (its layer not hidden in the editor). */
+export function shownInForge(el: { layer?: string }): boolean {
+  if (!el.layer) return true;
+  return !state.scene.map.layers.find((x) => x.id === el.layer)?.editorHidden;
+}
+
+/** A new layer on top of the others, made current (one undoable step). */
+export function createLayer(name: string): string | null {
+  if (state.layer !== 'map' || !name.trim()) return null;
+  checkpoint();
+  const layers = state.scene.map.layers;
+  const taken = new Set([BASE_LAYER, ...layers.map((l) => l.id)]);
+  const id = newId(slugId(name, 'layer').slice(0, 40), (x) => taken.has(x));
+  layers.push({ id, name: name.trim(), height: Math.max(0, ...layers.map((l) => l.height)) + 1, defaultActive: true, editorHidden: false, locked: false });
+  state.currentLayer = id;
+  emit();
+  return id;
+}
+
+export function setCurrentLayer(id: string): void {
+  state.currentLayer = id === BASE_LAYER || state.scene.map.layers.some((l) => l.id === id) ? id : BASE_LAYER;
+  emit();
+}
+
+export type LayerPatch = Partial<Pick<MapLayer, 'name' | 'height' | 'defaultActive' | 'trigger' | 'counter' | 'editorHidden' | 'locked'>>;
+
+/**
+ * Changes a layer (one undoable step). A counter layer is mutual: setting one links both ways and
+ * unlinks what either was linked to before; `undefined` in the patch removes a setting.
+ */
+export function updateLayer(id: string, patch: LayerPatch): void {
+  if (state.layer !== 'map') return;
+  const layers = state.scene.map.layers;
+  const l = layers.find((x) => x.id === id);
+  if (!l) return;
+  checkpoint();
+  const { counter, ...rest } = patch;
+  if ('counter' in patch) {
+    const byId = (x: string | undefined) => layers.find((y) => y.id === x);
+    // Unlink this layer and the new partner from whatever they were paired with.
+    for (const one of [l, byId(counter)]) {
+      if (!one) continue;
+      const old = byId(one.counter);
+      if (old?.counter === one.id) delete old.counter;
+      delete one.counter;
+    }
+    const partner = counter !== id ? byId(counter) : undefined;
+    if (partner) {
+      l.counter = partner.id;
+      partner.counter = id;
+    }
+  }
+  for (const [k, v] of Object.entries(rest) as [keyof LayerPatch, unknown][]) {
+    if (v === undefined) delete l[k];
+    else (l as Record<string, unknown>)[k] = v;
+  }
+  emit();
+}
+
+/** Swaps a layer's height with its neighbour above or below. */
+export function moveLayer(id: string, dir: 'up' | 'down'): void {
+  if (state.layer !== 'map') return;
+  const sorted = [...state.scene.map.layers].sort((a, b) => a.height - b.height);
+  const i = sorted.findIndex((l) => l.id === id);
+  const j = dir === 'up' ? i + 1 : i - 1;
+  if (i < 0 || j < 0 || j >= sorted.length) return;
+  checkpoint();
+  [sorted[i].height, sorted[j].height] = [sorted[j].height, sorted[i].height];
+  if (sorted[i].height === sorted[j].height) sorted[dir === 'up' ? i : j].height += 1;
+  emit();
+}
+
+/** Deletes a layer: its elements go on the base layer; links to it as counter layer go too. */
+export function deleteLayer(id: string): void {
+  if (state.layer !== 'map' || !state.scene.map.layers.some((l) => l.id === id)) return;
+  checkpoint();
+  const sc = state.scene;
+  sc.map.layers = sc.map.layers.filter((l) => l.id !== id);
+  for (const l of sc.map.layers) if (l.counter === id) delete l.counter;
+  for (const el of [...sc.walls, ...sc.zones, ...sc.lights, ...sc.map.assets]) if (el.layer === id) delete el.layer;
+  if (state.currentLayer === id) state.currentLayer = BASE_LAYER;
+  recomputeVision();
+  emit();
+}
+
+/** Moves map elements (walls, areas, lights, placed assets) onto a layer (one undoable step). */
+export function setElementsLayer(ids: readonly string[], layerId: string): void {
+  if (state.layer !== 'map') return;
+  const want = new Set(ids);
+  const sc = state.scene;
+  const target = layerId !== BASE_LAYER && sc.map.layers.some((l) => l.id === layerId) ? layerId : null;
+  checkpoint();
+  for (const el of [...sc.walls, ...sc.zones, ...sc.lights, ...sc.map.assets]) {
+    if (!want.has(el.id)) continue;
+    if (target) el.layer = target;
+    else delete el.layer;
+  }
+  emit();
+}
+
+/* ---------- Layers in a scene (E-28, DC-101) ---------- */
+
+/** Layers whose trigger area has a living character in it now: switching happens on entering and leaving. */
+let layerInside = new Set<string>();
+
+function triggerAreas(): Map<string, Polygon[]> {
+  // The map's areas, also those a scene hides: a trigger is the DM's tool, not something players see.
+  return new Map((state.mapDoc?.zones ?? []).map((z) => [z.id, z.shape]));
+}
+
+function characters(): Point[] {
+  return state.scene.tokens.filter((t) => t.kind === 'pc' && t.hp > 0);
+}
+
+function charactersInTriggers(): Set<string> {
+  if (state.layer === 'map') return new Set();
+  return triggerChanges(state.scene.map.layers, triggerAreas(), characters(), new Set()).inside;
+}
+
+function layerActive(id: string): boolean {
+  return activeLayers(state.scene.map.layers, state.scene.layersOn).has(id);
+}
+
+/**
+ * Switches a layer in this scene (its counter layer goes the other way), one undoable step: while
+ * editing the start state for the start, else for the play state.
+ */
+export function setLayerActive(id: string, on: boolean): void {
+  const l = state.scene.map.layers.find((x) => x.id === id);
+  if (state.layer === 'map' || !state.sceneDoc || !l) return;
+  checkpoint();
+  commitView();
+  const doc = state.sceneDoc;
+  const change: Record<string, boolean> = { [id]: on, ...(l.counter ? { [l.counter]: !on } : {}) };
+  if (state.layer === 'start') {
+    const start = startOf(doc);
+    state.sceneDoc = { ...doc, start: { ...start, layers: { ...start.layers, ...change } } };
+  } else {
+    state.sceneDoc = { ...doc, layers: { ...doc.layers, ...change } };
+  }
+  // The view is rebuilt from the files; the selected token stays selected.
+  const selected = state.selectedTokenId;
+  refreshView();
+  state.selectedTokenId = selected;
+  log(on ? 'log.layerOn' : 'log.layerOff', { name: l.name });
+  emit();
+}
+
+function applyLayerTriggers(): void {
+  if (state.layer === 'map' || !state.scene.map.layers.some((l) => l.trigger)) return;
+  const r = triggerChanges(state.scene.map.layers, triggerAreas(), characters(), layerInside);
+  layerInside = r.inside;
+  for (const id of r.on) if (!layerActive(id)) setLayerActive(id, true);
+  for (const id of r.off) if (layerActive(id)) setLayerActive(id, false);
 }
 
 /* ---------- Assets placed on the map (DC-041) ---------- */
@@ -883,7 +1066,7 @@ function footprint(a: MapAssetPlacement) {
 
 /** The placed asset at `p` (the topmost), if any. */
 export function placedAssetAt(p: Point): string | null {
-  const hit = [...editableAssets()].reverse().find((a) => hitsPlacement(footprint(a), p));
+  const hit = [...drawOrder(editableAssets(), state.scene.map.layers)].reverse().find((a) => editableHere(a) && hitsPlacement(footprint(a), p));
   return hit?.id ?? null;
 }
 
@@ -909,7 +1092,7 @@ export function placeAsset(assetPath: string, p: Point): string | null {
   checkpoint();
   const id = freshId('asset');
   const at = snappedCentre({ assetPath, scale: 1, rotation: 0 }, p);
-  editableAssets().push({ id, assetPath, x: at.x, y: at.y, rotation: 0, scale: 1 });
+  editableAssets().push({ id, assetPath, x: at.x, y: at.y, rotation: 0, scale: 1, ...onCurrentLayer() });
   state.selectedAssetId = id;
   state.selectedWallIds = [];
   state.selectedZoneId = null;
@@ -1150,7 +1333,7 @@ export function cancelAreaCommand(): void {
 }
 
 export function zoneAt(p: Point): string | null {
-  const z = [...state.scene.zones].reverse().find((z) => areaContains(z.shape, p));
+  const z = [...state.scene.zones].reverse().find((z) => editableHere(z) && areaContains(z.shape, p));
   return z?.id ?? null;
 }
 
@@ -1395,7 +1578,7 @@ export function addLight(p: Point): void {
   checkpoint();
   const id = freshId('light');
   // A torch by default (2024: bright 20 ft, dim 20 ft further).
-  state.scene.lights.push({ id, x: p.x, y: p.y, brightFt: 20, dimFt: 40, color: '#ffb14a', on: true });
+  state.scene.lights.push({ id, x: p.x, y: p.y, brightFt: 20, dimFt: 40, color: '#ffb14a', on: true, ...onCurrentLayer() });
   state.selectedLightId = id;
   recomputeVision();
   emit();
@@ -1403,7 +1586,7 @@ export function addLight(p: Point): void {
 
 export function lightAt(p: Point): string | null {
   const r = state.scene.map.grid.cellWidth * 0.45;
-  return state.scene.lights.find((l) => Math.hypot(l.x - p.x, l.y - p.y) < r)?.id ?? null;
+  return state.scene.lights.find((l) => editableHere(l) && Math.hypot(l.x - p.x, l.y - p.y) < r)?.id ?? null;
 }
 
 export function toggleLight(id: string): void {

@@ -14,13 +14,15 @@ import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
+  setElementsLayer, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { importMapIntoCampaign, switchScene } from '../app/campaign';
 import { filterLibraryMaps, mapUsage, openLibraryMap, refreshLibraryMaps, trashLibraryMap, type MapUsage } from '../app/library';
 import { CREATURE_DRAG } from './MapView';
 import { VaultBrowser } from './VaultPanels';
+import { LayerList } from './LayerList';
+import { BASE_LAYER } from '../core/layers';
 import { BUILTIN_PREFIX, BUILTIN_SFX, masterLevel } from '../app/audio';
 import { importAudio, setMaster, setTrackVolume, stopAll, toggleAmbience, trackFileName, triggerSfx } from '../app/soundboard';
 
@@ -60,6 +62,7 @@ export function BrowserPanel() {
   return (
     <div className="panel-body">
       {ws === 'forge' && campaign && <LibraryMaps />}
+      {(ws === 'forge' || ws === 'play') && <LayerList />}
       <ul className="tree">
         {campaign && (
           <li>
@@ -315,6 +318,7 @@ export function PropertiesPanel() {
           <div className="row"><label htmlFor="l-d">{t('light.dim')}</label><input id="l-d" type="number" min={0} step={5} value={light.dimFt} onChange={(e) => updateLight(light.id, { dimFt: Math.max(0, Number(e.target.value)) })} /></div>
           <div className="row"><label htmlFor="l-c">{t('light.color')}</label><input id="l-c" type="color" value={light.color} onChange={(e) => updateLight(light.id, { color: e.target.value })} /></div>
           <div className="row"><label>{t('light.on')}</label><input type="checkbox" checked={light.on} onChange={() => toggleLight(light.id)} /></div>
+          <LayerRow ids={[light.id]} />
           <button className="btn sm danger" onClick={() => removeLight(light.id)}><Icon name="trash" />{t('light.remove')}</button>
         </>
       )}
@@ -327,6 +331,7 @@ export function PropertiesPanel() {
         <>
           <div className="row"><label>{t('props.name')}</label><span><span className="swatch" style={{ background: zone.color }} /> {zone.name}</span></div>
           <div className="row"><label>{t('area.cmd.biome')}</label><span>{zone.biome ? t(`biome.${zone.biome}` as MessageKey) : t('area.cmd.biomeMap')}{zone.secret ? ` · ${t('area.secret')}` : ''}</span></div>
+          <LayerRow ids={[zone.id]} />
           <button className="btn sm" onClick={() => startAreaCommand(zone.id)}><Icon name="zone" />{t('area.edit')} …</button>
         </>
       ) : <p className="hint">{t('props.noSelection')}</p>}
@@ -352,6 +357,7 @@ function WallProperties({ walls }: { walls: readonly Wall[] }) {
       </div>
       {one && <div className="row"><label>{t('wall.length')}</label><span className="mono">{Math.round((Math.hypot(one.x2 - one.x1, one.y2 - one.y1) / grid.cellWidth) * grid.feetPerCell * 10) / 10} ft</span></div>}
       {kinds.has('cliff') && <button className="btn sm" onClick={flipSelectedCliffs}><Icon name="redo" />{t('wall.flip')}</button>}
+      <LayerRow ids={walls.map((w) => w.id)} />
       <p className="hint">{t('wall.editHint')}</p>
       <button className="btn sm danger" onClick={deleteSelectedWalls}><Icon name="trash" />{t('wall.delete')}</button>
     </>
@@ -371,6 +377,7 @@ function PlacedAssetProperties({ id }: { id: string }) {
       {!info && <p className="hint">{t('placed.missing')}</p>}
       <NumberRow id="pa-rot" label={t('placed.rotation')} value={a.rotation} step={15} onCommit={(v) => rotatePlacedAsset(id, v - a.rotation)} />
       <NumberRow id="pa-scale" label={t('placed.scale')} value={a.scale} step={0.25} min={0.25} max={8} onCommit={(v) => v > 0 && scalePlacedAsset(id, v / a.scale)} />
+      <LayerRow ids={[id]} />
       {hasVariants && <button className="btn sm" onClick={() => cycleAssetVariant(id)}><Icon name="next" />{t('placed.variant')}</button>}
       <button className="btn sm danger" onClick={() => deletePlacedAsset(id)}><Icon name="trash" />{t('placed.remove')}</button>
       <p className="hint">{t('picker.hint')}</p>
@@ -390,6 +397,27 @@ function NumberRow({ id, label, value, step, min, max, onCommit }: { id: string;
   return (
     <div className="row"><label htmlFor={id}>{label}</label>
       <input id={id} type="number" step={step} min={min} max={max} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} />
+    </div>
+  );
+}
+
+/** The layer of the selected map elements, to move them to another (Map Forge, E-28). */
+function LayerRow({ ids }: { ids: readonly string[] }) {
+  const { t } = useI18n();
+  const layers = useStore((s) => s.scene.map.layers);
+  const current = useStore((s) => {
+    const sc = s.scene;
+    const of = new Set([...sc.walls, ...sc.zones, ...sc.lights, ...sc.map.assets].filter((x) => ids.includes(x.id)).map((x) => x.layer ?? BASE_LAYER));
+    return of.size === 1 ? [...of][0] : '';
+  });
+  if (layers.length === 0) return null;
+  return (
+    <div className="row"><label htmlFor="p-layer">{t('props.layer')}</label>
+      <select id="p-layer" value={current} onChange={(e) => e.target.value && setElementsLayer(ids, e.target.value)}>
+        {current === '' && <option value="">{t('layers.mixed')}</option>}
+        {[...layers].sort((a, b) => b.height - a.height).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+        <option value={BASE_LAYER}>{t('layers.base')}</option>
+      </select>
     </div>
   );
 }

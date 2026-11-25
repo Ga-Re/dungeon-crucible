@@ -4,7 +4,7 @@ import { belowCliff, sightBlockers, type Wall } from './scene';
 import { visiblePolygons, updateVision } from './vision';
 import { createSampleScene } from '../sample/crypt';
 import { readDocument } from './documents';
-import { MapSidecarSchema } from './sidecar';
+import { MAP_VERSION, MapSidecarSchema } from './sidecar';
 import { DEFAULT_GRID } from './grid';
 
 /**
@@ -89,7 +89,7 @@ describe('map files version 3', () => {
     const r = readDocument('map', MapSidecarSchema, JSON.stringify(v2));
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.value.schemaVersion).toBe(3);
+      expect(r.value.schemaVersion).toBe(MAP_VERSION);
       expect(r.value.walls).toEqual(v2.walls);
     }
   });

@@ -6,7 +6,7 @@ import { SceneOverrideSchema, SCENE_VERSION, type MapSidecar, type SceneOverride
 
 /** Scene-own assets, asset lights and effects per scene (DC-110). */
 const map: MapSidecar = {
-  kind: 'map', schemaVersion: 3, name: 'Hall', resource: 'hall.png', isVideo: false, widthPx: 1000, heightPx: 1000,
+  kind: 'map', schemaVersion: 4, name: 'Hall', layers: [], resource: 'hall.png', isVideo: false, widthPx: 1000, heightPx: 1000,
   tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
   walls: [], zones: [], pois: [], lights: [], ambient: 'dark',
   assets: [{ id: 'torch', assetPath: 'library/torch.png', x: 100, y: 100, rotation: 0, scale: 1 }],
@@ -20,7 +20,7 @@ function doc(extra: Partial<SceneOverride> = {}): SceneOverride {
 describe('scene files version 5', () => {
   it('a version 4 scene is read with no own assets and no effect states', () => {
     const r = readDocument('scene', SceneOverrideSchema, JSON.stringify({ kind: 'scene', schemaVersion: 4, name: 'S', mapSidecar: 'm', fog: { revealed: [], remembered: [] } }));
-    expect(r.ok && r.value).toMatchObject({ schemaVersion: 5, assets: [], effects: {} });
+    expect(r.ok && r.value).toMatchObject({ schemaVersion: SCENE_VERSION, assets: [], effects: {} });
   });
 });
 

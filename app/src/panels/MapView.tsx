@@ -19,7 +19,7 @@ import { CalibrationPanel } from './CalibrationPanel';
 import { endsAt, nearestEnd, wallAt, type WallEnd } from '../core/walls';
 import type { Polygon } from '../core/poly/types';
 import { rectPolygon } from '../core/fogModel';
-import type { MapAssetPlacement, TemplateShape } from '../core/scene';
+import type { MapAssetPlacement, Scene, TemplateShape } from '../core/scene';
 import { useI18n } from '../i18n/i18n';
 import { hasMap } from '../core/emptyScene';
 import { importMapIntoCampaign } from '../app/campaign';
@@ -35,7 +35,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
-  activateAsset, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
+  editableHere, shownInForge, activateAsset, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -141,7 +141,8 @@ function DmMap() {
       // While calibrating, the grid is always shown: it is what is being adjusted.
       r.setGrid((state.showGrid || state.calibration) && sc.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: sc.map.grid.originX, offsetYPx: sc.map.grid.originY, alpha: 0.18 } : null);
       // Placed assets: their files' URLs are looked up once, the first time they are shown.
-      const placements = allPlacements(sc);
+      // The Map Forge leaves out layers hidden in the editor.
+      const placements = allPlacements(sc).filter((a) => state.ws !== 'forge' || shownInForge(a));
       requestAssetUrls([...new Set(placements.map((a) => a.assetPath))]);
       // In a scene, effects follow its state (switched off, played once); the Map Forge shows all.
       r.setAssets(assetShapes(placements, state.assetInfo, sc.map.grid, state.layer === 'map' ? undefined : { effectsOn: sc.effectsOn, runs: state.effectRuns }));
@@ -194,7 +195,7 @@ function DmMap() {
         overlay.height = Math.round(s.height * dpr);
       }
       const g = overlay.getContext('2d');
-      if (g) drawDmOverlay(g, state.scene, state.vision, view.current, dpr, overlayState(), Date.now());
+      if (g) drawDmOverlay(g, state.ws === 'forge' ? shownLayers(state.scene) : state.scene, state.vision, view.current, dpr, overlayState(), Date.now());
     };
     raf = requestAnimationFrame(tick);
     return () => {
@@ -295,7 +296,7 @@ function DmMap() {
       fogDraft,
       areaDraft: areaDraftOf(d),
       assets: [
-        ...allPlacements(state.scene).map((a) => placementLook(a, false)),
+        ...allPlacements(state.scene).filter((a) => state.ws !== 'forge' || shownInForge(a)).map((a) => placementLook(a, false)),
         ...(state.layer === 'map' ? [] : state.scene.hidden.assets.map((a) => placementLook(a, true))),
       ],
       covers: state.ws === 'forge' ? (assetExtras(state.scene).covers ?? []) : [],
@@ -400,14 +401,15 @@ function DmMap() {
         if (state.layer === 'map') {
           const tol = HANDLE_PX / view.current.zoom;
           // An end is grabbed with every wall joined there; Shift takes only the selected walls' ends.
-          const ends = endsAt(state.scene.walls, p, tol, e.shiftKey ? new Set(state.selectedWallIds) : undefined);
+          const walls = state.scene.walls.filter(editableHere);
+          const ends = endsAt(walls, p, tol, e.shiftKey ? new Set(state.selectedWallIds) : undefined);
           if (ends.length) {
             if (!ends.some((x) => state.selectedWallIds.includes(x.id))) selectWall(ends[0].id);
             drag.current = { kind: 'wall-ends', ends, to: p, moved: false };
             return;
           }
           // Walls before assets: a floor tile under walls must not hide them from a click.
-          const wall = wallAt(state.scene.walls, p, tol);
+          const wall = wallAt(walls, p, tol);
           if (wall || e.shiftKey) {
             selectWall(wall, e.shiftKey);
             selectZone(null);
@@ -590,7 +592,7 @@ function DmMap() {
           // Map Forge: a double-click on a wall selects its chain, on an area edits it.
           else if (state.tool === 'select' && state.layer === 'map') {
             const p = toWorld(e);
-            const wall = wallAt(state.scene.walls, p, HANDLE_PX / view.current.zoom);
+            const wall = wallAt(state.scene.walls.filter(editableHere), p, HANDLE_PX / view.current.zoom);
             const id = wall ? null : zoneAt(p);
             if (wall) selectWallChain(wall);
             else if (id) startAreaCommand(id);
@@ -657,6 +659,12 @@ function placeDropped(data: string, at: Point): void {
   if (!Array.isArray(paths)) return;
   const cell = state.scene.map.grid.cellWidth;
   paths.filter((x): x is string => typeof x === 'string').forEach((path, i) => placeAsset(path, { x: at.x + i * cell, y: at.y }));
+}
+
+/** The scene without what lies on layers hidden in the editor (Map Forge, E-28). */
+function shownLayers(sc: Scene): Scene {
+  if (!sc.map.layers.some((l) => l.editorHidden)) return sc;
+  return { ...sc, walls: sc.walls.filter(shownInForge), zones: sc.zones.filter(shownInForge), lights: sc.lights.filter(shownInForge) };
 }
 
 /** A placement as the overlay shows it. */

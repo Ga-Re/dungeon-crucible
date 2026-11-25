@@ -94,3 +94,16 @@ describe('cover in the crypt (regression)', () => {
     expect(isInside(v, [455, 875])).toBe(true);
   });
 });
+
+describe('cover stays fast (review)', () => {
+  it('sight and light with 40 tree masks on the crypt stay well under a frame budget per move', () => {
+    const s = createSampleScene();
+    const placements = Array.from({ length: 40 }, (_, i) => ({ id: `t${i}`, assetPath: 'library/tree.png', x: 150 + (i % 8) * 3 * 70, y: 150 + Math.floor(i / 8) * 3 * 70, rotation: 0, scale: 1 }));
+    const covers = placementCovers(placements, { 'library/tree.png': { sizeCells: { w: 2, h: 2 }, cover: { shape: 'circle', x: 1, y: 1, r: 0.6 } } }, s.map.grid);
+    updateVision(s, { covers });
+    const t0 = performance.now();
+    for (let i = 0; i < 3; i++) updateVision(s, { covers });
+    // About 120 ms here; generous for slow CI machines – it was 600 ms before the fix.
+    expect((performance.now() - t0) / 3).toBeLessThan(350);
+  });
+});

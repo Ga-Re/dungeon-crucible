@@ -42,7 +42,7 @@ import {
 export const CREATURE_DRAG = 'application/x-dc-creature';
 
 /** Commands other UI parts can trigger on the active map view. */
-export const mapCommands: { fit: () => void } = { fit: () => undefined };
+export const mapCommands: { fit: () => void; centre: () => Point | null } = { fit: () => undefined, centre: () => null };
 
 const HINTS: Partial<Record<string, MessageKey>> = {
   select: 'hint.select', pan: 'hint.pan', measure: 'hint.measure', ping: 'hint.ping', calibrate: 'hint.calibrate',
@@ -116,6 +116,12 @@ function DmMap() {
       view.current = { zoom: z, x: (s.width - m.widthPx * z) / 2, y: (s.height - m.heightPx * z) / 2 };
     };
     mapCommands.fit = fit;
+    // The middle of what the map view shows, in map pixels (placing from the keyboard).
+    mapCommands.centre = () => {
+      const s = size();
+      const v = view.current;
+      return { x: (s.width / 2 - v.x) / v.zoom, y: (s.height / 2 - v.y) / v.zoom };
+    };
     fit();
 
     void createRenderer({ canvas, size: size(), resolution: window.devicePixelRatio || 1, background: '#0e0f11' }).then((r) => {
@@ -382,6 +388,15 @@ function DmMap() {
             drag.current = { kind: 'wall-ends', ends, to: p, moved: false };
             return;
           }
+          // Walls before assets: a floor tile under walls must not hide them from a click.
+          const wall = wallAt(state.scene.walls, p, tol);
+          if (wall || e.shiftKey) {
+            selectWall(wall, e.shiftKey);
+            selectZone(null);
+            selectPlacedAsset(null);
+            return;
+          }
+          selectWall(null);
           // A placed asset: select it and drag it (DC-041).
           const asset = placedAssetAt(p);
           if (asset) {
@@ -391,13 +406,6 @@ function DmMap() {
             return;
           }
           selectPlacedAsset(null);
-          const wall = wallAt(state.scene.walls, p, tol);
-          if (wall || e.shiftKey) {
-            selectWall(wall, e.shiftKey);
-            selectZone(null);
-            return;
-          }
-          selectWall(null);
         }
         selectZone(zoneAt(p));
         return;

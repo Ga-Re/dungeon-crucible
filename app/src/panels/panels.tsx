@@ -369,16 +369,28 @@ function PlacedAssetProperties({ id }: { id: string }) {
     <>
       <div className="row"><label>{t('placed.title')}</label><span>{info?.name ?? a.assetPath}</span></div>
       {!info && <p className="hint">{t('placed.missing')}</p>}
-      <div className="row"><label htmlFor="pa-rot">{t('placed.rotation')}</label>
-        <input id="pa-rot" type="number" step={15} value={a.rotation} onChange={(e) => rotatePlacedAsset(id, Number(e.target.value) - a.rotation)} />
-      </div>
-      <div className="row"><label htmlFor="pa-scale">{t('placed.scale')}</label>
-        <input id="pa-scale" type="number" min={0.25} max={8} step={0.25} value={a.scale} onChange={(e) => Number(e.target.value) > 0 && scalePlacedAsset(id, Number(e.target.value) / a.scale)} />
-      </div>
+      <NumberRow id="pa-rot" label={t('placed.rotation')} value={a.rotation} step={15} onCommit={(v) => rotatePlacedAsset(id, v - a.rotation)} />
+      <NumberRow id="pa-scale" label={t('placed.scale')} value={a.scale} step={0.25} min={0.25} max={8} onCommit={(v) => v > 0 && scalePlacedAsset(id, v / a.scale)} />
       {hasVariants && <button className="btn sm" onClick={() => cycleAssetVariant(id)}><Icon name="next" />{t('placed.variant')}</button>}
       <button className="btn sm danger" onClick={() => deletePlacedAsset(id)}><Icon name="trash" />{t('placed.remove')}</button>
       <p className="hint">{t('picker.hint')}</p>
     </>
+  );
+}
+
+/** A number taken on Enter or when leaving the field (one undo step; an empty field changes nothing). */
+function NumberRow({ id, label, value, step, min, max, onCommit }: { id: string; label: string; value: number; step: number; min?: number; max?: number; onCommit: (v: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  const commit = () => {
+    const v = Number(draft);
+    if (draft.trim() === '' || !Number.isFinite(v) || v === value) setDraft(String(value));
+    else onCommit(v);
+  };
+  return (
+    <div className="row"><label htmlFor={id}>{label}</label>
+      <input id={id} type="number" step={step} min={min} max={max} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} />
+    </div>
   );
 }
 

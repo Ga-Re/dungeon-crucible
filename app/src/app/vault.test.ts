@@ -174,13 +174,16 @@ describe('pack import (DC-040b)', () => {
       files.set('library/oak_01.png', '');
       files.set('library/oak_02.png', '');
       progress.forEach((cb) => cb({ token: 't1', done: 2, total: 2, file: 'Trees/oak_02.png' }));
-      return [
-        { packPath: 'Trees/oak_01.png', relPath: 'library/oak_01.png', reused: false },
-        { packPath: 'Trees/oak_02.png', relPath: 'library/oak_02.png', reused: false },
-        { packPath: 'Trees/oak.png', relPath: 'library/oak.png', reused: true },
-        // The same picture twice in the pack: the second is the first one, copied just now.
-        { packPath: 'Trees/oak_01 copy.png', relPath: 'library/oak_01.png', reused: true },
-      ];
+      return {
+        files: [
+          { packPath: 'Trees/oak_01.png', relPath: 'library/oak_01.png', reused: false },
+          { packPath: 'Trees/oak_02.png', relPath: 'library/oak_02.png', reused: false },
+          { packPath: 'Trees/oak.png', relPath: 'library/oak.png', reused: true },
+          // The same picture twice in the pack: the second is the first one, copied just now.
+          { packPath: 'Trees/oak_01 copy.png', relPath: 'library/oak_01.png', reused: true },
+        ],
+        failed: null,
+      };
     };
     await startPackImport();
     const pack = state.vault.pack!;

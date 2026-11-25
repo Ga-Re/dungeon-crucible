@@ -8,7 +8,8 @@ import type { AssetKind } from '../core/sidecar';
 import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
-import { recentAssets, useStore } from '../app/store';
+import { placeAsset, recentAssets, useStore } from '../app/store';
+import { mapCommands } from './MapView';
 import { thumbnailUrl } from '../app/thumbs';
 import { importVaultAssets, refreshVault, type VaultItem } from '../app/vault';
 import { ASSET_DRAG, KIND_ICONS } from './VaultPanels';
@@ -62,6 +63,7 @@ export function AssetPicker() {
 }
 
 function PickerTile({ item }: { item: VaultItem }) {
+  const { t } = useI18n();
   const [thumb, setThumb] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
@@ -74,6 +76,14 @@ function PickerTile({ item }: { item: VaultItem }) {
   return (
     <li
       className="picker-tile"
+      tabIndex={0}
+      role="button"
+      aria-label={`${a.name}: ${t('picker.placeKey')}`}
+      onKeyDown={(e) => {
+        // Keyboard: Enter places it in the middle of the map view.
+        const at = mapCommands.centre();
+        if (e.key === 'Enter' && at) placeAsset(item.relPath, at);
+      }}
       draggable
       title={a.sizeCells ? `${a.name} · ${a.sizeCells.w}×${a.sizeCells.h}` : a.name}
       onDragStart={(e) => {

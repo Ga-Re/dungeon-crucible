@@ -10,7 +10,7 @@ import { keepUnknown } from '../core/documents';
 import { ASSET_VERSION, AssetSidecarSchema, type AssetSidecar } from '../core/sidecar';
 import { absolutePath, assetUrl, cancelPack, importAssets, importDropped, importPack, isDesktop, listLibrary, onPackProgress, pickPack, writeText, type LibraryImport } from '../platform/bridge';
 import type { PackImported, PackScanInfo } from '../platform/desktop-api';
-import { emit, log, setAssetInfo, state, type AssetInfo } from './store';
+import { emit, log, setAssetInfo, setAssetUrl, state, type AssetInfo } from './store';
 
 export interface VaultItem extends CatalogItem {
   size: number;
@@ -103,10 +103,7 @@ export function requestAssetUrls(paths: readonly string[]): void {
     resolving.add(p);
     void absolutePath(p)
       .then(assetUrl)
-      .then((url) => {
-        const cur = state.assetInfo[p];
-        if (cur) setAssetInfo({ ...state.assetInfo, [p]: { ...cur, url } });
-      })
+      .then((url) => setAssetUrl(p, url))
       .catch(() => undefined)
       .finally(() => resolving.delete(p));
   }
@@ -180,6 +177,8 @@ async function updateAssets(paths: readonly string[], change: (a: AssetSidecar) 
     log('log.assetWriteFailed');
   } finally {
     state.vault.items = items;
+    // Placed assets follow (size, mask, light, group).
+    updateAssetInfo();
     emit();
   }
   return ok;
@@ -407,7 +406,9 @@ export async function runPackImport(): Promise<void> {
   });
   let files: PackImported[] = [];
   try {
-    files = await importPack(p.token, [...p.chosen].sort());
+    const r = await importPack(p.token, [...p.chosen].sort());
+    files = r.files;
+    if (r.failed) log('log.packFileFailed', { file: r.failed });
   } catch {
     log('log.assetsImportFailed');
   } finally {

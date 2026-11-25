@@ -305,6 +305,7 @@ function restore(snap: string): void {
   // Selected walls that the step back (or forward) took away are no longer selected.
   const walls = new Set(state.scene.walls.map((w) => w.id));
   state.selectedWallIds = state.selectedWallIds.filter((id) => walls.has(id));
+  if (state.selectedAssetId && !state.scene.map.assets.some((a) => a.id === state.selectedAssetId)) state.selectedAssetId = null;
   recomputeVision();
   state.canUndo = history.canUndo;
   state.canRedo = history.canRedo;
@@ -497,11 +498,19 @@ let lastRemember = 0;
  * Recomputes token sight. What players see becomes memory fog once they leave it; the union is
  * throttled while dragging and always done for a final position.
  */
+let visionCost = 0;
+let visionAt = 0;
+
 export function recomputeVision(final = true): void {
+  // While dragging, a slow computation (many masks) runs less often; the final position always.
+  if (!final && Date.now() - visionAt < visionCost * 2) return;
+  const started = performance.now();
   const extras = assetExtras(state.scene);
   state.vision = updateVision(state.scene, extras);
   state.visible = visiblePolygons(state.vision);
   state.lights = litSources(state.scene, extras);
+  visionCost = performance.now() - started;
+  visionAt = Date.now();
   const now = Date.now();
   if (final || now - lastRemember > 150) {
     state.scene.fog = rememberSeen(state.scene.fog, state.visible);
@@ -833,8 +842,17 @@ export interface AssetInfo {
 
 export function setAssetInfo(info: Record<string, AssetInfo>): void {
   state.assetInfo = info;
-  // Masks and lights of placed assets may have changed (DC-108).
+  // Masks and lights of placed assets may have changed (DC-108) – here and in the TV's view.
+  viewVersion++;
   recomputeVision();
+  emit();
+}
+
+/** A placed asset's file URL became known: only drawing changes, not sight. */
+export function setAssetUrl(path: string, url: string): void {
+  const cur = state.assetInfo[path];
+  if (!cur) return;
+  state.assetInfo = { ...state.assetInfo, [path]: { ...cur, url } };
   emit();
 }
 
@@ -842,8 +860,16 @@ export function setAssetInfo(info: Record<string, AssetInfo>): void {
 export function assetExtras(scene: Scene): VisionExtras {
   const placed = scene.map.assets;
   if (!placed.length) return {};
-  return { covers: placementCovers(placed, state.assetInfo, scene.map.grid), lights: placementLights(placed, state.assetInfo, scene.map.grid) };
+  // The same lists while nothing changed: sight and light keep what they built for them.
+  const g = scene.map.grid;
+  const key = `${g.cellWidth},${g.cellHeight}|${placed.map((a) => `${a.assetPath},${a.x},${a.y},${a.rotation},${a.scale}`).join(';')}`;
+  if (extrasCache && extrasCache.key === key && extrasCache.info === state.assetInfo) return extrasCache.extras;
+  const extras = { covers: placementCovers(placed, state.assetInfo, g), lights: placementLights(placed, state.assetInfo, g) };
+  extrasCache = { key, info: state.assetInfo, extras };
+  return extras;
 }
+
+let extrasCache: { key: string; info: Record<string, AssetInfo>; extras: VisionExtras } | null = null;
 
 function footprint(a: MapAssetPlacement) {
   return footprintOf(a, state.assetInfo[a.assetPath]?.sizeCells, state.scene.map.grid);

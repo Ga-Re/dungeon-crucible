@@ -58,6 +58,12 @@ export interface PackImported {
   reused: boolean;
 }
 
+/** What a pack import copied; `failed` names the file it stopped at, if one failed. */
+export interface PackImportResult {
+  files: PackImported[];
+  failed: string | null;
+}
+
 export interface PackProgress {
   token: string;
   done: number;
@@ -158,7 +164,7 @@ export interface DcApi {
   /** Picks a pack folder and lists its folders (null: cancelled). */
   pickPack(): Promise<PackScanInfo | null>;
   /** Imports the chosen folders of a picked pack; progress comes through `onPackProgress`. */
-  importPack(token: string, folders: string[]): Promise<PackImported[]>;
+  importPack(token: string, folders: string[]): Promise<PackImportResult>;
   /** Stops a running pack import after the current file. */
   cancelPack(token: string): Promise<void>;
   onPackProgress(cb: (p: PackProgress) => void): () => void;

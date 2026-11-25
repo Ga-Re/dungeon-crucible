@@ -369,6 +369,15 @@ export async function createRenderer(
       built.height = a.height;
       if (sprite.texture !== Texture.EMPTY) sprite.setSize(a.width, a.height);
     });
+    // Files no placement shows any more are freed (GPU memory; videos stop decoding).
+    const used = new Set(next.map((a) => a.url));
+    for (const [url, entry] of assetTextures) {
+      if (used.has(url)) continue;
+      entry.video?.pause();
+      entry.video?.removeAttribute("src");
+      void entry.texture.then((tex) => tex?.destroy(true));
+      assetTextures.delete(url);
+    }
     playingVideos = next.filter((a) => a.video).length;
   };
   // Lighting (Dungeon Crucible): above the grid, below the tokens and the fog.

@@ -14,7 +14,7 @@ import { app, dialog, type BrowserWindow } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CampaignListEntry, ExportResult, ImportResultInfo, LibraryEntry, LibraryImport, PackImported, PackProgress, PackScanInfo, RootInfo } from '../src/platform/desktop-api';
+import type { CampaignListEntry, ExportResult, ImportResultInfo, LibraryEntry, LibraryImport, PackImportResult, PackProgress, PackScanInfo, RootInfo } from '../src/platform/desktop-api';
 import { ArchiveError, CAMPAIGN_FILE_NAME, SIDECAR_SUFFIX, campaignSlug, freeName, importArchive, writeArchive } from './archive';
 import { ASSET_EXTENSIONS, addBytesToLibrary, addFileToLibrary, importPack, listLibrary, scanPack } from './library';
 import { folderName, isInside, listFilesIn, safeJoin, toRel, writeAtomic } from './files';
@@ -234,7 +234,7 @@ export class RootFolder {
   }
 
   /** Imports the chosen folders of a picked pack, reporting progress; stops when cancelled. */
-  async importPack(token: string, folders: string[], progress: (p: PackProgress) => void): Promise<PackImported[]> {
+  async importPack(token: string, folders: string[], progress: (p: PackProgress) => void): Promise<PackImportResult> {
     const root = this.requireRoot();
     const pack = this.packs.get(token);
     if (!pack) throw new Error('Unknown pack');
@@ -243,7 +243,7 @@ export class RootFolder {
       onProgress: (done, total, file) => progress({ token, done, total, file }),
       cancelled: () => pack.cancelled,
     });
-    return files.map((f) => ({ packPath: f.packPath, relPath: `library/${f.name}`, reused: f.reused }));
+    return { files: files.files.map((f) => ({ packPath: f.packPath, relPath: `library/${f.name}`, reused: f.reused })), failed: files.failed };
   }
 
   cancelPack(token: string): void {

@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { addBytesToLibrary, addFileToLibrary, importPack, listLibrary, scanPack, ThumbCache } from './library';
 
 /** Library files and the thumbnail cache (DC-040), in a temporary folder. */
@@ -109,7 +109,7 @@ describe('pack import (DC-040b)', () => {
 
   it('copies only the chosen folders, reports progress, reuses equal files', async () => {
     const progress: number[] = [];
-    const out = await importPack(pack, library, ['Rocks', 'Trees/Oak'], { onProgress: (done) => progress.push(done), cancelled: () => false });
+    const out = (await importPack(pack, library, ['Rocks', 'Trees/Oak'], { onProgress: (done) => progress.push(done), cancelled: () => false })).files;
     expect(out.map((f) => [f.packPath, f.name, f.reused])).toEqual([
       ['Rocks/rock-copy.png', 'rock-copy.png', false],
       ['Rocks/rock.png', 'rock-copy.png', true],
@@ -122,7 +122,7 @@ describe('pack import (DC-040b)', () => {
 
   it('stops when cancelled, leaving only whole files', async () => {
     let n = 0;
-    const out = await importPack(pack, library, ['', 'Rocks', 'Trees/Oak'], { onProgress: () => n++, cancelled: () => n >= 2 });
+    const out = (await importPack(pack, library, ['', 'Rocks', 'Trees/Oak'], { onProgress: () => n++, cancelled: () => n >= 2 })).files;
     expect(out).toHaveLength(2);
     expect(fs.readdirSync(library).filter((f) => f.includes('tmp'))).toEqual([]);
   });
@@ -130,5 +130,42 @@ describe('pack import (DC-040b)', () => {
   it('refuses folders that were not in the scan', async () => {
     await expect(importPack(pack, library, ['../'], { onProgress: () => undefined, cancelled: () => false })).rejects.toThrow();
     await expect(importPack(pack, library, ['escape'], { onProgress: () => undefined, cancelled: () => false })).rejects.toThrow();
+  });
+});
+
+describe('volumes without hard links (exFAT, FAT, network shares)', () => {
+  it('imports by renaming the copy instead; nothing half or hidden is left', async () => {
+    const spy = vi.spyOn(fs.promises, 'link').mockRejectedValue(Object.assign(new Error('not supported'), { code: 'ENOTSUP' }));
+    try {
+      const src = path.join(tmp, 'tree.png');
+      fs.writeFileSync(src, PNG);
+      expect(await addFileToLibrary(library, src)).toEqual({ name: 'tree.png', reused: false });
+      expect(await addBytesToLibrary(library, 'rock.webp', new Uint8Array([...PNG, 7]))).toEqual({ name: 'rock.webp', reused: false });
+      expect(fs.readdirSync(library).sort()).toEqual(['rock.webp', 'tree.png']);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe('a pack import that fails part-way', () => {
+  it('returns the files copied so far and names the one that failed', async () => {
+    const pack = path.join(tmp, 'P');
+    fs.mkdirSync(pack);
+    fs.writeFileSync(path.join(pack, 'a.png'), Buffer.concat([PNG, Buffer.from('a')]));
+    fs.writeFileSync(path.join(pack, 'b.png'), Buffer.concat([PNG, Buffer.from('b')]));
+    const real = fs.promises.copyFile;
+    const spy = vi.spyOn(fs.promises, 'copyFile').mockImplementation(async (from, to, mode) => {
+      if (String(from).endsWith('b.png')) throw new Error('disk full');
+      return real(from, to, mode);
+    });
+    try {
+      const r = await importPack(pack, library, [''], { onProgress: () => undefined, cancelled: () => false });
+      expect(r.files.map((f) => f.name)).toEqual(['a.png']);
+      expect(r.failed).toBe('b.png');
+      expect(fs.readdirSync(library)).toEqual(['a.png']);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -82,16 +82,49 @@ export async function addBytesToLibrary(library: string, fileName: string, bytes
   await fs.promises.mkdir(library, { recursive: true });
   const existing = await sameContent(library, bytes.byteLength, once(async () => crypto.createHash('sha256').update(bytes).digest('hex')));
   if (existing) return { name: existing, reused: true };
-  const name = freeName(library, fileName);
-  // Written aside first: a crash leaves no half file in the library. `link` never replaces a file.
-  const tmp = path.join(library, `.${name}.tmp-drop`);
+  const tmp = tempPath(library);
   await fs.promises.writeFile(tmp, bytes);
+  return { name: await settle(library, tmp, fileName), reused: false };
+}
+
+/** A hidden file name in the library for a copy being written (random: imports may run at once). */
+function tempPath(library: string): string {
+  return path.join(library, `.dc-import-${crypto.randomUUID()}${TEMP_SUFFIX}`);
+}
+
+const TEMP_SUFFIX = '.tmp';
+
+/**
+ * Gives a finished copy its free name: linked (never replaces a file), or – where the volume has
+ * no hard links (exFAT, FAT, many network shares) – renamed after checking the name is free.
+ * The copy is never left half in the library, and the temporary file goes in either case.
+ */
+async function settle(library: string, tmp: string, fileName: string): Promise<string> {
+  const name = freeName(library, fileName);
+  const dest = path.join(library, name);
   try {
-    await fs.promises.link(tmp, path.join(library, name));
-  } finally {
-    await fs.promises.rm(tmp, { force: true });
+    await fs.promises.link(tmp, dest);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== 'ENOTSUP' && code !== 'EPERM' && code !== 'EXDEV' && code !== 'EOPNOTSUPP' && code !== 'ENOSYS') {
+      await fs.promises.rm(tmp, { force: true });
+      throw e;
+    }
+    if (fs.existsSync(dest)) {
+      await fs.promises.rm(tmp, { force: true });
+      throw new Error('The name was taken meanwhile');
+    }
+    await fs.promises.rename(tmp, dest);
+    return name;
   }
-  return { name, reused: false };
+  await fs.promises.rm(tmp, { force: true });
+  return name;
+}
+
+/** Temporary files a crashed import left in the library (hidden, so they never showed). */
+export async function sweepTemporary(library: string): Promise<void> {
+  const names = await fs.promises.readdir(library).catch(() => [] as string[]);
+  await Promise.all(names.filter((n) => n.startsWith('.dc-import-') && n.endsWith(TEMP_SUFFIX)).map((n) => fs.promises.rm(path.join(library, n), { force: true })));
 }
 
 const KEY = /^[a-f0-9]{16,64}$/;
@@ -226,15 +259,14 @@ class LibraryIndex {
 
 /** Copies a file in under a free name: aside first, then linked, so a crash or cancel leaves no half file. */
 async function copyIn(library: string, src: string, fileName: string): Promise<string> {
-  const name = freeName(library, fileName);
-  const tmp = path.join(library, `.${name}.tmp-copy`);
-  await fs.promises.copyFile(src, tmp);
+  const tmp = tempPath(library);
   try {
-    await fs.promises.link(tmp, path.join(library, name));
-  } finally {
+    await fs.promises.copyFile(src, tmp);
+  } catch (e) {
     await fs.promises.rm(tmp, { force: true });
+    throw e;
   }
-  return name;
+  return settle(library, tmp, fileName);
 }
 
 export interface PackFile {
@@ -255,26 +287,37 @@ export interface PackRun {
  * Copies the asset files of the chosen folders (only folders the scan found) into the flat
  * library, one by one: an equal file is reused, a taken name gets a free one.
  */
-export async function importPack(dir: string, library: string, chosen: readonly string[], run: PackRun): Promise<PackFile[]> {
+/**
+ * Copies the asset files of the chosen folders; on an error it stops and says which file failed –
+ * the files copied before it are returned (they are in the library).
+ */
+export async function importPack(dir: string, library: string, chosen: readonly string[], run: PackRun): Promise<{ files: PackFile[]; failed: string | null }> {
   const { folders, files } = await walkPack(dir);
   const known = new Set(folders.map((f) => f.path));
   for (const f of chosen) if (!known.has(f)) throw new Error('Not a folder of the pack');
   const wanted = new Set(chosen);
   const todo = files.filter((f) => wanted.has(f.folder)).sort((a, b) => (a.packPath < b.packPath ? -1 : 1));
   await fs.promises.mkdir(library, { recursive: true });
+  await sweepTemporary(library);
   const index = await LibraryIndex.load(library);
   const out: PackFile[] = [];
   for (const f of todo) {
     if (run.cancelled()) break;
-    const hash = once(() => sha256(f.abs));
-    const existing = await index.find(f.size, hash);
-    if (existing) out.push({ packPath: f.packPath, name: existing, reused: true });
-    else {
-      const name = await copyIn(library, f.abs, path.basename(f.abs));
-      index.note(name, f.size, await hash());
-      out.push({ packPath: f.packPath, name, reused: false });
+    let hashed: string | null = null;
+    const hash = once(async () => (hashed = await sha256(f.abs)));
+    try {
+      const existing = await index.find(f.size, hash);
+      if (existing) out.push({ packPath: f.packPath, name: existing, reused: true });
+      else {
+        const name = await copyIn(library, f.abs, path.basename(f.abs));
+        // Hashed only when an equal size made it necessary: no second read of every new file.
+        index.note(name, f.size, hashed ?? undefined);
+        out.push({ packPath: f.packPath, name, reused: false });
+      }
+    } catch {
+      return { files: out, failed: f.packPath };
     }
     run.onProgress(out.length, todo.length, f.packPath);
   }
-  return out;
+  return { files: out, failed: null };
 }

@@ -501,6 +501,7 @@ export const en = {
   'log.mapToTv': 'Map changes put on the TV',
   'tv.mapPending': 'The map of the scene on the TV has changed. The TV still shows it as before.',
   'tv.mapApply': 'On the TV',
+  'log.tabNotRestored': '"{name}" could not be opened again (its file is missing)',
   'log.layerOn': 'Layer "{name}" on',
   'log.layerOff': 'Layer "{name}" off',
   'log.effectPlayed': 'Effect "{name}" played',

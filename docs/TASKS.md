@@ -366,7 +366,7 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 
 - **DC-030, DC-031, DC-032** – gehen in DC-091 bis DC-095 auf.
 - **DC-033 Sessions und Unterszenen** im Browser (T-152, T-160a/b).
-- ◐ **DC-034 Dokument-Tabs** für offene Szenen/Karten, „Szene auf den TV“ nur auf Befehl; Kartenänderungen an
+- ✓ **DC-034 Dokument-Tabs** für offene Szenen/Karten, „Szene auf den TV“ nur auf Befehl; Kartenänderungen an
   der Szene auf dem TV erst nach Bestätigung (E-25, E-30; T-223a/b, T-134b). Schritte: 1. Sitzungen je Dokument
   (Szene, Karten-/Szenendatei, Rückgängig, Speichern) und die Tab-Leiste für Szenen; 2. TV per Befehl, TV-Szene im
   Hintergrund, Rückfrage im Orchestrator, Schließen der TV-Szene; 3. Karten-Tabs und „Auf den TV übernehmen“;
@@ -390,6 +390,10 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Stelle. Kartenänderungen an der Karte der TV-Szene (in deren Tab oder einem Karten-Tab derselben Karte) zeigt der
   TV erst nach „Auf den TV übernehmen“ (Hinweis unten rechts, Protokolleintrag); Szenenänderungen gehen sofort
   hin. Tabs haben eine Mindestbreite, die Leiste scrollt.
+  Erledigt (Schritt 4): Offene Tabs, der gezeigte Tab und die TV-Szene werden je Kampagne als Geräte-Einstellung
+  gemerkt (bei jedem Speichern, auch nur nach einem Tab-Wechsel) und beim Öffnen der Kampagne in ihrer Reihenfolge
+  wiederhergestellt; fehlende Szenen/Karten bleiben zu (Protokolleintrag). Nach dem Öffnen ist der TV geschwärzt,
+  bis der DM „Szene auf den TV“ wählt oder die Schwärzung aufhebt.
 - **DC-034b Kreaturen als Tabs** (E-30), **DC-034c Assets als Tabs**, **DC-034d Notizen und Handouts als Tabs** –
   auf der Tab-Leiste aus DC-034.
 - **DC-035 Papierkorb-Ansicht** mit Wiederherstellen (ohne Überschreiben) und „Papierkorb leeren“ von Hand; kein

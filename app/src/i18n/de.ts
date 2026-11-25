@@ -501,6 +501,7 @@ export const de: Partial<Record<MessageKey, string>> = {
   'log.mapToTv': 'Kartenänderungen auf den TV übernommen',
   'tv.mapPending': 'Die Karte der Szene auf dem TV wurde geändert. Der TV zeigt sie noch wie vorher.',
   'tv.mapApply': 'Auf den TV übernehmen',
+  'log.tabNotRestored': '„{name}“ ließ sich nicht wieder öffnen (die Datei fehlt)',
   'log.layerOn': 'Ebene „{name}“ an',
   'log.layerOff': 'Ebene „{name}“ aus',
   'log.effectPlayed': 'Effekt „{name}“ abgespielt',

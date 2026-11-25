@@ -23,6 +23,7 @@ import {
 } from '../platform/bridge';
 import { emptyScene } from '../core/emptyScene';
 import type { MessageKey } from '../i18n/en';
+import { loadOpenTabs, saveOpenTabs, type OpenTabs } from './openTabs';
 import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
@@ -261,6 +262,58 @@ export async function trashCampaign(slug: string): Promise<void> {
   await trashCampaignFolder(slug);
 }
 
+/**
+ * Opens the tabs kept for this campaign on this device (E-30) again – scenes and maps that are
+ * gone are left out – and shows the tab and puts the scene on the TV that were so before.
+ */
+async function restoreTabs(slug: string): Promise<void> {
+  const kept = loadOpenTabs(storage(), recentKey(slug));
+  if (!kept) return;
+  restoring = true;
+  try {
+    await reopen(kept);
+  } finally {
+    restoring = false;
+  }
+  keepTabs();
+}
+
+/** While the kept tabs open again, the half-opened state is not kept. */
+let restoring = false;
+
+async function reopen(kept: OpenTabs): Promise<void> {
+  const ws = state.ws;
+  for (const tab of kept.tabs) {
+    if (isSceneOpen(tab.id)) continue;
+    try {
+      if (tab.kind === 'map') await openMapTab(tab.id.slice('map:'.length));
+      else if (state.scenes.includes(tab.id)) await loadScene(tab.id);
+      else log('log.tabNotRestored', { name: tab.name });
+    } catch {
+      // A map whose picture is gone stays closed; the DM learns which.
+      log('log.tabNotRestored', { name: tab.name });
+    }
+  }
+  // In the order they were (the campaign's own scene opened first); then back to where the DM was –
+  // opening a map switched to the Map Forge.
+  const order = new Map(kept.tabs.map((t, i) => [t.id, i]));
+  state.tabs = [...state.tabs].sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
+  state.ws = ws;
+  const shown = kept.active && isSceneOpen(kept.active) ? kept.active : state.tabs[0]?.id;
+  if (shown && shown !== state.activeTab) activateSession(shown);
+  else if (state.activeTab) {
+    const tab = state.tabs.find((x) => x.id === state.activeTab);
+    if (tab?.kind === 'map') state.ws = 'forge';
+    showLayer(layerFor(state.ws));
+  }
+  if (kept.tv && isSceneOpen(kept.tv) && !kept.tv.startsWith('map:')) setTvScene(kept.tv);
+}
+
+/** Keeps the open tabs and the TV's scene of the open campaign on this device. */
+function keepTabs(): void {
+  if (state.campaign && !restoring) saveOpenTabs(storage(), recentKey(state.campaign.slug), { tabs: state.tabs, active: state.activeTab, tv: state.tvScenePath });
+}
+
 function enterCampaign(ws?: WorkspaceId): void {
   state.home = false;
   state.notice = null;
@@ -351,6 +404,10 @@ async function loadCampaign(info: CampaignInfo): Promise<boolean> {
   if (manifest.activeScene) await loadScene(manifest.activeScene, tableFromManifest(manifest));
   else replaceScene(emptyScene({ ...state.scene.table, ...tableFromManifest(manifest) }), { resource: '', fileName: '', scenePath: null, sceneName: '' });
   await refreshSceneList();
+  await restoreTabs(info.slug);
+  // The TV is black until the DM releases it (E-30): nothing shows while the app is prepared.
+  state.scene.table.blackout = true;
+  state.blackUntilRelease = true;
   state.dirty = false;
   await refreshAudioFiles();
   remember(info.slug, manifest.name);
@@ -447,7 +504,15 @@ export async function switchScene(scenePath: string): Promise<void> {
 
 /** Puts an open scene on the TV (E-30); the soundboard plays its ambience. */
 export async function putOnTv(scenePath: string | null): Promise<void> {
-  if (scenePath === state.tvScenePath) return;
+  // Putting a scene on the TV releases it after the start (E-30).
+  if (scenePath && state.blackUntilRelease) {
+    state.blackUntilRelease = false;
+    state.scene.table.blackout = false;
+  }
+  if (scenePath === state.tvScenePath) {
+    emit();
+    return;
+  }
   await saveCampaign();
   setTvScene(scenePath);
   await applyTvAmbience();
@@ -472,6 +537,8 @@ export async function closeScene(scenePath: string): Promise<void> {
 }
 
 export async function saveCampaign(force = false): Promise<void> {
+  // The tabs are kept with every save, also when nothing else changed (a tab switched).
+  keepTabs();
   if (!state.campaign || state.saving || (!state.dirty && !force)) return;
   state.saving = true;
   emit();
@@ -577,6 +644,7 @@ export async function openMapTab(resource: string): Promise<void> {
   const id = mapTabId(resource);
   if (isSceneOpen(id)) {
     activateSession(id);
+    keepTabs();
     return;
   }
   const { map, url } = await mapOf(resource, await readDoc(mapSidecarPath(resource), 'map', MapSidecarSchema, { quiet: true }));
@@ -587,6 +655,7 @@ export async function openMapTab(resource: string): Promise<void> {
   const scene = sceneFromDocuments(map, null, url, tvSettings(), 'map');
   scene.table = { ...state.scene.table, centerX: scene.table.centerX, centerY: scene.table.centerY };
   replaceScene(scene, { resource, fileName: resource, scenePath: null, sceneName: map.name, docs: { map, scene: null }, mapTab: true });
+  keepTabs();
 }
 
 /** "New scene on this map" (E-30): a new scene on library map `resource`, with its walls, areas and lights. */

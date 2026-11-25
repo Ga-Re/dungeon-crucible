@@ -155,6 +155,8 @@ export interface AppState {
   tvScenePath: string | null;
   /** After switching tabs in the Orchestrator: "this scene on the TV?" waits for the DM's answer. */
   tvAsk: string | null;
+  /** The TV is black since the campaign was opened, until the DM puts a scene there or lifts the blackout (E-30). */
+  blackUntilRelease: boolean;
   /** The map of the TV's scene was changed in the Map Forge: the TV keeps the map before, until "on the TV" (E-30). */
   tvMapPending: boolean;
   /** The Asset Vault: catalog, filter, selection (E-27, DC-040). */
@@ -239,6 +241,7 @@ function initial(): AppState {
     tvScenePath: null,
     tvAsk: null,
     tvMapPending: false,
+    blackUntilRelease: false,
     vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null },
     soundboard: initialSoundboard(),
   };
@@ -2180,6 +2183,8 @@ export function rotateTable(): void {
 
 export function toggleBlackout(): void {
   state.scene.table.blackout = !state.scene.table.blackout;
+  // Lifting the blackout releases the TV after the start (E-30).
+  if (!state.scene.table.blackout) state.blackUntilRelease = false;
   emit();
 }
 

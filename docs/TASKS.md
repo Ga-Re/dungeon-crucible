@@ -33,6 +33,14 @@ Geklärt im Interview mit dem DM (Skill `topic-interviewer`). „Wie DM“ heiß
 | E-13 | Begleit-Webseite | Keine App: Spieler und DM scannen einen **QR-Code** und öffnen eine synchronisierte **Webseite, die der Rechner im WLAN ausliefert** (offline, nichts verlässt den Raum). Spätere Stufe. | – |
 | E-14 | Notizen | **Markdown**, das mit **jedem Editor** funktioniert (Obsidian-kompatibel, aber nicht darauf angewiesen). | DM: Obsidian im Fokus |
 | E-15 | Hardware | **Licht-Hardware** und **Kamera-Erkennung** werden als spätere Stufen eingeplant. | – |
+| E-16 | Kartenschmiede | Die Kartenschmiede bearbeitet die **globale Karte** (Wände, Bereiche, Lichter, Raster); alle Szenen auf ihr erhalten die Änderung. Szenen-Overrides entstehen nur im Atlas/Orchestrator. | – |
+| E-17 | Startzustand bis zum Atlas | Bis es den Kampagnen-Atlas gibt, wird der Startzustand im **Orchestrator per Schalter** „Startzustand bearbeiten“ bearbeitet (Nebel, Tokens, Türen, Lichter wirken dann auf den Start); später zieht das in den Atlas um. | Übergangslösung |
+| E-18 | Ebenen | **Stockwerke** (eigenes Bild gleicher Größe, eigener Nebel, Freigabe auf dem TV) **und Zeichenebenen** (Wände, Bereiche, Props, Lichter … mit Sichtbarkeit und Sperre beim Bearbeiten). | Zeichenebenen zusätzlich |
+| E-19 | TV außerhalb des Orchestrators | Der TV **läuft weiter** mit der Szene, die auf ihm ist; Pause nur per Knopf. Keine Einstellung dafür. | DM: Einstellung |
+| E-20 | Gegenstände | Vorerst **nur im Handout-Stil** auf dem TV eingeblendet; kein eigenes Item-/Beute-System. | DM: Item-Karten (offen) |
+| E-21 | Papierkorb | Nur **von Hand** leeren (Ansicht mit Wiederherstellen und Leeren); nichts verschwindet automatisch. | DM: 30 Tage automatisch |
+| E-22 | Vorschau auf zusätzlichem Monitor | **Umschaltbar**: folgt der TV-Drehung oder immer aufrecht. | – |
+| E-23 | Arbeitsweise | **Sammel-Branch** je Thema, ein PR am Ende, der DM gibt den Merge frei. Nachfragen bei Abhängigkeiten, Dateiformat/Ordnern, Abweichungen vom Plan, Sicherheit und wenn etwas nicht ganz klar ist. Regeln in `CLAUDE.md`; Skills `topic-interviewer`, `next-task`, `finish-task`, `ui-design` und Agent `reviewer` in `.claude/`. | DM: PR je Task, Agent merged selbst |
 
 **Bleibt aus Dungeon Crucible:** Pergament als drittes Theme, das eigene Docking mit echten Fenstern und
 Hover-Flyout (statt dockview und Kanten-Leisten), Export/Import ganzer Kampagnen als Archiv – beim Export wählbar:
@@ -187,7 +195,8 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   (DC-093b), Tags in der Oberfläche bearbeiten (kommt mit DC-011), Papierkorb wiederherstellen (DC-035).
 - **DC-094 Karte/Szene mit Overrides** (E-2): Szene = Kartenverweis + Overrides je Element-ID + Zustand;
   `resolveMap`; verwaiste Overrides melden; Kartenänderung an einer TV-Szene erst nach Bestätigung.
-- **DC-095 Start- und Spielzustand** (E-3): getrennt speichern, „Szene zurücksetzen“, Nebel-Startzustand.
+- **DC-095 Start- und Spielzustand** (E-3): getrennt speichern, „Szene zurücksetzen“, Nebel-Startzustand;
+  bearbeitet im Orchestrator per Schalter „Startzustand bearbeiten“ (E-17).
 - **DC-096 Spielercharaktere** (E-1): global in der Bibliothek, Kampagne führt Spieler und verknüpft Figuren.
 - ✓ **DC-097 Archiv-Export mit Schalter**: nur Kampagne oder vollständig mit Bibliotheksdateien; Import legt
   Bibliotheksdateien ab (gleicher Inhalt wird nicht kopiert, Namenskonflikte bei Karten/Audio werden umbenannt und
@@ -218,11 +227,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   (T-108c1, T-260); Begriff „Bereich“ (T-262); „Bereich anlegen“ als Befehls-Panel (E-6).
 - **DC-014 Wände bearbeiten**: auswählen, Endpunkte verschieben, löschen, Ketten; Objekte als Polygon; Einweg-Wände
   (Klippen/Galerien) und Deckung (T-193).
-- **DC-015 Assets und Ebenen** – siehe 3.5 (Props) und DC-020 (Stockwerke); „Ebenen“ im Sinne von Zeichenebenen
-  mit Sichtbarkeit ist zu klären.
+- **DC-015 Assets und Ebenen** – Props siehe DC-041, Stockwerke DC-020, Zeichenebenen DC-101 (E-18).
 
 ### 3.3 Kartenschmiede (weiter)
 
+- **DC-101 Zeichenebenen** (E-18): Wände, Bereiche, Props, Lichter, Tokens … als Ebenen im Browser mit
+  Sichtbarkeit und Sperre beim Bearbeiten.
 - **DC-020 Ebenen (Stockwerke)**: anlegen, umbenennen, eigenes Bild gleicher Größe, Arbeitsebene vs. TV-Ebene,
   Freigabe, Nebel je Ebene (T-118a/c/d).
 - **DC-021 Rastereinmessung per N×N-Box** statt 3-Punkt, als Befehls-Panel; Raster verschieben; Schwenken während
@@ -240,7 +250,8 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - **DC-030, DC-031, DC-032** – gehen in DC-091 bis DC-095 auf.
 - **DC-033 Sessions und Unterszenen** im Browser (T-152, T-160a/b).
 - **DC-034 Dokument-Tabs** für offene Szenen/Karten, „Szene auf den TV“ nur auf Befehl (T-223a/b).
-- **DC-035 Papierkorb** mit Wiederherstellen und Leeren nach 30 Tagen (T-120, T-122, T-123).
+- **DC-035 Papierkorb-Ansicht** mit Wiederherstellen (ohne Überschreiben) und „Papierkorb leeren“ von Hand; kein
+  automatisches Löschen (E-21; T-122).
 - **DC-036 Konfliktkopien und Platzhalter** von Cloud-Sync erkennen (T-103a).
 - **DC-037 Notizen als Markdown** für jeden Editor (Obsidian-kompatibel), im Browser und Detail-Panel
   (T-161a/b, T-163).
@@ -271,11 +282,13 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   (T-106d).
 - **DC-055 TV-Ausschnitt im DM-Fenster ziehen, Rasterlinien auf dem TV** (T-106b/c).
 - **DC-056 Szenenübergänge** (Überblenden, durch Schwarz, sofort), Vorladen (T-135, später T-147).
-- **DC-057 Pause- und Titelbild**, Einstellung „TV außerhalb des Orchestrators“ (T-175).
+- **DC-057 Pause- und Titelbild** per Knopf; der TV läuft außerhalb des Orchestrators weiter (E-19; T-175).
 - **DC-058 Szenenleiste** mit Vorbereitung der nächsten Szene, Gruppenübersicht (T-182).
-- **DC-059 Handouts auf dem TV** und Generator, Kartenfragmente (T-137–139).
+- **DC-059 Handouts auf dem TV** und Generator, Kartenfragmente; Gegenstände vorerst als Handout (E-20)
+  (T-137–139).
 - **DC-060 Würfel auf dem TV**, Würfe für viele Ziele (T-211, T-222).
 - **DC-061 Videokarten synchron, Render-Auflösung, kein Webview-Kontextmenü** (T-128, T-116, T-239).
+- **DC-102 Vorschau-Drehung umschaltbar** (E-22): Knopf an der Vorschau – folgt der TV-Drehung oder immer aufrecht.
 - **DC-062 Zaubereffekte animiert, dauerhafte Effekte mit Konzentration** (SPEC §7).
 
 ### 3.7 Oberfläche
@@ -298,15 +311,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - **DC-082 Licht-Hardware**: Home Assistant, WLED, Hue, Govee/Nanoleaf; Zonen mit Rollen, Szenenlicht, Effekte,
   Ambilight, Fotosensibilitäts-Modus (SPEC §10, E-15).
 - **DC-083 Kamera-Erkennung** der Miniaturen mit ArUco (SPEC §5.1, E-15).
-- **DC-084 Zufallsgeneratoren, Kalender, Wetter, Session-Log mit Rückblick, Gegenstände und Beute** (T-186, T-188,
-  T-214, T-218–221).
+- **DC-084 Zufallsgeneratoren, Kalender, Wetter, Session-Log mit Rückblick** (T-186, T-188, T-218–221);
+  Gegenstände nur als Handouts (E-20).
 - **DC-085 Musik-Playlists und Mixer** im Soundboard ergänzen (T-187); Tabletop-Audio-Import.
 
 ---
 
 ## 4. Offene Punkte
 
-- Ob „Ebenen“ in der Kartenschmiede auch Zeichenebenen mit Sichtbarkeit meint oder nur Stockwerke (DC-015).
-- Aus dem Dungeon-Manager noch offen und hier zu klären, sobald die Tasks drankommen: Gegenstände global oder je
-  Kampagne; Standard für „TV außerhalb des Orchestrators“ (T-175); ob die Vorschau auf dem zweiten DM-Monitor der
-  TV-Drehung folgt (T-133).
+Derzeit keine. Neue Fragen werden mit `/topic-interviewer` geklärt und als E-… in Abschnitt 1 eingetragen.

@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { sceneIssues, type ElementChange } from '../core/persistence';
 import { cellsVisibleOnTable, pixelsPerInch, ppiCorrectionFromMeasurement } from '../core/grid';
 import { FOG_BIOMES, type TableRotation, type Wall, type WallKind } from '../core/scene';
 import { abilityModifier, ABILITIES, CONDITIONS, evaluateEncounter, proficiencyBonusForCr, proficiencyBonusForLevel, xpForCr, type ChallengeRating } from '../core/rules/rules2024';
@@ -13,7 +14,7 @@ import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
+  cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { importMapIntoCampaign, switchScene } from '../app/campaign';
@@ -116,6 +117,7 @@ export function BrowserPanel() {
         </li>}
       </ul>
       {selZone && <ZoneActions id={selZone} />}
+      {ws !== 'forge' && <SceneChanges />}
       {ws !== 'forge' && <>
       <div className="sec" style={{ marginTop: 12 }}>{t('browser.creatures')}</div>
       <ul className="tree">
@@ -209,6 +211,64 @@ function ZoneActions({ id }: { id: string }) {
         <button className="btn sm" onClick={() => revealZone(id)}><Icon name="room" />{t('tool.revealRoom')}</button>
       )}
     </div>
+  );
+}
+
+/**
+ * The scene's changes of the map (DC-103): hidden, changed and scene-own elements with "show
+ * again" / "reset to map", and the changes that no longer fit the map, with "clean up".
+ */
+function SceneChanges() {
+  const { t } = useI18n();
+  const changes = useStore(() => currentChanges());
+  const scene = useStore((s) => s.scene);
+  const mapDoc = useStore((s) => s.mapDoc);
+  const sceneDoc = useStore((s) => s.sceneDoc);
+  const [confirm, setConfirm] = useState(false);
+  const issues = useMemo(() => (mapDoc && sceneDoc ? sceneIssues(mapDoc, sceneDoc) : { orphaned: [], invalid: [] }), [mapDoc, sceneDoc]);
+  const stale = [...issues.orphaned, ...issues.invalid];
+  if (changes.length === 0 && stale.length === 0) return null;
+  const nameOf = (c: ElementChange): string => {
+    if (c.kind === 'zones') return [...scene.zones, ...scene.hidden.zones].find((z) => z.id === c.id)?.name ?? c.id;
+    if (c.kind === 'lights') return t('changes.light');
+    const w = [...scene.walls, ...scene.hidden.walls].find((x) => x.id === c.id);
+    return w ? t(`wall.kind.${w.kind}` as MessageKey) : c.id;
+  };
+  return (
+    <>
+      <div className="sec" style={{ marginTop: 12 }}>{t('changes.title')}</div>
+      <ul className="tree">
+        {changes.map((c) => (
+          <li key={c.id}>
+            <div className="tn">
+              <Icon name={c.kind === 'walls' ? 'wall' : c.kind === 'zones' ? 'zone' : 'light'} />
+              <span className="nm">{nameOf(c)}</span>
+              <span className="meta">{t(`changes.${c.status}` as MessageKey)}</span>
+              {c.status === 'hidden' && <button className="ab-btn" title={t('changes.show')} aria-label={`${t('changes.show')}: ${nameOf(c)}`} onClick={() => toggleHidden(c.id)}><Icon name="eye" /></button>}
+              {c.status === 'changed' && <button className="ab-btn" title={t('changes.reset')} aria-label={`${t('changes.reset')}: ${nameOf(c)}`} onClick={() => resetToMap(c.id)}><Icon name="reset" /></button>}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {stale.length > 0 && (
+        <div className="library-confirm" role="status">
+          <p>{t('changes.orphaned', { n: stale.length })}</p>
+          <p className="hint">{t('changes.orphanedHint')}</p>
+          <p className="hint mono">{stale.join(', ')}</p>
+          {confirm ? (
+            <>
+              <p>{t('changes.cleanUpConfirm', { n: stale.length })}</p>
+              <div className="library-buttons">
+                <button className="btn sm danger" onClick={() => { cleanUpOrphans(); setConfirm(false); }}>{t('changes.cleanUp')}</button>
+                <button className="btn sm" onClick={() => setConfirm(false)}>{t('start.cancel')}</button>
+              </div>
+            </>
+          ) : (
+            <div className="library-buttons"><button className="btn sm" onClick={() => setConfirm(true)}><Icon name="trash" />{t('changes.cleanUp')}</button></div>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 

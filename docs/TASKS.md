@@ -201,8 +201,23 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   (ohne Tokens, mit Start-Nebel), jeder andere Arbeitsbereich die Szene; der TV zeigt in der Schmiede weiter die
   Szene; verwaiste oder ungültige Overrides werden beim Öffnen gemeldet und bleiben in der Datei. Die Bestätigung
   vor dem Übernehmen auf den TV kommt mit DC-034 (E-25).
-- **DC-103 Overrides bearbeiten**: je Element „Auf Karte zurücksetzen“, verwaiste Overrides anzeigen und aufräumen,
-  Kennzeichnung geänderter Elemente im Orchestrator (T-145).
+- ✓ **DC-103 Overrides bearbeiten**: je Element „Auf Karte zurücksetzen“, verwaiste Overrides anzeigen und aufräumen,
+  Kennzeichnung geänderter Elemente im Orchestrator (T-145). DM-Entscheidungen (2026-11-25): Eine Szene kann
+  Kartenelemente (Wände, Türen, Bereiche, Lichter) nur **ein- und ausblenden** – beim Vorbereiten
+  („Startzustand bearbeiten“, später im Atlas) wirkt es auf den Start, im Spiel auf den Spielzustand; „Szene
+  zurücksetzen“ übernimmt den Start (vorbereitet Ausgeblendetes bleibt weg, im Spiel Ausgeblendetes kommt
+  zurück). Gespeichert als Liste `hidden` im Spielzustand und im Block `start`; Szene wird Version 4, alte
+  `{ hidden: true }`-Overrides werden migriert. Kennzeichnung im Browser und auf der Karte; „Auf Karte
+  zurücksetzen“ für geänderte Elemente; verwaiste Änderungen als Hinweis im Browser mit „Aufräumen“
+  (Bestätigung, rückgängig machbar).
+  Erledigt: Szenendatei Version 4 mit `hidden` im Spielzustand und im Start (Migration der alten Overrides);
+  ausgeblendete Elemente liegen zur Laufzeit getrennt, Sicht, Licht und TV sehen sie nicht, ein ausgeblendeter
+  geheimer Bereich bleibt für die Nebel-Werkzeuge gesperrt. Werkzeug „Ein-/ausblenden“ (Menüband Spiel › Szene):
+  Klick auf Wand, Tür, Bereich oder Licht blendet aus oder wieder ein, rückgängig machbar; beim Bearbeiten des
+  Startzustands wirkt es auf den Start. Auf der Karte: Ausgeblendetes gestrichelt und blass, Geändertes mit
+  gelber Raute. Browser: Gruppe „In dieser Szene angepasst“ mit „Wieder einblenden“ bzw. „Auf Karte
+  zurücksetzen“, Hinweis auf verwaiste/ungültige Änderungen mit IDs und „Aufräumen“ (Bestätigung, rückgängig
+  machbar); verwaiste ausgeblendete IDs bleiben beim Speichern erhalten, bis aufgeräumt wird.
 - ✓ **DC-095 Start- und Spielzustand** (E-3): die Szenendatei hält neben dem Spielzustand einen Block `start`
   (Nebel, Tokens, Türen, Lichter, entdeckte Bereiche, Ambience); bearbeitet im Orchestrator per Schalter
   „Startzustand bearbeiten“ (E-17, Hinweis auf der Karte; der TV zeigt weiter das Spiel). „Szene zurücksetzen“

@@ -6,7 +6,7 @@ import type { Point } from '../core/geometry';
 import type { GridBox } from '../core/grid';
 import { labelPoint } from '../core/areas';
 import type { Polygon } from '../core/poly/types';
-import type { Scene, Wall, WallKind } from '../core/scene';
+import type { HiddenElements, Scene, Wall, WallKind } from '../core/scene';
 import type { ViewerVision } from '../core/vision';
 import { drawTemplate, hexToRgba, type TemplateLike } from './shared';
 
@@ -26,6 +26,8 @@ export interface OverlayState {
   selectedWallIds: readonly string[];
   /** "Draw walls": the pieces drawn so far and the one following the pointer. */
   wallDraft: { kind: WallKind; walls: readonly Omit<Wall, 'id'>[]; next: { a: Point; b: Point } | null } | null;
+  /** Elements whose fields this scene changed (DC-103): marked for the DM. */
+  changed: ReadonlySet<string>;
   /** Where dragged wall ends are right now. */
   wallEnds: Point | null;
   brush: { p: Point; r: number } | null;
@@ -131,6 +133,13 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
       drawEnd(g, next.b.x, next.b.y, px, true);
     }
   }
+
+  // Elements hidden in this scene: faint and dashed, so the DM can find and show them again.
+  drawHidden(g, scene.hidden, px);
+  // Changed elements: a small marker.
+  for (const w of scene.walls) if (o.changed.has(w.id)) drawChangedMark(g, (w.x1 + w.x2) / 2, (w.y1 + w.y2) / 2, px);
+  for (const z of scene.zones) if (o.changed.has(z.id)) { const at = labelOf(z.shape); drawChangedMark(g, at.x - 8 * px, at.y + 6 * px, px); }
+  for (const l of scene.lights) if (o.changed.has(l.id)) drawChangedMark(g, l.x + cell * 0.25, l.y - cell * 0.25, px);
 
   // Light sources: an icon, and their bright/dim radii in the forge or when selected.
   for (const l of scene.lights) {
@@ -425,5 +434,45 @@ function drawEnd(g: CanvasRenderingContext2D, x: number, y: number, px: number, 
     g.fill();
     g.stroke();
   }
+  g.restore();
+}
+
+/** Elements hidden in a scene (DC-103): faint, dashed outlines for the DM only. */
+function drawHidden(g: CanvasRenderingContext2D, h: HiddenElements, px: number): void {
+  g.save();
+  g.globalAlpha = 0.55;
+  g.strokeStyle = 'rgba(200,200,210,.9)';
+  g.lineWidth = 2 * px;
+  g.setLineDash([5 * px, 5 * px]);
+  for (const z of h.zones) g.stroke(areaPath(z.shape));
+  g.beginPath();
+  for (const w of h.walls) {
+    g.moveTo(w.x1, w.y1);
+    g.lineTo(w.x2, w.y2);
+  }
+  g.stroke();
+  for (const l of h.lights) {
+    g.beginPath();
+    g.arc(l.x, l.y, 9 * px, 0, Math.PI * 2);
+    g.stroke();
+  }
+  g.restore();
+}
+
+/** A small diamond: this element differs from the map in this scene. */
+function drawChangedMark(g: CanvasRenderingContext2D, x: number, y: number, px: number): void {
+  const r = 5 * px;
+  g.save();
+  g.fillStyle = '#e2a03c';
+  g.strokeStyle = 'rgba(0,0,0,.75)';
+  g.lineWidth = 1.5 * px;
+  g.beginPath();
+  g.moveTo(x, y - r);
+  g.lineTo(x + r, y);
+  g.lineTo(x, y + r);
+  g.lineTo(x - r, y);
+  g.closePath();
+  g.fill();
+  g.stroke();
   g.restore();
 }

@@ -75,7 +75,7 @@ describe('reading version 1 files', () => {
     expect(r.value.zones[0]).toEqual({ id: 'vault', name: 'Vault', shape: [rectPolygon(10, 10, 30, 30)], secret: true, color: '#ffffff' });
   });
 
-  it('a scene with area overrides and own areas is read as version 2', async () => {
+  it('a scene with area overrides and own areas is read as the current version', async () => {
     const { readDocument } = await import('./documents');
     const { SceneOverrideSchema } = await import('./sidecar');
     const v1 = { kind: 'scene', schemaVersion: 1, name: 'S', mapSidecar: 'library/crypt.webp.dm.json', fog: { revealed: [], remembered: [] },
@@ -84,7 +84,9 @@ describe('reading version 1 files', () => {
     const r = readDocument('scene', SceneOverrideSchema, JSON.stringify(v1));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.value.overrides).toEqual({ hall: { shape: [rectPolygon(0, 0, 5, 5)], secret: true }, 'wall-a': { hidden: true } });
+    expect(r.value.overrides).toEqual({ hall: { shape: [rectPolygon(0, 0, 5, 5)], secret: true } });
+    // Version 4 keeps hiding as state (DC-103).
+    expect(r.value.hidden).toEqual(['wall-a']);
     expect(r.value.added.zones[0]).toMatchObject({ id: 'rubble', shape: [rectPolygon(1, 1, 3, 3)], secret: false });
   });
 });

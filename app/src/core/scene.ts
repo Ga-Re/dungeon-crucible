@@ -156,10 +156,23 @@ export interface MapAssetPlacement {
 /** Catalog defaults of a map that has none yet. */
 export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [] };
 
+/** Map elements hidden in a scene (DC-103): kept apart, so vision, light and the TV never see them. */
+export interface HiddenElements {
+  walls: Wall[];
+  zones: Zone[];
+  lights: LightSource[];
+}
+
+export function noHidden(): HiddenElements {
+  return { walls: [], zones: [], lights: [] };
+}
+
 export interface Scene {
   map: MapInfo;
   walls: Wall[];
   zones: Zone[];
+  /** Map elements this scene hides (none in the Map Forge). */
+  hidden: HiddenElements;
   tokens: Token[];
   templates: AreaTemplate[];
   pings: Ping[];

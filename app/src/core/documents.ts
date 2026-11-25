@@ -21,7 +21,7 @@ export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' |
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
   map: 3,
-  scene: 3,
+  scene: 4,
   creature: 1,
   asset: 1,
   audio: 1,
@@ -49,6 +49,14 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
       return out;
     },
     2: (doc) => doc,
+    // Version 4: hiding is state of the start and of the play state (DC-103), no longer an override.
+    3: (doc) => {
+      const overrides = isRecord(doc['overrides']) ? doc['overrides'] : {};
+      const hidden = Object.keys(overrides).filter((k) => isRecord(overrides[k]) && overrides[k]['hidden'] === true);
+      const out: Raw = { ...doc, overrides: Object.fromEntries(Object.entries(overrides).filter(([k]) => !hidden.includes(k))), hidden };
+      if (isRecord(doc['start'])) out['start'] = { ...doc['start'], hidden };
+      return out;
+    },
   },
   creature: {},
   asset: {},

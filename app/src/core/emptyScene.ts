@@ -1,13 +1,14 @@
 /** The scene of a campaign that has no map yet: nothing to draw until a map is imported. */
 import { DEFAULT_GRID } from './grid';
 import { EMPTY_LEVEL_FOG } from './poly/fog';
-import { DEFAULT_TABLE, EMPTY_MAP_CATALOG, type Scene } from './scene';
+import { DEFAULT_TABLE, EMPTY_MAP_CATALOG, noHidden, type Scene } from './scene';
 
 export function emptyScene(table: Scene['table'] = DEFAULT_TABLE): Scene {
   return {
     map: { id: '', name: '', imageUrl: null, isVideo: false, widthPx: 0, heightPx: 0, grid: { ...DEFAULT_GRID }, biome: 'nebel', biomeStrength: 1, ...EMPTY_MAP_CATALOG, tags: [], pois: [], assets: [] },
     walls: [],
     zones: [],
+    hidden: noHidden(),
     tokens: [],
     templates: [],
     pings: [],

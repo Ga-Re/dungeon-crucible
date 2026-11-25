@@ -408,3 +408,11 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .picker-tile { display: flex; flex-direction: column; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--panel-2); cursor: grab; }
 .picker-tile:hover, .picker-tile:focus-visible { border-color: var(--sel); outline: none; }
 .picker-tile span { padding: 2px 4px; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Layers (E-28, DC-101) ---------- */
+.layer-list { margin-bottom: 10px; }
+.layer-list .ab-btn.off { color: var(--fg-faint); }
+.layer-list .ab-btn.on { color: var(--accent); }
+.layer-settings { margin: 2px 0 8px 22px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel-2); }
+.layer-settings .row { grid-template-columns: 100px 1fr; }
+.layer-active { cursor: pointer; }

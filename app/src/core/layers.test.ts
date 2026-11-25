@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readDocument } from './documents';
 import { DEFAULT_GRID } from './grid';
-import { activeLayers, drawOrder } from './layers';
+import { activeLayers, drawOrder, triggerChanges } from './layers';
 import { allPlacements, commitStart, mapSidecarFromScene, resetToStart, sceneFromDocuments, sceneIssues, sceneOverrideFromScene, startOf } from './persistence';
 import { MapSidecarSchema, SceneOverrideSchema, SCENE_VERSION, type MapSidecar, type SceneOverride } from './sidecar';
 
@@ -95,3 +95,30 @@ describe('drawing order', () => {
     expect(ids(drawOrder(map.assets, map.layers))).toEqual(['rock', 'rug', 'roof-1']);
   });
 });
+
+describe('trigger areas', () => {
+  const layers = [
+    { id: 'inside', name: 'In', height: 1, defaultActive: false, editorHidden: false, locked: false, trigger: { area: 'tent', leaveOff: true } },
+    { id: 'cellar', name: 'Cellar', height: 1, defaultActive: false, editorHidden: false, locked: false, trigger: { area: 'hatch', leaveOff: false } },
+  ];
+  const areas = new Map([
+    ['tent', [rect(0, 0, 100, 100)]],
+    ['hatch', [rect(200, 0, 300, 100)]],
+  ]);
+
+  it('switches a layer on when a character steps in, off when all have left (if set so)', () => {
+    let r = triggerChanges(layers, areas, [{ x: 50, y: 50 }], new Set());
+    expect(r).toEqual({ on: ['inside'], off: [], inside: new Set(['inside']) });
+    r = triggerChanges(layers, areas, [{ x: 60, y: 50 }], r.inside);
+    expect(r).toEqual({ on: [], off: [], inside: new Set(['inside']) });
+    r = triggerChanges(layers, areas, [{ x: 250, y: 50 }], r.inside);
+    expect(r).toEqual({ on: ['cellar'], off: ['inside'], inside: new Set(['cellar']) });
+    // The cellar stays on when they leave (leaveOff false).
+    r = triggerChanges(layers, areas, [{ x: 500, y: 500 }], r.inside);
+    expect(r).toEqual({ on: [], off: [], inside: new Set() });
+  });
+});
+
+function rect(x1: number, y1: number, x2: number, y2: number) {
+  return { outer: [[x1, y1], [x2, y1], [x2, y2], [x1, y2]] as [number, number][], holes: [] };
+}

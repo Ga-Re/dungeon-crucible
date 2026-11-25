@@ -331,9 +331,16 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 
 ### 3.3 Kartenschmiede (weiter)
 
-- ◐ **DC-101 Ebenen** (E-18, E-28): eigene Ebenen mit Sichtbarkeit im Editor, Sperre, Aktiv-Schalter je Szene,
-  Auslöse-Bereich, Gegenebene und Höhen-Level (Zeichenreihenfolge) – siehe E-28. Schritte: 1. Format (Karte V4,
-  Szene V6) und Core; 2. Bedienung in der Kartenschmiede; 3. Orchestrator (schalten, automatische Auslöser), TV.
+- ✓ **DC-101 Ebenen** (E-18, E-28): eigene Ebenen mit Sichtbarkeit im Editor, Sperre, Aktiv-Schalter je Szene,
+  Auslöse-Bereich, Gegenebene und Höhen-Level (Zeichenreihenfolge) – siehe E-28. Erledigt: Karte V4 und Szene V6
+  mit Migration (alte Dateien: alles auf der Grundebene „Karte“). Kartenschmiede: Ebenenliste im Browser mit
+  aktueller Ebene (neue Wände, Bereiche, Lichter und Assets landen darauf), Auge (im Editor ausblenden), Sperre,
+  Höher/Tiefer und Einstellungen (Name, Höhe, anfangs aktiv, Auslöse-Bereich mit „beim Verlassen aus“,
+  Gegenebene – gegenseitig, Löschen mit Rückfrage: Elemente gehen auf die Grundebene); „Ebene“-Auswahl in den
+  Eigenschaften von Wänden, Bereichen, Lichtern und Assets. Szene/Orchestrator: Häkchen „aktiv“ je Ebene (Start und
+  Spiel getrennt, Gegenebene schaltet mit), automatischer Auslöser beim Betreten eines Bereichs durch einen SC
+  (aus beim Verlassen, wenn eingestellt), Protokolleintrag. Elemente inaktiver Ebenen fehlen in Sicht, Licht und
+  TV-Projektion, werden aber nicht als ausgeblendet gespeichert; Assets werden nach Ebenenhöhe gezeichnet.
 - **DC-020 Ebenen (Stockwerke)**: anlegen, umbenennen, eigenes Bild gleicher Größe, Arbeitsebene vs. TV-Ebene,
   Freigabe, Nebel je Ebene (T-118a/c/d).
 - ✓ **DC-021 Rastereinmessung per N×N-Box** statt 3-Punkt, als Befehls-Panel; Raster verschieben; Schwenken während

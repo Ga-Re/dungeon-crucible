@@ -9,14 +9,14 @@ import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
 import type { InteriorTrigger } from '../core/sidecar';
-import { drawnPlacements, interiorChanges, interiorOf, interiorWalls } from '../core/interiors';
+import { drawnPlacements, footprintPolygon, interiorChanges, interiorOf, interiorWalls } from '../core/interiors';
 import { rotateAboutAnchor, scaleAboutAnchor, snapAnchored } from '../core/anchor';
 import { assetShapes, footprintOf, hitsPlacement, nextVariant, snapPlacement } from '../core/placement';
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
 import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision, type VisionExtras } from '../core/vision';
 import { placementCovers, placementLights } from '../core/cover';
-import { hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
+import { forgetIn, hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
 import { lockedAreas } from '../core/persistence';
 import { newId, slugId } from '../core/documents';
 import { chainOf, moveEnds, removeWalls, withoutDegenerate, type WallEnd } from '../core/walls';
@@ -323,6 +323,8 @@ function restore(snap: string): void {
   const walls = new Set(state.scene.walls.map((w) => w.id));
   state.selectedWallIds = state.selectedWallIds.filter((id) => walls.has(id));
   if (state.selectedAssetId && !editableAssets().some((a) => a.id === state.selectedAssetId)) state.selectedAssetId = null;
+  // Who is in which house as of this step (E-29): stepping back into a house is no new entering.
+  interiorInside = charactersInHouses();
   recomputeVision();
   state.canUndo = history.canUndo;
   state.canRedo = history.canRedo;
@@ -1059,6 +1061,9 @@ export interface AssetInfo {
 
 export function setAssetInfo(info: Record<string, AssetInfo>): void {
   state.assetInfo = info;
+  // Who is in which house needs the houses' sizes and triggers: a campaign opened before the
+  // library was read would otherwise count everyone inside as just entered on the first move.
+  interiorInside = charactersInHouses();
   // Masks and lights of placed assets may have changed (DC-108) – here and in the TV's view.
   viewVersion++;
   recomputeVision();
@@ -1105,9 +1110,12 @@ function charactersInHouses(): Set<string> {
 export function setInterior(id: string, on: boolean): void {
   const a = allPlacements(state.scene).find((x) => x.id === id);
   const info = a && state.assetInfo[a.assetPath];
-  if (state.layer === 'map' || !info?.interior || !!state.scene.interiorsOn[id] === on) return;
+  if (state.layer === 'map' || !a || !info?.interior || !!state.scene.interiorsOn[id] === on) return;
   checkpoint();
   state.scene.interiorsOn = { ...state.scene.interiorsOn, [id]: on };
+  // Inside is unexplored until seen from inside (DM decision 2026-11-25): seeing the roof from
+  // outside remembered the whole footprint, which would show the floor plan dimmed on the TV.
+  if (on) state.scene.fog = forgetIn(state.scene.fog, footprintPolygon(a, info.sizeCells, state.scene.map.grid));
   state.interiorAsks = state.interiorAsks.filter((x) => x.id !== id);
   log(on ? 'log.interiorOn' : 'log.interiorOff', { name: info.name });
   recomputeVision();

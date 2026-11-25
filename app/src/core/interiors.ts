@@ -9,6 +9,7 @@ import { toMap } from './cover';
 import type { Point } from './geometry';
 import type { GridConfig } from './grid';
 import { footprintOf, hitsPlacement } from './placement';
+import type { Polygon } from './poly/types';
 import type { MapAssetPlacement, Wall } from './scene';
 import type { AssetSidecar, InteriorTrigger } from './sidecar';
 
@@ -48,6 +49,13 @@ export function interiorWalls(placements: readonly Placed[], info: InteriorInfo,
     });
   }
   return out;
+}
+
+/** A placement's turned footprint as a polygon on the map. */
+export function footprintPolygon(p: Placed, size: { w: number; h: number } | undefined, grid: GridConfig): Polygon {
+  const s = size ?? { w: 1, h: 1 };
+  const corner = (x: number, y: number) => toMap(p, s, grid, [x, y]);
+  return { outer: [corner(0, 0), corner(s.w, 0), corner(s.w, s.h), corner(0, s.h)], holes: [] };
 }
 
 /** How far `q` is from the placement's turned footprint (0 inside). */

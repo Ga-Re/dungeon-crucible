@@ -476,6 +476,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Der Wechsel wird überblendet (DM-Fenster und TV). „DM sieht durch Dächer“ im Panel Nebel (Standard an): außen
   zeigt das DM-Fenster das Innenbild unter einem halb durchsichtigen Dach; der TV nie. Die Kartenschmiede zeigt
   Häuser immer von außen. Rückfrage nur beim Hineingehen; Verlassen schaltet ohne Rückfrage zurück.
+  Nach dem Review (DM-Entscheidung 2026-11-25): Das Innere gilt als unerforscht, bis es gesehen wird – beim
+  Umschalten auf innen vergisst der Nebel die Erinnerung auf der Hausfläche (vom DM Aufgedecktes bleibt). Außerdem:
+  Wand-Cache erkennt nachträglich ergänzte/geänderte Wände, Auslöser nach dem Laden der Bibliothek und nach
+  Rückgängig neu bestimmt, Überblendung in richtiger Zeichenreihenfolge, Zustände gelöschter Häuser werden nicht
+  gespeichert. „Verschlossen“ (E-29) gibt es noch nicht – auch nicht für gezeichnete Türen; kommt es, gilt es für
+  Asset-Türen mit.
 - ✓ **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
   Deckungsmaske eines Assets fest (Kreis oder Polygon auf dem Bild – Baum, Säule, Statue); ein platziertes Asset ist
   automatisch maskiert: Die Maske dreht und skaliert mit, sie wird nur am Asset geändert und gilt dann überall

@@ -34,4 +34,17 @@ describe('door assets', () => {
     expect(activateAsset(id)).toBe(true);
     expect(state.scene.assetDoorsOpen[`${id}:door`]).toBe(true);
   });
+
+  it('walls drawn after a door asset was placed count at once (the wall list changes in place)', () => {
+    setWorkspace('forge');
+    setAssetInfo(info);
+    placeAsset('library/door.png', { x: 300, y: 150 });
+    const before = sightWalls(state.scene).length;
+    state.scene.walls.push({ id: 'late', kind: 'wall', x1: 0, y1: 1500, x2: 100, y2: 1500 });
+    expect(sightWalls(state.scene)).toHaveLength(before + 1);
+    expect(sightWalls(state.scene).some((w) => w.id === 'late')).toBe(true);
+    // Moved to another layer in place: the cut pieces follow.
+    state.scene.walls.find((w) => w.id === 'w0')!.layer = 'roof';
+    expect(sightWalls(state.scene).filter((w) => w.id.startsWith('w0~')).every((w) => w.layer === 'roof')).toBe(true);
+  });
 });

@@ -77,7 +77,21 @@ export function cutForDoors(walls: readonly Wall[], doors: readonly Wall[]): Wal
   return out;
 }
 
-let cache: { walls: readonly Wall[]; key: string; out: readonly Wall[] } | null = null;
+/**
+ * The last result per wall list (the DM view and the TV each keep theirs). Walls are edited in
+ * place – pushed, opened, moved to another layer – so the key sums them up as well.
+ */
+const cache = new WeakMap<readonly Wall[], { key: string; out: readonly Wall[] }>();
+
+function wallsKey(walls: readonly Wall[]): string {
+  let sum = 0;
+  let rest = '';
+  for (const w of walls) {
+    sum += w.x1 * 3 + w.y1 * 5 + w.x2 * 7 + w.y2 * 11;
+    rest += `${w.kind[0]}${w.open ? 1 : 0}${w.layer ?? ''},`;
+  }
+  return `${walls.length}|${sum}|${rest}`;
+}
 
 /**
  * The walls sight and light use: the map's, cut open where asset doors lie, plus those doors.
@@ -94,9 +108,10 @@ export function wallsWithAssetDoors(
 ): readonly Wall[] {
   const doors = assetDoorWalls(placements, info, grid, open);
   if (!doors.length && !extra.length) return walls;
-  const key = JSON.stringify([doors, extra]);
-  if (cache && cache.walls === walls && cache.key === key) return cache.out;
+  const key = `${wallsKey(walls)}#${JSON.stringify([doors, extra])}`;
+  const hit = cache.get(walls);
+  if (hit?.key === key) return hit.out;
   const out = [...cutForDoors(walls, doors), ...doors, ...extra];
-  cache = { walls, key, out };
+  cache.set(walls, { key, out });
   return out;
 }

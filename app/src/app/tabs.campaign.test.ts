@@ -118,4 +118,20 @@ describe('scene tabs and the campaign files', () => {
     expect(state.tabs.map((t) => t.id)).toEqual([a, `creature:${lyra.id}`]);
     expect(state.creatureTab).toBe(`creature:${lyra.id}`);
   });
+
+  it('closing a creature tab elsewhere than in Creatures changes nothing else', async () => {
+    await newCampaign('C', true);
+    const a = state.scenePath!;
+    await newSceneOnMap('builtin:crypt');
+    const b = state.scenePath!;
+    await switchScene(a);
+    openCreatureTab(state.creatures[0].id);
+    const lyra = state.creatureTab!;
+    await showTab(a);
+    expect(state.ws).toBe('play');
+    await closeTab(lyra);
+    expect(state.ws).toBe('play');
+    expect(state.activeTab).toBe(a);
+    expect(state.tabs.map((t) => t.id)).toEqual([a, b]);
+  });
 });

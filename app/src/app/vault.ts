@@ -169,6 +169,12 @@ async function writeAsset(item: VaultItem, next: AssetSidecar): Promise<VaultIte
 async function updateAssets(paths: readonly string[], change: (a: AssetSidecar) => AssetSidecar): Promise<boolean> {
   const wanted = new Set(paths);
   const items = [...state.vault.items];
+  // An asset no longer in the catalog (removed, or from a newer app) cannot be written: said so.
+  if (paths.some((p) => !items.some((i) => i.relPath === p))) {
+    log('log.assetWriteFailed');
+    emit();
+    return false;
+  }
   let ok = true;
   try {
     for (let k = 0; k < items.length; k++) {
@@ -330,11 +336,18 @@ function putEditorAway(): void {
 export function openAssetEditor(relPath: string): void {
   const item = state.vault.items.find((i) => i.relPath === relPath);
   if (!item) return;
-  if (state.vault.editor?.relPath !== relPath) putEditorAway();
+  const shown = state.vault.editor?.relPath === relPath;
+  if (!shown) putEditorAway();
   const id = assetTabId(relPath);
   if (!state.tabs.some((x) => x.id === id)) state.tabs = [...state.tabs, { id, kind: 'asset', name: item.asset.name }];
   state.assetTab = id;
   if (state.ws !== 'vault') setWorkspace('vault');
+  // Already in the editor: it stays as it is, draft and all.
+  if (shown) {
+    state.vault.selected = [relPath];
+    emit();
+    return;
+  }
   const kept = state.vault.drafts[relPath];
   if (kept) {
     const { [relPath]: _k, ...rest } = state.vault.drafts;
@@ -372,10 +385,26 @@ export function setEditorTool(tool: EditorTool): void {
 /** OK: writes the asset's sidecar and returns to the catalog (the tab stays); on a failed write the editor stays open. */
 export async function saveAssetEditor(): Promise<void> {
   const e = state.vault.editor;
-  if (!e || !(await updateAssets([e.relPath], () => e.draft))) return;
+  if (!e || !(await updateAssets([e.relPath], (current) => withDraftChanges(current, e)))) return;
   state.vault.editor = null;
   state.assetTab = null;
   emit();
+}
+
+/**
+ * The asset as it is now with what the editor changed: only the fields the draft changed since it
+ * was opened – edits made meanwhile elsewhere (name, tags, collections in the Properties) stay.
+ */
+export function withDraftChanges(current: AssetSidecar, e: AssetEditor): AssetSidecar {
+  const base = JSON.parse(e.base) as Record<string, unknown>;
+  const draft = e.draft as Record<string, unknown>;
+  const next: Record<string, unknown> = { ...current };
+  for (const k of new Set([...Object.keys(base), ...Object.keys(draft)])) {
+    if (JSON.stringify(base[k]) === JSON.stringify(draft[k])) continue;
+    if (draft[k] === undefined) delete next[k];
+    else next[k] = draft[k];
+  }
+  return next as AssetSidecar;
 }
 
 /** "Back to the catalog": the editor goes back into its tab, its draft kept. */

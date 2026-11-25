@@ -398,11 +398,14 @@ async function loadCampaign(info: CampaignInfo): Promise<boolean> {
   // The tabs kept last time, read before anything opens (opening changes the tabs).
   const kept = loadOpenTabs(storage(), recentKey(info.slug));
   restoring = true;
+  let ok = false;
   try {
-    return await openFiles(info, kept);
+    ok = await openFiles(info, kept);
+    return ok;
   } finally {
     restoring = false;
-    if (state.campaign) keepTabs();
+    // A campaign that failed to open keeps the tabs kept for it.
+    if (ok) keepTabs();
   }
 }
 

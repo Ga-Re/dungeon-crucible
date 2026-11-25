@@ -262,4 +262,35 @@ describe('asset tabs', () => {
     closeAssetTab('library/oak.png');
     expect(state.tabs).toEqual([]);
   });
+
+  it('a click on the asset already in the editor keeps its draft; OK keeps edits made meanwhile in the Properties', async () => {
+    await refreshVault();
+    state.tabs = [];
+    openAssetEditor('library/oak.png');
+    updateEditorDraft((a) => ({ ...a, sizeCells: { w: 4, h: 4 } }));
+    openAssetEditor('library/oak.png');
+    expect(state.vault.editor!.draft.sizeCells).toEqual({ w: 4, h: 4 });
+    // Back to the catalog; the oak renamed in the Properties while its draft waits.
+    backToCatalog();
+    state.vault.selected = ['library/oak.png'];
+    await updateSelectedAssets((a) => ({ ...a, name: 'Old Oak' }));
+    openAssetEditor('library/oak.png');
+    await saveAssetEditor();
+    const saved = JSON.parse(files.get('library/oak.png.dm.json')!);
+    expect(saved).toMatchObject({ name: 'Old Oak', sizeCells: { w: 4, h: 4 } });
+    closeAssetTab('library/oak.png');
+  });
+
+  it('OK for an asset gone from the catalog keeps the editor open and says so', async () => {
+    await refreshVault();
+    state.tabs = [];
+    openAssetEditor('library/oak.png');
+    updateEditorDraft((a) => ({ ...a, sizeCells: { w: 2, h: 2 } }));
+    state.vault.items = state.vault.items.filter((i) => i.relPath !== 'library/oak.png');
+    const logged = state.log.length;
+    await saveAssetEditor();
+    expect(state.vault.editor?.relPath).toBe('library/oak.png');
+    expect(state.log.length).toBe(logged + 1);
+    closeAssetTab('library/oak.png');
+  });
 });

@@ -463,13 +463,18 @@ export function closeCreatureTab(id: string): DocTab | null {
   const i = state.tabs.findIndex((x) => x.id === id);
   if (i < 0) return null;
   state.tabs = state.tabs.filter((x) => x.id !== id);
-  if (state.creatureTab !== id) {
+  if (state.creatureTab !== id || state.ws !== 'creatures') {
+    if (state.creatureTab === id) state.creatureTab = null;
     emit();
     return null;
   }
   state.creatureTab = null;
   emit();
-  return state.tabs[Math.min(i, state.tabs.length - 1)] ?? null;
+  // The nearest creature tab takes its place – only in the Creatures workspace (nothing else changes).
+  if (state.ws !== 'creatures') return null;
+  const creatures = state.tabs.filter((x) => x.kind === 'creature');
+  const before = state.tabs.slice(0, i).filter((x) => x.kind === 'creature').length;
+  return creatures[Math.min(before, creatures.length - 1)] ?? null;
 }
 
 export function mapTabId(resource: string): string {
@@ -637,6 +642,9 @@ export function clearTabs(): void {
   state.activeTab = null;
   state.creatureTab = null;
   state.assetTab = null;
+  // Asset drafts belong to the campaign's tabs.
+  state.vault.editor = null;
+  state.vault.drafts = {};
   state.tvScenePath = null;
   state.tvAsk = null;
 }

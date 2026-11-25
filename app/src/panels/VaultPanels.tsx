@@ -50,14 +50,15 @@ export function VaultPanel() {
   const thumbPx = useStore((s) => s.vault.thumbPx);
   const root = useStore((s) => s.root?.root);
   const pack = useStore((s) => s.vault.pack !== null);
-  const editing = useStore((s) => s.vault.editor !== null);
+  const editing = useStore((s) => s.vault.editor?.relPath ?? null);
   const [dropping, setDropping] = useState(false);
   useEffect(() => {
     void refreshVault();
   }, [root]);
   const shown = useMemo(() => shownAssets(), [items, filter]);
   const sel = new Set(selected);
-  if (editing) return <AssetEditorView />;
+  // One editor per asset: its local state (pictures, a polygon being drawn) never carries over.
+  if (editing) return <AssetEditorView key={editing} />;
 
   const onDrop = (e: DragEvent) => {
     setDropping(false);

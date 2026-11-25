@@ -359,7 +359,7 @@ function DocTabs() {
               <Icon name={tab.kind === 'map' ? 'map' : tab.kind === 'creature' ? 'token' : tab.kind === 'asset' ? 'cube' : 'flag'} />
               <span>{name}</span>
               {tab.id === tv && <span className="doc-tab-tv" title={t('tabs.onTv')} aria-label={t('tabs.onTv')}><Icon name="monitor" /></span>}
-              {((on && pending && tab.kind !== 'asset') || tab.unsaved || changed.has(tab.id)) && <span className="doc-tab-dot" aria-label={t('tabs.unsaved')} />}
+              {((on && pending && (tab.kind === 'scene' || tab.kind === 'map')) || tab.unsaved || changed.has(tab.id)) && <span className="doc-tab-dot" aria-label={t('tabs.unsaved')} />}
             </button>
             <button className="doc-tab-close" title={t('tabs.close')} aria-label={`${t('tabs.close')}: ${name}`} onClick={(e) => close(tab.id, e.currentTarget)}><Icon name="close" /></button>
           </div>
@@ -394,7 +394,12 @@ function TabMenu({ at, onClose, children }: { at: DOMRect; onClose: () => void; 
   useEffect(() => {
     const doc = ref.current?.ownerDocument ?? document;
     const click = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    // Keys in the menu stay there: an editor behind it must not take Esc (cancel) or Enter (OK).
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' && !ref.current?.contains(e.target as Node)) return;
+      e.stopPropagation();
+      if (e.key === 'Escape') onClose();
+    };
     const id = setTimeout(() => doc.addEventListener('click', click), 0);
     doc.addEventListener('keydown', key);
     return () => { clearTimeout(id); doc.removeEventListener('click', click); doc.removeEventListener('keydown', key); };

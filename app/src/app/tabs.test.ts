@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sceneFromDocuments } from '../core/persistence';
-import { activateSession, answerTvAsk, checkpoint, clearTabs, closeSessionTab, commitView, moveToken, produceFrame, replaceScene, setTvScene, setWorkspace, state, undo } from './store';
+import { activateSession, answerTvAsk, applyMapToTv, placeAsset, setAssetInfo, checkpoint, clearTabs, closeSessionTab, commitView, moveToken, produceFrame, replaceScene, setTvScene, setWorkspace, state, undo } from './store';
 
 /** Scenes as tabs (E-30, DC-034 step 1): each keeps its state and undo history while another is shown. */
 describe('scene tabs', () => {
@@ -116,5 +116,43 @@ describe('scene tabs', () => {
     expect(state.layer).toBe('scene');
     // The TV never had the map.
     expect(state.tvScenePath).toBe('scenes/a.scene.json');
+  });
+
+  it('map changes to the TV scene wait for "on the TV"; its scene changes go there at once', () => {
+    setWorkspace('play');
+    clearTabs();
+    setAssetInfo({ 'library/barrel.png': { name: 'barrel', kind: 'prop', url: 'dc-asset://file/barrel.png', video: false } });
+    open('scenes/a.scene.json', 'A');
+    const assets = () => produceFrame(Date.now()).assets.length;
+    const before = assets();
+    setWorkspace('forge');
+    placeAsset('library/barrel.png', { x: 315, y: 875 });
+    expect(state.tvMapPending).toBe(true);
+    expect(assets()).toBe(before);
+    // Back in the Orchestrator: the scene's changes reach the TV, the map's still wait.
+    setWorkspace('play');
+    expect(assets()).toBe(before);
+    const pc = state.scene.tokens.find((t) => t.kind === 'pc')!;
+    moveToken(pc.id, { x: pc.x + 70, y: pc.y }, true);
+    expect(produceFrame(Date.now()).tokens.find((t) => t.id === pc.id)?.x).toBe(pc.x);
+    applyMapToTv();
+    expect(state.tvMapPending).toBe(false);
+    expect(assets()).toBe(before + 1);
+  });
+
+  it('a map tab of the map of the TV scene: its changes wait as well', () => {
+    setWorkspace('play');
+    clearTabs();
+    setAssetInfo({ 'library/barrel.png': { name: 'barrel', kind: 'prop', url: 'dc-asset://file/barrel.png', video: false } });
+    open('scenes/a.scene.json', 'A');
+    const before = produceFrame(Date.now()).assets.length;
+    setWorkspace('forge');
+    replaceScene(sceneFromDocuments(base.map, null, null, undefined, 'map'), { resource: base.resource, fileName: base.fileName, scenePath: null, sceneName: 'Crypt', docs: { map: structuredClone(base.map), scene: null }, mapTab: true });
+    expect(state.activeTab).toBe(`map:${base.resource}`);
+    placeAsset('library/barrel.png', { x: 315, y: 875 });
+    expect(state.tvMapPending).toBe(true);
+    expect(produceFrame(Date.now()).assets.length).toBe(before);
+    applyMapToTv();
+    expect(produceFrame(Date.now()).assets.length).toBe(before + 1);
   });
 });

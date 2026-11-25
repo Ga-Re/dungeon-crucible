@@ -155,6 +155,8 @@ export interface AppState {
   tvScenePath: string | null;
   /** After switching tabs in the Orchestrator: "this scene on the TV?" waits for the DM's answer. */
   tvAsk: string | null;
+  /** The map of the TV's scene was changed in the Map Forge: the TV keeps the map before, until "on the TV" (E-30). */
+  tvMapPending: boolean;
   /** The Asset Vault: catalog, filter, selection (E-27, DC-040). */
   vault: VaultState;
   /** Recently used campaigns (start screen). */
@@ -236,6 +238,7 @@ function initial(): AppState {
     activeTab: null,
     tvScenePath: null,
     tvAsk: null,
+    tvMapPending: false,
     vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null },
     soundboard: initialSoundboard(),
   };
@@ -300,6 +303,8 @@ let viewVersion = 0;
 export function markDirty(): void {
   viewVersion++;
   state.dirty = true;
+  // A change of the TV scene's map waits for the DM before it reaches the TV (E-30).
+  if (state.layer === 'map' && state.tvScenePath && state.mapResource === tvResource()) state.tvMapPending = true;
   for (const f of dirtyListeners) f();
 }
 
@@ -402,7 +407,10 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   clearHistory();
   if (tabId && !state.tabs.some((x) => x.id === tabId)) state.tabs = [...state.tabs, { id: tabId, kind: opts.scenePath ? 'scene' : 'map', name: opts.sceneName }];
   // With no scene on the TV, the scene opened goes there (E-30).
-  if (opts.scenePath && !state.tvScenePath) state.tvScenePath = opts.scenePath;
+  if (opts.scenePath && !state.tvScenePath) {
+    state.tvScenePath = opts.scenePath;
+    snapshotTvMap();
+  }
   state.sceneVersion++;
   emit();
 }
@@ -553,7 +561,43 @@ export function setTvScene(scenePath: string | null): void {
   if (scenePath && !isSceneOpen(scenePath)) return;
   state.tvScenePath = scenePath;
   state.tvAsk = null;
+  snapshotTvMap();
+  emit();
+}
+
+/** The map the TV shows (E-30): the TV scene's map as when it went there or was last taken over. */
+let tvMap: MapSidecar | null = null;
+
+/** The map resource of the TV's scene. */
+function tvResource(): string | null {
+  if (!state.tvScenePath) return null;
+  if (state.tvScenePath === state.scenePath) return state.mapResource;
+  return sessions.get(state.tvScenePath)?.mapResource ?? null;
+}
+
+/** The latest map of an open scene: as being edited if it is shown (its own tab or a tab of the same map). */
+function currentMapOf(scenePath: string): MapSidecar | null {
+  const resource = scenePath === state.scenePath ? state.mapResource : sessions.get(scenePath)?.mapResource;
+  if (!resource) return null;
+  if (resource === state.mapResource && state.mapDoc) return state.layer === 'map' ? mapSidecarFromScene(state.scene, state.mapResource, 'map', state.mapDoc) : state.mapDoc;
+  const s = sessions.get(scenePath);
+  return s ? (openMaps.get(s.mapResource) ?? s.mapDoc) : null;
+}
+
+/** The TV takes its scene's map as it is now. */
+function snapshotTvMap(): void {
+  const map = state.tvScenePath ? currentMapOf(state.tvScenePath) : null;
+  tvMap = map ? structuredClone(map) : null;
+  state.tvMapPending = false;
   tvCache = null;
+  backgroundTv = null;
+}
+
+/** "On the TV": the changes of the TV scene's map go there (E-30). */
+export function applyMapToTv(): void {
+  if (!state.tvMapPending) return;
+  snapshotTvMap();
+  log('log.mapToTv');
   emit();
 }
 
@@ -2187,7 +2231,7 @@ interface TvView {
   runs: Record<string, number>;
 }
 
-let tvCache: { version: number; scene: Scene; visible: Polygon[]; lights: LitSource[] } | null = null;
+let tvCache: { version: string; scene: Scene; visible: Polygon[]; lights: LitSource[] } | null = null;
 let backgroundTv: { session: Session; info: Record<string, AssetInfo>; map: MapSidecar | null; view: TvView } | null = null;
 
 /**
@@ -2202,12 +2246,15 @@ function tvView(): TvView | null {
   if (!state.tvScenePath && !untabbed) return null;
   if (state.tvScenePath && state.tvScenePath !== state.scenePath) return backgroundView(state.tvScenePath);
   const own = { turn: state.turn, resource: state.mapResource, runs: state.effectRuns };
-  if (state.layer === 'scene' || !state.mapDoc) return { scene: state.scene, visible: state.visible, lights: state.lights, ...own };
-  if (!tvCache || tvCache.version !== viewVersion) {
-    // Editing the map or the start state: the TV shows the play state, with the map (and the
-    // scene's changes of it) as they are being edited.
-    const map = mapSidecarFromScene(state.scene, state.mapResource, state.layer, state.mapDoc);
-    let ov = state.sceneDoc;
+  const pending = state.tvMapPending && tvMap;
+  if (!state.mapDoc || (state.layer === 'scene' && !pending)) return { scene: state.scene, visible: state.visible, lights: state.lights, ...own };
+  // The scene as shown (its state changes go to the TV at once), on the map the TV has.
+  const stamp = pending ? `p${version}` : `v${viewVersion}`;
+  if (!tvCache || tvCache.version !== stamp) {
+    // Editing the map or the start state: the TV shows the play state, with the map as the TV
+    // has it (its changes wait for the DM, E-30) and the scene's changes as they are being edited.
+    const map = pending ? tvMap! : mapSidecarFromScene(state.scene, state.mapResource, state.layer, state.mapDoc);
+    let ov = state.layer === 'scene' ? docsFromView().ov : state.sceneDoc;
     if (ov && state.layer === 'start') {
       const fromView = sceneOverrideFromScene(state.scene, state.sceneName, ov.mapSidecar, { round: state.round, turn: state.turn }, map, layerOf(ov));
       ov = { ...ov, overrides: fromView.overrides, added: fromView.added };
@@ -2216,7 +2263,7 @@ function tvView(): TvView | null {
     const extras = assetExtras(scene);
     const seen = withAssetDoors(scene);
     const vision = updateVision(seen, extras);
-    tvCache = { version: viewVersion, scene, visible: visiblePolygons(vision), lights: litSources(seen, extras) };
+    tvCache = { version: stamp, scene, visible: visiblePolygons(vision), lights: litSources(seen, extras) };
   }
   // Table settings (blackout, rotation, centre) stay live.
   tvCache.scene.table = state.scene.table;
@@ -2226,7 +2273,7 @@ function tvView(): TvView | null {
 function backgroundView(scenePath: string): TvView | null {
   const s = sessions.get(scenePath);
   if (!s) return null;
-  const map = openMaps.get(s.mapResource) ?? s.mapDoc;
+  const map = tvMap ?? openMaps.get(s.mapResource) ?? s.mapDoc;
   if (!map) return null;
   if (!backgroundTv || backgroundTv.session !== s || backgroundTv.info !== state.assetInfo || backgroundTv.map !== map) {
     const scene = sceneFromDocuments(map, s.sceneDoc, s.imageUrl, state.scene.table, 'scene');

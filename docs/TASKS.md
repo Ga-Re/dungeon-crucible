@@ -384,6 +384,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   TV-Tabs fragt vorher, danach ist der TV schwarz (ohne Daten einer Szene im Bild). Die Hintergrundmusik gehört zur
   TV-Szene (was die Spieler hören): ein Tab-Wechsel ändert sie nicht, „Auf den TV“ übernimmt die der Szene.
   Nebenbei behoben: eine neu geöffnete Szene übernahm die Tischmitte der vorigen.
+  Erledigt (Schritt 3): Karten-Tabs – ein Klick auf eine Bibliotheks-Karte öffnet sie allein als Tab (keine
+  Szene); „Neue Szene auf dieser Karte“ im Kontextmenü der Karte und des Tabs. Ein Karten-Tab zeigt sich nur in der
+  Kartenschmiede (Wechsel dorthin); im Orchestrator tritt die TV-Szene (sonst der letzte Szenen-Tab) an seine
+  Stelle. Kartenänderungen an der Karte der TV-Szene (in deren Tab oder einem Karten-Tab derselben Karte) zeigt der
+  TV erst nach „Auf den TV übernehmen“ (Hinweis unten rechts, Protokolleintrag); Szenenänderungen gehen sofort
+  hin. Tabs haben eine Mindestbreite, die Leiste scrollt.
 - **DC-034b Kreaturen als Tabs** (E-30), **DC-034c Assets als Tabs**, **DC-034d Notizen und Handouts als Tabs** –
   auf der Tab-Leiste aus DC-034.
 - **DC-035 Papierkorb-Ansicht** mit Wiederherstellen (ohne Überschreiben) und „Papierkorb leeren“ von Hand; kein

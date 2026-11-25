@@ -36,7 +36,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
-  editableHere, shownInForge, activateAsset, answerInteriorAsk, answerTvAsk, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
+  editableHere, shownInForge, activateAsset, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -631,6 +631,7 @@ function DmMap() {
       {hintKey && mapPresent && <div className="map-hint">{t(hintKey)}</div>}
       {ws === 'play' && <InteriorAsks />}
       {ws === 'play' && <TvAsk />}
+      <TvMapPending />
       {ws === 'forge' && <AreaCommandPanel />}
       {ws === 'forge' && <WallCommandPanel />}
       {ws === 'forge' && <CalibrationPanel />}
@@ -784,6 +785,23 @@ function TvAsk() {
         <div className="library-buttons">
           <button className="btn sm pri" onClick={() => state.scenePath && void putOnTv(state.scenePath)}>{t('tv.yes')}</button>
           <button className="btn sm" onClick={() => answerTvAsk(false)}>{t('tv.no')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The TV scene's map was changed (E-30): the TV keeps it as before until the DM takes the changes over. */
+function TvMapPending() {
+  const { t } = useI18n();
+  const pending = useStore((s) => s.tvMapPending);
+  if (!pending) return null;
+  return (
+    <div className="interior-asks tv-map" role="status">
+      <div className="interior-ask">
+        <span>{t('tv.mapPending')}</span>
+        <div className="library-buttons">
+          <button className="btn sm pri" onClick={applyMapToTv}><Icon name="monitor" />{t('tv.mapApply')}</button>
         </div>
       </div>
     </div>

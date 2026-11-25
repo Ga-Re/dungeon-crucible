@@ -24,7 +24,7 @@ const WAVER: Record<MasonryStyle, { amplitude: number; scale: number }> = {
 
 /** Map cells one texture tile covers: floors, wall surfaces. */
 const FLOOR_CELLS = 3;
-const WALL_CELLS = 2;
+const WALL_CELLS = 1;
 /** Most floor samples: their nearest-wall search runs over all wall segments. */
 const MAX_FLOOR_SAMPLES = 250_000;
 
@@ -196,9 +196,12 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       }
       g.fillStyle = surfacePattern(g, tex.surface[`wall-${s.style}`], cell, WALL_CELLS, styleSeed(s.style)) ?? '#5b5650';
       g.fill(s.shape, 'nonzero');
+      // Darker than any floor, so a wall reads as a wall also on a floor of the same stone.
+      g.fillStyle = 'rgba(20,16,12,.38)';
+      g.fill(s.shape, 'nonzero');
       g.save();
       g.translate(-1, -1);
-      g.strokeStyle = 'rgba(255,245,225,.16)';
+      g.strokeStyle = 'rgba(255,245,225,.28)';
       g.lineWidth = 1.5;
       g.stroke(s.shape);
       g.restore();

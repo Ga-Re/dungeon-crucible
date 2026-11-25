@@ -20,3 +20,10 @@ generated pattern, so every slot is optional. File name = slot, `.webp` (preferr
 Seamless surfaces are blended with themselves when loaded (`seamless`), so small seams are hidden.
 Only pictures whose rights allow shipping them in this public repository belong here; record each
 picture's origin in `docs/TASKS.md` (DC-107a).
+
+## Origin
+
+All eleven pictures were generated for this project with Higgsfield (model Seedream 5.5) on
+2026-11-26, on the DM's Higgsfield plan, which the DM confirmed allows shipping them in this public
+repository. Pillar and corner stone were generated a second time to get a strict top-down view.
+They were scaled to their slot size and converted to WebP; no third-party picture was used.

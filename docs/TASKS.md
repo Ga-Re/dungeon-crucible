@@ -365,7 +365,10 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     „Hier teilen“, Löschen; Tür: Breite, geheim, Riss. Die Fläche einer gezeichneten Karte folgt dem Gezeichneten.
     Katalog: „Neue gezeichnete Karte“ (Karte mit offener Kampagne), Karte mit Mauer-Symbol statt Vorschaubild,
     „Kartendatei: Gezeichnete Karte“. Geprüft in der App (Raum mit Tür, Höhlenwand, Auswahl, Speichern).
-    Offen: Higgsfield-Texturen; Vorschaubild gezeichneter Karten im Katalog; bei sehr großen Karten nur geänderte
+    Texturen (2026-11-26): 11 Bilder mit Higgsfield (Seedream 5.5) erzeugt, als WebP (~650 KB) in
+    `app/src/render/build/textures/`; Herkunft dort im README; Rechte laut DM durch den Higgsfield-Tarif geklärt.
+    Mauern werden dunkler als jeder Boden gezeichnet (lesbar auch auf gleichem Stein).
+    Offen: Vorschaubild gezeichneter Karten im Katalog; bei sehr großen Karten nur geänderte
     Kacheln neu malen; `npm run bench` (braucht das 4K-Testvideo und den TV).
   - **DC-107b Boden-Pinsel** mit sauberem Übergang an Mauern.
   - **DC-107c Eigene Mauern in Szenen** (Szene v8).

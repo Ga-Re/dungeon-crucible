@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cellsVisibleOnTable, pixelsPerInch, ppiCorrectionFromMeasurement } from '../core/grid';
-import { FOG_BIOMES, type TableRotation } from '../core/scene';
+import { FOG_BIOMES, type TableRotation, type Wall, type WallKind } from '../core/scene';
 import { abilityModifier, ABILITIES, CONDITIONS, evaluateEncounter, proficiencyBonusForCr, proficiencyBonusForLevel, xpForCr, type ChallengeRating } from '../core/rules/rules2024';
 import { d20Test } from '../core/rules/dice';
 import { playerOfToken } from '../core/party';
@@ -13,7 +13,7 @@ import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
+  deleteSelectedWalls, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { importMapIntoCampaign, switchScene } from '../app/campaign';
@@ -224,6 +224,9 @@ export function PropertiesPanel() {
   const selLight = useStore((s) => s.selectedLightId);
   const light = useStore((s) => s.scene.lights.find((l) => l.id === selLight));
   const zone = state.scene.zones.find((z) => z.id === selZone);
+  const selWalls = useStore((s) => s.selectedWallIds);
+  const allWalls = useStore((s) => s.scene.walls);
+  const walls = allWalls.filter((w) => selWalls.includes(w.id));
   return (
     <div className="panel-body">
       <div className="sec">{t('panel.map')}</div>
@@ -252,7 +255,9 @@ export function PropertiesPanel() {
         </>
       )}
       <div className="sec">{t('props.selection')}</div>
-      {zone ? (
+      {walls.length > 0 ? (
+        <WallProperties walls={walls} />
+      ) : zone ? (
         <>
           <div className="row"><label>{t('props.name')}</label><span><span className="swatch" style={{ background: zone.color }} /> {zone.name}</span></div>
           <div className="row"><label>{t('area.cmd.biome')}</label><span>{zone.biome ? t(`biome.${zone.biome}` as MessageKey) : t('area.cmd.biomeMap')}{zone.secret ? ` · ${t('area.secret')}` : ''}</span></div>
@@ -262,6 +267,31 @@ export function PropertiesPanel() {
     </div>
   );
 }
+
+/** The selected walls (Map Forge, DC-014): their kind, the length of a single one, delete. */
+function WallProperties({ walls }: { walls: readonly Wall[] }) {
+  const { t } = useI18n();
+  const grid = useStore((s) => s.scene.map.grid);
+  const kinds = new Set(walls.map((w) => w.kind));
+  const kind = kinds.size === 1 ? walls[0].kind : '';
+  const one = walls.length === 1 ? walls[0] : null;
+  return (
+    <>
+      <div className="row"><label>{t('wall.title')}</label><span>{t('wall.selected', { n: walls.length })}</span></div>
+      <div className="row"><label htmlFor="w-kind">{t('wall.cmd.kind')}</label>
+        <select id="w-kind" value={kind} onChange={(e) => e.target.value && setWallKind(e.target.value as WallKind)}>
+          {kind === '' && <option value="">–</option>}
+          {WALL_KINDS.map((k) => <option key={k} value={k}>{t(`wall.kind.${k}` as MessageKey)}</option>)}
+        </select>
+      </div>
+      {one && <div className="row"><label>{t('wall.length')}</label><span className="mono">{Math.round((Math.hypot(one.x2 - one.x1, one.y2 - one.y1) / grid.cellWidth) * grid.feetPerCell * 10) / 10} ft</span></div>}
+      <p className="hint">{t('wall.editHint')}</p>
+      <button className="btn sm danger" onClick={deleteSelectedWalls}><Icon name="trash" />{t('wall.delete')}</button>
+    </>
+  );
+}
+
+const WALL_KINDS: readonly WallKind[] = ['wall', 'door', 'secret-door', 'window'];
 
 /* ---------- Fog ---------- */
 

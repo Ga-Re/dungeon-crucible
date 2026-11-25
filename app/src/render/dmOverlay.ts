@@ -5,7 +5,7 @@
 import type { Point } from '../core/geometry';
 import { labelPoint } from '../core/areas';
 import type { Polygon } from '../core/poly/types';
-import type { Scene } from '../core/scene';
+import type { Scene, Wall, WallKind } from '../core/scene';
 import type { ViewerVision } from '../core/vision';
 import { drawTemplate, hexToRgba, type TemplateLike } from './shared';
 
@@ -21,7 +21,12 @@ export interface OverlayState {
   selectedZoneId: string | null;
   selectedLightId: string | null;
   measure: { a: Point; b: Point; ft: number } | null;
-  wallPreview: { a: Point; b: Point } | null;
+  /** Walls selected in the Map Forge (DC-014). */
+  selectedWallIds: readonly string[];
+  /** "Draw walls": the pieces drawn so far and the one following the pointer. */
+  wallDraft: { kind: WallKind; walls: readonly Omit<Wall, 'id'>[]; next: { a: Point; b: Point } | null } | null;
+  /** Where dragged wall ends are right now. */
+  wallEnds: Point | null;
   brush: { p: Point; r: number } | null;
   calibPoints: Point[];
   draftTemplate: TemplateLike | null;
@@ -90,28 +95,37 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     g.restore();
   }
 
+  const selWalls = new Set(o.selectedWallIds);
   for (const w of scene.walls) {
     const isDoor = w.kind === 'door' || w.kind === 'secret-door';
     if (!o.editMode && !isDoor) continue;
-    g.save();
-    g.lineCap = 'round';
-    if (w.kind === 'wall') {
-      g.strokeStyle = 'rgba(226,120,60,.85)';
-      g.lineWidth = 3 * px;
-    } else if (w.kind === 'window') {
-      g.strokeStyle = 'rgba(127,200,230,.9)';
-      g.lineWidth = 4 * px;
-      g.setLineDash([6 * px, 4 * px]);
-    } else {
-      g.strokeStyle = w.kind === 'secret-door' ? '#a77bf3' : '#c99a5b';
-      g.lineWidth = (w.open ? 3 : 9) * px;
-      g.globalAlpha = w.open ? 0.5 : 1;
+    // Selection: a blue band under the wall.
+    if (selWalls.has(w.id)) strokeSegment(g, w, SELECTED, 11 * px);
+    strokeWall(g, w, px);
+  }
+  // Wall ends (Map Forge): joints and loose ends to grab; selected walls' ends as handles.
+  if (o.editMode) {
+    for (const w of scene.walls) {
+      const sel = selWalls.has(w.id);
+      for (const [x, y] of [[w.x1, w.y1], [w.x2, w.y2]] as const) drawEnd(g, x, y, px, sel);
     }
-    g.beginPath();
-    g.moveTo(w.x1, w.y1);
-    g.lineTo(w.x2, w.y2);
-    g.stroke();
-    g.restore();
+  }
+  if (o.wallEnds) drawEnd(g, o.wallEnds.x, o.wallEnds.y, px, true);
+  if (o.wallDraft) {
+    for (const w of o.wallDraft.walls) {
+      strokeWall(g, w, px);
+      drawEnd(g, w.x1, w.y1, px, false);
+      drawEnd(g, w.x2, w.y2, px, false);
+    }
+    const next = o.wallDraft.next;
+    if (next) {
+      g.save();
+      g.globalAlpha = 0.7;
+      g.setLineDash([8 * px, 5 * px]);
+      strokeWall(g, { kind: o.wallDraft.kind, x1: next.a.x, y1: next.a.y, x2: next.b.x, y2: next.b.y }, px);
+      g.restore();
+      drawEnd(g, next.a.x, next.a.y, px, true);
+    }
   }
 
   // Light sources: an icon, and their bright/dim radii in the forge or when selected.
@@ -266,17 +280,6 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     label(g, `${ft} ft`, b.x + 14 * px, b.y - 14 * px, px);
     g.restore();
   }
-  if (o.wallPreview) {
-    g.save();
-    g.strokeStyle = '#ff9b55';
-    g.lineWidth = 4 * px;
-    g.setLineDash([8 * px, 5 * px]);
-    g.beginPath();
-    g.moveTo(o.wallPreview.a.x, o.wallPreview.a.y);
-    g.lineTo(o.wallPreview.b.x, o.wallPreview.b.y);
-    g.stroke();
-    g.restore();
-  }
   if (o.brush) {
     g.strokeStyle = 'rgba(226,160,60,.9)';
     g.lineWidth = 2 * px;
@@ -301,4 +304,62 @@ function label(g: CanvasRenderingContext2D, text: string, x: number, y: number, 
   g.fillRect(x - 6 * px, y - 16 * px, w + 12 * px, 22 * px);
   g.fillStyle = '#ffd79a';
   g.fillText(text, x, y);
+}
+
+/** Selection colour of the map (the theme's `--sel`). */
+const SELECTED = 'rgba(63,157,226,.55)';
+
+function strokeSegment(g: CanvasRenderingContext2D, w: Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>, style: string, width: number): void {
+  g.save();
+  g.lineCap = 'round';
+  g.strokeStyle = style;
+  g.lineWidth = width;
+  g.beginPath();
+  g.moveTo(w.x1, w.y1);
+  g.lineTo(w.x2, w.y2);
+  g.stroke();
+  g.restore();
+}
+
+/** A wall in its kind's look: walls orange, windows dashed blue, doors thick (secret ones violet). */
+function strokeWall(g: CanvasRenderingContext2D, w: Omit<Wall, 'id'>, px: number): void {
+  g.save();
+  g.lineCap = 'round';
+  if (w.kind === 'wall') {
+    g.strokeStyle = 'rgba(226,120,60,.85)';
+    g.lineWidth = 3 * px;
+  } else if (w.kind === 'window') {
+    g.strokeStyle = 'rgba(127,200,230,.9)';
+    g.lineWidth = 4 * px;
+    g.setLineDash([6 * px, 4 * px]);
+  } else {
+    g.strokeStyle = w.kind === 'secret-door' ? '#a77bf3' : '#c99a5b';
+    g.lineWidth = (w.open ? 3 : 9) * px;
+    g.globalAlpha *= w.open ? 0.5 : 1;
+  }
+  g.beginPath();
+  g.moveTo(w.x1, w.y1);
+  g.lineTo(w.x2, w.y2);
+  g.stroke();
+  g.restore();
+}
+
+/** A wall end: a small dot, or a handle square when its wall is selected (or it is being dragged). */
+function drawEnd(g: CanvasRenderingContext2D, x: number, y: number, px: number, handle: boolean): void {
+  g.save();
+  g.lineWidth = 1.5 * px;
+  g.strokeStyle = 'rgba(0,0,0,.75)';
+  if (handle) {
+    const r = 5 * px;
+    g.fillStyle = '#3f9de2';
+    g.fillRect(x - r, y - r, 2 * r, 2 * r);
+    g.strokeRect(x - r, y - r, 2 * r, 2 * r);
+  } else {
+    g.fillStyle = 'rgba(240,226,200,.9)';
+    g.beginPath();
+    g.arc(x, y, 2.5 * px, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+  }
+  g.restore();
 }

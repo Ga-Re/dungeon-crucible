@@ -13,6 +13,7 @@ import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerV
 import { hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
 import { lockedAreas } from '../core/persistence';
 import { newId, slugId } from '../core/documents';
+import { chainOf, moveEnds, removeWalls, withoutDegenerate, type WallEnd } from '../core/walls';
 import { addShape, areaContains, distanceToArea, moveVertex, normalizeShape, subtractShape, type AreaTool, type VertexRef } from '../core/areas';
 import type { Polygon } from '../core/poly/types';
 import { readFogLook, saveCoverFrom, saveFadeSeconds, saveFogEdge, saveFogMotion, saveFogQuality, saveFogSpeed, saveSoftEdges, type CoverFrom, type FogLook, type FogQuality } from './fog-settings';
@@ -35,7 +36,7 @@ export type WorkspaceId = 'forge' | 'vault' | 'creatures' | 'atlas' | 'play';
 
 export type ToolId =
   | 'select' | 'pan' | 'measure' | 'ping' | 'calibrate'
-  | 'area' | 'wall' | 'door' | 'secret-door' | 'window'
+  | 'area' | 'wall'
   | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
   | 'cone' | 'sphere' | 'line' | 'cube' | 'light';
 
@@ -78,7 +79,10 @@ export interface AppState {
   vision: ViewerVision[];
   calibPoints: Point[];
   lastCalibration: { w: number; h: number; r: number } | null;
-  wallStart: Point | null;
+  /** "Draw walls" while it runs (Map Forge, DC-014). */
+  wallCommand: WallCommand | null;
+  /** Selected walls of the map (Map Forge): one, several (Shift) or a chain (double-click). */
+  selectedWallIds: string[];
   log: LogEntry[];
   rolls: RollResult[];
   monitors: MonitorInfo[];
@@ -157,7 +161,8 @@ function initial(): AppState {
     vision: [],
     calibPoints: [],
     lastCalibration: null,
-    wallStart: null,
+    wallCommand: null,
+    selectedWallIds: [],
     log: [],
     rolls: [],
     monitors: [],
@@ -284,6 +289,9 @@ function restore(snap: string): void {
     state.round = ov.combat.round;
     state.turn = ov.combat.turn;
   }
+  // Selected walls that the step back (or forward) took away are no longer selected.
+  const walls = new Set(state.scene.walls.map((w) => w.id));
+  state.selectedWallIds = state.selectedWallIds.filter((id) => walls.has(id));
   recomputeVision();
   state.canUndo = history.canUndo;
   state.canRedo = history.canRedo;
@@ -333,7 +341,7 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   state.turn = opts.turn ?? 0;
   state.selectedTokenId = null;
   state.selectedZoneId = null;
-  state.wallStart = null;
+  clearWallEditing();
   recomputeVision();
   clearHistory();
   state.sceneVersion++;
@@ -387,7 +395,7 @@ export function refreshView(): void {
   state.selectedTokenId = null;
   state.selectedZoneId = null;
   state.selectedLightId = null;
-  state.wallStart = null;
+  clearWallEditing();
   recomputeVision();
 }
 
@@ -404,7 +412,7 @@ export function showLayer(layer: ViewLayer): void {
   state.selectedTokenId = null;
   state.selectedZoneId = null;
   state.selectedLightId = null;
-  state.wallStart = null;
+  clearWallEditing();
   recomputeVision();
   clearHistory();
 }
@@ -412,17 +420,17 @@ export function showLayer(layer: ViewLayer): void {
 export function setWorkspace(ws: WorkspaceId): void {
   state.ws = ws;
   state.areaCommand = null;
+  state.wallCommand = null;
   state.tool = 'select';
-  state.wallStart = null;
   showLayer(layerFor(ws));
   emit();
 }
 
 export function setTool(tool: ToolId): void {
-  // One command at a time: another tool ends "create area".
+  // One command at a time: another tool ends "create area" and "draw walls".
   if (tool !== 'area') state.areaCommand = null;
+  if (tool !== 'wall') state.wallCommand = null;
   state.tool = tool;
-  state.wallStart = null;
   state.calibPoints = [];
   emit();
 }
@@ -499,19 +507,167 @@ export function toggleDoor(id: string): void {
   emit();
 }
 
-export function addWall(kind: WallKind, a: Point, b: Point): void {
-  if (Math.hypot(a.x - b.x, a.y - b.y) < 2) return;
+/* ---------- "Draw walls" command and editing walls (DC-014) ---------- */
+
+/** The running "draw walls" command: options and the walls drawn so far (not saved yet). */
+export interface WallCommand {
+  kind: WallKind;
+  /** Each click continues from the last point; off: two clicks per piece. */
+  chain: boolean;
+  /** Drawn pieces; they get their ids on OK. */
+  walls: Omit<Wall, 'id'>[];
+  /** Where the next piece starts, if one was begun. */
+  start: Point | null;
+}
+
+/** Walls and windows run on; doors are placed one by one. */
+function chainsByDefault(kind: WallKind): boolean {
+  return kind === 'wall' || kind === 'window';
+}
+
+function clearWallEditing(): void {
+  state.wallCommand = null;
+  state.selectedWallIds = [];
+}
+
+/** Starts "draw walls" in the Map Forge (one command at a time: another tool ends it). */
+export function startWallCommand(): void {
+  if (state.layer !== 'map') return;
+  const kind = state.wallCommand?.kind ?? 'wall';
+  state.wallCommand = { kind, chain: chainsByDefault(kind), walls: [], start: null };
+  state.areaCommand = null;
+  state.tool = 'wall';
+  emit();
+}
+
+/** Changes the command's options; a new kind brings its own chain default unless `chain` is given. */
+export function updateWallCommand(patch: Partial<Pick<WallCommand, 'kind' | 'chain'>>): void {
+  const c = state.wallCommand;
+  if (!c) return;
+  const chain = patch.chain ?? (patch.kind && patch.kind !== c.kind ? chainsByDefault(patch.kind) : c.chain);
+  state.wallCommand = { ...c, ...patch, chain, start: chain ? c.start : null };
+  emit();
+}
+
+/** A click on the map: starts a piece, or ends it there (and goes on from there in a chain). */
+export function addWallPoint(p: Point): void {
+  const c = state.wallCommand;
+  if (!c) return;
+  if (!c.start) {
+    state.wallCommand = { ...c, start: p };
+  } else if (Math.hypot(c.start.x - p.x, c.start.y - p.y) >= 2) {
+    const piece: Omit<Wall, 'id'> = { kind: c.kind, x1: c.start.x, y1: c.start.y, x2: p.x, y2: p.y, ...(c.kind === 'door' || c.kind === 'secret-door' ? { open: false } : {}) };
+    state.wallCommand = { ...c, walls: [...c.walls, piece], start: c.chain ? p : null };
+  }
+  emit();
+}
+
+/** Esc, double-click: the chain ends; the next click starts a new one. */
+export function endWallChain(): void {
+  const c = state.wallCommand;
+  if (!c?.start) return;
+  state.wallCommand = { ...c, start: null };
+  emit();
+}
+
+/** Takes the last drawn piece back (its start is where drawing goes on). */
+export function undoWallPoint(): void {
+  const c = state.wallCommand;
+  if (!c) return;
+  const last = c.walls.at(-1);
+  if (!last) {
+    state.wallCommand = { ...c, start: null };
+  } else {
+    state.wallCommand = { ...c, walls: c.walls.slice(0, -1), start: c.chain ? { x: last.x1, y: last.y1 } : null };
+  }
+  emit();
+}
+
+/** OK: adds the drawn walls to the map under new random ids, as one undoable step. */
+export function finishWallCommand(): boolean {
+  const c = state.wallCommand;
+  if (!c || state.layer !== 'map') return false;
+  if (c.walls.length > 0) {
+    checkpoint();
+    const ids: string[] = [];
+    for (const w of c.walls) {
+      const id = freshId('wall');
+      state.scene.walls.push({ ...w, id });
+      ids.push(id);
+    }
+    state.selectedWallIds = ids;
+    log('log.wallsAdded', { n: ids.length });
+    recomputeVision();
+  }
+  state.wallCommand = null;
+  state.tool = 'select';
+  emit();
+  return true;
+}
+
+export function cancelWallCommand(): void {
+  if (!state.wallCommand) return;
+  state.wallCommand = null;
+  if (state.tool === 'wall') state.tool = 'select';
+  emit();
+}
+
+/** Selects a wall of the map; `toggle` (Shift) adds it to the selection or takes it out. */
+export function selectWall(id: string | null, toggle = false): void {
+  if (state.layer !== 'map') return;
+  const sel = state.selectedWallIds;
+  if (id === null) state.selectedWallIds = toggle ? sel : [];
+  else if (toggle) state.selectedWallIds = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id];
+  else state.selectedWallIds = [id];
+  emit();
+}
+
+/** Selects every wall joined to `id` end to end (double-click). */
+export function selectWallChain(id: string): void {
+  if (state.layer !== 'map') return;
+  state.selectedWallIds = chainOf(state.scene.walls, id);
+  emit();
+}
+
+/**
+ * Moves wall ends (a joint) live while dragging; `done` drops walls whose ends met. The caller
+ * sets a checkpoint when the drag starts, so the whole drag is one undoable step.
+ */
+export function moveWallEnds(ends: readonly WallEnd[], to: Point, done: boolean): void {
+  if (state.layer !== 'map' || ends.length === 0) return;
+  const moved = moveEnds(state.scene.walls, ends, to);
+  state.scene.walls = done ? withoutDegenerate(moved) : moved;
+  if (done) {
+    const left = new Set(state.scene.walls.map((w) => w.id));
+    state.selectedWallIds = state.selectedWallIds.filter((id) => left.has(id));
+  }
+  markDirty();
+  recomputeVision(done);
+  emit();
+}
+
+/** Changes the kind of the selected walls (one step); doors start closed. */
+export function setWallKind(kind: WallKind): void {
+  const sel = new Set(state.selectedWallIds);
+  if (state.layer !== 'map' || sel.size === 0) return;
   checkpoint();
-  const w: Wall = { id: freshId('wall'), kind, x1: a.x, y1: a.y, x2: b.x, y2: b.y, open: false };
-  state.scene.walls.push(w);
+  state.scene.walls = state.scene.walls.map((w) => {
+    if (!sel.has(w.id)) return w;
+    const { open: _open, ...rest } = w;
+    return kind === 'door' || kind === 'secret-door' ? { ...rest, kind, open: false } : { ...rest, kind };
+  });
   recomputeVision();
   emit();
 }
 
-export function removeLastUserWall(): void {
+/** Deletes the selected walls (one step). Scene overrides of them stay in their files, orphaned. */
+export function deleteSelectedWalls(): void {
+  const sel = new Set(state.selectedWallIds);
+  if (state.layer !== 'map' || sel.size === 0) return;
   checkpoint();
-  const i = state.scene.walls.map((w) => w.id.startsWith('u')).lastIndexOf(true);
-  if (i >= 0) state.scene.walls.splice(i, 1);
+  state.scene.walls = removeWalls(state.scene.walls, sel);
+  state.selectedWallIds = [];
+  log('log.wallsDeleted', { n: sel.size });
   recomputeVision();
   emit();
 }
@@ -548,7 +704,7 @@ export function startAreaCommand(areaId?: string): void {
     : { areaId: null, tool: 'rect', op: 'add', name: '', secret: false, biome: null, color: AREA_COLOR, shape: [] };
   if (z) state.selectedZoneId = z.id;
   state.tool = 'area';
-  state.wallStart = null;
+  state.wallCommand = null;
   emit();
 }
 
@@ -976,6 +1132,8 @@ export function removeToken(id: string): void {
 
 export function selectZone(id: string | null): void {
   state.selectedZoneId = id;
+  // One kind of selection at a time in the Properties panel.
+  if (id) state.selectedWallIds = [];
   emit();
 }
 

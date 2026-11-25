@@ -137,11 +137,8 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
           {
             label: 'group.draw',
             buttons: [
-              { id: 'tool:wall', icon: 'wall', label: 'tool.wall', tool: 'wall' },
-              { id: 'tool:door', icon: 'door', label: 'tool.door', tool: 'door' },
-              { id: 'tool:secret-door', icon: 'secretdoor', label: 'tool.secretDoor', tool: 'secret-door' },
-              { id: 'tool:window', icon: 'window', label: 'tool.window', tool: 'window' },
-              { id: 'walls:undo', icon: 'undo', label: 'tool.undoWall' },
+              { id: 'tool:select', icon: 'select', label: 'tool.select', tool: 'select' },
+              { id: 'walls:draw', icon: 'wall', label: 'tool.drawWalls' },
             ],
           },
           { label: 'group.light', buttons: [{ id: 'tool:light', icon: 'light', label: 'tool.light', tool: 'light' }] },

@@ -315,6 +315,7 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .cmd-body { padding: 10px 12px; overflow: auto; display: flex; flex-direction: column; gap: 9px; }
 .cmd-body .hint { margin: 0; }
 .cmd-row { display: flex; gap: 4px; }
+.cmd-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cmd-icon { width: 32px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 3px; color: var(--fg-dim); background: var(--panel-2); }
 .cmd-icon.on { border-color: var(--accent); background: var(--accent-soft); color: var(--fg); }
 .cmd-icon:focus-visible, .cmd-seg button:focus-visible { outline: 2px solid var(--sel); outline-offset: 1px; }

@@ -103,7 +103,7 @@ Startzustand), dann die Kartenschmiede auf dieser Basis.
 | Bereiche/Räume als Polygon, Ellipse, Lasso, je Ebene, geheim | ✓ | ◐ | DC: nur Rechtecke, Biom-Override ohne UI |
 | Bereiche additiv zeichnen (Vereinigung) | ✓ | ✗ | |
 | Wände, Türen, Geheimtüren, Fenster | ✗ | ✓ | DC weiter (DM: Stufe 5) |
-| Wände bearbeiten (auswählen, verschieben, löschen) | ✗ | ◐ | DC: nur letzte Wand zurück |
+| Wände bearbeiten (auswählen, verschieben, löschen) | ✗ | ✓ | DC-014: Befehls-Panel „Wände zeichnen“, Gelenke, Ketten |
 | Lichtquellen der Karte | ✗ | ✓ | |
 | Klippen/Galerien (Einweg), Deckung (Kreis/Polygon) | ✗ | ✗ | T-193 |
 | Automatische Wände, Leck-Prüfung, Testfigur | ✗ | ✗ | T-141, T-194 |
@@ -280,8 +280,22 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   ziehen (eingerastet, Alt frei; danach wird die Form bereinigt), Löschen mit Rückfrage im Panel (Szenen-Overrides
   verwaisen); OK ändert den Bereich unter derselben ID als ein Schritt. Das Eigenschaften-Panel zeigt den Bereich
   nur noch an. Nicht umgesetzt: das Panel verschieben (bleibt oben rechts); Ellipsen zeigen viele Eckgriffe.
-- **DC-014 Wände bearbeiten**: auswählen, Endpunkte verschieben, löschen, Ketten; Objekte als Polygon; Einweg-Wände
-  (Klippen/Galerien) und Deckung (T-193).
+- ◐ **DC-014 Wände bearbeiten**: auswählen, Endpunkte verschieben, löschen, Ketten; Objekte als Polygon; Einweg-Wände
+  (Klippen/Galerien) und Deckung (T-193). DM-Entscheidungen (2026-11-25): drei Schritte auf `feature/map-forge`
+  (1. Bearbeiten und Ketten, 2. Einweg-Wände, 3. Deckung); „Wände zeichnen“ als Befehls-Panel (Art, Kette,
+  OK/Abbrechen), Bearbeiten direkt mit „Auswählen“ (Endpunkte ziehen, Entf löscht, Art im Eigenschaften-Panel);
+  Ketten = Gelenke über gemeinsame Endpunkte, das Format der Wände bleibt; Klippen und Deckung bringen Karte und
+  Szene auf Version 3 mit Migration.
+  Erledigt (Schritt 1): Befehls-Panel „Wände zeichnen“ (Menüband Wände) oben rechts über der Karte: Art (Wand,
+  Tür, Geheimtür, Fenster) mit kurzer Erklärung, Kette an/aus (Wand und Fenster ketten, Türen nicht), letztes Stück
+  entfernen (auch Rücktaste); Enden rasten an vorhandenen Wandenden und am Raster ein, Alt zeichnet frei;
+  Doppelklick oder Esc beendet eine Kette, ein zweites Esc den Befehl; OK fügt alle Stücke als ein rückgängig
+  machbarer Schritt mit neuen zufälligen IDs hinzu. Mit „Auswählen“ in der Kartenschmiede: Klick wählt eine Wand
+  (Umschalt: mehrere), Doppelklick die ganze Kette; ein Ende ziehen bewegt alle Wände, die dort zusammenstoßen
+  (Umschalt: nur das Ende der ausgewählten Wand), zusammengefallene Wände verschwinden; Entf löscht die Auswahl;
+  das Eigenschaften-Panel zeigt Anzahl, Art (änderbar) und Länge. Die Einzel-Werkzeuge Wand/Tür/Geheimtür/Fenster
+  und „Letzte entfernen“ sind entfernt. Abweichung: Das Gelenk löst Umschalt statt Alt, weil Alt beim Klick ein
+  Ping ist und beim Ziehen frei setzt.
 - **DC-015 Assets und Ebenen** – Props siehe DC-041, Stockwerke DC-020, Zeichenebenen DC-101 (E-18).
 
 ### 3.3 Kartenschmiede (weiter)

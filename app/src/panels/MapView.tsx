@@ -10,6 +10,8 @@ import { clearArea, openArea } from '../core/fogModel';
 import { circleArea, ellipseArea, strokeArea } from '../core/poly/shapes';
 import { partFromDrag, partFromPoints, vertexAt, type VertexRef } from '../core/areas';
 import { AreaCommandPanel } from './AreaCommandPanel';
+import { WallCommandPanel } from './WallCommandPanel';
+import { endsAt, nearestEnd, wallAt, type WallEnd } from '../core/walls';
 import type { Polygon } from '../core/poly/types';
 import { rectPolygon } from '../core/fogModel';
 import type { TemplateShape } from '../core/scene';
@@ -25,8 +27,9 @@ import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
 import { TableView, type FrameSource } from '../table/TableView';
 import {
-  addCalibrationPoint, addPing, addTemplate, addWall, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
+  addCalibrationPoint, addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
+  addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
 /** Drag-and-drop type for creatures dragged from the browser onto the map. */
@@ -37,7 +40,7 @@ export const mapCommands: { fit: () => void } = { fit: () => undefined };
 
 const HINTS: Partial<Record<string, MessageKey>> = {
   select: 'hint.select', pan: 'hint.pan', measure: 'hint.measure', ping: 'hint.ping', calibrate: 'hint.calibrate',
-  area: 'hint.area', wall: 'hint.wall', door: 'hint.door', 'secret-door': 'hint.secretDoor', window: 'hint.window',
+  area: 'hint.area', wall: 'hint.wall',
   'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
   'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom', light: 'hint.light',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
@@ -50,6 +53,7 @@ type Drag =
   | { kind: 'area-drag'; tool: 'rect' | 'ellipse'; a: Point; b: Point }
   | { kind: 'area-path'; path: Point[] }
   | { kind: 'area-corner'; at: VertexRef }
+  | { kind: 'wall-ends'; ends: WallEnd[]; to: Point; moved: boolean }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
   | { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; invert: boolean; circle: boolean }
   | { kind: 'fog-path'; tool: 'fog-lasso' | 'fog-brush'; path: Point[]; invert: boolean };
@@ -190,16 +194,24 @@ function DmMap() {
       if (e.key === 'Escape') {
         // A polygon being clicked goes first; then the running command.
         const drawing = polygonDraft.current.length > 0 || drag.current !== null;
-        state.wallStart = null;
         drag.current = null;
         polygonDraft.current = [];
-        if (!drawing && state.areaCommand) cancelAreaCommand();
+        if (state.wallCommand) {
+          // A chain being drawn ends first; then the command.
+          if (state.wallCommand.start) endWallChain();
+          else cancelWallCommand();
+        } else if (!drawing && state.areaCommand) cancelAreaCommand();
       }
       if (e.key === 'Enter') {
         if (polygonDraft.current.length > 0) finishPolygon(e.altKey);
         else if (state.areaCommand) finishAreaCommand();
+        else if (state.wallCommand) finishWallCommand();
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedTokenId) removeToken(state.selectedTokenId);
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (state.wallCommand) undoWallPoint();
+        else if (state.selectedTokenId) removeToken(state.selectedTokenId);
+        else if (state.selectedWallIds.length) deleteSelectedWalls();
+      }
       // "Nebel ausblenden" (N): DM window only; the TV never changes.
       if (e.key.toLowerCase() === 'n' && !e.ctrlKey && !e.metaKey) toggleDmFog();
     };
@@ -227,13 +239,30 @@ function DmMap() {
       selectedZoneId: state.selectedZoneId,
       selectedLightId: state.selectedLightId,
       measure: d?.kind === 'measure' ? { a: d.a, b: d.b, ft: gridDistanceFeet(state.scene.map.grid, d.a, d.b) } : null,
-      wallPreview: state.wallStart ? { a: state.wallStart, b: snapCorner(mouse.current) } : null,
+      selectedWallIds: state.selectedWallIds,
+      wallDraft: wallDraftOf(),
+      wallEnds: d?.kind === 'wall-ends' ? d.to : null,
       brush: state.tool === 'fog-brush' ? { p: mouse.current, r: state.brushCells * cell } : null,
       calibPoints: state.calibPoints,
       draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
       fogDraft,
       areaDraft: areaDraftOf(d),
     };
+  };
+
+  /** "Draw walls": the pieces so far and the one following the pointer (snapped as it will be). */
+  const wallDraftOf = (): OverlayState['wallDraft'] => {
+    const c = state.wallCommand;
+    if (!c) return null;
+    return { kind: c.kind, walls: c.walls, next: c.start ? { a: c.start, b: wallTarget(mouse.current, altHeld.current) } : null };
+  };
+
+  /** Where a wall end goes: onto a nearby wall end, else the grid corner; exactly the pointer with Alt. */
+  const wallTarget = (p: Point, free: boolean, skip?: ReadonlySet<string>): Point => {
+    if (free) return p;
+    const drafted = state.wallCommand?.walls.map((w, i) => ({ ...w, id: `draft-${i}` })) ?? [];
+    const others = [...state.scene.walls, ...drafted].filter((w) => !skip?.has(w.id));
+    return nearestEnd(others, p, HANDLE_PX / view.current.zoom) ?? snapCorner(p);
   };
 
   /** "Create area": the shape so far and the part being drawn (snapped as it will be). */
@@ -267,7 +296,7 @@ function DmMap() {
       return;
     }
     // Alt pings, except where it changes a drawing tool (fog: the other mode; area: no snapping).
-    if ((e.altKey && !state.tool.startsWith('fog-') && state.tool !== 'area') || state.tool === 'ping') {
+    if ((e.altKey && !state.tool.startsWith('fog-') && state.tool !== 'area' && state.tool !== 'wall') || state.tool === 'ping') {
       addPing(p);
       return;
     }
@@ -296,6 +325,23 @@ function DmMap() {
         }
         selectToken(null);
         selectLight(null);
+        if (state.layer === 'map') {
+          const tol = HANDLE_PX / view.current.zoom;
+          // An end is grabbed with every wall joined there; Shift takes only the selected walls' ends.
+          const ends = endsAt(state.scene.walls, p, tol, e.shiftKey ? new Set(state.selectedWallIds) : undefined);
+          if (ends.length) {
+            if (!ends.some((x) => state.selectedWallIds.includes(x.id))) selectWall(ends[0].id);
+            drag.current = { kind: 'wall-ends', ends, to: p, moved: false };
+            return;
+          }
+          const wall = wallAt(state.scene.walls, p, tol);
+          if (wall || e.shiftKey) {
+            selectWall(wall, e.shiftKey);
+            selectZone(null);
+            return;
+          }
+          selectWall(null);
+        }
         selectZone(zoneAt(p));
         return;
       }
@@ -341,17 +387,8 @@ function DmMap() {
         return;
       }
       case 'wall':
-      case 'door':
-      case 'secret-door':
-      case 'window': {
-        const q = snapCorner(p);
-        if (!state.wallStart) state.wallStart = q;
-        else {
-          addWall(state.tool, state.wallStart, q);
-          state.wallStart = state.tool === 'wall' || state.tool === 'window' ? q : null;
-        }
+        addWallPoint(wallTarget(p, e.altKey));
         return;
-      }
       case 'calibrate':
         addCalibrationPoint(p);
         return;
@@ -378,6 +415,12 @@ function DmMap() {
       moveToken(d.id, { x: p.x + d.ox, y: p.y + d.oy }, false);
     } else if (d.kind === 'area-corner') {
       moveAreaCorner(d.at, cornerTarget(p, e.altKey), false);
+    } else if (d.kind === 'wall-ends') {
+      // The whole drag is one undoable step; a click without moving changes nothing.
+      if (!d.moved) checkpoint();
+      d.moved = true;
+      d.to = wallTarget(p, e.altKey, new Set(d.ends.map((x) => x.id)));
+      moveWallEnds(d.ends, d.to, false);
     } else if (d.kind === 'fog-path' || d.kind === 'area-path') {
       const last = d.path[d.path.length - 1];
       if (Math.hypot(last.x - p.x, last.y - p.y) * view.current.zoom > 4) d.path.push(p);
@@ -403,6 +446,8 @@ function DmMap() {
       drawAreaPart(partFromPoints('lasso', d.path, null));
     } else if (d.kind === 'area-corner') {
       moveAreaCorner(d.at, cornerTarget(toWorld(e), e.altKey), true);
+    } else if (d.kind === 'wall-ends') {
+      if (d.moved) moveWallEnds(d.ends, d.to, true);
     } else if (d.kind === 'template') {
       addTemplate(d.shape, d.a, d.b);
     } else if (d.kind === 'fog-rect' || d.kind === 'fog-ellipse') {
@@ -423,7 +468,7 @@ function DmMap() {
     view.current = { zoom, x: mx - w.x * zoom, y: my - w.y * zoom };
   };
 
-  const hintKey = HINTS[tool];
+  const hintKey = tool === 'select' && ws === 'forge' ? 'hint.selectForge' : HINTS[tool];
   return (
     <div ref={wrapRef} className="map-wrap">
       <canvas ref={canvasRef} aria-hidden="true" />
@@ -434,10 +479,14 @@ function DmMap() {
         onPointerUp={onPointerUp}
         onDoubleClick={(e) => {
           if (state.tool === 'fog-polygon' || state.tool === 'area') finishPolygon(e.altKey);
-          // Map Forge: a double-click on an area edits it.
-          else if (state.tool === 'select' && state.ws === 'forge') {
-            const id = zoneAt(toWorld(e));
-            if (id) startAreaCommand(id);
+          else if (state.tool === 'wall') endWallChain();
+          // Map Forge: a double-click on a wall selects its chain, on an area edits it.
+          else if (state.tool === 'select' && state.layer === 'map') {
+            const p = toWorld(e);
+            const wall = wallAt(state.scene.walls, p, HANDLE_PX / view.current.zoom);
+            const id = wall ? null : zoneAt(p);
+            if (wall) selectWallChain(wall);
+            else if (id) startAreaCommand(id);
           }
         }}
         onWheel={onWheel}
@@ -458,6 +507,7 @@ function DmMap() {
       />
       {hintKey && mapPresent && <div className="map-hint">{t(hintKey)}</div>}
       {ws === 'forge' && <AreaCommandPanel />}
+      {ws === 'forge' && <WallCommandPanel />}
       {!mapPresent && (
         <div className="map-empty">
           <Icon name="map" />

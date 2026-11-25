@@ -2,9 +2,11 @@
  * Duplicating a map (E-32, DC-118): a copy is its own map file `library/<name>.map.json` on the
  * same picture. "Only the map" takes the picture, grid, type, tags and landscape (and the fog's
  * look); "with everything" also walls, areas, lights, assets, layers, points and the start fog –
- * all under new ids, with the references between them following. Pure.
+ * all under new ids, with the references between them following. A drawn map's walls are its
+ * picture (E-33): "only the map" keeps them; walls drawn over a picture are content. Pure.
  */
 import { slugId } from './documents';
+import { isDrawn } from './persistence';
 import type { MapSidecar } from './sidecar';
 
 /** A free map file for `name` in the (flat) library. */
@@ -21,7 +23,8 @@ export function duplicateMap(map: MapSidecar, name: string, withContent: boolean
   copy.name = name;
   if (!withContent) {
     const { startFog: _f, ...rest } = copy;
-    return { ...rest, walls: [], zones: [], lights: [], assets: [], layers: [], pois: [] };
+    const drawing = isDrawn(copy.resource) ? { masonry: copy.masonry.map(({ layer: _l, ...w }) => w), masonryDoors: copy.masonryDoors } : { masonry: [], masonryDoors: [] };
+    return { ...rest, walls: [], zones: [], lights: [], assets: [], layers: [], pois: [], ...drawing };
   }
   const ids = new Map<string, string>();
   const renew = <T extends { id: string }>(xs: T[], prefix: string) => xs.map((x) => {
@@ -36,6 +39,8 @@ export function duplicateMap(map: MapSidecar, name: string, withContent: boolean
   copy.lights = renew(copy.lights, 'light');
   copy.assets = renew(copy.assets, 'asset');
   copy.pois = renew(copy.pois, 'poi');
+  copy.masonry = renew(copy.masonry, 'masonry');
+  copy.masonryDoors = renew(copy.masonryDoors, 'door');
   const ref = (id: string | undefined) => (id === undefined ? undefined : ids.get(id) ?? id);
   const onLayer = <T extends { layer?: string }>(x: T): T => (x.layer ? { ...x, layer: ref(x.layer) } : x);
   copy.layers = copy.layers.map((l) => ({
@@ -47,5 +52,7 @@ export function duplicateMap(map: MapSidecar, name: string, withContent: boolean
   copy.zones = copy.zones.map(onLayer);
   copy.lights = copy.lights.map(onLayer);
   copy.assets = copy.assets.map(onLayer);
+  copy.masonry = copy.masonry.map(onLayer);
+  copy.masonryDoors = copy.masonryDoors.map((d) => ({ ...d, wall: ref(d.wall)! }));
   return copy;
 }

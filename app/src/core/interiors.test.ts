@@ -3,7 +3,7 @@ import { readDocument } from './documents';
 import { DEFAULT_GRID } from './grid';
 import { drawnPlacements, interiorChanges, interiorOf, interiorWalls, ROOF_SEE_THROUGH, shownAssetPath } from './interiors';
 import { commitStart, resetToStart, sceneFromDocuments, sceneOverrideFromScene, startOf } from './persistence';
-import { AssetSidecarSchema, MapSidecarSchema, SceneOverrideSchema, SCENE_VERSION, type MapSidecar } from './sidecar';
+import { AssetSidecarSchema, MapSidecarSchema, SceneOverrideSchema, SCENE_VERSION, MAP_VERSION, type MapSidecar } from './sidecar';
 
 /** Interiors as asset variants (E-29, DC-042 step 3). Grid: 70 px cells, 5 ft. */
 const grid = DEFAULT_GRID;
@@ -23,7 +23,7 @@ describe('files', () => {
     const a = readDocument('asset', AssetSidecarSchema, JSON.stringify({ kind: 'asset', schemaVersion: 2, name: 'House', assetKind: 'prop' }));
     expect(a.ok && a.value.interior).toBeUndefined();
     const m = readDocument('map', MapSidecarSchema, JSON.stringify({ kind: 'map', schemaVersion: 4, name: 'M', resource: 'm.png', widthPx: 10, heightPx: 10, grid, assets: [{ id: 'h1', assetPath: 'x.png', x: 1, y: 1 }] }));
-    expect(m.ok && m.value).toMatchObject({ schemaVersion: 5 });
+    expect(m.ok && m.value).toMatchObject({ schemaVersion: MAP_VERSION });
     expect(m.ok && m.value.assets[0].interiorTrigger).toBeUndefined();
     const s = readDocument('scene', SceneOverrideSchema, JSON.stringify({ kind: 'scene', schemaVersion: 6, name: 'S', mapSidecar: 'm', fog: { revealed: [], remembered: [] } }));
     expect(s.ok && s.value).toMatchObject({ schemaVersion: 7, interiors: {} });
@@ -88,7 +88,7 @@ describe('triggers', () => {
 });
 
 describe('scene state', () => {
-  const map: MapSidecar = MapSidecarSchema.parse({ kind: 'map', schemaVersion: 5, name: 'Village', resource: 'v.png', widthPx: 1000, heightPx: 1000, grid, assets: [house] });
+  const map: MapSidecar = MapSidecarSchema.parse({ kind: 'map', schemaVersion: MAP_VERSION, name: 'Village', resource: 'v.png', widthPx: 1000, heightPx: 1000, grid, assets: [house] });
   const doc = (extra = {}) => SceneOverrideSchema.parse({ kind: 'scene', schemaVersion: SCENE_VERSION, name: 'S', mapSidecar: 'm', fog: { revealed: [], remembered: [] }, ...extra });
 
   it('which houses show their interior is saved with the scene; the start keeps its own; reset takes it', () => {

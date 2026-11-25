@@ -6,7 +6,7 @@ import { MAP_VERSION, SceneOverrideSchema, SCENE_VERSION, type MapSidecar, type 
 
 /** Scene-own assets, asset lights and effects per scene (DC-110). */
 const map: MapSidecar = {
-  kind: 'map', schemaVersion: MAP_VERSION, name: 'Hall', layers: [], resource: 'hall.png', isVideo: false, widthPx: 1000, heightPx: 1000,
+  kind: 'map', schemaVersion: MAP_VERSION, name: 'Hall', layers: [], masonry: [], masonryDoors: [], resource: 'hall.png', isVideo: false, widthPx: 1000, heightPx: 1000,
   tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
   walls: [], zones: [], pois: [], lights: [], ambient: 'dark',
   assets: [{ id: 'torch', assetPath: 'library/torch.png', x: 100, y: 100, rotation: 0, scale: 1 }],

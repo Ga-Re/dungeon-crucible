@@ -751,7 +751,7 @@ async function mapOf(resource: string, sidecar: MapSidecar | null): Promise<{ ma
     url,
     map: {
       kind: 'map', schemaVersion: MAP_VERSION, name, resource, isVideo, widthPx: w, heightPx: h,
-      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark',
+      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark', masonry: [], masonryDoors: [],
     },
   };
 }

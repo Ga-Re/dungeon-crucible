@@ -60,3 +60,15 @@ describe('map copies', () => {
     expect(JSON.parse(files.get('library/hall.png.dm.json')!).name).toBe('Hall');
   });
 });
+
+describe('drawn maps (E-33)', () => {
+  it('are listed in the catalog without a picture, as maps of their own', async () => {
+    files.set('library/cellar.map.json', JSON.stringify({ ...hall, name: 'Cellar', resource: 'drawn:', walls: [] }));
+    await refreshLibraryMaps();
+    const cellar = state.libraryMaps.find((m) => m.mapFile === 'library/cellar.map.json');
+    expect(cellar).toMatchObject({ name: 'Cellar', resource: 'drawn:', drawn: true, copy: false, isVideo: false });
+    // It shares no picture: it can go to the trash while no scene uses it.
+    expect(trashBlocked(cellar!, [])).toBeNull();
+    expect(trashBlocked(cellar!, [{ campaign: 'C', scene: 'S' }])).toBe('copyUsed');
+  });
+});

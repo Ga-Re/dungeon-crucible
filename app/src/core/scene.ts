@@ -4,6 +4,7 @@ import type { GridConfig, DisplaySpec } from './grid';
 import type { FogEffect, LevelFog, Polygon } from './poly/types';
 import type { Condition } from './rules/rules2024';
 import type { InteriorTrigger, MapLayer } from './sidecar';
+import type { BuildDoor, Masonry } from './build/masonry';
 
 /** A cliff or gallery is one way: one sees down from its upper side, not up from below (DC-014). */
 export type WallKind = 'wall' | 'door' | 'secret-door' | 'window' | 'cliff';
@@ -142,6 +143,11 @@ export interface MapInfo {
   assets: MapAssetPlacement[];
   /** The map's layers (E-28); the base layer is not listed. */
   layers: MapLayer[];
+  /** Drawn walls and their doors (E-33); sight uses the walls derived from them. */
+  masonry: Masonry[];
+  masonryDoors: BuildDoor[];
+  /** Top left of a drawn map's area; none: 0, 0. */
+  origin?: Point;
 }
 
 export type MapType = 'dungeon' | 'building' | 'region' | 'world' | 'arena';
@@ -166,7 +172,7 @@ export interface MapAssetPlacement {
 }
 
 /** Catalog defaults of a map that has none yet. */
-export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets' | 'layers'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [], layers: [] };
+export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets' | 'layers' | 'masonry' | 'masonryDoors'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [], layers: [], masonry: [], masonryDoors: [] };
 
 /** Map elements hidden in a scene (DC-103): kept apart, so vision, light and the TV never see them. */
 export interface HiddenElements {
@@ -201,6 +207,8 @@ export interface Scene {
   assetDoorsOpen: Record<string, boolean>;
   /** Houses showing their interior (E-29), by placement id. Not listed: outside. */
   interiorsOn: Record<string, boolean>;
+  /** Doors on drawn walls (E-33) by id → open, and by `foundKey(id)` → a secret one was found. Not listed: closed, not found. */
+  masonryDoorsOpen: Record<string, boolean>;
   tokens: Token[];
   templates: AreaTemplate[];
   pings: Ping[];

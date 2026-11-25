@@ -10,12 +10,19 @@
  */
 import { EMPTY_LEVEL_FOG } from './fogModel';
 import type { LevelFog, Polygon } from './poly/types';
+import type { Masonry } from './build/masonry';
 import { activeLayers, drawOrder, elementLayer } from './layers';
 import { DEFAULT_TABLE, type HiddenElements, type MapAssetPlacement, type Scene, type Zone } from './scene';
 import { diffElements, resolveElements, type MapElements, type SceneLayer } from './mapLayers';
 import { MAP_VERSION, SCENE_VERSION, SCHEMA_VERSION, type CampaignManifest, type MapSidecar, type Player, type SceneOverride } from './sidecar';
 
 export const BUILTIN_PREFIX = 'builtin:';
+/** The resource of a drawn map (E-33): it has no picture, its drawn walls are its picture. */
+export const DRAWN_RESOURCE = 'drawn:';
+
+export function isDrawn(resource: string): boolean {
+  return resource === DRAWN_RESOURCE;
+}
 
 export function mapSidecarPath(resource: string): string {
   if (resource.startsWith(BUILTIN_PREFIX)) return `library/${resource.slice(BUILTIN_PREFIX.length)}.builtin.dm.json`;
@@ -169,6 +176,10 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     lights: elements.lights,
     ambient: scene.ambient,
     ...(startFog ? { startFog: copyFog(startFog) } : {}),
+    // Drawn walls are edited in the Map Forge only, like placed assets.
+    masonry: (fromView ? m.masonry : previous.masonry).map(copyMasonry),
+    masonryDoors: (fromView ? m.masonryDoors : previous.masonryDoors).map((d) => ({ ...d })),
+    ...((fromView ? m.origin : previous.origin) ? { origin: { ...(fromView ? m.origin : previous.origin)! } } : {}),
   };
 }
 
@@ -193,6 +204,9 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
   const ofPlacement = (key: string) => placements.has(key.replace(/:(door|in\d+)$/, ''));
   const assetDoors = Object.fromEntries(Object.entries(scene.assetDoorsOpen).filter(([k]) => ofPlacement(k)));
   const interiors = Object.fromEntries(Object.entries(scene.interiorsOn).filter(([k]) => placements.has(k)));
+  // States of drawn doors (open, found) are left out once the door is gone (E-33).
+  const drawnDoors = new Set(scene.map.masonryDoors.map((d) => d.id));
+  const masonryDoors = Object.fromEntries(Object.entries(scene.masonryDoorsOpen).filter(([k]) => drawnDoors.has(k.replace(/:found$/, ''))));
   return {
     kind: 'scene',
     schemaVersion: SCENE_VERSION,
@@ -200,7 +214,7 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     mapSidecar,
     fog: copyFog(scene.fog),
     ...(scene.fogEffect ? { fogEffect: { ...scene.fogEffect } } : {}),
-    doors: { ...Object.fromEntries(all('walls').filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])), ...assetDoors },
+    doors: { ...Object.fromEntries(all('walls').filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])), ...assetDoors, ...masonryDoors },
     lights: { ...Object.fromEntries(all('lights').map((l) => [l.id, l.on])), ...scene.assetLightsOn },
     discoveredZones: all('zones').filter((z) => z.secret && z.discovered).map((z) => z.id),
     hidden: [...hiddenIds(scene.hidden), ...orphanedHidden],
@@ -215,6 +229,10 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     overrides: layer.overrides,
     added: layer.added,
   };
+}
+
+function copyMasonry(w: Masonry): Masonry {
+  return { ...w, points: w.points.map((q) => ({ x: q.x, y: q.y })) };
 }
 
 function copyShape(ps: readonly Polygon[]): Polygon[] {
@@ -263,6 +281,9 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const assetLightsOn = Object.fromEntries(Object.entries(lightsOn).filter(([id]) => id.endsWith(':light')));
   // Likewise doors of assets with the map doors, by `<placement>:door` and `<placement>:in<n>` (E-29).
   const assetDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => /:(door|in\d+)$/.test(id)));
+  // And doors on drawn walls by their id, found secret ones by `<id>:found` (E-33).
+  const drawnDoors = new Set(map.masonryDoors.map((d) => d.id));
+  const masonryDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => drawnDoors.has(id.replace(/:found$/, ''))));
   return {
     map: {
       id: slugify(map.name),
@@ -280,6 +301,9 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       pois: map.pois.map((p) => ({ ...p })),
       assets: shownOn(map.assets.map((a) => ({ ...a, ...(a.variant === undefined ? {} : { variant: a.variant }) }))),
       layers: map.layers.map((l) => ({ ...l, ...(l.trigger ? { trigger: { ...l.trigger } } : {}) })),
+      masonry: map.masonry.map(copyMasonry),
+      masonryDoors: map.masonryDoors.map((d) => ({ ...d })),
+      ...(map.origin ? { origin: { ...map.origin } } : {}),
     },
     walls: shownOn(walls),
     zones: shownOn(zones),
@@ -291,6 +315,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     ownAssets: shownOn(ownAssets),
     assetLightsOn,
     assetDoorsOpen,
+    masonryDoorsOpen,
     effectsOn: onMap ? {} : { ...(state?.effects ?? {}) },
     ambient: map.ambient,
     tokens: onMap ? [] : (state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),

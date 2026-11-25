@@ -333,9 +333,16 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   (2026-11-25): eigenes Thema nach DC-014; zu Beginn Interview und Entscheidung zum Datenmodell (u. a. Wände als
   Linienzüge, Türen auf Wänden – heute einzelne Strecken, also Migration). Umfasst DC-026 und DC-027 ganz oder teilweise.
   Interview 2026-11-25: E-33. Pakete:
-  - **DC-107a Mauern und Türen**: Datenmodell (Karte v6), Graph mit Ecken/Kreuzungen, Türen auf Mauern
+  - ◐ **DC-107a Mauern und Türen**: Datenmodell (Karte v6), Graph mit Ecken/Kreuzungen, Türen auf Mauern
     (offen/zu/geheim, Riss-Schalter), Sicht und Bewegung abgeleitet, vier Stile mit Texturen, automatischer Untergrund,
     mitwachsende Fläche, „Neue gezeichnete Karte“ im Katalog, Tab „Bauen“, Zeichnen und Bearbeiten.
+    Erledigt: Kern (`core/build/masonry.ts`: Linienzüge, Türen auf Mauern, abgeleitete Sicht-Wände, Graph, Umriss,
+    Ausdehnung mit Ursprung); Format: Karte Version 6 (`masonry`, `masonryDoors`, `origin`), gezeichnete Karte =
+    `library/<name>.map.json` mit `resource: "drawn:"`, im Katalog gelistet; Türzustände und „gefunden“
+    (`<id>:found`) im `doors` der Szene (keine neue Szenenversion); Duplizieren: bei einer gezeichneten Karte gehört
+    die Zeichnung zu „nur die Karte“, über einem Bild gezeichnete Mauern nur zu „mit allem“ (DM 2026-11-25).
+    Offen: Anschluss an Sicht/Nebel/TV, Darstellung mit Texturen, Tab „Bauen“ mit Zeichnen und Bearbeiten,
+    „Neue gezeichnete Karte“ anlegen und öffnen, Messung, Prüfung in der App.
   - **DC-107b Boden-Pinsel** mit sauberem Übergang an Mauern.
   - **DC-107c Eigene Mauern in Szenen** (Szene v8).
   - Danach (eigene Pakete): Wege/Flüsse/Brücken, Räume und Dächer, Detailstreuung, Wildnis-/Stadt-Modus.

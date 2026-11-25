@@ -15,6 +15,7 @@ export function emptyScene(table: Scene['table'] = DEFAULT_TABLE): Scene {
     assetLightsOn: {},
     assetDoorsOpen: {},
     interiorsOn: {},
+    masonryDoorsOpen: {},
     effectsOn: {},
     tokens: [],
     templates: [],

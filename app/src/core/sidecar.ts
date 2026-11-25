@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { CHALLENGE_RATINGS, CONDITIONS } from './rules/rules2024';
 import { fogEffectSchema, levelFogSchema, polygonSchema } from './poly/types';
 import { idSchema } from './documents';
+import { MASONRY_STYLES } from './build/masonry';
 
 export const SIDECAR_SUFFIX = '.dm.json';
 export const SCENE_SUFFIX = '.scene.json';
@@ -49,6 +50,18 @@ export const mapAreaSchema = z.object({
   biome: biome.optional(),
   layer: layerRef,
 });
+/** A drawn wall (E-33): a polyline with a style, a thickness and a seed. */
+export const masonrySchema = z.object({
+  id,
+  points: z.array(z.object({ x: z.number(), y: z.number() })).min(2),
+  closed: z.boolean().default(false),
+  style: z.enum(MASONRY_STYLES),
+  thickness: z.number().positive(),
+  seed: z.number().int(),
+  layer: layerRef,
+});
+/** A door on a drawn wall (E-33): its centre as the distance along the wall; open and found are scene state. */
+export const masonryDoorSchema = z.object({ id, wall: id, at: z.number().min(0), width: z.number().positive(), secret: z.boolean().default(false), crack: z.boolean().default(false) });
 export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color, layer: layerRef });
 
 /**
@@ -71,7 +84,7 @@ export const mapLayerSchema = z.object({
 export type MapLayer = z.infer<typeof mapLayerSchema>;
 
 /** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 5;
+export const MAP_VERSION = 6;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
 export const SCENE_VERSION = 7;
 
@@ -121,6 +134,11 @@ export const MapSidecarSchema = z.object({
   /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */
   ambient: z.enum(['dark', 'lit']).default('dark'),
   assets: z.array(placementSchema).default([]),
+  /** Drawn walls and the doors on them (E-33, version 6). */
+  masonry: z.array(masonrySchema).default([]),
+  masonryDoors: z.array(masonryDoorSchema).default([]),
+  /** Top left of a drawn map's area (map px; it grows left and up too). None: 0, 0. */
+  origin: z.object({ x: z.number(), y: z.number() }).optional(),
 });
 export type MapSidecar = z.infer<typeof MapSidecarSchema>;
 

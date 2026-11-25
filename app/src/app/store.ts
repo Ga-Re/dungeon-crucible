@@ -268,14 +268,7 @@ function previousLayer(doc: SceneOverride | null) {
 }
 
 function snapshot(): string {
-  const s = state.scene;
-  const map = mapSidecarFromScene(s, state.mapResource, state.layer, state.mapDoc);
-  let ov = state.sceneDoc;
-  if (state.layer !== 'map') {
-    const fromView = sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, previousLayer(state.sceneDoc));
-    ov = state.layer === 'start' && state.sceneDoc ? commitStart(state.sceneDoc, fromView, playingAmbience()) : { ...fromView, ...(state.sceneDoc?.start ? { start: state.sceneDoc.start } : {}) };
-  }
-  return JSON.stringify({ map, ov });
+  return JSON.stringify(docsFromView());
 }
 
 /** Call before every undoable change. */
@@ -376,19 +369,29 @@ function playingAmbience(): { path: string; volume: number }[] {
  */
 export function commitView(): void {
   if (!state.mapDoc) return;
+  const { map, ov } = docsFromView();
+  if (state.sceneDoc) state.sceneDoc = ov;
+  state.mapDoc = map;
+}
+
+/**
+ * The files for what the view shows, as saving writes them – the map's and the scene's; undo
+ * snapshots are taken the same way. A view without a scene file gives one from the view alone.
+ */
+function docsFromView(): { map: MapSidecar; ov: SceneOverride | null } {
   // A grid being calibrated is only a preview until OK.
   const cal = state.calibration;
   const s = cal ? { ...state.scene, map: { ...state.scene.map, grid: cal.before } } : state.scene;
   const map = mapSidecarFromScene(s, state.mapResource, state.layer, state.mapDoc);
   const doc = state.sceneDoc;
-  if (doc && state.layer !== 'map') {
+  if (state.layer !== 'map') {
     const fromView = sceneOverrideFromScene(s, state.sceneName, mapSidecarPath(state.mapResource), { round: state.round, turn: state.turn }, map, previousLayer(doc));
-    if (state.layer === 'start') state.sceneDoc = commitStart(doc, fromView, playingAmbience());
-    else state.sceneDoc = { ...fromView, ambience: state.editStart ? doc.ambience : playingAmbience(), ...(doc.start ? { start: doc.start } : {}) };
-  } else if (doc) {
-    state.sceneDoc = state.editStart ? { ...doc, start: { ...startOf(doc), ambience: playingAmbience() } } : { ...doc, ambience: playingAmbience() };
+    if (!doc) return { map, ov: fromView };
+    if (state.layer === 'start') return { map, ov: commitStart(doc, fromView, playingAmbience()) };
+    return { map, ov: { ...fromView, ambience: state.editStart ? doc.ambience : playingAmbience(), ...(doc.start ? { start: doc.start } : {}) } };
   }
-  state.mapDoc = map;
+  if (!doc) return { map, ov: null };
+  return { map, ov: state.editStart ? { ...doc, start: { ...startOf(doc), ambience: playingAmbience() } } : { ...doc, ambience: playingAmbience() } };
 }
 
 /** Builds the view of the current layer from the documents (after a reset, a new start …). */

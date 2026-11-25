@@ -50,3 +50,22 @@ describe('hiding map elements in a scene (DC-103)', () => {
     expect(sceneIssues(state.mapDoc!, state.sceneDoc).orphaned).toEqual(['gone', 'lost']);
   });
 });
+
+describe('undo while editing the start state', () => {
+  it('hides for the start; undo keeps the play state and its ambience', async () => {
+    const { setEditStart } = await import('./campaign');
+    setWorkspace('play');
+    await setEditStart(true);
+    // The play state's ambience (not playing while the start is edited).
+    state.sceneDoc = { ...state.sceneDoc!, ambience: [{ path: 'library/rain.ogg', volume: 0.5 }] };
+    const door = state.scene.walls.find((w) => w.kind === 'door')!;
+    toggleHidden(door.id);
+    commitView();
+    expect(state.sceneDoc!.start!.hidden).toContain(door.id);
+    expect(state.sceneDoc!.hidden).not.toContain(door.id);
+    undo();
+    expect(state.sceneDoc!.start!.hidden).not.toContain(door.id);
+    expect(state.sceneDoc!.ambience).toEqual([{ path: 'library/rain.ogg', volume: 0.5 }]);
+    await setEditStart(false);
+  });
+});

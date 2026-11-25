@@ -13,6 +13,7 @@ import {
   Sprite,
   Text,
   Texture,
+  type TextureSource,
   UniformGroup,
   WebGLRenderer,
 } from "pixi.js";
@@ -63,6 +64,14 @@ export interface PaintedImage {
 }
 
 const isPainted = (image: MapImage): image is PaintedImage => "paint" in image;
+
+/** The tiles of a painted picture (E-33), kept so a change repaints only what it touched. */
+interface PaintedTiles {
+  width: number;
+  height: number;
+  tiles: { left: number; top: number; canvas: HTMLCanvasElement; source: TextureSource }[];
+}
+const paintedTiles = new WeakMap<Container, PaintedTiles>();
 
 export interface FogOptions {
   /** 1 for players (opaque, the default); less for the DM, who must see what lies beneath. */
@@ -258,6 +267,12 @@ export interface Renderer {
   setDrawing(image: MapImage | null, origin?: Origin): void;
   /** Dungeon Crucible (E-33): doors and cracks of drawn walls, above them; replaces those set before. */
   setDecals(decals: readonly Decal[]): void;
+  /**
+   * Dungeon Crucible (E-33): paints only `region` (picture px) of the painted map – or of the
+   * drawing over a picture map – again, from `image` of the same size. False when that is not
+   * possible (another size, no painted picture): then set it anew.
+   */
+  repaint(layer: 'map' | 'drawing', image: PaintedImage, region: { x: number; y: number; w: number; h: number }): boolean;
   /**
    * Shows a video map (ADR-0010): `video` must lie directly under the canvas in the same
    * positioned box; the renderer sizes, transforms and shows it, the caller owns it (loading,
@@ -1151,6 +1166,31 @@ export async function createRenderer(
         }
       requestDraw();
     },
+    repaint(layer, image, region) {
+      const container = layer === 'map' ? map : (drawingLayer.children[0] as Container | undefined);
+      const tiles = container ? paintedTiles.get(container) : undefined;
+      if (!tiles || tiles.width !== image.width || tiles.height !== image.height) return false;
+      for (const t of tiles.tiles) {
+        const x0 = Math.max(region.x, t.left);
+        const y0 = Math.max(region.y, t.top);
+        const x1 = Math.min(region.x + region.w, t.left + t.canvas.width);
+        const y1 = Math.min(region.y + region.h, t.top + t.canvas.height);
+        if (x1 <= x0 || y1 <= y0) continue;
+        const context = t.canvas.getContext("2d");
+        if (!context) return false;
+        context.save();
+        context.beginPath();
+        context.rect(x0 - t.left, y0 - t.top, x1 - x0, y1 - y0);
+        context.clip();
+        context.clearRect(x0 - t.left, y0 - t.top, x1 - x0, y1 - y0);
+        context.translate(x0 - t.left, y0 - t.top);
+        image.paint(context, x0, y0, x1 - x0, y1 - y0);
+        context.restore();
+        t.source.update();
+      }
+      requestDraw();
+      return true;
+    },
     setDrawing(image, at = ZERO) {
       for (const child of drawingLayer.removeChildren()) child.destroy({ children: true, texture: true, textureSource: true });
       if (image) {
@@ -1727,6 +1767,7 @@ function mapSprites(image: MapImage, maxTextureSize: number): Container {
     maxTextureSize - 2 * TILE_PAD,
   );
   const container = new Container();
+  const kept: PaintedTiles = { width: image.width, height: image.height, tiles: [] };
   try {
     for (const tile of tiles) {
       const left = Math.max(0, tile.x - TILE_PAD);
@@ -1752,8 +1793,10 @@ function mapSprites(image: MapImage, maxTextureSize: number): Container {
           canvas.width,
           canvas.height,
         );
+      const source = Texture.from(canvas, true).source;
+      if (painted) kept.tiles.push({ left, top, canvas, source });
       const texture = new Texture({
-        source: Texture.from(canvas, true).source,
+        source,
         frame: new Rectangle(
           tile.x - left,
           tile.y - top,
@@ -1770,5 +1813,6 @@ function mapSprites(image: MapImage, maxTextureSize: number): Container {
     container.destroy({ children: true, texture: true, textureSource: true });
     throw error;
   }
+  if (painted) paintedTiles.set(container, kept);
   return container;
 }

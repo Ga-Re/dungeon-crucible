@@ -369,8 +369,11 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     `app/src/render/build/textures/`; Herkunft dort im README; Rechte laut DM durch den Higgsfield-Tarif geklärt.
     Mauern werden dunkler als jeder Boden gezeichnet (lesbar auch auf gleichem Stein).
     Katalog: gezeichnete Karten mit gemaltem Vorschaubild (verkleinert gemalt, nie in voller Größe), Karte und Details.
-    Offen: bei sehr großen Karten nur geänderte
-    Kacheln neu malen; `npm run bench` (braucht das 4K-Testvideo und den TV).
+    Nur Geändertes neu malen (`core/build/dirty.ts`): eine Änderung malt nur den Bereich der geänderten Mauern, ihrer
+    Türen und der Böden mit neuer nächster Mauer neu (Renderer `repaint`); Umrisse werden je Gruppe sich berührender
+    Mauern zwischengespeichert. Gemessen (200 × 200 Felder, 400 Räume): eine Mauer zeichnen blockiert ~0,18 s (vorher
+    ~0,7 s); wächst die Fläche, wird alles neu gemalt.
+    Offen: `npm run bench` (braucht das 4K-Testvideo und den TV) – DM.
   - **DC-107b Boden-Pinsel** mit sauberem Übergang an Mauern.
   - **DC-107c Eigene Mauern in Szenen** (Szene v8).
   - **DC-107d Klippen und Abhänge** (E-34, DM-Wunsch 2026-11-26): Klippen, Abhänge, Gruben, Plateaus, Schluchten,

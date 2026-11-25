@@ -9,7 +9,8 @@
  * any size never exists as one canvas. Everything is painted in map coordinates, so tiles meet.
  */
 import { floorField, jitterRing, type Jitter } from '../core/build/handDrawn';
-import { buildGraph, doorSpan, masonryOutline, pointAt, type Masonry, type MasonryStyle } from '../core/build/masonry';
+import { floorStep } from '../core/build/dirty';
+import { buildGraph, doorSpan, masonryOutline, pointAt, type BuildDoor, type Masonry, type MasonryStyle } from '../core/build/masonry';
 import type { DmDrawing, Drawing } from '../core/build/playerDrawing';
 import type { Decal, PaintedImage } from './pixi/renderer';
 import type { BuildTextures } from './build/textures';
@@ -25,8 +26,6 @@ const WAVER: Record<MasonryStyle, { amplitude: number; scale: number }> = {
 /** Map cells one texture tile covers: floors, wall surfaces. */
 const FLOOR_CELLS = 3;
 const WALL_CELLS = 1;
-/** Most floor samples: their nearest-wall search runs over all wall segments. */
-const MAX_FLOOR_SAMPLES = 250_000;
 
 const asMasonry = (w: Drawing['masonry'][number]): Masonry => ({ ...w, points: w.points.map((p) => ({ ...p })) });
 
@@ -69,6 +68,43 @@ interface Geometry {
 const geometries = new Map<string, Geometry>();
 const KEPT_GEOMETRIES = 4;
 
+/** United, wavering outlines and joints per group of touching walls (map px). */
+const groupOutlines = new Map<string, { shape: Path2D; joints: PreparedStyle['joints'] }>();
+
+function outlineOf(style: MasonryStyle, group: Masonry[], doors: BuildDoor[]): { shape: Path2D; joints: PreparedStyle['joints'] } {
+  const thickness = group.reduce((s, w) => s + w.thickness, 0) / group.length;
+  const jitter: Jitter = { step: Math.max(3, thickness / 3), amplitude: thickness * WAVER[style].amplitude, scale: thickness * WAVER[style].scale, seed: styleSeed(style) };
+  const shape = new Path2D();
+  for (const p of masonryOutline(group, doors))
+    for (const ring of [p.outer, ...p.holes]) {
+      jitterRing(ring, jitter).forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)));
+      shape.closePath();
+    }
+  const joints = buildGraph(group).nodes.flatMap((n) => (n.kind === 'straight' ? [] : [{ x: n.x, y: n.y, angle: n.arms[0] ?? 0, kind: n.kind === 'end' ? ('end' as const) : ('joint' as const) }]));
+  return { shape, joints };
+}
+
+/** Walls whose areas (with their thickness) overlap, gathered into groups. */
+function touchingGroups(walls: Masonry[]): Masonry[][] {
+  const box = walls.map((w) => {
+    const xs = w.points.map((p) => p.x);
+    const ys = w.points.map((p) => p.y);
+    const t = w.thickness;
+    return [Math.min(...xs) - t, Math.min(...ys) - t, Math.max(...xs) + t, Math.max(...ys) + t];
+  });
+  const parent = walls.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < walls.length; i++)
+    for (let j = i + 1; j < walls.length; j++) {
+      const a = box[i];
+      const b = box[j];
+      if (a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]) parent[find(i)] = find(j);
+    }
+  const groups = new Map<number, Masonry[]>();
+  walls.forEach((w, i) => (groups.get(find(i)) ?? groups.set(find(i), []).get(find(i))!).push(w));
+  return [...groups.values()];
+}
+
 function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: number, walls: Masonry[]): Geometry {
   const key = JSON.stringify([drawing.origin, drawing.width, drawing.height, drawing.masonry, drawing.doors.map((d) => [d.wall, d.at, d.width]), withGround, cell]);
   const hit = geometries.get(key);
@@ -79,22 +115,32 @@ function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: num
 
   // Walls, one style at a time: united, cut open where doors are shown (unfound secret doors were never sent).
   const shownDoors = (ws: Masonry[]) => ws.flatMap((w) => drawing.doors.filter((d) => d.wall === w.id).map((d, i) => ({ id: `d${i}`, wall: w.id, at: d.at, width: d.width, secret: false, crack: false })));
+  // Walls that touch are united together; groups that did not change are taken as they were.
+  const used = new Set<string>();
   const styles: PreparedStyle[] = [...new Set(walls.map((w) => w.style))].map((style) => {
     const mine = walls.filter((w) => w.style === style);
-    const thickness = mine.reduce((s, w) => s + w.thickness, 0) / mine.length;
-    const jitter: Jitter = { step: Math.max(3, thickness / 3), amplitude: thickness * WAVER[style].amplitude, scale: thickness * WAVER[style].scale, seed: styleSeed(style) };
     const shape = new Path2D();
-    for (const p of masonryOutline(mine, shownDoors(mine)))
-      for (const ring of [p.outer, ...p.holes]) {
-        jitterRing(ring, jitter).forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)));
-        shape.closePath();
+    const joints: PreparedStyle['joints'] = [];
+    for (const group of touchingGroups(mine)) {
+      const doors = shownDoors(group);
+      const key = JSON.stringify([style, group, doors]);
+      used.add(key);
+      let built = groupOutlines.get(key);
+      if (!built) {
+        built = outlineOf(style, group, doors);
+        groupOutlines.set(key, built);
       }
-    const joints = buildGraph(mine).nodes.flatMap((n) => (n.kind === 'straight' ? [] : [{ x: n.x, y: n.y, angle: n.arms[0] ?? 0, kind: n.kind === 'end' ? ('end' as const) : ('joint' as const) }]));
+      shape.addPath(built.shape);
+      joints.push(...built.joints);
+    }
+    const thickness = mine.reduce((s, w) => s + w.thickness, 0) / mine.length;
     return { style, shape, thickness, joints };
   });
+  // Groups no drawing uses any more go.
+  if (groupOutlines.size > used.size * 2 + 64) for (const k of groupOutlines.keys()) if (!used.has(k)) groupOutlines.delete(k);
 
   // Floors after the nearest wall: a small mask per style, softened at its own size.
-  const step = Math.max(cell / 2, Math.sqrt((width * height) / MAX_FLOOR_SAMPLES));
+  const step = floorStep({ width, height }, cell);
   const field = withGround ? floorField(walls, { x: ox, y: oy, w: width, h: height }, step) : null;
   const floorMasks = new Map<MasonryStyle, HTMLCanvasElement>();
   if (field)

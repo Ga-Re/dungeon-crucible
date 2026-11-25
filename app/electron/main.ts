@@ -13,6 +13,7 @@ import { app, BrowserWindow, ipcMain, Menu, protocol, screen, session, shell, ty
 import path from 'node:path';
 import { ASSET_SCHEME, assetPathFrom } from '../src/platform/asset-url';
 import { RootFolder } from './rootFolder';
+import { ThumbCache } from './library';
 import { fileResponse, isInside } from './files';
 import { FloatingWindows } from './floating';
 import type { FloatBounds } from '../src/platform/desktop-api';
@@ -40,6 +41,8 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const rootFolder = new RootFolder();
+/** Thumbnails of library files: on this device, never in the root folder (E-27). */
+const thumbs = new ThumbCache(path.join(app.getPath('userData'), 'thumbs'));
 let mainWindow: BrowserWindow | null = null;
 
 function pageUrl(page: string): string {
@@ -144,6 +147,10 @@ function registerIpc(): void {
     if (typeof v !== 'string') throw new Error(`${name} must be text`);
     return v;
   };
+  const bytes = (v: unknown): Uint8Array => {
+    if (!(v instanceof Uint8Array)) throw new Error('bytes: expected binary data');
+    return v;
+  };
   handle('root:info', () => rootFolder.info());
   handle('root:choose', (w, useSuggested: unknown) => rootFolder.choose(w, useSuggested === true));
   handle('files:read', (_w, rel: unknown) => rootFolder.readText(str(rel, 'path')));
@@ -155,6 +162,11 @@ function registerIpc(): void {
   handle('campaigns:create', (_w, name: unknown) => rootFolder.createCampaign(str(name, 'name')));
   handle('campaigns:trash', (_w, slug: unknown) => rootFolder.trashCampaign(str(slug, 'slug')));
   handle('library:import', (w, kind: unknown) => rootFolder.importToLibrary(w, kind === 'audio' ? 'audio' : 'map'));
+  handle('library:list', () => rootFolder.listLibrary());
+  handle('library:importAssets', (w) => rootFolder.importAssets(w));
+  handle('library:importDropped', (_w, name: unknown, data: unknown) => rootFolder.importDropped(str(name, 'name'), bytes(data)));
+  handle('thumbs:read', (_w, key: unknown) => thumbs.read(str(key, 'key')));
+  handle('thumbs:write', (_w, key: unknown, data: unknown) => thumbs.write(str(key, 'key'), bytes(data)));
   handle('archive:export', (w, slug: unknown, name: unknown, files: unknown) =>
     rootFolder.exportArchive(w, str(slug, 'slug'), str(name, 'name'), Array.isArray(files) ? files.filter((f): f is string => typeof f === 'string') : []));
   handle('archive:import', (w) => rootFolder.importArchive(w));

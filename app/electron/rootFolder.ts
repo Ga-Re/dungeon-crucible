@@ -2,7 +2,7 @@
  * The root folder: one folder (often in a synced location) holding the global library and the
  * campaigns.
  *
- *   <root>/library/          maps, audio, creatures – flat, with sidecars `<file>.dm.json`
+ *   <root>/library/          maps, assets (incl. audio), creatures – flat, with sidecars `<file>.dm.json`
  *   <root>/campaigns/<slug>/ one folder per campaign
  *   <root>/.trash/<time>/    deleted files, restorable
  *
@@ -13,8 +13,9 @@
 import { app, dialog, type BrowserWindow } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CampaignListEntry, ExportResult, ImportResultInfo, LibraryImport, RootInfo } from '../src/platform/desktop-api';
-import { ArchiveError, CAMPAIGN_FILE_NAME, SIDECAR_SUFFIX, campaignSlug, freeName, importArchive, sha256, writeArchive } from './archive';
+import type { CampaignListEntry, ExportResult, ImportResultInfo, LibraryEntry, LibraryImport, RootInfo } from '../src/platform/desktop-api';
+import { ArchiveError, CAMPAIGN_FILE_NAME, SIDECAR_SUFFIX, campaignSlug, freeName, importArchive, writeArchive } from './archive';
+import { ASSET_EXTENSIONS, addBytesToLibrary, addFileToLibrary, listLibrary } from './library';
 import { folderName, isInside, listFilesIn, safeJoin, toRel, writeAtomic } from './files';
 
 const MAP_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'webm'];
@@ -193,21 +194,32 @@ export class RootFolder {
     });
     const src = r.filePaths[0];
     if (r.canceled || !src) return null;
-    const library = path.join(root, 'library');
-    await fs.promises.mkdir(library, { recursive: true });
-    const size = (await fs.promises.stat(src)).size;
-    let hash: string | null = null;
-    for (const name of await fs.promises.readdir(library)) {
-      if (name.endsWith(SIDECAR_SUFFIX) || name.startsWith('.')) continue;
-      const candidate = path.join(library, name);
-      const st = await fs.promises.stat(candidate);
-      if (!st.isFile() || st.size !== size) continue;
-      hash ??= await sha256(src);
-      if ((await sha256(candidate)) === hash) return { relPath: toRel(root, candidate), absPath: candidate, reused: true };
-    }
-    const dest = path.join(library, freeName(library, path.basename(src)));
-    await fs.promises.copyFile(src, dest, fs.constants.COPYFILE_EXCL);
-    return { relPath: toRel(root, dest), absPath: dest, reused: false };
+    return this.libraryImport(await addFileToLibrary(path.join(root, 'library'), src));
+  }
+
+  private libraryImport(added: { name: string; reused: boolean }): LibraryImport {
+    const abs = path.join(this.requireRoot(), 'library', added.name);
+    return { relPath: toRel(this.requireRoot(), abs), absPath: abs, reused: added.reused };
+  }
+
+  /** The library's files with their sidecars, in one go (Asset Vault, DC-040). */
+  async listLibrary(): Promise<LibraryEntry[]> {
+    return listLibrary(path.join(this.requireRoot(), 'library'));
+  }
+
+  /** Picks any number of asset files and puts them into the library. */
+  async importAssets(win: BrowserWindow): Promise<LibraryImport[]> {
+    const root = this.requireRoot();
+    const r = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Assets', extensions: ASSET_EXTENSIONS }] });
+    if (r.canceled) return [];
+    const out: LibraryImport[] = [];
+    for (const src of r.filePaths) out.push(this.libraryImport(await addFileToLibrary(path.join(root, 'library'), src)));
+    return out;
+  }
+
+  /** Puts a file dropped on the DM window into the library (its bytes, under its own name). */
+  async importDropped(fileName: string, bytes: Uint8Array): Promise<LibraryImport> {
+    return this.libraryImport(await addBytesToLibrary(path.join(this.requireRoot(), 'library'), fileName, bytes));
   }
 
   /* ---------- archives */

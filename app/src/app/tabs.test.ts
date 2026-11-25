@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sceneFromDocuments } from '../core/persistence';
-import { activateSession, answerTvAsk, applyMapToTv, placeAsset, setAssetInfo, checkpoint, clearTabs, closeSessionTab, commitView, moveToken, produceFrame, replaceScene, setTvScene, setWorkspace, state, undo } from './store';
+import { activateSession, addLight, answerTvAsk, applyMapToTv, placeAsset, setAssetInfo, tableZoom, checkpoint, clearTabs, closeSessionTab, commitView, moveToken, produceFrame, replaceScene, setTvScene, setWorkspace, state, undo } from './store';
 
 /** Scenes as tabs (E-30, DC-034 step 1): each keeps its state and undo history while another is shown. */
 describe('scene tabs', () => {
@@ -65,12 +65,14 @@ describe('scene tabs', () => {
     expect(state.ws).toBe('forge');
   });
 
-  it('the TV stays on its scene while another tab is shown, until a scene is put there; its tab closed, it is black', () => {
+  it('the TV shows only a scene put there; it stays on it while another tab is shown; its tab closed, it is black', () => {
     setWorkspace('play');
     clearTabs();
     open('scenes/a.scene.json', 'A');
-    // The first scene opened goes on the TV.
-    expect(state.tvScenePath).toBe('scenes/a.scene.json');
+    // Nothing goes on the TV by itself (DM decision): it is black until a scene is put there.
+    expect(state.tvScenePath).toBeNull();
+    expect(produceFrame(Date.now()).blackout).toBe(true);
+    setTvScene('scenes/a.scene.json');
     const pc = state.scene.tokens.find((t) => t.kind === 'pc')!;
     const from = pc.x;
     moveToken(pc.id, { x: from + 70, y: pc.y }, true);
@@ -101,6 +103,7 @@ describe('scene tabs', () => {
     setWorkspace('play');
     clearTabs();
     open('scenes/a.scene.json', 'A');
+    setTvScene('scenes/a.scene.json');
     replaceScene(sceneFromDocuments(base.map, null, null, undefined, 'map'), { resource: 'library/other.png', fileName: 'library/other.png', scenePath: null, sceneName: 'Other', docs: { map: structuredClone(base.map), scene: null }, mapTab: true });
     expect(state.tabs.map((x) => [x.kind, x.name])).toEqual([['scene', 'A'], ['map', 'Other']]);
     expect(state.activeTab).toBe('map:library/other.png');
@@ -123,6 +126,7 @@ describe('scene tabs', () => {
     clearTabs();
     setAssetInfo({ 'library/barrel.png': { name: 'barrel', kind: 'prop', url: 'dc-asset://file/barrel.png', video: false } });
     open('scenes/a.scene.json', 'A');
+    setTvScene('scenes/a.scene.json');
     const assets = () => produceFrame(Date.now()).assets.length;
     const before = assets();
     setWorkspace('forge');
@@ -145,6 +149,7 @@ describe('scene tabs', () => {
     clearTabs();
     setAssetInfo({ 'library/barrel.png': { name: 'barrel', kind: 'prop', url: 'dc-asset://file/barrel.png', video: false } });
     open('scenes/a.scene.json', 'A');
+    setTvScene('scenes/a.scene.json');
     const before = produceFrame(Date.now()).assets.length;
     setWorkspace('forge');
     replaceScene(sceneFromDocuments(base.map, null, null, undefined, 'map'), { resource: base.resource, fileName: base.fileName, scenePath: null, sceneName: 'Crypt', docs: { map: structuredClone(base.map), scene: null }, mapTab: true });
@@ -154,5 +159,41 @@ describe('scene tabs', () => {
     expect(produceFrame(Date.now()).assets.length).toBe(before);
     applyMapToTv();
     expect(produceFrame(Date.now()).assets.length).toBe(before + 1);
+  });
+
+  it('undo stays in the layer it was recorded in: a map edit is not undone in a scene', () => {
+    setWorkspace('forge');
+    clearTabs();
+    open('scenes/a.scene.json', 'A');
+    open('scenes/b.scene.json', 'B');
+    activateSession('scenes/a.scene.json');
+    addLight({ x: 500, y: 500 });
+    expect(state.canUndo).toBe(true);
+    activateSession('scenes/b.scene.json');
+    setWorkspace('play');
+    activateSession('scenes/a.scene.json');
+    expect(state.canUndo).toBe(false);
+  });
+
+  it('with only a map open, the Orchestrator shows nothing; the map stays in its tab', () => {
+    setWorkspace('forge');
+    clearTabs();
+    replaceScene(sceneFromDocuments(base.map, null, null, undefined, 'map'), { resource: 'library/other.png', fileName: 'library/other.png', scenePath: null, sceneName: 'Other', docs: { map: structuredClone(base.map), scene: null }, mapTab: true });
+    setWorkspace('play');
+    expect(state.activeTab).toBeNull();
+    expect(state.mapDoc).toBeNull();
+    expect(state.tabs.map((x) => x.id)).toEqual(['map:library/other.png']);
+  });
+
+  it('the TV is zoomed for the grid of its own scene, not of the tab shown', () => {
+    setWorkspace('play');
+    clearTabs();
+    open('scenes/a.scene.json', 'A');
+    setTvScene('scenes/a.scene.json');
+    const zoomA = produceFrame(Date.now()).zoom;
+    // B with cells twice as large, shown.
+    replaceScene(sceneFromDocuments({ ...structuredClone(base.map), grid: { ...base.map.grid, cellWidth: 140, cellHeight: 140 } }, structuredClone(base.doc), null, undefined, 'scene'), { resource: 'library/big.png', fileName: 'library/big.png', scenePath: 'scenes/b.scene.json', sceneName: 'B', docs: { map: { ...structuredClone(base.map), grid: { ...base.map.grid, cellWidth: 140, cellHeight: 140 } }, scene: structuredClone(base.doc) } });
+    expect(tableZoom()).not.toBe(zoomA);
+    expect(produceFrame(Date.now()).zoom).toBe(zoomA);
   });
 });

@@ -28,7 +28,7 @@ import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { activateSession, checkpoint, clearTabs, closeSessionTab, commitView, emit, isSceneOpen, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, setTvScene, setWorkspace, showLayer, state } from './store';
+import { activateSession, checkpoint, clearTabs, closeSessionTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
 import { applySceneAmbience, refreshAudioFiles, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
@@ -283,6 +283,8 @@ let restoring = false;
 
 async function reopen(kept: OpenTabs): Promise<void> {
   const ws = state.ws;
+  // The campaign's own scene opened first; a tab the DM had closed stays closed.
+  const opened = state.activeTab;
   for (const tab of kept.tabs) {
     if (isSceneOpen(tab.id)) continue;
     try {
@@ -306,6 +308,7 @@ async function reopen(kept: OpenTabs): Promise<void> {
     if (tab?.kind === 'map') state.ws = 'forge';
     showLayer(layerFor(state.ws));
   }
+  if (opened && !kept.tabs.some((t) => t.id === opened) && state.tabs.length > 1) closeSessionTab(opened);
   if (kept.tv && isSceneOpen(kept.tv) && !kept.tv.startsWith('map:')) setTvScene(kept.tv);
 }
 
@@ -401,13 +404,15 @@ async function loadCampaign(info: CampaignInfo): Promise<boolean> {
   state.players = manifest.players;
   await loadCreatures();
   state.selectedCreatureIdx = 0;
-  if (manifest.activeScene) await loadScene(manifest.activeScene, tableFromManifest(manifest));
+  // The TV is black until the DM releases it (E-30): nothing shows while the campaign opens.
+  state.scene.table.blackout = true;
+  state.blackUntilRelease = true;
+  if (manifest.activeScene) await loadScene(manifest.activeScene, { ...tableFromManifest(manifest), blackout: true });
   else replaceScene(emptyScene({ ...state.scene.table, ...tableFromManifest(manifest) }), { resource: '', fileName: '', scenePath: null, sceneName: '' });
   await refreshSceneList();
   await restoreTabs(info.slug);
-  // The TV is black until the DM releases it (E-30): nothing shows while the app is prepared.
+  await applyTvAmbience();
   state.scene.table.blackout = true;
-  state.blackUntilRelease = true;
   state.dirty = false;
   await refreshAudioFiles();
   remember(info.slug, manifest.name);
@@ -449,7 +454,7 @@ export async function setEditStart(on: boolean): Promise<void> {
   showLayer(layerFor(state.ws));
   const doc = state.sceneDoc;
   // The soundboard plays the TV's scene: the start's ambience only for the scene on the TV.
-  if (state.scenePath === state.tvScenePath) await applySceneAmbience(on ? startOf(doc).ambience : doc.ambience);
+  if (state.scenePath === soundScene()) await applySceneAmbience(on ? startOf(doc).ambience : doc.ambience);
   emit();
 }
 
@@ -461,7 +466,7 @@ export async function resetScene(): Promise<void> {
   commitView();
   state.sceneDoc = resetToStart(state.sceneDoc!);
   refreshView();
-  if (state.scenePath === state.tvScenePath) await applySceneAmbience(state.sceneDoc.ambience);
+  if (state.scenePath === soundScene()) await applySceneAmbience(state.sceneDoc.ambience);
   log('log.sceneReset', { scene: state.sceneName });
   emit();
 }
@@ -476,15 +481,17 @@ function tvSettings(): Partial<Scene['table']> {
 export async function loadScene(scenePath: string, table: Partial<Scene['table']> = tvSettings()): Promise<void> {
   const ov = await readDoc(campaignPath(scenePath), 'scene', SceneOverrideSchema);
   if (!ov) return;
-  const map = await readDoc(ov.mapSidecar, 'map', MapSidecarSchema);
-  if (!map) return;
+  const read = await readDoc(ov.mapSidecar, 'map', MapSidecarSchema);
+  if (!read) return;
+  // A map open in another tab may have changes newer than its file.
+  const map = latestMap(read.resource) ?? read;
   // Older scenes start where they are when first opened (E-3); saved with the next save.
   if (!ov.start) ov.start = startOf(ov);
   await showDocs(map, ov, map.resource, { scenePath, table });
   const issues = sceneIssues(map, ov);
   if (issues.orphaned.length > 0 || issues.invalid.length > 0) log('log.orphanedOverrides', { scene: ov.name, n: issues.orphaned.length + issues.invalid.length });
-  // The soundboard plays the TV's scene (E-30).
-  if (state.tvScenePath === scenePath) void applySceneAmbience(ov.ambience);
+  // The soundboard plays the TV's scene (E-30), with nothing on the TV the scene shown.
+  if (soundScene() === scenePath) void applySceneAmbience(ov.ambience);
 }
 
 /** Shows scene `scenePath` – or any open tab by its id: its tab if it is open (E-30), else it opens in a new tab. */
@@ -492,10 +499,10 @@ export async function switchScene(scenePath: string): Promise<void> {
   if (scenePath === state.activeTab) return;
   await saveCampaign();
   // The TV stays on its scene (E-30); a scene the TV did not have yet is only shown here.
-  const tvBefore = state.tvScenePath;
   if (isSceneOpen(scenePath)) activateSession(scenePath);
   else await loadScene(scenePath);
-  if (!tvBefore && state.tvScenePath) await applyTvAmbience();
+  // With nothing on the TV, the soundboard follows the scene shown.
+  if (!state.tvScenePath) await applyTvAmbience();
   // In the Orchestrator the DM is asked whether this scene goes on the TV too.
   if (state.ws === 'play' && state.scenePath && state.tvScenePath && state.tvScenePath !== state.scenePath) state.tvAsk = state.scenePath;
   emit();
@@ -519,29 +526,47 @@ export async function putOnTv(scenePath: string | null): Promise<void> {
   await saveCampaign(true);
 }
 
-/** The soundboard plays the TV's scene: its play state's ambience (or none without a scene). */
+/** The soundboard plays the TV's scene – with nothing on the TV the scene shown: its ambience (or none). */
 async function applyTvAmbience(): Promise<void> {
-  const doc = state.tvScenePath ? openSceneDoc(state.tvScenePath) : null;
-  const live = state.tvScenePath === state.scenePath;
+  const scene = soundScene();
+  const doc = scene ? openSceneDoc(scene) : null;
+  const live = scene === state.scenePath;
   await applySceneAmbience(doc ? (live && state.editStart ? startOf(doc).ambience : doc.ambience) : []);
 }
 
 /** Closes the tab of scene `scenePath` (saved first); the one shown gives way to its neighbour. */
 export async function closeScene(scenePath: string): Promise<void> {
-  if (scenePath === state.activeTab) await saveCampaign();
-  const wasTv = scenePath === state.tvScenePath;
+  // Saved first – also a tab in the background with changes not saved yet.
+  await saveCampaign();
+  const sound = soundScene();
   closeSessionTab(scenePath);
-  if (wasTv) await applyTvAmbience();
+  if (soundScene() !== sound) await applyTvAmbience();
   // The campaign remembers the scene shown now.
   await saveCampaign(true);
 }
 
+/** The save running now: the next one waits for it, so a tab is never put away half saved. */
+let running: Promise<void> | null = null;
+
 export async function saveCampaign(force = false): Promise<void> {
+  while (running) await running;
   // The tabs are kept with every save, also when nothing else changed (a tab switched).
   keepTabs();
-  if (!state.campaign || state.saving || (!state.dirty && !force)) return;
+  const unsaved = unsavedSessions();
+  if (!state.campaign || (!state.dirty && !force && !unsaved.length)) return;
+  running = writeCampaign(unsaved);
+  try {
+    await running;
+  } finally {
+    running = null;
+  }
+}
+
+async function writeCampaign(unsaved: ReturnType<typeof unsavedSessions>): Promise<void> {
+  if (!state.campaign) return;
   state.saving = true;
   emit();
+  const shown = state.activeTab;
   try {
     const s = state.scene;
     // A campaign without a map yet has no scene: only the manifest and creatures are written.
@@ -549,10 +574,22 @@ export async function saveCampaign(force = false): Promise<void> {
     // The document shown: a scene and its map, or a map open on its own (E-30).
     if (state.mapDoc && (state.sceneDoc || !state.scenePath)) await writeDoc(mapSidecarPath(state.mapResource), MapSidecarSchema, state.mapDoc);
     if (state.scenePath && state.sceneDoc) await writeDoc(campaignPath(state.scenePath), SceneOverrideSchema, state.sceneDoc);
+    // Documents put away with changes (E-30); a map the shown document has too is written once, as shown.
+    const written = new Set(state.mapDoc ? [state.mapResource] : []);
+    for (const u of unsaved) {
+      if (u.mapDoc && !written.has(u.mapResource)) {
+        await writeDoc(mapSidecarPath(u.mapResource), MapSidecarSchema, u.mapDoc);
+        written.add(u.mapResource);
+      }
+      if (u.scenePath && u.sceneDoc) await writeDoc(campaignPath(u.scenePath), SceneOverrideSchema, u.sceneDoc);
+      sessionSaved(u.id);
+    }
     await saveCreatures();
     // With a map on its own shown, the campaign keeps the scene on the TV as its scene.
     await writeDoc(campaignPath(CAMPAIGN_FILE), CampaignManifestSchema, manifestFromState(state.campaign.name, state.scenePath ?? state.tvScenePath, s.table, state.players));
-    state.dirty = false;
+    // Saved is what was shown when the save began; shown by now in a tab, that one is saved.
+    if (state.activeTab === shown) state.dirty = false;
+    else if (shown) sessionSaved(shown);
     state.lastSavedAt = Date.now();
   } catch (e) {
     log('log.saveFailed', { error: String(e) });
@@ -647,7 +684,7 @@ export async function openMapTab(resource: string): Promise<void> {
     keepTabs();
     return;
   }
-  const { map, url } = await mapOf(resource, await readDoc(mapSidecarPath(resource), 'map', MapSidecarSchema, { quiet: true }));
+  const { map, url } = await mapOf(resource, latestMap(resource) ?? (await readDoc(mapSidecarPath(resource), 'map', MapSidecarSchema, { quiet: true })));
   state.ws = 'forge';
   state.areaCommand = null;
   state.wallCommand = null;

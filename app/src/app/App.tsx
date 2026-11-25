@@ -316,7 +316,7 @@ function StatusBar() {
 /**
  * The open documents as tabs in the title bar (E-30, DC-034): a click shows one, the ✕ (or a
  * middle click) closes it, the context menu puts it on the TV. The TV's scene carries a TV mark;
- * the one shown a dot while its changes are not saved yet. Closing the TV's scene asks first.
+ * a tab a dot while its changes are not saved yet. Closing the TV's scene asks first.
  */
 function DocTabs() {
   const { t } = useI18n();
@@ -349,7 +349,7 @@ function DocTabs() {
               <Icon name={tab.kind === 'map' ? 'map' : 'flag'} />
               <span>{tab.name}</span>
               {tab.id === tv && <span className="doc-tab-tv" title={t('tabs.onTv')} aria-label={t('tabs.onTv')}><Icon name="monitor" /></span>}
-              {on && pending && <span className="doc-tab-dot" aria-label={t('tabs.unsaved')} />}
+              {((on && pending) || tab.unsaved) && <span className="doc-tab-dot" aria-label={t('tabs.unsaved')} />}
             </button>
             <button className="doc-tab-close" title={t('tabs.close')} aria-label={`${t('tabs.close')}: ${tab.name}`} onClick={(e) => close(tab.id, e.currentTarget)}><Icon name="close" /></button>
           </div>

@@ -35,7 +35,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
-  editableHere, shownInForge, activateAsset, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
+  editableHere, shownInForge, activateAsset, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -195,7 +195,8 @@ function DmMap() {
         overlay.height = Math.round(s.height * dpr);
       }
       const g = overlay.getContext('2d');
-      if (g) drawDmOverlay(g, state.ws === 'forge' ? shownLayers(state.scene) : state.scene, state.vision, view.current, dpr, overlayState(), Date.now());
+      // Doors of placed assets are drawn like drawn doors (E-29); in a scene with their gaps.
+      if (g) drawDmOverlay(g, state.ws === 'forge' ? shownLayers({ ...state.scene, walls: [...state.scene.walls, ...assetDoors(state.scene)] }) : withAssetDoors(state.scene), state.vision, view.current, dpr, overlayState(), Date.now());
     };
     raf = requestAnimationFrame(tick);
     return () => {
@@ -375,7 +376,7 @@ function DmMap() {
           return;
         }
         if (state.ws === 'play') {
-          const door = state.scene.walls.find((w) => (w.kind === 'door' || w.kind === 'secret-door') && Math.hypot((w.x1 + w.x2) / 2 - p.x, (w.y1 + w.y2) / 2 - p.y) < cell * 0.45);
+          const door = sightWalls(state.scene).find((w) => (w.kind === 'door' || w.kind === 'secret-door') && Math.hypot((w.x1 + w.x2) / 2 - p.x, (w.y1 + w.y2) / 2 - p.y) < cell * 0.45);
           if (door && (door.kind === 'door' || door.open)) {
             toggleDoor(door.id);
             return;

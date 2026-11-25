@@ -195,6 +195,8 @@ export interface Scene {
   assetLightsOn: Record<string, boolean>;
   /** Looping effects by placement id → playing. Not listed: playing. */
   effectsOn: Record<string, boolean>;
+  /** Doors of placed assets by door id (`<placement>:door`, E-29) → open. Not listed: closed. */
+  assetDoorsOpen: Record<string, boolean>;
   tokens: Token[];
   templates: AreaTemplate[];
   pings: Ping[];

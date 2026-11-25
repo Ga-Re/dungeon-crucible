@@ -7,6 +7,7 @@ import type { Point } from '../core/geometry';
 import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
+import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
 import { rotateAboutAnchor, scaleAboutAnchor, snapAnchored } from '../core/anchor';
 import { assetShapes, footprintOf, hitsPlacement, nextVariant, snapPlacement } from '../core/placement';
 import { rollDice, type RollResult } from '../core/rules/dice';
@@ -516,9 +517,10 @@ export function recomputeVision(final = true): void {
   if (!final && Date.now() - visionAt < visionCost * 2) return;
   const started = performance.now();
   const extras = assetExtras(state.scene);
-  state.vision = updateVision(state.scene, extras);
+  const seen = withAssetDoors(state.scene);
+  state.vision = updateVision(seen, extras);
   state.visible = visiblePolygons(state.vision);
-  state.lights = litSources(state.scene, extras);
+  state.lights = litSources(seen, extras);
   visionCost = performance.now() - started;
   visionAt = Date.now();
   const now = Date.now();
@@ -546,6 +548,16 @@ export function moveToken(id: string, p: Point, final: boolean): void {
 }
 
 export function toggleDoor(id: string): void {
+  if (assetDoors(state.scene).some((d) => d.id === id)) {
+    // An asset's door (E-29): scene state.
+    checkpoint();
+    const open = !state.scene.assetDoorsOpen[id];
+    state.scene.assetDoorsOpen = { ...state.scene.assetDoorsOpen, [id]: open };
+    log(open ? 'log.doorOpened' : 'log.doorClosed');
+    recomputeVision();
+    emit();
+    return;
+  }
   const w = state.scene.walls.find((x) => x.id === id);
   if (!w || (w.kind !== 'door' && w.kind !== 'secret-door')) return;
   checkpoint();
@@ -1027,6 +1039,7 @@ export interface AssetInfo {
   light?: AssetSidecar['light'];
   effect?: AssetSidecar['effect'];
   anchor?: AssetSidecar['anchor'];
+  door?: AssetSidecar['door'];
 }
 
 export function setAssetInfo(info: Record<string, AssetInfo>): void {
@@ -1061,6 +1074,23 @@ export function assetExtras(scene: Scene): VisionExtras {
 }
 
 let extrasCache: { key: string; info: Record<string, AssetInfo>; extras: VisionExtras } | null = null;
+
+/** The walls sight and light use (E-29): the scene's, cut open where placed assets bring doors, plus those doors. */
+export function sightWalls(scene: Scene): readonly Wall[] {
+  return wallsWithAssetDoors(scene.walls, allPlacements(scene), state.assetInfo, scene.map.grid, scene.assetDoorsOpen);
+}
+
+/** The scene with the walls sight and light use (itself if no asset brings a door). */
+export function withAssetDoors(scene: Scene): Scene {
+  const walls = sightWalls(scene);
+  // The list itself, not a copy: sight and light keep what they computed for the same list.
+  return walls === scene.walls ? scene : { ...scene, walls: walls as Wall[] };
+}
+
+/** The doors placed assets bring, as walls (for drawing them in the Map Forge). */
+export function assetDoors(scene: Scene): Wall[] {
+  return assetDoorWalls(allPlacements(scene), state.assetInfo, scene.map.grid, scene.assetDoorsOpen);
+}
 
 function footprint(a: MapAssetPlacement) {
   return footprintOf(a, state.assetInfo[a.assetPath]?.sizeCells, state.scene.map.grid);
@@ -1195,6 +1225,11 @@ export function activateAsset(id: string): boolean {
   const a = allPlacements(state.scene).find((x) => x.id === id);
   const info = a && state.assetInfo[a.assetPath];
   if (!a || !info) return false;
+  // A door asset opens and closes (E-29).
+  if (info.door) {
+    toggleDoor(assetDoorId(id));
+    return true;
+  }
   if (info.effect && !info.effect.loop && info.effect.trigger) {
     state.effectRuns = { ...state.effectRuns, [id]: Date.now() };
     log('log.effectPlayed', { name: info.name });
@@ -1861,8 +1896,9 @@ function tvView(): { scene: Scene; visible: Polygon[]; lights: LitSource[] } {
     }
     const scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, state.scene.table, 'scene');
     const extras = assetExtras(scene);
-    const vision = updateVision(scene, extras);
-    tvCache = { version: viewVersion, scene, visible: visiblePolygons(vision), lights: litSources(scene, extras) };
+    const seen = withAssetDoors(scene);
+    const vision = updateVision(seen, extras);
+    tvCache = { version: viewVersion, scene, visible: visiblePolygons(vision), lights: litSources(seen, extras) };
   }
   // Table settings (blackout, rotation, centre) stay live.
   tvCache.scene.table = state.scene.table;

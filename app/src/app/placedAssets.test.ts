@@ -45,14 +45,14 @@ describe('placed assets', () => {
     const id = placeAsset('library/torch.png', { x: 7210, y: 7050 })!;
     const a = () => state.scene.map.assets.find((x) => x.id === id)!;
     // Anchor (top middle) on the wall, the torch below it.
-    expect(a()).toMatchObject({ x: 7210, y: 7035, rotation: 0 });
-    // Dragged above the wall: turned round.
+    expect(a()).toMatchObject({ x: 7210, y: 7035, rotation: 0 }); // 7210: on the half-cell lattice (35 px)
+    // Dragged above the wall: turned round (anchor on the lattice: 7315).
     moveAssetTo(id, { x: 7300, y: 6960 }, true);
     expect(a()).toMatchObject({ rotation: 180 });
     expect(Math.round(a().y)).toBe(6965);
     rotatePlacedAsset(id, 90);
     // The anchor stays on the wall: the centre moved to its side.
-    expect(Math.round(a().x)).toBe(7300 + 35);
+    expect(Math.round(a().x)).toBe(7315 + 35);
     expect(Math.round(a().y)).toBe(7000);
   });
 

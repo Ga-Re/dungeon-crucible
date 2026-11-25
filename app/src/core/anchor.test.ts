@@ -62,10 +62,10 @@ describe('snapping the anchor', () => {
 
   it('on a near wall (within the anchor distance plus half a cell of the centre): the anchor lands on it, the asset turned along it on the side it was dropped', () => {
     const wall = { x1: 0, y1: 300, x2: 1000, y2: 300 };
-    // Dropped below the wall: anchor (top middle) at (320, 330) → (320, 300), turned 0.
-    expect(round(snapAnchored(at(320, 380), torch, grid, [wall]))).toEqual({ x: 320, y: 350, rotation: 0 });
+    // Dropped below the wall: anchor (top middle) at (320, 330) → (300, 300) (on the wall, on the half-cell lattice), turned 0.
+    expect(round(snapAnchored(at(320, 380), torch, grid, [wall]))).toEqual({ x: 300, y: 350, rotation: 0 });
     // Dropped above it: turned round, the torch hangs above.
-    expect(round(snapAnchored(at(320, 220, 0), torch, grid, [wall]))).toEqual({ x: 320, y: 250, rotation: 180 });
+    expect(round(snapAnchored(at(320, 220, 0), torch, grid, [wall]))).toEqual({ x: 300, y: 250, rotation: 180 });
   });
 
   it('along a slanted wall', () => {

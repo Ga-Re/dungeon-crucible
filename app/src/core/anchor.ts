@@ -75,8 +75,8 @@ function nearestOn(s: Segment, p: Point): { at: Point; dist: number } {
 
 /**
  * Where an anchored asset dropped with its centre at `p` comes to lie. With wall snapping, a wall
- * within the anchor's distance from the centre plus half a cell takes the anchor; the asset is
- * turned along the wall, its body on the side it was dropped on. Otherwise the anchor snaps to the
+ * within the anchor's distance from the centre plus half a cell takes the anchor (at the point
+ * nearest its half-cell snap); the asset is turned along the wall, its body on the side it was dropped on. Otherwise the anchor snaps to the
  * half-cell lattice and the turn stays. Without an anchor: `null` (the footprint snaps as before).
  */
 export function snapAnchored(p: Placed, spec: AnchorSpec, grid: GridConfig, walls: readonly Segment[]): { x: number; y: number; rotation: number } | null {
@@ -91,7 +91,8 @@ export function snapAnchored(p: Placed, spec: AnchorSpec, grid: GridConfig, wall
     }
     if (best) {
       const w = best.wall;
-      const on = nearestOn(w, a).at;
+      // Along the wall on the half-cell lattice too (exactly so for walls along the grid).
+      const on = nearestOn(w, snapHalf(grid, a)).at;
       const along = (Math.atan2(w.y2 - w.y1, w.x2 - w.x1) * 180) / Math.PI;
       // The side of the wall the asset was dropped on (sign of the cross product).
       const side = Math.sign((w.x2 - w.x1) * (p.y - w.y1) - (w.y2 - w.y1) * (p.x - w.x1));

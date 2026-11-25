@@ -192,7 +192,7 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     mapSidecar,
     fog: copyFog(scene.fog),
     ...(scene.fogEffect ? { fogEffect: { ...scene.fogEffect } } : {}),
-    doors: Object.fromEntries(all('walls').filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])),
+    doors: { ...Object.fromEntries(all('walls').filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])), ...scene.assetDoorsOpen },
     lights: { ...Object.fromEntries(all('lights').map((l) => [l.id, l.on])), ...scene.assetLightsOn },
     discoveredZones: all('zones').filter((z) => z.secret && z.discovered).map((z) => z.id),
     hidden: [...hiddenIds(scene.hidden), ...orphanedHidden],
@@ -252,6 +252,8 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const ownAssets = onMap ? [] : (state?.assets ?? []).map((a) => ({ ...a }));
   // Asset lights are stored with the map lights, by `<placement>:light`.
   const assetLightsOn = Object.fromEntries(Object.entries(lightsOn).filter(([id]) => id.endsWith(':light')));
+  // Likewise asset doors with the map doors, by `<placement>:door` (E-29).
+  const assetDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => id.endsWith(':door')));
   return {
     map: {
       id: slugify(map.name),
@@ -278,6 +280,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     hidden: { walls: hiddenOf(walls), zones: hiddenOf(zones), lights: hiddenOf(lights), assets: hiddenOf([...map.assets.map((a) => ({ ...a })), ...ownAssets]) },
     ownAssets: shownOn(ownAssets),
     assetLightsOn,
+    assetDoorsOpen,
     effectsOn: onMap ? {} : { ...(state?.effects ?? {}) },
     ambient: map.ambient,
     tokens: onMap ? [] : (state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),

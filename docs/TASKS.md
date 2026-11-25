@@ -456,6 +456,13 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Assets drehen und skalieren um den Anker; beim Ablegen rastet der Anker auf Ecken, Kantenmitten und Feldmitten
   ein – mit Wand-Rasten auf eine nahe Wand (Abstand Anker–Mitte plus ein halbes Feld), entlang gedreht, auf der
   Seite, auf der man es abgelegt hat. Platzierungen speichern weiter die Mitte (Karte unverändert).
+  Erledigt (Schritt 2): Tür-Asset – im Asset-Editor „Ist eine Tür“ (Türlinie quer durch die Mitte, ohne Anker
+  einer in der Mitte mit Wand-Rasten), Türlinie zeichnen und an den Enden ziehen (Viertelfelder). Platziert wird
+  die Linie zur Tür; liegt sie auf einer Wand, bekommt die Wand dort eine Lücke. Beides wird beim Berechnen von
+  Sicht und Licht abgeleitet – die Wände der Karte bleiben wie gezeichnet, Verschieben oder Löschen des Assets
+  verschiebt bzw. schließt die Lücke. Öffnen/Schließen im Orchestrator per Klick auf Tür oder Asset (rückgängig
+  machbar), gespeichert in den Türen der Szene unter `<Platzierung>:door` – dafür braucht es weder Karte V5 noch
+  Szene V7. Der Anker rastet auch entlang der Wand auf das Halbfeld-Gitter (Türen sitzen mittig im Feld).
 - ✓ **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
   Deckungsmaske eines Assets fest (Kreis oder Polygon auf dem Bild – Baum, Säule, Statue); ein platziertes Asset ist
   automatisch maskiert: Die Maske dreht und skaliert mit, sie wird nur am Asset geändert und gilt dann überall

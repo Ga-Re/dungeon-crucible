@@ -1,7 +1,7 @@
 /**
  * The asset editor (E-27, DC-109) in the Asset Vault's centre: the asset on a 5-ft grid at its
  * size, with its cover mask (circle or polygon, or suggested from its outline), its light, its
- * anchor (E-29) and an effect's behaviour. A command panel holds the options; nothing is saved before OK.
+ * anchor and door line (E-29) and an effect's behaviour. A command panel holds the options; nothing is saved before OK.
  */
 import { useEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
 import { pixelsToCells } from '../core/assets';
@@ -29,7 +29,7 @@ const TOOLS: { id: EditorTool; icon: IconName; label: MessageKey }[] = [
   { id: 'polygon', icon: 'zone', label: 'editor.tool.polygon' },
 ];
 
-type Drag = { kind: 'circle-new'; at: Pt } | { kind: 'center' } | { kind: 'radius' } | { kind: 'corner'; index: number } | { kind: 'light' } | { kind: 'anchor' };
+type Drag = { kind: 'circle-new'; at: Pt } | { kind: 'center' } | { kind: 'radius' } | { kind: 'corner'; index: number } | { kind: 'light' } | { kind: 'anchor' } | { kind: 'door-new'; at: Pt } | { kind: 'door-end'; end: 1 | 2 };
 
 export function AssetEditorView() {
   const { t } = useI18n();
@@ -78,11 +78,17 @@ export function AssetEditorView() {
       return cover ? { ...rest, cover } : rest;
     });
 
-  /** The anchor at `p`, snapped to quarter cells (hinges and edges sit on them); wall snapping kept. */
-  const setAnchor = (p: Pt) => {
+  /** `p` on quarter cells inside the footprint (hinges, edges and door ends sit on them). */
+  const quarter = (p: Pt): Pt => {
     const q = (v: number, max: number) => Math.min(max, Math.max(0, Math.round(v * 4) / 4));
-    updateEditorDraft((a) => ({ ...a, anchor: { x: q(p[0], size.w), y: q(p[1], size.h), wallSnap: a.anchor?.wallSnap ?? false } }));
+    return [q(p[0], size.w), q(p[1], size.h)];
   };
+  /** The anchor at `p`; wall snapping kept. */
+  const setAnchor = (p: Pt) => {
+    const [x, y] = quarter(p);
+    updateEditorDraft((a) => ({ ...a, anchor: { x, y, wallSnap: a.anchor?.wallSnap ?? false } }));
+  };
+  const setDoor = (door: NonNullable<AssetSidecar['door']>) => updateEditorDraft((a) => ({ ...a, door }));
 
   const closePolygon = () => {
     if (path.length >= 3) setCover({ shape: 'polygon', points: path });
@@ -123,6 +129,10 @@ export function AssetEditorView() {
       updateEditorDraft((a) => (a.light ? { ...a, light: { ...a.light, x: p[0], y: p[1] } } : a));
       return;
     }
+    if (tool === 'door') {
+      drag.current = { kind: 'door-new', at: quarter(p) };
+      return;
+    }
     if (tool === 'anchor') {
       drag.current = { kind: 'anchor' };
       setAnchor(p);
@@ -130,7 +140,10 @@ export function AssetEditorView() {
     }
     // Select: grab a handle of the anchor, the mask or the light.
     const c = draft.cover;
+    const d = draft.door;
     if (draft.anchor && near([draft.anchor.x, draft.anchor.y])) drag.current = { kind: 'anchor' };
+    else if (d && near([d.x1, d.y1])) drag.current = { kind: 'door-end', end: 1 };
+    else if (d && near([d.x2, d.y2])) drag.current = { kind: 'door-end', end: 2 };
     else if (draft.light && near([draft.light.x, draft.light.y])) drag.current = { kind: 'light' };
     else if (c?.shape === 'circle' && near([c.x + c.r, c.y])) drag.current = { kind: 'radius' };
     else if (c?.shape === 'circle' && near([c.x, c.y])) drag.current = { kind: 'center' };
@@ -152,10 +165,17 @@ export function AssetEditorView() {
     else if (d.kind === 'corner' && c?.shape === 'polygon') setCover({ ...c, points: c.points.map((q, i) => (i === d.index ? p : q)) });
     else if (d.kind === 'light') updateEditorDraft((a) => (a.light ? { ...a, light: { ...a.light, x: p[0], y: p[1] } } : a));
     else if (d.kind === 'anchor') setAnchor(p);
+    else if (d.kind === 'door-new') {
+      const q = quarter(p);
+      if (q[0] !== d.at[0] || q[1] !== d.at[1]) setDoor({ x1: d.at[0], y1: d.at[1], x2: q[0], y2: q[1] });
+    } else if (d.kind === 'door-end' && draft.door) {
+      const q = quarter(p);
+      setDoor(d.end === 1 ? { ...draft.door, x1: q[0], y1: q[1] } : { ...draft.door, x2: q[0], y2: q[1] });
+    }
   };
 
   const onUp = () => {
-    if (drag.current?.kind === 'circle-new' || (drag.current?.kind === 'anchor' && tool === 'anchor')) setEditorTool('select');
+    if (drag.current?.kind === 'circle-new' || drag.current?.kind === 'door-new' || (drag.current?.kind === 'anchor' && tool === 'anchor')) setEditorTool('select');
     drag.current = null;
   };
 
@@ -237,6 +257,14 @@ export function AssetEditorView() {
               ))}
             </g>
           )}
+          {draft.door && (
+            <g className="asset-door" strokeWidth={4 * px}>
+              <line x1={draft.door.x1} y1={draft.door.y1} x2={draft.door.x2} y2={draft.door.y2} />
+              {([[draft.door.x1, draft.door.y1], [draft.door.x2, draft.door.y2]] as Pt[]).map((q, i) => (
+                <rect key={i} className="handle" x={q[0] - HANDLE_PX * 0.5 * px} y={q[1] - HANDLE_PX * 0.5 * px} width={HANDLE_PX * px} height={HANDLE_PX * px} strokeWidth={1.5 * px} />
+              ))}
+            </g>
+          )}
           {draft.anchor && (
             <g className="asset-anchor" strokeWidth={2 * px}>
               <circle cx={draft.anchor.x} cy={draft.anchor.y} r={HANDLE_PX * 0.7 * px} className="handle" />
@@ -260,6 +288,13 @@ function EditorPanel({ busy, canSuggest, onSuggest }: { busy: boolean; canSugges
   const size = draft.sizeCells ?? { w: 1, h: 1 };
   const l = draft.light;
   const setSize = (w: number, h: number) => w > 0 && h > 0 && w <= 100 && h <= 100 && updateEditorDraft((a) => ({ ...a, sizeCells: { w, h } }));
+  // A door: its line across the middle; without an anchor, one in the centre that snaps onto walls.
+  const toggleDoor = (on: boolean) =>
+    updateEditorDraft((a) => {
+      const { door: _d, ...rest } = a;
+      if (!on) return rest;
+      return { ...rest, door: { x1: 0, y1: size.h / 2, x2: size.w, y2: size.h / 2 }, anchor: a.anchor ?? { x: size.w / 2, y: size.h / 2, wallSnap: true } };
+    });
   const setLight = (patch: Partial<NonNullable<AssetSidecar['light']>>) => updateEditorDraft((a) => (a.light ? { ...a, light: { ...a.light, ...patch } } : a));
   const toggleLight = (on: boolean) =>
     updateEditorDraft((a) => {
@@ -372,6 +407,13 @@ function EditorPanel({ busy, canSuggest, onSuggest }: { busy: boolean; canSugges
           </label>
         )}
         <p className="hint">{t('editor.anchorHint')}</p>
+        <label className="cmd-check">
+          <input type="checkbox" checked={!!draft.door} onChange={(e) => toggleDoor(e.target.checked)} />
+          {t('editor.isDoor')}
+        </label>
+        {draft.door && (
+          <button type="button" className={`btn sm ${tool === 'door' ? 'pri' : ''}`} aria-pressed={tool === 'door'} onClick={() => setEditorTool(tool === 'door' ? 'select' : 'door')}><Icon name="door" />{t('editor.drawDoor')}</button>
+        )}
         {draft.assetKind === 'effect' && (
           <>
             <label className="cmd-check">

@@ -149,6 +149,11 @@ export const AssetSidecarSchema = z.object({
    * scales about it and it snaps to the grid – or, with `wallSnap`, onto a near wall.
    */
   anchor: z.object({ x: z.number(), y: z.number(), wallSnap: z.boolean().default(false) }).optional(),
+  /**
+   * Door line (E-29, DC-042), in cells like the anchor: where the asset is placed it becomes a door
+   * (opened and closed in the scene) and cuts a gap into a wall it lies on.
+   */
+  door: z.object({ x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() }).optional(),
   /** How an effect plays: in a loop (switched on/off in the scene) and/or once on a click. */
   effect: z.object({ loop: z.boolean().default(true), trigger: z.boolean().default(false) }).optional(),
 });

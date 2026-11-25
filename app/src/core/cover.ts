@@ -13,7 +13,7 @@ import type { LightSource, MapAssetPlacement } from './scene';
 export type CoverInfo = Readonly<Record<string, Readonly<Pick<AssetSidecar, 'sizeCells' | 'cover' | 'light'>>>>;
 
 /** A point in cells of the footprint → map pixels (turned clockwise around the footprint's centre). */
-function toMap(p: MapAssetPlacement, size: { w: number; h: number }, grid: GridConfig, [cx, cy]: readonly [number, number]): [number, number] {
+export function toMap(p: Pick<MapAssetPlacement, 'x' | 'y' | 'rotation' | 'scale'>, size: { w: number; h: number }, grid: GridConfig, [cx, cy]: readonly [number, number]): [number, number] {
   const lx = (cx - size.w / 2) * grid.cellWidth * p.scale;
   const ly = (cy - size.h / 2) * grid.cellHeight * p.scale;
   const r = (p.rotation * Math.PI) / 180;

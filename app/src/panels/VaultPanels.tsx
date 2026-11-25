@@ -265,7 +265,7 @@ function AssetCard({ entry, selected, selection }: { entry: CatalogEntry<VaultIt
 }
 
 /** The thumbnail URL once made (sounds have none). */
-function useThumbnail(item: Pick<VaultItem, 'relPath' | 'size' | 'mtimeMs'>): string | null {
+export function useThumbnail(item: Pick<VaultItem, 'relPath' | 'size' | 'mtimeMs'>): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let live = true;

@@ -40,7 +40,8 @@ import { commitStart, layerOf, mapSidecarFromScene, mapSidecarPath, sceneFromDoc
 import type { MapSidecar, SceneOverride } from '../core/sidecar';
 import type { CampaignInfo, RootInfo } from '../platform/bridge';
 import type { RecentCampaign } from './recent';
-import type { LibraryMap } from './library';
+import type { LibraryMap, MapScenes } from './library';
+import type { MapFilter } from '../core/mapCatalog';
 import type { VaultState } from './vault';
 
 export type WorkspaceId = 'forge' | 'vault' | 'creatures' | 'atlas' | 'play';
@@ -130,6 +131,13 @@ export interface AppState {
   root: RootInfo | null;
   /** Maps of the library (Map Forge browser). */
   libraryMaps: LibraryMap[];
+  /** The Map Forge shows the map catalog (E-32, DC-117) instead of a map. */
+  forgeCatalog: boolean;
+  /** The map picked in the catalog, by resource. */
+  mapSelected: string | null;
+  mapFilter: MapFilter;
+  /** The scenes of the open campaign by the map sidecar they use. */
+  mapScenes: MapScenes;
   /** The open map as in its file (the map layer), updated from the view when it changes layer or is saved. */
   mapDoc: MapSidecar | null;
   /** The open scene as in its file (its changes of the map and its state). */
@@ -236,6 +244,10 @@ function initial(): AppState {
     home: false,
     root: null,
     libraryMaps: [],
+    forgeCatalog: false,
+    mapSelected: null,
+    mapFilter: {},
+    mapScenes: {},
     mapDoc: null,
     sceneDoc: null,
     layer: 'scene',
@@ -407,6 +419,8 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   const tabId = opts.scenePath ?? (opts.mapTab ? mapTabId(opts.resource) : null);
   if (state.activeTab && state.activeTab !== tabId) stashSession();
   state.activeTab = tabId;
+  // A map or scene opened: the Map Forge shows it, not the catalog (E-32); none: the catalog.
+  state.forgeCatalog = tabId === null;
   state.scene = scene;
   state.mapDoc = opts.docs?.map ?? null;
   state.sceneDoc = opts.docs?.scene ?? null;
@@ -567,6 +581,7 @@ export function activateSession(tabId: string): boolean {
   stashSession();
   sessions.delete(tabId);
   state.activeTab = tabId;
+  state.forgeCatalog = false;
   if (!s.scenePath && state.ws !== 'forge') {
     state.ws = 'forge';
     state.areaCommand = null;
@@ -833,6 +848,8 @@ export function setWorkspace(ws: WorkspaceId): void {
   state.tool = 'select';
   // Placing goes on in the Map Forge and the Orchestrator only (DC-116).
   if (ws !== 'forge' && ws !== 'play') state.placing = null;
+  // The Map Forge without a map or scene open shows the map catalog (E-32).
+  if (ws === 'forge' && !state.activeTab) state.forgeCatalog = true;
   showLayer(layerFor(ws));
   emit();
 }

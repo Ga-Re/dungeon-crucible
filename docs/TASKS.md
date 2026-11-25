@@ -579,8 +579,13 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Drehung in Schritten frei/15°/90° (sonst feste Drehung), zufällige Größe ± %, Einrasten am Raster. Der Schalter
   „Zufällige Variante“ aus DC-115 ist ins Panel gewandert; Ziehen aus der Seitenleiste legt die Hauptvariante. Die
   Vorschau erscheint nur im DM-Fenster. In der Kartenschmiede auf der Karte, im Orchestrator szeneneigen.
-- **DC-117 Kartenkatalog** (E-32): Katalog in der Mitte der Kartenschmiede, fester Tab „Karten“, Browser (Typ,
-  Tags, Biom, benutzt/unbenutzt), Details mit Bearbeiten/Öffnen, Szenen der Karte, neue Szene, Papierkorb.
+- ✓ **DC-117 Kartenkatalog** (E-32): Die Kartenschmiede zeigt ohne offene Karte/Szene (und über den festen Tab
+  „Karten“ ganz links) den Katalog aller Bibliothekskarten mit Vorschaubildern und Suche; Browser: Kartentypen mit
+  Anzahl, „In dieser Kampagne“ benutzt/unbenutzt, Landschaften, Tags. Details rechts: Vorschau, Name/Typ/Tags
+  (änderbar, solange die Karte nicht offen ist – Dateiregeln), Datei, Größe, Raster, „Bearbeiten“ (Karten-Tab;
+  ebenso Doppelklick, Enter, Rechtsklick › Öffnen), die Szenen der offenen Kampagne (öffnen) mit Hinweis auf andere
+  Kampagnen, „Neue Szene auf dieser Karte“, Papierkorb mit Hinweis, wo benutzt. Die alte Kartenliste im Browser der
+  Kartenschmiede entfällt.
 - **DC-118 Karten duplizieren** (E-32): eigene Kartendateien `library/<name>.map.json` (Lesen, Katalog, Szenen),
   Duplizieren „nur die Karte“ / „mit allem“.
 - **DC-043 Kreaturen global** in der Bibliothek (Werteblock-Editor umziehen); Spielercharaktere siehe DC-096.

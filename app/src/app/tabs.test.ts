@@ -196,4 +196,14 @@ describe('scene tabs', () => {
     expect(tableZoom()).not.toBe(zoomA);
     expect(produceFrame(Date.now()).zoom).toBe(zoomA);
   });
+
+  it('the Map Forge without a map or scene open shows the map catalog; opening one leaves it (E-32)', () => {
+    setWorkspace('play');
+    clearTabs();
+    replaceScene(sceneFromDocuments(base.map, null, null, undefined, 'map'), { resource: '', fileName: '', scenePath: null, sceneName: '' });
+    setWorkspace('forge');
+    expect(state.forgeCatalog).toBe(true);
+    open('scenes/a.scene.json', 'A');
+    expect(state.forgeCatalog).toBe(false);
+  });
 });

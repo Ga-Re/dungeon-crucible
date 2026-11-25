@@ -395,6 +395,8 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .asset-cover circle, .asset-cover polygon { fill: rgba(63, 157, 226, 0.25); stroke: var(--sel); }
 .asset-cover .handle, .asset-light .handle { fill: var(--sel); stroke: var(--edge); }
 .asset-light circle { fill: none; }
+.asset-anchor path { stroke: var(--accent); fill: none; }
+.asset-anchor .handle { fill: var(--accent); stroke: var(--edge); }
 .asset-light .handle { stroke: var(--edge); }
 .asset-draft { fill: none; stroke: var(--sel); }
 .asset-panel { top: 52px; max-height: calc(100% - 62px); }

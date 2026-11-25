@@ -7,7 +7,8 @@ import type { Point } from '../core/geometry';
 import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
-import { assetShapes, footprintOf, hitsPlacement, nextVariant, rotateBy, scaleBy, snapPlacement } from '../core/placement';
+import { rotateAboutAnchor, scaleAboutAnchor, snapAnchored } from '../core/anchor';
+import { assetShapes, footprintOf, hitsPlacement, nextVariant, snapPlacement } from '../core/placement';
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
 import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision, type VisionExtras } from '../core/vision';
@@ -1025,6 +1026,7 @@ export interface AssetInfo {
   cover?: AssetSidecar['cover'];
   light?: AssetSidecar['light'];
   effect?: AssetSidecar['effect'];
+  anchor?: AssetSidecar['anchor'];
 }
 
 export function setAssetInfo(info: Record<string, AssetInfo>): void {
@@ -1070,8 +1072,16 @@ export function placedAssetAt(p: Point): string | null {
   return hit?.id ?? null;
 }
 
-function snappedCentre(a: Pick<MapAssetPlacement, 'assetPath' | 'scale' | 'rotation'>, p: Point): Point {
-  return state.snap ? snapPlacement(state.scene.map.grid, p, state.assetInfo[a.assetPath]?.sizeCells, a.scale, a.rotation) : p;
+/**
+ * Where a placement dropped with its centre at `p` comes to lie: an anchored asset (E-29) snaps
+ * its anchor – onto a near wall if the asset says so, turned along it – else the footprint snaps.
+ */
+function snappedPlace(a: Pick<MapAssetPlacement, 'assetPath' | 'scale' | 'rotation'>, p: Point): { x: number; y: number; rotation: number } {
+  if (!state.snap) return { ...p, rotation: a.rotation };
+  const info = state.assetInfo[a.assetPath];
+  const walls = state.scene.walls.filter((w) => w.kind !== 'cliff');
+  return snapAnchored({ ...p, rotation: a.rotation, scale: a.scale }, info ?? {}, state.scene.map.grid, walls)
+    ?? { ...snapPlacement(state.scene.map.grid, p, info?.sizeCells, a.scale, a.rotation), rotation: a.rotation };
 }
 
 /**
@@ -1091,8 +1101,8 @@ function setEditableAssets(list: MapAssetPlacement[]): void {
 export function placeAsset(assetPath: string, p: Point): string | null {
   checkpoint();
   const id = freshId('asset');
-  const at = snappedCentre({ assetPath, scale: 1, rotation: 0 }, p);
-  editableAssets().push({ id, assetPath, x: at.x, y: at.y, rotation: 0, scale: 1, ...onCurrentLayer() });
+  const at = snappedPlace({ assetPath, scale: 1, rotation: 0 }, p);
+  editableAssets().push({ id, assetPath, x: at.x, y: at.y, rotation: at.rotation, scale: 1, ...onCurrentLayer() });
   state.selectedAssetId = id;
   state.selectedWallIds = [];
   state.selectedZoneId = null;
@@ -1121,9 +1131,10 @@ function placed(id: string): MapAssetPlacement | undefined {
 export function moveAssetTo(id: string, p: Point, final: boolean): void {
   const a = placed(id);
   if (!a) return;
-  const at = final ? snappedCentre(a, p) : p;
+  const at = final ? snappedPlace(a, p) : { ...p, rotation: a.rotation };
   a.x = at.x;
   a.y = at.y;
+  a.rotation = at.rotation;
   markDirty();
   // Its mask and light move with it (DC-108).
   recomputeVision(final);
@@ -1134,7 +1145,8 @@ export function rotatePlacedAsset(id: string, delta: number): void {
   const a = placed(id);
   if (!a) return;
   checkpoint();
-  a.rotation = rotateBy(a.rotation, delta);
+  // About the anchor (E-29); without one about the centre.
+  Object.assign(a, rotateAboutAnchor(a, state.assetInfo[a.assetPath] ?? {}, state.scene.map.grid, delta));
   recomputeVision();
   emit();
 }
@@ -1143,7 +1155,7 @@ export function scalePlacedAsset(id: string, factor: number): void {
   const a = placed(id);
   if (!a) return;
   checkpoint();
-  a.scale = scaleBy(a.scale, factor);
+  Object.assign(a, scaleAboutAnchor(a, state.assetInfo[a.assetPath] ?? {}, state.scene.map.grid, factor));
   recomputeVision();
   emit();
 }

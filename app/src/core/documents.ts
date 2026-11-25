@@ -23,7 +23,7 @@ export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   map: 4,
   scene: 6,
   creature: 1,
-  asset: 2,
+  asset: 3,
   session: 1,
 };
 
@@ -70,6 +70,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
       const { assetType, variants: _v, blocksSight: _b, ...rest } = doc;
       return { ...rest, assetKind: 'prop', ...(typeof assetType === 'string' ? { subkind: assetType } : {}) };
     },
+    // Version 3 adds the anchor, door and interior (E-29): none yet.
+    2: (doc) => doc,
   },
   session: {},
 };

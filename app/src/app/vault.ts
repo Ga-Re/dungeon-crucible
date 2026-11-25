@@ -36,7 +36,7 @@ export interface VaultState {
   editor: AssetEditor | null;
 }
 
-export type EditorTool = 'select' | 'circle' | 'polygon' | 'light';
+export type EditorTool = 'select' | 'circle' | 'polygon' | 'light' | 'anchor';
 
 export interface AssetEditor {
   relPath: string;
@@ -87,7 +87,7 @@ function updateAssetInfo(): void {
   for (const { relPath, asset: a } of state.vault.items) {
     info[relPath] = {
       name: a.name, kind: a.assetKind, video: /\.(webm|mp4)$/i.test(relPath), url: state.assetInfo[relPath]?.url ?? null,
-      ...(a.sizeCells ? { sizeCells: a.sizeCells } : {}), ...(a.group ? { group: a.group } : {}), ...(a.cover ? { cover: a.cover } : {}), ...(a.light ? { light: a.light } : {}), // An effect never set in the editor loops.
+      ...(a.sizeCells ? { sizeCells: a.sizeCells } : {}), ...(a.group ? { group: a.group } : {}), ...(a.cover ? { cover: a.cover } : {}), ...(a.light ? { light: a.light } : {}), ...(a.anchor ? { anchor: a.anchor } : {}), // An effect never set in the editor loops.
       ...(a.effect || a.assetKind === 'effect' ? { effect: a.effect ?? { loop: true, trigger: false } } : {}),
     };
   }

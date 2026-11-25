@@ -112,7 +112,7 @@ export type MapSidecar = z.infer<typeof MapSidecarSchema>;
 export const ASSET_KINDS = ['prop', 'tile', 'texture', 'effect', 'light', 'sound', 'handout'] as const;
 export type AssetKind = (typeof ASSET_KINDS)[number];
 
-export const ASSET_VERSION = 2;
+export const ASSET_VERSION = 3;
 
 /**
  * Sidecar of a library file other than a map (E-27, DC-040): props, map pieces, textures,
@@ -144,6 +144,11 @@ export const AssetSidecarSchema = z.object({
     .optional(),
   /** The light a light source (or an effect) brings: position in cells, radii in ft, flicker 0–1. */
   light: z.object({ x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color, flicker: z.number().min(0).max(1).default(0) }).optional(),
+  /**
+   * Anchor (E-29, DC-042): in cells from the footprint's top left corner; the placed asset turns and
+   * scales about it and it snaps to the grid – or, with `wallSnap`, onto a near wall.
+   */
+  anchor: z.object({ x: z.number(), y: z.number(), wallSnap: z.boolean().default(false) }).optional(),
   /** How an effect plays: in a loop (switched on/off in the scene) and/or once on a click. */
   effect: z.object({ loop: z.boolean().default(true), trigger: z.boolean().default(false) }).optional(),
 });

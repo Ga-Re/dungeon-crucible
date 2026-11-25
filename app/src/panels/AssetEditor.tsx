@@ -1,7 +1,7 @@
 /**
  * The asset editor (E-27, DC-109) in the Asset Vault's centre: the asset on a 5-ft grid at its
- * size, with its cover mask (circle or polygon, or suggested from its outline), its light and an
- * effect's behaviour. A command panel holds the options; nothing is saved before OK.
+ * size, with its cover mask (circle or polygon, or suggested from its outline), its light, its
+ * anchor (E-29) and an effect's behaviour. A command panel holds the options; nothing is saved before OK.
  */
 import { useEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
 import { pixelsToCells } from '../core/assets';
@@ -29,7 +29,7 @@ const TOOLS: { id: EditorTool; icon: IconName; label: MessageKey }[] = [
   { id: 'polygon', icon: 'zone', label: 'editor.tool.polygon' },
 ];
 
-type Drag = { kind: 'circle-new'; at: Pt } | { kind: 'center' } | { kind: 'radius' } | { kind: 'corner'; index: number } | { kind: 'light' };
+type Drag = { kind: 'circle-new'; at: Pt } | { kind: 'center' } | { kind: 'radius' } | { kind: 'corner'; index: number } | { kind: 'light' } | { kind: 'anchor' };
 
 export function AssetEditorView() {
   const { t } = useI18n();
@@ -78,6 +78,12 @@ export function AssetEditorView() {
       return cover ? { ...rest, cover } : rest;
     });
 
+  /** The anchor at `p`, snapped to quarter cells (hinges and edges sit on them); wall snapping kept. */
+  const setAnchor = (p: Pt) => {
+    const q = (v: number, max: number) => Math.min(max, Math.max(0, Math.round(v * 4) / 4));
+    updateEditorDraft((a) => ({ ...a, anchor: { x: q(p[0], size.w), y: q(p[1], size.h), wallSnap: a.anchor?.wallSnap ?? false } }));
+  };
+
   const closePolygon = () => {
     if (path.length >= 3) setCover({ shape: 'polygon', points: path });
     setPath([]);
@@ -117,9 +123,15 @@ export function AssetEditorView() {
       updateEditorDraft((a) => (a.light ? { ...a, light: { ...a.light, x: p[0], y: p[1] } } : a));
       return;
     }
-    // Select: grab a handle of the mask or the light.
+    if (tool === 'anchor') {
+      drag.current = { kind: 'anchor' };
+      setAnchor(p);
+      return;
+    }
+    // Select: grab a handle of the anchor, the mask or the light.
     const c = draft.cover;
-    if (draft.light && near([draft.light.x, draft.light.y])) drag.current = { kind: 'light' };
+    if (draft.anchor && near([draft.anchor.x, draft.anchor.y])) drag.current = { kind: 'anchor' };
+    else if (draft.light && near([draft.light.x, draft.light.y])) drag.current = { kind: 'light' };
     else if (c?.shape === 'circle' && near([c.x + c.r, c.y])) drag.current = { kind: 'radius' };
     else if (c?.shape === 'circle' && near([c.x, c.y])) drag.current = { kind: 'center' };
     else if (c?.shape === 'polygon') {
@@ -139,10 +151,11 @@ export function AssetEditorView() {
     else if (d.kind === 'radius' && c?.shape === 'circle') setCover({ ...c, r: Math.max(0.05, Math.hypot(p[0] - c.x, p[1] - c.y)) });
     else if (d.kind === 'corner' && c?.shape === 'polygon') setCover({ ...c, points: c.points.map((q, i) => (i === d.index ? p : q)) });
     else if (d.kind === 'light') updateEditorDraft((a) => (a.light ? { ...a, light: { ...a.light, x: p[0], y: p[1] } } : a));
+    else if (d.kind === 'anchor') setAnchor(p);
   };
 
   const onUp = () => {
-    if (drag.current?.kind === 'circle-new') setEditorTool('select');
+    if (drag.current?.kind === 'circle-new' || (drag.current?.kind === 'anchor' && tool === 'anchor')) setEditorTool('select');
     drag.current = null;
   };
 
@@ -222,6 +235,12 @@ export function AssetEditorView() {
               {c.points.map((q, i) => (
                 <rect key={i} className="handle" x={q[0] - HANDLE_PX * 0.5 * px} y={q[1] - HANDLE_PX * 0.5 * px} width={HANDLE_PX * px} height={HANDLE_PX * px} strokeWidth={1.5 * px} />
               ))}
+            </g>
+          )}
+          {draft.anchor && (
+            <g className="asset-anchor" strokeWidth={2 * px}>
+              <circle cx={draft.anchor.x} cy={draft.anchor.y} r={HANDLE_PX * 0.7 * px} className="handle" />
+              <path d={`M${draft.anchor.x - HANDLE_PX * 1.6 * px} ${draft.anchor.y}h${HANDLE_PX * 3.2 * px}M${draft.anchor.x} ${draft.anchor.y - HANDLE_PX * 1.6 * px}v${HANDLE_PX * 3.2 * px}`} />
             </g>
           )}
           {path.length > 0 && (
@@ -327,6 +346,32 @@ function EditorPanel({ busy, canSuggest, onSuggest }: { busy: boolean; canSugges
             <button type="button" className={`btn sm ${tool === 'light' ? 'pri' : ''}`} aria-pressed={tool === 'light'} onClick={() => setEditorTool(tool === 'light' ? 'select' : 'light')}><Icon name="light" />{t('editor.placeLight')}</button>
           </>
         )}
+        <div className="cmd-field">
+          <span>{t('editor.anchor')}</span>
+          <div className="cmd-row">
+            <button type="button" className={`btn sm ${tool === 'anchor' ? 'pri' : ''}`} aria-pressed={tool === 'anchor'} onClick={() => setEditorTool(tool === 'anchor' ? 'select' : 'anchor')}><Icon name="anchor" />{t('editor.placeAnchor')}</button>
+            <button
+              type="button"
+              className="btn sm"
+              disabled={!draft.anchor}
+              onClick={() =>
+                updateEditorDraft((a) => {
+                  const { anchor: _a, ...rest } = a;
+                  return rest;
+                })
+              }
+            >
+              <Icon name="trash" />{t('editor.removeAnchor')}
+            </button>
+          </div>
+        </div>
+        {draft.anchor && (
+          <label className="cmd-check">
+            <input type="checkbox" checked={draft.anchor.wallSnap} onChange={(e) => updateEditorDraft((a) => (a.anchor ? { ...a, anchor: { ...a.anchor, wallSnap: e.target.checked } } : a))} />
+            {t('editor.wallSnap')}
+          </label>
+        )}
+        <p className="hint">{t('editor.anchorHint')}</p>
         {draft.assetKind === 'effect' && (
           <>
             <label className="cmd-check">

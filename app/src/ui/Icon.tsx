@@ -72,6 +72,7 @@ const PATHS = {
   flag: 'M5 21V4 M5 4h11l-2 4 2 4H5',
   sliders: 'M4 6h10 M18 6h2 M4 12h4 M12 12h8 M4 18h12 M20 18h0 M16 4v4 M10 10v4 M18 16v4',
   reset: 'M4 12a8 8 0 1 0 2.3-5.7 M4 4v5h5',
+  anchor: 'M12 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4z M12 7v14 M8 11h8 M4 14c0 4 4 7 8 7s8-3 8-7',
 } as const;
 
 export type IconName = keyof typeof PATHS;

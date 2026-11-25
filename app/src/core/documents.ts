@@ -20,8 +20,8 @@ export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' |
 /** Current version of each document kind. */
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
-  map: 3,
-  scene: 5,
+  map: 4,
+  scene: 6,
   creature: 1,
   asset: 2,
   session: 1,
@@ -36,6 +36,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     1: (doc) => ({ ...doc, ...(Array.isArray(doc['zones']) ? { zones: doc['zones'].map(migrateArea) } : {}) }),
     // Version 3 adds cliffs (DC-014): nothing to change, older apps just must not write such files.
     2: (doc) => doc,
+    // Version 4 adds layers (E-28): everything stays on the base layer.
+    3: (doc) => doc,
   },
   // The same for the scene's own areas and its overrides of map areas.
   scene: {
@@ -58,6 +60,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     },
     // Version 5 adds scene-own assets and effect states (DC-110): nothing to change.
     4: (doc) => doc,
+    // Version 6 adds the layers switched in a scene (E-28): none yet.
+    5: (doc) => doc,
   },
   creature: {},
   // The first asset format (variants with props, never used by files) → E-27 (DC-040).

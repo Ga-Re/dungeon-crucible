@@ -524,7 +524,7 @@ export async function openMapInNewScene(resource: string, sidecar: MapSidecar | 
     const name = resource.split('/').pop()!.replace(/\.[^.]+$/, '');
     map = {
       kind: 'map', schemaVersion: MAP_VERSION, name, resource, isVideo, widthPx: w, heightPx: h,
-      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark',
+      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark',
     };
   }
   // A new scene starts with the map's start fog and the party: the characters of the players

@@ -9,6 +9,8 @@ export function emptyScene(table: Scene['table'] = DEFAULT_TABLE): Scene {
     walls: [],
     zones: [],
     hidden: noHidden(),
+    inactive: noHidden(),
+    layersOn: {},
     ownAssets: [],
     assetLightsOn: {},
     effectsOn: {},

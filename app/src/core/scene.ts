@@ -3,6 +3,7 @@ import type { Point, Segment } from './geometry';
 import type { GridConfig, DisplaySpec } from './grid';
 import type { FogEffect, LevelFog, Polygon } from './poly/types';
 import type { Condition } from './rules/rules2024';
+import type { MapLayer } from './sidecar';
 
 /** A cliff or gallery is one way: one sees down from its upper side, not up from below (DC-014). */
 export type WallKind = 'wall' | 'door' | 'secret-door' | 'window' | 'cliff';
@@ -12,6 +13,8 @@ export interface Wall extends Segment {
   kind: WallKind;
   /** Doors only. */
   open?: boolean;
+  /** Its layer (E-28); none: the base layer. */
+  layer?: string;
 }
 
 
@@ -26,6 +29,7 @@ export interface Zone {
   biome?: FogBiome;
   /** Secret areas stay locked in the fog until discovered. */
   discovered?: boolean;
+  layer?: string;
 }
 
 export type TokenKind = 'pc' | 'npc' | 'monster';
@@ -66,6 +70,7 @@ export interface LightSource {
   on: boolean;
   /** How much an asset's light flickers (0–1, DC-110); placed lights do not. */
   flicker?: number;
+  layer?: string;
 }
 
 /** Ambient light of a map: dark (dungeon, night) or lit (daylight, well-lit hall). */
@@ -135,6 +140,8 @@ export interface MapInfo {
   /** Not edited yet; kept as read. */
   pois: MapPoi[];
   assets: MapAssetPlacement[];
+  /** The map's layers (E-28); the base layer is not listed. */
+  layers: MapLayer[];
 }
 
 export type MapType = 'dungeon' | 'building' | 'region' | 'world' | 'arena';
@@ -153,10 +160,11 @@ export interface MapAssetPlacement {
   y: number;
   rotation: number;
   scale: number;
+  layer?: string;
 }
 
 /** Catalog defaults of a map that has none yet. */
-export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [] };
+export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets' | 'layers'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [], layers: [] };
 
 /** Map elements hidden in a scene (DC-103): kept apart, so vision, light and the TV never see them. */
 export interface HiddenElements {
@@ -177,6 +185,10 @@ export interface Scene {
   zones: Zone[];
   /** Map elements this scene hides (none in the Map Forge). */
   hidden: HiddenElements;
+  /** Elements on layers inactive in this scene (E-28); kept apart like hidden ones, not saved as hidden. */
+  inactive: HiddenElements;
+  /** Layers switched in this scene (E-28), by id → active. */
+  layersOn: Record<string, boolean>;
   /** Assets placed in this scene only (DC-110); none in the Map Forge. */
   ownAssets: MapAssetPlacement[];
   /** Lights of placed assets by light id (`<placement>:light`) → on. Not listed: on. */

@@ -28,6 +28,7 @@ import { missingPartyTokens, tokenFromCreature } from '../core/party';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
+import { drawOrder } from '../core/layers';
 import { allPlacements, elementsFromSidecar, resetElement, sceneChanges, sceneIssues, withoutOrphans, type ElementChange } from '../core/persistence';
 import { commitStart, layerOf, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, startOf, type ViewLayer } from '../core/persistence';
 import type { MapSidecar, SceneOverride } from '../core/sidecar';
@@ -883,7 +884,7 @@ function footprint(a: MapAssetPlacement) {
 
 /** The placed asset at `p` (the topmost), if any. */
 export function placedAssetAt(p: Point): string | null {
-  const hit = [...editableAssets()].reverse().find((a) => hitsPlacement(footprint(a), p));
+  const hit = [...drawOrder(editableAssets(), state.scene.map.layers)].reverse().find((a) => hitsPlacement(footprint(a), p));
   return hit?.id ?? null;
 }
 

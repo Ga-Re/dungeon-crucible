@@ -36,7 +36,9 @@ export const GridSchema = z.object({
 });
 
 /** Map elements as built in the Map Forge (`open` of doors is scene state, kept only for old files). */
-export const mapWallSchema = z.object({ id, kind: z.enum(['wall', 'door', 'secret-door', 'window', 'cliff']), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(), open: z.boolean().optional() });
+/** The layer an element is on (E-28); none: the base layer. */
+const layerRef = z.string().optional();
+export const mapWallSchema = z.object({ id, kind: z.enum(['wall', 'door', 'secret-door', 'window', 'cliff']), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(), open: z.boolean().optional(), layer: layerRef });
 /** An area (DC-013): polygons with holes in map pixels, possibly several parts; secret or not. */
 export const mapAreaSchema = z.object({
   id,
@@ -45,16 +47,36 @@ export const mapAreaSchema = z.object({
   secret: z.boolean().default(false),
   color,
   biome: biome.optional(),
+  layer: layerRef,
 });
-export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color });
+export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color, layer: layerRef });
+
+/**
+ * A layer of a map (E-28): elements on it count in a scene only while it is active there. Height
+ * orders drawing (higher lies above); a counter layer goes off when this one comes on and back.
+ */
+export const mapLayerSchema = z.object({
+  id,
+  name: z.string().min(1),
+  height: z.number().default(1),
+  /** Active in a scene that has not switched it. */
+  defaultActive: z.boolean().default(true),
+  /** Comes on when a player character enters this area; off again on leaving if `leaveOff`. */
+  trigger: z.object({ area: id, leaveOff: z.boolean().default(true) }).optional(),
+  counter: id.optional(),
+  /** Editing aids in the Map Forge: hidden in the editor, locked against changes. */
+  editorHidden: z.boolean().default(false),
+  locked: z.boolean().default(false),
+});
+export type MapLayer = z.infer<typeof mapLayerSchema>;
 
 /** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 3;
+export const MAP_VERSION = 4;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
-export const SCENE_VERSION = 5;
+export const SCENE_VERSION = 6;
 
 /** An asset placed on a map or in a scene (DC-041, DC-110): its file, centre, turn and scale. */
-export const placementSchema = z.object({ id, assetPath: z.string(), variant: z.string().optional(), x: z.number(), y: z.number(), rotation: z.number().default(0), scale: z.number().positive().default(1) });
+export const placementSchema = z.object({ id, assetPath: z.string(), variant: z.string().optional(), x: z.number(), y: z.number(), rotation: z.number().default(0), scale: z.number().positive().default(1), layer: layerRef });
 
 export const MapSidecarSchema = z.object({
   kind: z.literal('map'),
@@ -72,6 +94,7 @@ export const MapSidecarSchema = z.object({
   /** Strength of the biome's wind, particles and glow, 0…1 (Dungeon-Manager T-168). */
   fogStrength: z.number().min(0).max(1).default(1),
   grid: GridSchema,
+  layers: z.array(mapLayerSchema).default([]),
   walls: z.array(mapWallSchema).default([]),
   zones: z.array(mapAreaSchema).default([]),
   pois: z.array(z.object({ id, name: z.string(), x: z.number(), y: z.number(), icon: z.string().default('flag') })).default([]),
@@ -225,6 +248,8 @@ export const SceneOverrideSchema = z.object({
   assets: z.array(placementSchema).default([]),
   /** Looping effects (map's or scene's assets) by placement id → playing. Not listed: playing. */
   effects: z.record(z.string(), z.boolean()).default({}),
+  /** Layers switched in this scene's play state (E-28), by id → active. Not listed: their default. */
+  layers: z.record(z.string(), z.boolean()).default({}),
   tokens: z.array(tokenSchema).default([]),
   templates: z.array(z.object({ id, shape: z.enum(['cone', 'sphere', 'line', 'cube']), x: z.number(), y: z.number(), angle: z.number(), sizeFt: z.number().positive(), color })).default([]),
   combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
@@ -247,6 +272,7 @@ export const SceneOverrideSchema = z.object({
     /** Assets placed for the start (prepared, e.g. a campfire). */
     assets: z.array(placementSchema).default([]),
     effects: z.record(z.string(), z.boolean()).default({}),
+    layers: z.record(z.string(), z.boolean()).default({}),
   }).optional(),
   /** Walls, areas and lights that exist only in this scene (E-24). */
   added: z.object({ walls: z.array(mapWallSchema).default([]), zones: z.array(mapAreaSchema).default([]), lights: z.array(mapLightSchema).default([]) }).default({ walls: [], zones: [], lights: [] }),

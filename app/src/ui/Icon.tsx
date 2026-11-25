@@ -12,6 +12,7 @@ const PATHS = {
   door: 'M6 21V3h12v18 M3 21h18 M14.5 12h.5',
   secretdoor: 'M6 21V3h12v18 M3 21h18 M9 9l6 6M15 9l-6 6',
   window: 'M4 4h16v16H4z M12 4v16 M4 12h16',
+  cliff: 'M3 8h18 M5 8l-1.5 3 M9 8l-1.5 3 M13 8l-1.5 3 M17 8l-1.5 3 M21 8l-1.5 3 M12 13v7 M9 17l3 3 3-3',
   zone: 'M4 4h4M12 4h4M20 4v4M20 12v4M20 20h-4M12 20H8M4 20v-4M4 12V8',
   import: 'M12 3v12M7 10l5 5 5-5M4 21h16',
   grid: 'M3 3h18v18H3z M9 3v18M15 3v18M3 9h18M3 15h18',
@@ -66,6 +67,7 @@ const PATHS = {
   export: 'M12 15V3M7 8l5-5 5 5M4 21h16',
   archive: 'M3 4h18v4H3z M5 8v12h14V8 M10 12h4',
   flag: 'M5 21V4 M5 4h11l-2 4 2 4H5',
+  sliders: 'M4 6h10 M18 6h2 M4 12h4 M12 12h8 M4 18h12 M20 18h0 M16 4v4 M10 10v4 M18 16v4',
   reset: 'M4 12a8 8 0 1 0 2.3-5.7 M4 4v5h5',
 } as const;
 

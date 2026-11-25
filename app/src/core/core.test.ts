@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { areaBounds } from './areas';
 import { isVisibleFrom, visibilityPolygon } from './geometry';
 import {
-  calibrateFromThreePoints,
+  gridFromBox,
+  shiftGrid,
+  squareBox,
   cellAt,
   cellCenter,
   cellsVisibleOnTable,
@@ -51,24 +54,31 @@ describe('visibility', () => {
   });
 });
 
-describe('grid calibration', () => {
-  it('recovers cell size, rotation and offset from three points', () => {
-    const r = calibrateFromThreePoints({ x: 13, y: 27 }, { x: 13 + 5 * 64, y: 27 }, { x: 13, y: 27 + 5 * 64 }, 5, 5);
-    expect(r.cellWidth).toBeCloseTo(64);
-    expect(r.cellHeight).toBeCloseTo(64);
-    expect(r.rotationDeg).toBeCloseTo(0);
-    expect(r.originX).toBeCloseTo(13);
-    expect(r.originY).toBeCloseTo(27);
-    expect(r.distortion).toBeCloseTo(0);
-    expect(r.skewDeg).toBeCloseTo(0);
+describe('grid calibration with an N×N box (E-7, DC-021)', () => {
+  it('the dragged box is a square in the direction of the drag', () => {
+    expect(squareBox({ x: 10, y: 20 }, { x: 100, y: 50 })).toEqual({ x: 10, y: 20, size: 90 });
+    // Dragged up and left: the square ends at the start point.
+    expect(squareBox({ x: 100, y: 100 }, { x: 70, y: 40 })).toEqual({ x: 40, y: 40, size: 60 });
   });
-  it('detects rotation', () => {
-    const r = calibrateFromThreePoints({ x: 0, y: 0 }, { x: 50, y: 50 }, { x: -50, y: 50 });
-    expect(r.rotationDeg).toBeCloseTo(45);
-    expect(r.cellWidth).toBeCloseTo(Math.SQRT2 * 50);
+
+  it('cell size and offset follow from a box over N×N cells', () => {
+    const g = gridFromBox(DEFAULT_GRID, { x: 13 + 2 * 64, y: 27 + 64, size: 3 * 64 }, 3);
+    expect(g.cellWidth).toBeCloseTo(64);
+    expect(g.cellHeight).toBeCloseTo(64);
+    expect(g.originX).toBeCloseTo(13);
+    expect(g.originY).toBeCloseTo(27);
+    expect(g.rotationDeg).toBe(0);
+    expect(g.feetPerCell).toBe(DEFAULT_GRID.feetPerCell);
   });
-  it('rejects identical points', () => {
-    expect(() => calibrateFromThreePoints({ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 10 })).toThrow();
+
+  it('a too small box or cell count changes nothing', () => {
+    expect(gridFromBox(DEFAULT_GRID, { x: 0, y: 0, size: 0 }, 3)).toBe(DEFAULT_GRID);
+    expect(gridFromBox(DEFAULT_GRID, { x: 0, y: 0, size: 90 }, 0)).toBe(DEFAULT_GRID);
+  });
+
+  it('shifts the grid, its offset staying within one cell', () => {
+    const g = { ...DEFAULT_GRID, cellWidth: 50, cellHeight: 50, originX: 48, originY: 1 };
+    expect(shiftGrid(g, 3, -2)).toMatchObject({ originX: 1, originY: 49 });
   });
 });
 
@@ -132,8 +142,9 @@ describe('polygon fog with token sight', () => {
     const locked = lockedAreas(scene.zones);
     expect(locked).toHaveLength(1);
     const fog = revealAll(EMPTY_LEVEL_FOG, scene.map.widthPx, scene.map.heightPx, locked);
-    const secret = scene.zones.find((z) => z.kind === 'secret')!;
-    expect(isInside(fog.revealed, [secret.rect.x + secret.rect.w / 2, secret.rect.y + secret.rect.h / 2])).toBe(false);
+    const secret = scene.zones.find((z) => z.secret)!;
+    const c = areaBounds(secret.shape);
+    expect(isInside(fog.revealed, [c.x + c.w / 2, c.y + c.h / 2])).toBe(false);
     expect(isInside(fog.revealed, [100, 100])).toBe(true);
     // Aimed at on purpose (force), the DM may reveal it.
     expect(isInside(revealIn(EMPTY_LEVEL_FOG, mapPolygon(10, 10), locked, true).revealed, [5, 5])).toBe(true);
@@ -220,8 +231,9 @@ describe('player projection (fail-closed)', () => {
     const scene = createSampleScene();
     scene.fog = revealAll(scene.fog, scene.map.widthPx, scene.map.heightPx, lockedAreas(scene.zones));
     const frame = buildPlayerFrame(scene, frameOpts(1, 0, visiblePolygons(updateVision(scene))));
-    const secret = scene.zones.find((z) => z.kind === 'secret')!;
-    const mid: [number, number] = [secret.rect.x + secret.rect.w / 2, secret.rect.y + secret.rect.h / 2];
+    const secret = scene.zones.find((z) => z.secret)!;
+    const c = areaBounds(secret.shape);
+    const mid: [number, number] = [c.x + c.w / 2, c.y + c.h / 2];
     expect(isInside(frame.fog.open, mid)).toBe(false);
     expect(isInside(frame.fog.clear, mid)).toBe(false);
   });
@@ -241,7 +253,7 @@ describe('sidecars', () => {
     expect(resourcePathForSidecar('maps/crypt.webp')).toBeNull();
   });
   it('validates a map sidecar and reports errors', () => {
-    const ok = parseSidecar(MapSidecarSchema, JSON.stringify({ kind: 'map', schemaVersion: 1, name: 'Crypt', resource: 'maps/crypt.webp', widthPx: 2000, heightPx: 1400, grid: DEFAULT_GRID }));
+    const ok = parseSidecar(MapSidecarSchema, JSON.stringify({ kind: 'map', schemaVersion: 3, name: 'Crypt', resource: 'maps/crypt.webp', widthPx: 2000, heightPx: 1400, grid: DEFAULT_GRID }));
     expect(ok.ok).toBe(true);
     const bad = parseSidecar(CreatureSchema, JSON.stringify({ kind: 'creature', schemaVersion: 1, name: '' }));
     expect(bad.ok).toBe(false);

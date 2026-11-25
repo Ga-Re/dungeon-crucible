@@ -1,18 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cellsVisibleOnTable, pixelsPerInch, ppiCorrectionFromMeasurement } from '../core/grid';
-import { FOG_BIOMES, type TableRotation } from '../core/scene';
+import { FOG_BIOMES, type TableRotation, type Wall, type WallKind } from '../core/scene';
 import { abilityModifier, ABILITIES, CONDITIONS, evaluateEncounter, proficiencyBonusForCr, proficiencyBonusForLevel, xpForCr, type ChallengeRating } from '../core/rules/rules2024';
 import { d20Test } from '../core/rules/dice';
 import { playerOfToken } from '../core/party';
 import { useI18n } from '../i18n/i18n';
+import type { MessageKey } from '../i18n/en';
 import { TableView, type FrameSource } from '../table/TableView';
 import { BIOMES } from '../render/pixi/fog-living';
 import { FADE_MAX_SECONDS, FADE_STEP_SECONDS, FOG_EDGE, FOG_MOTION, FOG_QUALITIES, FOG_SPEED, speedOfStep, stepOfSpeed } from '../app/fog-settings';
 import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
-  addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, removeLight, removeToken, setAmbient, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
+  addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
+  deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { importMapIntoCampaign, switchScene } from '../app/campaign';
@@ -74,14 +75,26 @@ export function BrowserPanel() {
           </li>
         )}
         <li>
-          <div className="tn"><Icon name="map" /><span className="nm">{scene.map.name}</span></div>
+          {ws === 'forge' ? (
+            <button className="tn" title={t('tool.mapSettings')} onDoubleClick={() => openMapSettings()} onKeyDown={(e) => e.key === 'Enter' && openMapSettings()}>
+              <Icon name="map" /><span className="nm">{scene.map.name}</span>
+            </button>
+          ) : (
+            <div className="tn"><Icon name="map" /><span className="nm">{scene.map.name}</span></div>
+          )}
           <ul>
             {scene.zones.map((z) => (
               <li key={z.id}>
-                <button className={`tn ${z.id === selZone ? 'sel' : ''}`} onClick={() => selectZone(z.id)}>
+                <button
+                  className={`tn ${z.id === selZone ? 'sel' : ''}`}
+                  onClick={() => selectZone(z.id)}
+                  // Map Forge: double-click or Enter edits the area.
+                  onDoubleClick={() => ws === 'forge' && startAreaCommand(z.id)}
+                  onKeyDown={(e) => e.key === 'Enter' && ws === 'forge' && startAreaCommand(z.id)}
+                >
                   <span className="swatch" style={{ background: z.color }} />
                   <span className="nm">{z.name}</span>
-                  {z.kind === 'secret' && !z.discovered && <span className="meta" style={{ color: 'var(--arcane)' }}>secret</span>}
+                  {z.secret && !z.discovered && <span className="meta" style={{ color: 'var(--arcane)' }}>{t('area.secret')}</span>}
                 </button>
               </li>
             ))}
@@ -128,11 +141,13 @@ function LibraryMaps() {
   const maps = useStore((s) => s.libraryMaps);
   const current = useStore((s) => s.mapResource);
   const sceneVersion = useStore((s) => s.sceneVersion);
+  // After a save the catalog data (name, tags …) may have changed.
+  const savedAt = useStore((s) => s.lastSavedAt);
   const [query, setQuery] = useState('');
   const [confirm, setConfirm] = useState<{ resource: string; usage: MapUsage[] } | null>(null);
   useEffect(() => {
     void refreshLibraryMaps();
-  }, [sceneVersion]);
+  }, [sceneVersion, savedAt]);
   const shown = filterLibraryMaps(maps, query);
   return (
     <div className="library">
@@ -188,7 +203,7 @@ function ZoneActions({ id }: { id: string }) {
   if (!z) return null;
   return (
     <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-      {z.kind === 'secret' && !z.discovered ? (
+      {z.secret && !z.discovered ? (
         <button className="btn sm" onClick={() => discoverZone(id)}><Icon name="eye" />{t('tool.revealRoom')}</button>
       ) : (
         <button className="btn sm" onClick={() => revealZone(id)}><Icon name="room" />{t('tool.revealRoom')}</button>
@@ -203,16 +218,20 @@ export function PropertiesPanel() {
   const { t } = useI18n();
   const map = useStore((s) => s.scene.map);
   const selZone = useStore((s) => s.selectedZoneId);
-  const cal = useStore((s) => s.lastCalibration);
   const file = useStore((s) => s.mapFileName);
   const ambient = useStore((s) => s.scene.ambient);
   const selLight = useStore((s) => s.selectedLightId);
   const light = useStore((s) => s.scene.lights.find((l) => l.id === selLight));
   const zone = state.scene.zones.find((z) => z.id === selZone);
+  const selWalls = useStore((s) => s.selectedWallIds);
+  const allWalls = useStore((s) => s.scene.walls);
+  const walls = allWalls.filter((w) => selWalls.includes(w.id));
   return (
     <div className="panel-body">
       <div className="sec">{t('panel.map')}</div>
-      <div className="row"><label htmlFor="p-name">{t('props.name')}</label><input id="p-name" value={map.name} onChange={(e) => { map.name = e.target.value; emit(); }} /></div>
+      <div className="row"><label>{t('props.name')}</label><span>{map.name}</span></div>
+      <div className="row"><label>{t('mapSettings.type')}</label><span>{t(`mapType.${map.mapType}` as MessageKey)}{map.region ? ` · ${map.region}` : ''}</span></div>
+      {map.tags.length > 0 && <div className="row"><label>{t('props.tags')}</label><span className="prop-tags">{map.tags.map((tag) => <span key={tag} className="chip">{tag}</span>)}</span></div>}
       <div className="row"><label>{t('props.file')}</label><span className="mono hint">{file}</span></div>
       <div className="row"><label htmlFor="p-cell">{t('props.cellSize')}</label>
         <input id="p-cell" type="number" min={10} step={0.5} value={Number(map.grid.cellWidth.toFixed(2))} onChange={(e) => { const v = Number(e.target.value); if (v >= 10) { map.grid = { ...map.grid, cellWidth: v, cellHeight: v }; emit(); } }} />
@@ -221,13 +240,8 @@ export function PropertiesPanel() {
         <input id="p-ft" type="number" min={1} value={map.grid.feetPerCell} onChange={(e) => { const v = Number(e.target.value); if (v > 0) { map.grid = { ...map.grid, feetPerCell: v }; emit(); } }} />
       </div>
       {map.widthPx > 0 && <div className="row"><label /><span className="hint mono">{map.widthPx}×{map.heightPx} px · {tileCount(map.widthPx, map.heightPx)} GPU tiles</span></div>}
-      {cal && <div className="row"><label /><span className="hint">{t('props.calibrated', { w: cal.w.toFixed(1), h: cal.h.toFixed(1), r: cal.r.toFixed(2) })}</span></div>}
-      <div className="row"><label htmlFor="p-amb">{t('map.ambient')}</label>
-        <select id="p-amb" value={ambient} onChange={(e) => setAmbient(e.target.value as 'dark' | 'lit')}>
-          <option value="dark">{t('ambient.dark')}</option>
-          <option value="lit">{t('ambient.lit')}</option>
-        </select>
-      </div>
+      <div className="row"><label>{t('map.ambient')}</label><span>{t(ambient === 'lit' ? 'ambient.lit' : 'ambient.dark')}</span></div>
+      <button className="btn sm" onClick={() => openMapSettings()}><Icon name="sliders" />{t('tool.mapSettings')} …</button>
       {light && (
         <>
           <div className="sec">{t('light.title')}</div>
@@ -239,20 +253,44 @@ export function PropertiesPanel() {
         </>
       )}
       <div className="sec">{t('props.selection')}</div>
-      {zone ? (
+      {walls.length > 0 ? (
+        <WallProperties walls={walls} />
+      ) : zone ? (
         <>
-          <div className="row"><label htmlFor="z-name">{t('props.name')}</label><input id="z-name" value={zone.name} onChange={(e) => { zone.name = e.target.value; emit(); }} /></div>
-          <div className="row"><label htmlFor="z-kind">{t('props.type')}</label>
-            <select id="z-kind" value={zone.kind} onChange={(e) => { zone.kind = e.target.value as typeof zone.kind; emit(); }}>
-              <option value="room">Room</option><option value="area">Area</option><option value="poi">POI</option><option value="secret">Secret</option>
-            </select>
-          </div>
-          <div className="row"><label htmlFor="z-col">Color</label><input id="z-col" type="color" value={zone.color} onChange={(e) => { zone.color = e.target.value; emit(); }} /></div>
+          <div className="row"><label>{t('props.name')}</label><span><span className="swatch" style={{ background: zone.color }} /> {zone.name}</span></div>
+          <div className="row"><label>{t('area.cmd.biome')}</label><span>{zone.biome ? t(`biome.${zone.biome}` as MessageKey) : t('area.cmd.biomeMap')}{zone.secret ? ` · ${t('area.secret')}` : ''}</span></div>
+          <button className="btn sm" onClick={() => startAreaCommand(zone.id)}><Icon name="zone" />{t('area.edit')} …</button>
         </>
       ) : <p className="hint">{t('props.noSelection')}</p>}
     </div>
   );
 }
+
+/** The selected walls (Map Forge, DC-014): their kind, the length of a single one, delete. */
+function WallProperties({ walls }: { walls: readonly Wall[] }) {
+  const { t } = useI18n();
+  const grid = useStore((s) => s.scene.map.grid);
+  const kinds = new Set(walls.map((w) => w.kind));
+  const kind = kinds.size === 1 ? walls[0].kind : '';
+  const one = walls.length === 1 ? walls[0] : null;
+  return (
+    <>
+      <div className="row"><label>{t('wall.title')}</label><span>{t('wall.selected', { n: walls.length })}</span></div>
+      <div className="row"><label htmlFor="w-kind">{t('wall.cmd.kind')}</label>
+        <select id="w-kind" value={kind} onChange={(e) => e.target.value && setWallKind(e.target.value as WallKind)}>
+          {kind === '' && <option value="">–</option>}
+          {WALL_KINDS.map((k) => <option key={k} value={k}>{t(`wall.kind.${k}` as MessageKey)}</option>)}
+        </select>
+      </div>
+      {one && <div className="row"><label>{t('wall.length')}</label><span className="mono">{Math.round((Math.hypot(one.x2 - one.x1, one.y2 - one.y1) / grid.cellWidth) * grid.feetPerCell * 10) / 10} ft</span></div>}
+      {kinds.has('cliff') && <button className="btn sm" onClick={flipSelectedCliffs}><Icon name="redo" />{t('wall.flip')}</button>}
+      <p className="hint">{t('wall.editHint')}</p>
+      <button className="btn sm danger" onClick={deleteSelectedWalls}><Icon name="trash" />{t('wall.delete')}</button>
+    </>
+  );
+}
+
+const WALL_KINDS: readonly WallKind[] = ['wall', 'door', 'secret-door', 'window', 'cliff'];
 
 /* ---------- Fog ---------- */
 

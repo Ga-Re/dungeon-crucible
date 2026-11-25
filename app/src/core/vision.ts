@@ -20,8 +20,8 @@ export interface ViewerVision {
  * Light: every placed light that is on and every token's carried light, as polygons (line of
  * sight from the light ∩ its dim radius). Monsters' lights count too: players see what they light.
  */
-export function litAreas(scene: Scene, blockers = sightBlockers(scene.walls)): Polygon[] {
-  return litSources(scene, blockers).flatMap((s) => s.area);
+export function litAreas(scene: Scene): Polygon[] {
+  return litSources(scene).flatMap((s) => s.area);
 }
 
 /** One shining light: where it is, how far bright and dim light reach (px), its colour and area. */
@@ -36,7 +36,7 @@ export interface LitSource {
 }
 
 /** Every light that is on, placed or carried by a token, with the area it lights. */
-export function litSources(scene: Scene, blockers = sightBlockers(scene.walls)): LitSource[] {
+export function litSources(scene: Scene): LitSource[] {
   const sources = [
     ...scene.lights.filter((l) => l.on && l.dimFt > 0).map((l) => ({ x: l.x, y: l.y, bright: l.brightFt, dim: l.dimFt, color: l.color })),
     ...scene.tokens
@@ -45,7 +45,7 @@ export function litSources(scene: Scene, blockers = sightBlockers(scene.walls)):
   ];
   return sources.map((s) => {
     const dimPx = feetToPx(scene, s.dim);
-    return { x: s.x, y: s.y, brightPx: feetToPx(scene, s.bright), dimPx, color: s.color, area: sightPolygon(s, dimPx, visibilityPolygon(s, dimPx, blockers)) };
+    return { x: s.x, y: s.y, brightPx: feetToPx(scene, s.bright), dimPx, color: s.color, area: sightPolygon(s, dimPx, visibilityPolygon(s, dimPx, sightBlockers(scene.walls, s))) };
   });
 }
 
@@ -54,15 +54,15 @@ export function litSources(scene: Scene, blockers = sightBlockers(scene.walls)):
  * darkness within darkvision range. On a lit map the line of sight alone counts.
  */
 export function updateVision(scene: Scene): ViewerVision[] {
-  const blockers = sightBlockers(scene.walls);
   const reach = Math.hypot(scene.map.widthPx, scene.map.heightPx);
-  const lit = scene.ambient === 'lit' ? [] : litAreas(scene, blockers);
+  const lit = scene.ambient === 'lit' ? [] : litAreas(scene);
   const out: ViewerVision[] = [];
   for (const t of scene.tokens) {
     if (t.kind !== 'pc' || t.hp <= 0) continue;
     const origin = { x: t.x, y: t.y };
     const radius = feetToPx(scene, t.visionFt);
-    const outline = visibilityPolygon(origin, reach, blockers);
+    // Each viewer has its own blockers: a cliff blocks only those below it.
+    const outline = visibilityPolygon(origin, reach, sightBlockers(scene.walls, origin));
     let sight: Polygon[];
     if (scene.ambient === 'lit') {
       sight = sightPolygon(origin, reach, outline);

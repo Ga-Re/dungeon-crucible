@@ -8,11 +8,11 @@
  * A view shows one layer (`ViewLayer`): the map (Map Forge: map elements, start fog, no tokens) or
  * the scene (everything else: map elements with the scene's changes, the scene's state).
  */
-import { EMPTY_LEVEL_FOG, rectPolygon } from './fogModel';
+import { EMPTY_LEVEL_FOG } from './fogModel';
 import type { LevelFog, Polygon } from './poly/types';
 import { DEFAULT_TABLE, type Scene, type Zone } from './scene';
 import { diffElements, resolveElements, type MapElements, type SceneLayer } from './mapLayers';
-import { SCHEMA_VERSION, type CampaignManifest, type MapSidecar, type Player, type SceneOverride } from './sidecar';
+import { MAP_VERSION, SCENE_VERSION, SCHEMA_VERSION, type CampaignManifest, type MapSidecar, type Player, type SceneOverride } from './sidecar';
 
 export const BUILTIN_PREFIX = 'builtin:';
 
@@ -96,7 +96,7 @@ export function resetToStart(ov: SceneOverride): SceneOverride {
 export function elementsFromScene(scene: Pick<Scene, 'walls' | 'zones' | 'lights'>): MapElements {
   return {
     walls: scene.walls.map((w) => ({ id: w.id, kind: w.kind, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 })),
-    zones: scene.zones.map((z) => ({ id: z.id, name: z.name, kind: z.kind, rect: { ...z.rect }, color: z.color, ...(z.biome ? { biome: z.biome } : {}) })),
+    zones: scene.zones.map((z) => ({ id: z.id, name: z.name, shape: copyShape(z.shape), secret: z.secret, color: z.color, ...(z.biome ? { biome: z.biome } : {}) })),
     lights: scene.lights.map((l) => ({ id: l.id, x: l.x, y: l.y, brightFt: l.brightFt, dimFt: l.dimFt, color: l.color })),
   };
 }
@@ -105,7 +105,7 @@ export function elementsFromScene(scene: Pick<Scene, 'walls' | 'zones' | 'lights
 export function elementsFromSidecar(map: Pick<MapSidecar, 'walls' | 'zones' | 'lights'>): MapElements {
   return {
     walls: map.walls.map(({ open: _o, ...w }) => ({ ...w })),
-    zones: map.zones.map((z) => ({ ...z, rect: { ...z.rect } })),
+    zones: map.zones.map((z) => ({ ...z, shape: copyShape(z.shape) })),
     lights: map.lights.map((l) => ({ ...l })),
   };
 }
@@ -126,7 +126,7 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
   const startFog = fromView ? (layer === 'map' ? copyFog(scene.fog) : previous?.startFog) : previous.startFog;
   return {
     kind: 'map',
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: MAP_VERSION,
     name: m.name,
     resource,
     isVideo: m.isVideo,
@@ -156,14 +156,14 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
   const layer = diffElements(elementsFromSidecar(map), elementsFromScene(scene), previous);
   return {
     kind: 'scene',
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: SCENE_VERSION,
     name,
     mapSidecar,
     fog: copyFog(scene.fog),
     ...(scene.fogEffect ? { fogEffect: { ...scene.fogEffect } } : {}),
     doors: Object.fromEntries(scene.walls.filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])),
     lights: Object.fromEntries(scene.lights.map((l) => [l.id, l.on])),
-    discoveredZones: scene.zones.filter((z) => z.kind === 'secret' && z.discovered).map((z) => z.id),
+    discoveredZones: scene.zones.filter((z) => z.secret && z.discovered).map((z) => z.id),
     tokens: scene.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: scene.templates.map((t) => ({ ...t })),
     combat: { ...combat },
@@ -173,14 +173,17 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
   };
 }
 
-function copyFog(fog: LevelFog): LevelFog {
-  const cp = (ps: readonly Polygon[]) => ps.map((p) => ({ outer: p.outer.map(([x, y]) => [x, y] as [number, number]), holes: p.holes.map((h) => h.map(([x, y]) => [x, y] as [number, number])) }));
-  return { revealed: cp(fog.revealed), remembered: cp(fog.remembered) };
+function copyShape(ps: readonly Polygon[]): Polygon[] {
+  return ps.map((p) => ({ outer: p.outer.map(([x, y]) => [x, y] as [number, number]), holes: p.holes.map((h) => h.map(([x, y]) => [x, y] as [number, number])) }));
 }
 
-/** Undiscovered secret rooms: tools and vision never reveal them by accident. */
+function copyFog(fog: LevelFog): LevelFog {
+  return { revealed: copyShape(fog.revealed), remembered: copyShape(fog.remembered) };
+}
+
+/** Undiscovered secret areas: tools and vision never reveal them by accident. */
 export function lockedAreas(zones: readonly Zone[]): Polygon[] {
-  return zones.filter((z) => z.kind === 'secret' && !z.discovered).map((z) => rectPolygon(z.rect.x, z.rect.y, z.rect.x + z.rect.w, z.rect.y + z.rect.h));
+  return zones.filter((z) => z.secret && !z.discovered).flatMap((z) => z.shape);
 }
 
 /** Builds a Scene from a map sidecar and (optionally) a scene override. */
@@ -196,7 +199,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const state = st ? { ...override!, ...st, templates: [], fogEffect: undefined } : override;
   const discovered = new Set(state?.discoveredZones ?? []);
   const elements = onMap ? elementsFromSidecar(map) : resolveElements(elementsFromSidecar(map), layerOf(override)).elements;
-  const zones: Zone[] = elements.zones.map((z) => ({ ...z, rect: { ...z.rect }, discovered: z.kind !== 'secret' || (!onMap && discovered.has(z.id)) }));
+  const zones: Zone[] = elements.zones.map((z) => ({ ...z, shape: copyShape(z.shape), discovered: !z.secret || (!onMap && discovered.has(z.id)) }));
   const startFog = map.startFog ? copyFog(map.startFog) : EMPTY_LEVEL_FOG;
   const fog: LevelFog = onMap || !state ? startFog : copyFog(state.fog);
   const doors = onMap ? {} : (state?.doors ?? {});

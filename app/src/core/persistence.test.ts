@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { areaBounds } from './areas';
 import { History } from './history';
 import { commitStart, lockedAreas, mapSidecarFromScene, mapSidecarPath, manifestFromState, resetToStart, sceneFromDocuments, sceneOverrideFromScene, slugify, startOf, tableFromManifest } from './persistence';
 import { CampaignManifestSchema, MapSidecarSchema, SceneOverrideSchema } from './sidecar';
@@ -38,10 +39,11 @@ describe('persistence', () => {
     const scene = createSampleScene();
     const map = mapSidecarFromScene(scene, 'builtin:crypt');
     const fresh = sceneFromDocuments(map, null, null);
-    const secret = fresh.zones.find((z) => z.kind === 'secret')!;
+    const secret = fresh.zones.find((z) => z.secret)!;
     expect(secret.discovered).toBe(false);
     const fog = revealAll(fresh.fog, fresh.map.widthPx, fresh.map.heightPx, lockedAreas(fresh.zones));
-    expect(isInside(fog.revealed, [secret.rect.x + 10, secret.rect.y + 10])).toBe(false);
+    const c = areaBounds(secret.shape);
+    expect(isInside(fog.revealed, [c.x + 10, c.y + 10])).toBe(false);
   });
 
   it('stores the table calibration in the campaign manifest', () => {
@@ -83,7 +85,7 @@ describe('history', () => {
 describe('map sidecar round trip', () => {
   it('keeps the catalog data (tags, theme, type, POIs, assets)', () => {
     const map = MapSidecarSchema.parse({
-      kind: 'map', schemaVersion: 1, name: 'Tavern', resource: 'library/tavern.webp', widthPx: 1000, heightPx: 800,
+      kind: 'map', schemaVersion: 3, name: 'Tavern', resource: 'library/tavern.webp', widthPx: 1000, heightPx: 800,
       tags: ['town', 'inn'], biome: 'city', mapType: 'building', fogBiome: 'kueste', fogStrength: 0.5,
       grid: { type: 'square', cellWidth: 50, cellHeight: 50, originX: 0, originY: 0, rotationDeg: 0, feetPerCell: 5 },
       pois: [{ id: 'poi-bar', name: 'Bar', x: 10, y: 20, icon: 'flag' }],

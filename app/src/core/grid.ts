@@ -1,5 +1,5 @@
 /**
- * Grid model, 3-point calibration and physical table calibration.
+ * Grid model, calibration with an N×N box and physical table calibration.
  *
  * Map space: pixels of the map image. The grid is described in map space.
  * Table space: physical pixels of the table monitor. Physical calibration finds
@@ -36,60 +36,36 @@ export const DEFAULT_GRID: GridConfig = {
   feetPerCell: 5,
 };
 
-export interface CalibrationResult {
-  cellWidth: number;
-  cellHeight: number;
-  rotationDeg: number;
-  originX: number;
-  originY: number;
-  /** Relative difference between cell width and height (0 = perfectly square). */
-  distortion: number;
-  /** Angle between the two measured axes minus 90° (0 = perfectly orthogonal). */
-  skewDeg: number;
+/** A square box on the map (map px): its top left corner and side length. */
+export interface GridBox {
+  x: number;
+  y: number;
+  size: number;
 }
 
 /**
- * 3-point calibration: `origin` is a grid corner, `alongX` a corner `cellsX`
- * cells to the right, `alongY` a corner `cellsY` cells down. Using several cells
- * per axis reduces click error.
+ * The square dragged from `a` towards `b` (E-7): its side is the longer of the two drag
+ * distances, and it lies in the direction of the drag.
  */
-export function calibrateFromThreePoints(
-  origin: Point,
-  alongX: Point,
-  alongY: Point,
-  cellsX = 1,
-  cellsY = 1,
-): CalibrationResult {
-  if (cellsX <= 0 || cellsY <= 0) throw new Error('Cell counts must be positive');
-  const ax = { x: alongX.x - origin.x, y: alongX.y - origin.y };
-  const ay = { x: alongY.x - origin.x, y: alongY.y - origin.y };
-  const lenX = Math.hypot(ax.x, ax.y);
-  const lenY = Math.hypot(ay.x, ay.y);
-  if (lenX < 1e-6 || lenY < 1e-6) throw new Error('Calibration points must be distinct');
-  const cellWidth = lenX / cellsX;
-  const cellHeight = lenY / cellsY;
-  const rotationDeg = (Math.atan2(ax.y, ax.x) * 180) / Math.PI;
-  const between = (Math.acos(clamp((ax.x * ay.x + ax.y * ay.y) / (lenX * lenY), -1, 1)) * 180) / Math.PI;
-  return {
-    cellWidth,
-    cellHeight,
-    rotationDeg,
-    originX: mod(origin.x, cellWidth),
-    originY: mod(origin.y, cellHeight),
-    distortion: Math.abs(cellWidth - cellHeight) / Math.max(cellWidth, cellHeight),
-    skewDeg: between - 90,
-  };
+export function squareBox(a: Point, b: Point): GridBox {
+  const size = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+  return { x: b.x < a.x ? a.x - size : a.x, y: b.y < a.y ? a.y - size : a.y, size };
 }
 
-export function applyCalibration(grid: GridConfig, c: CalibrationResult): GridConfig {
-  return {
-    ...grid,
-    cellWidth: c.cellWidth,
-    cellHeight: c.cellHeight,
-    rotationDeg: c.rotationDeg,
-    originX: c.originX,
-    originY: c.originY,
-  };
+/**
+ * Grid calibration (E-7, DC-021): a box laid over `cells` × `cells` cells of the map's printed
+ * grid gives the cell size and the offset. The grid is not turned; nothing changes for an empty
+ * box or cell count.
+ */
+export function gridFromBox(grid: GridConfig, box: GridBox, cells: number): GridConfig {
+  if (box.size <= 0 || cells < 1) return grid;
+  const cell = box.size / cells;
+  return { ...grid, cellWidth: cell, cellHeight: cell, rotationDeg: 0, originX: mod(box.x, cell), originY: mod(box.y, cell) };
+}
+
+/** Moves the grid by (dx, dy) map px; the offset stays within one cell. */
+export function shiftGrid(grid: GridConfig, dx: number, dy: number): GridConfig {
+  return { ...grid, originX: mod(grid.originX + dx, grid.cellWidth), originY: mod(grid.originY + dy, grid.cellHeight) };
 }
 
 /* ---------- Physical table calibration ---------- */
@@ -176,6 +152,12 @@ export function cellCenter(grid: GridConfig, c: CellCoord): Point {
   return fromGridSpace(grid, { x: (c.col + 0.5) * grid.cellWidth, y: (c.row + 0.5) * grid.cellHeight });
 }
 
+/** Snaps a point to the nearest grid corner (also on a rotated grid). */
+export function snapToCorner(grid: GridConfig, p: Point): Point {
+  const g = toGridSpace(grid, p);
+  return fromGridSpace(grid, { x: Math.round(g.x / grid.cellWidth) * grid.cellWidth, y: Math.round(g.y / grid.cellHeight) * grid.cellHeight });
+}
+
 /** Snaps a point to the nearest cell centre. */
 export function snapToCell(grid: GridConfig, p: Point): Point {
   return cellCenter(grid, cellAt(grid, p));
@@ -189,10 +171,6 @@ export function gridDistanceFeet(grid: GridConfig, a: Point, b: Point): number {
   const ca = cellAt(grid, a);
   const cb = cellAt(grid, b);
   return Math.max(Math.abs(ca.col - cb.col), Math.abs(ca.row - cb.row)) * grid.feetPerCell;
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
 }
 
 function mod(a: number, n: number): number {

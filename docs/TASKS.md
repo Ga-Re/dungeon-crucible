@@ -98,14 +98,14 @@ Startzustand), dann die Kartenschmiede auf dieser Basis.
 | Ambient-Sound und Übergang als Kartendaten | ✗ | ✗ | T-176b |
 | Raster Quadrat | ✓ | ✓ | |
 | Raster Hex | ✗ | ✓ | wird entfernt (E-7, DC-098) |
-| Rastereinmessung | ✓ N×N-Box | ✓ 3-Punkt | E-7 |
+| Rastereinmessung | ✓ N×N-Box | ✓ N×N-Box | E-7, DC-021 |
 | Ebenen (Stockwerke) mit eigenem Bild, Freigabe auf dem TV | ✓ | ✗ | |
 | Bereiche/Räume als Polygon, Ellipse, Lasso, je Ebene, geheim | ✓ | ◐ | DC: nur Rechtecke, Biom-Override ohne UI |
 | Bereiche additiv zeichnen (Vereinigung) | ✓ | ✗ | |
 | Wände, Türen, Geheimtüren, Fenster | ✗ | ✓ | DC weiter (DM: Stufe 5) |
-| Wände bearbeiten (auswählen, verschieben, löschen) | ✗ | ◐ | DC: nur letzte Wand zurück |
+| Wände bearbeiten (auswählen, verschieben, löschen) | ✗ | ✓ | DC-014: Befehls-Panel „Wände zeichnen“, Gelenke, Ketten |
 | Lichtquellen der Karte | ✗ | ✓ | |
-| Klippen/Galerien (Einweg), Deckung (Kreis/Polygon) | ✗ | ✗ | T-193 |
+| Klippen/Galerien (Einweg), Deckung (Kreis/Polygon) | ✗ | ◐ | T-193; DC-014: Klippen ✓; Deckung am Asset: DC-108 |
 | Automatische Wände, Leck-Prüfung, Testfigur | ✗ | ✗ | T-141, T-194 |
 | Parametrische Räume, Gelände mit Bewegungskosten, Treppen | ✗ | ✗ | T-195–197 |
 | Kartenvarianten (Tag/Nacht), Zuschneiden, Bildanpassung | ✗ | ✗ | T-191, T-192 |
@@ -195,7 +195,7 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - ◐ **DC-093 Bibliothek** (E-1): Karten, Audio, Kreaturen flach in `library/`, Sidecars daneben; Import kopiert
   hinein, Duplikate per Hash erkennen; Kartenliste mit Suche (Name, Tags, Typ); Löschen mit Warnung und Papierkorb
   (benutzte Karten: nur das Bild, die Kartendaten bleiben) – erledigt. Offen: Vorschaubilder im Katalog
-  (DC-093b), Tags in der Oberfläche bearbeiten (kommt mit DC-011), Papierkorb wiederherstellen (DC-035).
+  (DC-093b), Papierkorb wiederherstellen (DC-035). Tags bearbeiten: erledigt mit DC-011.
 - ✓ **DC-094 Karte/Szene mit Overrides** (E-2, E-16, E-24, E-26): Szene = Kartenverweis + Overrides je Element-ID
   + eigene Elemente + Zustand (`resolveElements`/`diffElements`); die Kartenschmiede zeigt und bearbeitet die Karte
   (ohne Tokens, mit Start-Nebel), jeder andere Arbeitsbereich die Szene; der TV zeigt in der Schmiede weiter die
@@ -228,25 +228,88 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Papierkorb; id, Token-Verweise und Spielerverknüpfungen bleiben (mit DC-096). Zwei Kreaturen gleichen Namens
   bekommen getrennte Dateien. Nebenbei behoben: neu angelegte Dokumente wurden nach einer Änderung im Speicher
   nicht mehr geschrieben.
-- **DC-001 Kartendaten beim Speichern nicht mehr verlieren** (Teil von DC-090). Tags, Biom, Kartentyp, POIs und Assets aus dem
+- ✓ **DC-001 Kartendaten beim Speichern nicht mehr verlieren** (Teil von DC-090, erledigt mit ihr). Tags, Biom, Kartentyp, POIs und Assets aus dem
   Sidecar beim Laden übernehmen und unverändert zurückschreiben; unbekannte Felder erhalten (zod `passthrough`).
   Test: Rundreise einer Datei mit allen Feldern.
-- **DC-002 Ältere/neuere Dateiversionen** (Teil von DC-090). Neuere `schemaVersion` ablehnen statt überschreiben;
+- ✓ **DC-002 Ältere/neuere Dateiversionen** (Teil von DC-090, erledigt mit ihr). Neuere `schemaVersion` ablehnen statt überschreiben;
   Migrationsgerüst für Kampagne, Karte, Szene, Kreatur.
 - **DC-003 Rettungskopie bei fehlgeschlagenem Speichern** (Gerätespeicher, Angebot beim nächsten Start) und
   Absturzerkennung (TV bleibt nach Absturz dunkel). Nach T-114b, T-238.
-- **DC-004 PixiJS-Warnung beim Kartenwechsel** (Textur wird freigegeben, während sie noch gebunden ist) beheben.
+- ✓ **DC-004 PixiJS-Warnung beim Kartenwechsel** („destroyed while still bound“): beim Abbau des lebendigen Nebels
+  und der Nebel-Überblendung wurden Texturen vor ihrem Shader zerstört (bei der Überblendung hing das Aufräumen an
+  der Ebene, die PixiJS erst nach ihren Kindern abbaut); jetzt geht der Shader zuerst, am Mesh selbst. Nebenbei:
+  die Dunkelheit der Licht-Ebene gab ihre Maskentextur nie frei (Speicherleck je Lichtänderung) – behoben.
+  Bekannt und nicht von uns lösbar: mit lebendigem Nebel warnt PixiJS weiter, wenn sich die Canvas-Größe ändert
+  (sein `TexturePool` verwirft Filter-Texturen, die sein globaler Batch-Cache noch kennt; auch in 8.23).
+- **DC-106 Benchmark-Anleitung aktualisieren**: `app/README.md` beschreibt für `npm run bench` noch `maps/` im
+  Kampagnenordner; seit dem Wurzelordner liegen Karten in `library/`.
 
 ### 3.2 Laufender Branch `feature/start-screen-map-forge`
 
 - **DC-010 Startbildschirm** – ✓ Schritt 1 erledigt; Umbau auf Wurzelordner folgt mit DC-092.
-- **DC-011 Karteneigenschaften** – Name, Tags, Biom, Kartentyp, Standard-Nebel; Herkunft und Lizenz (T-125);
-  Ambient-Sound und Übergang (T-176b). Nach DC-093/DC-095.
+- ✓ **DC-011 Karteneigenschaften**: Dialog „Karteneinstellungen“ in der Kartenschmiede (Menüband Karte › Karte,
+  Doppelklick auf die Karte im Browser, Knopf im Eigenschaften-Panel) mit Name, Kartentyp, Landschaft und Tags (mit
+  Vorschlägen aus der Bibliothek), Standard-Nebel und Umgebungslicht; Übernehmen ist ein rückgängig machbarer
+  Schritt. Das Eigenschaften-Panel zeigt die Karte nur noch an. Die Bibliothekssuche findet auch die Landschaft und
+  aktualisiert sich nach dem Speichern. DM-Entscheidungen (2026-11-25): Dialog statt Panel; Herkunft und Lizenz
+  entfallen; Sound wird DC-104, der Übergang DC-105.
+- **DC-104 Klangquellen auf der Karte** (DM-Wunsch 2026-11-25): Sounds aus der Bibliothek auf die Karte ziehen,
+  je Quelle ein Radius; überlagerte Radien spielen beide; einstellbar, ob eine Quelle zum Rand hin leiser wird;
+  dazu ein globaler Sound je Karte (z. B. Schneesturm, Wind). Später im Szeneneditor: Quellen ein-/ausschalten und
+  den globalen Sound bei Bedarf überschreiben. Offen (Interview zu Beginn): wessen Position zählt fürs Hören
+  (Spielerfiguren, Kartenmitte, TV-Ausschnitt), Verhältnis zur Szenen-Ambience, Dateiformat.
+- **DC-105 Szenenübergang** (T-135): Übergang beim Szenenwechsel auf dem TV (z. B. Ausblenden über Schwarz, Dauer),
+  danach als Standard je Karte (T-176b).
 - **DC-012 Kartenkatalog der Bibliothek** – geht in DC-093 auf.
-- **DC-013 Bereiche als Polygon/Ellipse/Lasso**, additiv zeichnen, bearbeiten, Biom-Override, Name, geheim
-  (T-108c1, T-260); Begriff „Bereich“ (T-262); „Bereich anlegen“ als Befehls-Panel (E-6).
-- **DC-014 Wände bearbeiten**: auswählen, Endpunkte verschieben, löschen, Ketten; Objekte als Polygon; Einweg-Wände
-  (Klippen/Galerien) und Deckung (T-193).
+- ✓ **DC-013 Bereiche als Polygon/Ellipse/Lasso**, additiv zeichnen, bearbeiten, Biom-Override, Name, geheim
+  (T-108c1, T-260); Begriff „Bereich“ (T-262); „Bereich anlegen“ als Befehls-Panel (E-6). DM-Entscheidungen
+  (2026-11-25): Migration auf Version 2; nur „Bereich“ mit Schalter „geheim“; Ablauf wie Dungeon-Manager;
+  Bearbeiten = Eigenschaften, Form erweitern/abziehen, Ecken verschieben, löschen.
+  Erledigt (Schritt 1): Karten-Sidecar und Szene `schemaVersion` 2 – ein Bereich hat `shape` (Polygone mit
+  Löchern, mehrere Teile) und `secret` statt `rect`/`kind`; Version-1-Dateien, Szenen-Overrides und
+  szeneneigene Bereiche werden beim Lesen migriert und als Version 2 gespeichert; Nebel, Sperren geheimer
+  Bereiche, Overlay (gerade/ungerade Füllung, Name an einem Punkt innerhalb) und Treffer rechnen mit Polygonen.
+  Erledigt (Schritt 2): Befehls-Panel „Bereich anlegen“ (Menüband Bereiche) oben rechts über der Karte, nicht
+  modal: Form (Rechteck, Ellipse, Polygon, Lasso), Hinzufügen/Abziehen, Name, geheim, Nebel-Art, Farbe; Teile
+  verbinden sich, Abziehen schneidet aus (auch Löcher); Ecken rasten am Raster ein, Alt zeichnet frei (Lasso immer
+  frei); Vorschau auf der Karte; OK speichert als ein rückgängig machbarer Schritt mit neuer zufälliger ID, Esc oder
+  Abbrechen verwirft; ein anderes Werkzeug beendet den Befehl. Das alte Rechteck-Werkzeug „Zone“ ist entfernt,
+  Texte sagen „Bereich“. Abweichung: „Abziehen“ ist ein Schalter im Panel, weil Alt fürs freie Zeichnen gilt.
+  Erledigt (Schritt 3): „Bereich bearbeiten“ per Doppelklick auf den Bereich (Browser oder Karte) oder aus dem
+  Eigenschaften-Panel – derselbe Befehl mit den Werten des Bereichs: Eigenschaften, Form erweitern/abziehen, Ecken
+  ziehen (eingerastet, Alt frei; danach wird die Form bereinigt), Löschen mit Rückfrage im Panel (Szenen-Overrides
+  verwaisen); OK ändert den Bereich unter derselben ID als ein Schritt. Das Eigenschaften-Panel zeigt den Bereich
+  nur noch an. Nicht umgesetzt: das Panel verschieben (bleibt oben rechts); Ellipsen zeigen viele Eckgriffe.
+- ✓ **DC-014 Wände bearbeiten**: auswählen, Endpunkte verschieben, löschen, Ketten; Objekte als Polygon; Einweg-Wände
+  (Klippen/Galerien) und Deckung (T-193). DM-Entscheidungen (2026-11-25): drei Schritte auf `feature/map-forge`
+  (1. Bearbeiten und Ketten, 2. Einweg-Wände, 3. Deckung); „Wände zeichnen“ als Befehls-Panel (Art, Kette,
+  OK/Abbrechen), Bearbeiten direkt mit „Auswählen“ (Endpunkte ziehen, Entf löscht, Art im Eigenschaften-Panel);
+  Ketten = Gelenke über gemeinsame Endpunkte, das Format der Wände bleibt; Klippen und Deckung bringen Karte und
+  Szene auf Version 3 mit Migration. Klippe (DM, 2026-11-25): oben ist links der Zeichenrichtung, ein Pfeil zeigt
+  zur unteren Seite, „Richtung umdrehen“ im Zeichnen- und im Eigenschaften-Panel; Licht verhält sich wie Sicht.
+  Erledigt (Schritt 1): Befehls-Panel „Wände zeichnen“ (Menüband Wände) oben rechts über der Karte: Art (Wand,
+  Tür, Geheimtür, Fenster) mit kurzer Erklärung, Kette an/aus (Wand und Fenster ketten, Türen nicht), letztes Stück
+  entfernen (auch Rücktaste); Enden rasten an vorhandenen Wandenden und am Raster ein, Alt zeichnet frei;
+  Doppelklick oder Esc beendet eine Kette, ein zweites Esc den Befehl; OK fügt alle Stücke als ein rückgängig
+  machbarer Schritt mit neuen zufälligen IDs hinzu. Mit „Auswählen“ in der Kartenschmiede: Klick wählt eine Wand
+  (Umschalt: mehrere), Doppelklick die ganze Kette; ein Ende ziehen bewegt alle Wände, die dort zusammenstoßen
+  (Umschalt: nur das Ende der ausgewählten Wand), zusammengefallene Wände verschwinden; Entf löscht die Auswahl;
+  das Eigenschaften-Panel zeigt Anzahl, Art (änderbar) und Länge. Die Einzel-Werkzeuge Wand/Tür/Geheimtür/Fenster
+  und „Letzte entfernen“ sind entfernt. Abweichung: Das Gelenk löst Umschalt statt Alt, weil Alt beim Klick ein
+  Ping ist und beim Ziehen frei setzt.
+  Erledigt (Schritt 2): Wandart „Klippe oder Galerie“ – einseitig: von der oberen Seite (links der
+  Zeichenrichtung) sieht man hinunter, von unten nicht hinauf; Licht ebenso (jeder Betrachter und jede Lichtquelle
+  hat eigene Blocker). Im Zeichnen-Panel als fünfte Art (kettet), „Richtung umdrehen“ dort und im
+  Eigenschaften-Panel; auf der Karte mit Schraffur und Pfeil zur unteren Seite. Karte und Szene sind
+  `schemaVersion` 3 (Migration ohne Datenänderung: ältere App-Versionen schreiben solche Dateien nicht zurück).
+  Schritt 3 (Deckung) entfällt hier – DM-Entscheidung (2026-11-25): Die Deckungsmaske gehört zum Asset und wird im
+  Asset-Editor festgelegt; weiter mit DC-108.
+- **DC-107 Kontextsensitiver Karten-Editor** (DM-Wunsch 2026-11-25, `docs/KARTENEDITOR.md`): Dungeon- und
+  Wildnis-/Stadtkarten selbst zeichnen – Wände, Wege, Flüsse, Gebäude, Türen, Brücken als editierbare Absichten
+  (Intent-Modell mit Seeds), Regel-Pipeline für Ecken, Kreuzungen, Durchbrüche, Übergänge, handgezeichnete Optik und
+  Detailstreuung, daraus Sicht- und Bewegungsdaten. Assets bleiben frei platzierbar (DC-041). DM-Entscheidung
+  (2026-11-25): eigenes Thema nach DC-014; zu Beginn Interview und Entscheidung zum Datenmodell (u. a. Wände als
+  Linienzüge, Türen auf Wänden – heute einzelne Strecken, also Migration). Umfasst DC-026 und DC-027 ganz oder teilweise.
 - **DC-015 Assets und Ebenen** – Props siehe DC-041, Stockwerke DC-020, Zeichenebenen DC-101 (E-18).
 
 ### 3.3 Kartenschmiede (weiter)
@@ -255,8 +318,15 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Sichtbarkeit und Sperre beim Bearbeiten.
 - **DC-020 Ebenen (Stockwerke)**: anlegen, umbenennen, eigenes Bild gleicher Größe, Arbeitsebene vs. TV-Ebene,
   Freigabe, Nebel je Ebene (T-118a/c/d).
-- **DC-021 Rastereinmessung per N×N-Box** statt 3-Punkt, als Befehls-Panel; Raster verschieben; Schwenken während
-  des Einmessens (T-177, T-251).
+- ✓ **DC-021 Rastereinmessung per N×N-Box** statt 3-Punkt, als Befehls-Panel; Raster verschieben; Schwenken während
+  des Einmessens (T-177, T-251). Erledigt: Befehls-Panel „Raster einmessen“ (Menüband Karte › Raster): Felder je
+  Seite 1–10 (Standard 3); ein auf der Karte aufgezogenes Quadrat über N×N Felder des gedruckten Rasters ergibt
+  Zellgröße und Versatz, das Raster zeigt sich sofort (beim Einmessen immer sichtbar); innen ziehen verschiebt Box
+  und Raster, Pfeiltasten 1 px (Umschalt 10 px), Zellgröße und Versatz auch als Zahl; OK speichert als ein
+  rückgängig machbarer Schritt, Abbrechen/Esc oder ein anderes Werkzeug stellt das alte Raster wieder her, Speichern
+  während des Einmessens schreibt die Vorschau nicht. Schwenken mit mittlerer/rechter Maustaste oder Leertaste. Die
+  3-Punkt-Kalibrierung ist entfernt; die Box misst kein gedrehtes Raster (Drehung wird 0, das Feld bleibt in der
+  Datei).
 - **DC-022 Zuschneiden, Drehen, Bildanpassung** nicht-destruktiv (T-192).
 - **DC-023 Kartenvarianten** je Ebene (Tag/Nacht/zerstört) (T-191).
 - **DC-024 UVTT-Import** mit Raster, Wänden, Türen, Lichtern (T-198).
@@ -287,6 +357,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Duplikat-Erkennung, Pack-Import (flach mit Tags statt Ordnerstruktur) (T-178, T-179, T-231).
 - **DC-041 Props auf der Karte**: platzieren, drehen in 15°-Schritten, skalieren, Sichtblocker aus Alpha (T-144).
 - **DC-042 Smart Prefabs, Innenräume als Asset-Varianten** (T-202, T-146).
+- **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
+  Deckungsmaske eines Assets fest (Kreis oder Polygon auf dem Bild – Baum, Säule, Statue); ein platziertes Asset ist
+  automatisch maskiert: Die Maske dreht und skaliert mit, sie wird nur am Asset geändert und gilt dann überall
+  (DM-Entscheidung 2026-11-25: keine Anpassung je Platzierung). In der Sicht wirft Deckung Schatten nach hinten, das
+  Objekt selbst bleibt sichtbar. Hängt an DC-040 (Bibliothek), einem Asset-Editor und DC-041 (platzieren); das
+  Asset-Thema beginnt mit einem Interview (Reihenfolge, Asset-Editor, Dateiformat, Licht hinter Deckung).
 - **DC-043 Kreaturen global** in der Bibliothek (Werteblock-Editor umziehen); Spielercharaktere siehe DC-096.
 - **DC-044 Tokenbilder**: Token und Porträt, Token aus Porträt, Fraktionsring, ausgeschnittene Figur (T-203, T-208).
 - **DC-045 Klone, Begegnungsgruppen, Gestalten, SRD-Import, eigene Footprints** (T-204–207, T-241).

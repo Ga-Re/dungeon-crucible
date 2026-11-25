@@ -398,3 +398,13 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .asset-light .handle { stroke: var(--edge); }
 .asset-draft { fill: none; stroke: var(--sel); }
 .asset-panel { top: 52px; max-height: calc(100% - 62px); }
+
+/* ---------- Assets panel in the Map Forge (DC-041) ---------- */
+.picker-kinds { margin: 6px 0; }
+.picker-kinds .chip { cursor: pointer; color: var(--fg); }
+.picker-kinds .chip .ic { width: 12px; height: 12px; }
+.picker-kinds .chip.on { border-color: var(--sel); background: var(--sel-soft); }
+.picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; margin: 0 0 8px; padding: 0; list-style: none; }
+.picker-tile { display: flex; flex-direction: column; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--panel-2); cursor: grab; }
+.picker-tile:hover { border-color: var(--sel); }
+.picker-tile span { padding: 2px 4px; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

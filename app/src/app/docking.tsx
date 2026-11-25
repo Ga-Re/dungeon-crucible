@@ -13,6 +13,7 @@ import {
 } from '../panels/panels';
 import { PartyPanel } from '../panels/PartyPanel';
 import { AssetPropertiesPanel, VaultPanel } from '../panels/VaultPanels';
+import { AssetPicker } from '../panels/AssetPicker';
 import type { WorkspaceId } from './store';
 import { PANEL_TITLES, WORKSPACES, type PanelId } from './workspaces';
 
@@ -31,6 +32,7 @@ export const PANEL_CONTENT: Record<PanelId, () => ReactNode> = {
   atlas: () => <SoonPanel text="soon.atlas" />,
   vault: () => <VaultPanel />,
   asset: () => <AssetPropertiesPanel />,
+  assets: () => <AssetPicker />,
   sound: () => <SoundPanel />,
   party: () => <PartyPanel />,
 };

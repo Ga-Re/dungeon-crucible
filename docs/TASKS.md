@@ -409,9 +409,18 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   `light`, `effect` im Asset-Sidecar (Version 2, noch nicht in `main`, daher ohne Versionssprung); Masken und
   Licht in Feld-Koordinaten der Grundfläche. Ton am Effekt kommt mit DC-104; wirksam werden Maske und Licht mit
   DC-041/DC-108.
-- **DC-041 Assets auf der Karte** (E-27; T-144): in der Kartenschmiede platzieren (auch direkt eine Datei wählen),
+- ✓ **DC-041 Assets auf der Karte** (E-27; T-144): in der Kartenschmiede platzieren (auch direkt eine Datei wählen),
   drehen in 15°-Schritten, skalieren, Varianten durchschalten; auf dem TV unter dem Nebel, Effekte animiert;
   Szenen blenden platzierte Assets aus wie andere Kartenelemente (DC-103).
+  Erledigt: Panel „Assets“ in der Kartenschmiede (zuletzt benutzt – Geräte-Einstellung –, Suche, Arten, Import);
+  Ziehen auf die Karte stellt das Asset in seiner Größe aus dem Vault (Felder × Zellgröße × Skalierung) und rastet
+  ein (bei Vierteldrehungen Kanten am Raster, sonst Mitte auf einer Zelle). Mit „Auswählen“: Klick wählt, Ziehen
+  verschiebt; R/Umschalt+R drehen um 15°, +/− skalieren, V nächste Variante der Gruppe, Entf entfernt; dasselbe im
+  Eigenschaften-Panel; alles rückgängig machbar. Darstellung als eigene Ebene über dem Raster, unter Licht, Tokens
+  und Nebel, im DM-Fenster und auf dem TV; Effekt-Videos laufen in Schleife. Der TV bekommt nur die nicht
+  ausgeblendeten Platzierungen (Projektion). Fehlt die Datei, zeigt die Schmiede einen Platzhalter. Ausblenden im
+  Orchestrator mit „Ein-/ausblenden“; Kartenformat unverändert (`assets` gab es schon). Maske und Licht der Assets
+  wirken mit DC-108; Effekte einmal auslösen kommt mit DC-110 bzw. dem Orchestrator.
 - **DC-110 Szeneneigene Assets** (E-27): Assets nur in einer Szene, beim Vorbereiten (Start) oder im Spiel
   (Spielzustand, „Szene zurücksetzen“ entfernt sie); Maske und Licht gelten nur in dieser Szene.
 - **DC-042 Smart Prefabs, Innenräume als Asset-Varianten** (T-202, T-146).

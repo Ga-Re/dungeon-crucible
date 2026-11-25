@@ -22,7 +22,7 @@ export interface RibbonTab {
 
 export type PanelId =
   | 'map' | 'browser' | 'properties' | 'fog' | 'initiative' | 'preview' | 'table'
-  | 'dice' | 'log' | 'encounter' | 'creature' | 'atlas' | 'vault' | 'asset' | 'sound' | 'party';
+  | 'dice' | 'log' | 'encounter' | 'creature' | 'atlas' | 'vault' | 'asset' | 'assets' | 'sound' | 'party';
 
 export interface DefaultLayout {
   center: PanelId;
@@ -146,7 +146,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
       },
       fogTools,
     ],
-    layout: { center: 'map', left: ['browser'], right: ['properties', 'fog'], bottom: ['log'] },
+    layout: { center: 'map', left: ['browser', 'assets'], right: ['properties', 'fog'], bottom: ['log'] },
   },
   vault: {
     id: 'vault',
@@ -271,6 +271,7 @@ export const PANEL_TITLES: Record<PanelId, MessageKey> = {
   atlas: 'panel.atlas',
   vault: 'panel.vault',
   asset: 'panel.asset',
+  assets: 'panel.assets',
   sound: 'panel.sound',
   party: 'panel.party',
 };

@@ -9,6 +9,8 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { disposeFog } from "./fog-dispose";
 import { drawLivingFog } from "./fog-living";
+import { DURATION_SHARES } from "./fog-spread";
+import { drawFadeFog, type FogMask } from "./renderer";
 
 describe("disposeFog (T-165)", () => {
   it("frees the graphics contexts and own textures of a fog layer, never shared ones", () => {
@@ -76,11 +78,38 @@ describe("disposeFog (T-165)", () => {
     if (!filter) throw new Error("The living fog renders through a filter.");
     const freeFilter = vi.spyOn(filter, "destroy");
     layer.addChild(handle.mesh);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     disposeFog(layer);
 
     expect(to.destroyed && from.destroyed && order.destroyed).toBe(true);
     expect(freeFilter).toHaveBeenCalled();
+    // DC-004: the shader goes first, so no texture is destroyed while still bound to it.
+    expect(warn.mock.calls.flat().join(" ")).not.toMatch(/destroyed while still bound/);
+    warn.mockRestore();
     expect(Texture.WHITE.destroyed).toBe(false);
+  });
+
+  it("frees a fade layer without destroying a texture still bound to its shader (DC-004)", () => {
+    // jsdom has no 2D canvas: enough of one to paint the masks.
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(function () {
+      return {
+        createImageData: (w: number, h: number) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
+        putImageData: () => undefined,
+      } as unknown as CanvasRenderingContext2D;
+    } as unknown as HTMLCanvasElement["getContext"]);
+    const mask = (value: number): FogMask => ({ width: 4, height: 4, texel: 10, alpha: new Uint8Array(16).fill(value) });
+    const order = { width: 4, height: 4, data: new Uint8Array(16) };
+    for (const opacity of [1, 0.6]) {
+      const { layer } = drawFadeFog([], mask(255), mask(0), order, { opacity }, { width: 40, height: 40 }, 1, DURATION_SHARES);
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+      disposeFog(layer);
+
+      expect(layer.destroyed).toBe(true);
+      expect(warn.mock.calls.flat().join(" ")).not.toMatch(/destroyed while still bound/);
+      warn.mockRestore();
+    }
+    getContext.mockRestore();
   });
 });

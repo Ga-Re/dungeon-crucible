@@ -228,14 +228,21 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Papierkorb; id, Token-Verweise und Spielerverknüpfungen bleiben (mit DC-096). Zwei Kreaturen gleichen Namens
   bekommen getrennte Dateien. Nebenbei behoben: neu angelegte Dokumente wurden nach einer Änderung im Speicher
   nicht mehr geschrieben.
-- **DC-001 Kartendaten beim Speichern nicht mehr verlieren** (Teil von DC-090). Tags, Biom, Kartentyp, POIs und Assets aus dem
+- ✓ **DC-001 Kartendaten beim Speichern nicht mehr verlieren** (Teil von DC-090, erledigt mit ihr). Tags, Biom, Kartentyp, POIs und Assets aus dem
   Sidecar beim Laden übernehmen und unverändert zurückschreiben; unbekannte Felder erhalten (zod `passthrough`).
   Test: Rundreise einer Datei mit allen Feldern.
-- **DC-002 Ältere/neuere Dateiversionen** (Teil von DC-090). Neuere `schemaVersion` ablehnen statt überschreiben;
+- ✓ **DC-002 Ältere/neuere Dateiversionen** (Teil von DC-090, erledigt mit ihr). Neuere `schemaVersion` ablehnen statt überschreiben;
   Migrationsgerüst für Kampagne, Karte, Szene, Kreatur.
 - **DC-003 Rettungskopie bei fehlgeschlagenem Speichern** (Gerätespeicher, Angebot beim nächsten Start) und
   Absturzerkennung (TV bleibt nach Absturz dunkel). Nach T-114b, T-238.
-- **DC-004 PixiJS-Warnung beim Kartenwechsel** (Textur wird freigegeben, während sie noch gebunden ist) beheben.
+- ✓ **DC-004 PixiJS-Warnung beim Kartenwechsel** („destroyed while still bound“): beim Abbau des lebendigen Nebels
+  und der Nebel-Überblendung wurden Texturen vor ihrem Shader zerstört (bei der Überblendung hing das Aufräumen an
+  der Ebene, die PixiJS erst nach ihren Kindern abbaut); jetzt geht der Shader zuerst, am Mesh selbst. Nebenbei:
+  die Dunkelheit der Licht-Ebene gab ihre Maskentextur nie frei (Speicherleck je Lichtänderung) – behoben.
+  Bekannt und nicht von uns lösbar: mit lebendigem Nebel warnt PixiJS weiter, wenn sich die Canvas-Größe ändert
+  (sein `TexturePool` verwirft Filter-Texturen, die sein globaler Batch-Cache noch kennt; auch in 8.23).
+- **DC-106 Benchmark-Anleitung aktualisieren**: `app/README.md` beschreibt für `npm run bench` noch `maps/` im
+  Kampagnenordner; seit dem Wurzelordner liegen Karten in `library/`.
 
 ### 3.2 Laufender Branch `feature/start-screen-map-forge`
 

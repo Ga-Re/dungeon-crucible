@@ -455,6 +455,8 @@ export async function createRenderer(
   let livingTime = 0;
   let livingAt = now();
   const rootResolution = options.resolution ?? 1;
+  /** The light layer's darkness (a fog layer of its own, freed like the fog). */
+  let darknessLayer: Container | null = null;
   let size = options.size;
   let camera: Camera | null = null;
   let frame: number | null = null;
@@ -504,11 +506,18 @@ export async function createRenderer(
     const key = JSON.stringify([lightInput, mapSize]);
     if (key === lightBuiltFrom) return;
     lightBuiltFrom = key;
-    // The glow texture is shared: destroy children without textures.
-    for (const child of lightLayer.removeChildren()) child.destroy({ children: true, context: true });
+    // The darkness is a fog layer and goes with its mask texture; the glows share their texture,
+    // so they go without it.
+    for (const child of lightLayer.removeChildren()) {
+      if (child === darknessLayer) disposeFog(child);
+      else child.destroy({ children: true, context: true });
+    }
+    darknessLayer = null;
     if (!lightInput) return;
-    if (lightInput.darkness > 0)
-      lightLayer.addChild(drawFog(lightInput.lit, { opacity: Math.min(0.95, lightInput.darkness), softEdge: lightInput.softEdge }, mapSize, rootResolution));
+    if (lightInput.darkness > 0) {
+      darknessLayer = drawFog(lightInput.lit, { opacity: Math.min(0.95, lightInput.darkness), softEdge: lightInput.softEdge }, mapSize, rootResolution);
+      lightLayer.addChild(darknessLayer);
+    }
     if (lightInput.glows.length === 0) return;
     glowTexture ??= radialGlowTexture();
     for (const glow of lightInput.glows) {
@@ -1049,7 +1058,7 @@ function drawHardFog(revealed: readonly Polygon[], opacity: number): Container {
 const SOFT_MASK_SIDE = 1024;
 
 /** The fog's alpha over the map, one texel per `texel` map pixels (255 = opaque). */
-interface FogMask {
+export interface FogMask {
   readonly width: number;
   readonly height: number;
   readonly texel: number;
@@ -1227,7 +1236,8 @@ void main() {
  * The fog during a fade: the exact hard fog over everything fogged in all of the fade's states
  * (player view), and over the map the masks before and after, mixed along `order`.
  */
-function drawFadeFog(
+/** Exported for its disposal test (DC-004). */
+export function drawFadeFog(
   revealedAll: readonly Polygon[],
   from: FogMask,
   to: FogMask,
@@ -1286,12 +1296,14 @@ function drawFadeFog(
   const layer = opacity < 1 ? new Container() : drawHardFog(revealedAll, 1);
   layer.addChild(mesh);
   // The target texture goes with the mesh; the others, the geometry and the shader are not
-  // destroyed by PixiJS with the mesh.
-  layer.on("destroyed", () => {
+  // destroyed by PixiJS with the mesh. On the mesh itself, as PixiJS emits "destroyed" before
+  // the mesh frees its texture (a layer would only go after its children): the shader first,
+  // so no texture is destroyed while still bound to it (DC-004).
+  mesh.on("destroyed", () => {
+    shader.destroy();
     fromTexture.destroy(true);
     orderTexture.destroy(true);
     geometry.destroy();
-    shader.destroy();
   });
   return {
     layer,

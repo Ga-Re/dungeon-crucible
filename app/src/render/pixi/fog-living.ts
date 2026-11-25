@@ -504,12 +504,14 @@ export function drawLivingFog({
     resolution: rootResolution * quality.resolution,
   });
   mesh.filters = [filter];
+  // PixiJS emits "destroyed" before the mesh frees its own texture: the shader goes first, so
+  // no texture is destroyed while still bound to it (DC-004).
   mesh.on("destroyed", () => {
+    shader.destroy();
+    filter.destroy();
     if (from !== to) from.destroy(true);
     order.destroy(true);
     geometry.destroy();
-    shader.destroy();
-    filter.destroy();
   });
   return {
     mesh,

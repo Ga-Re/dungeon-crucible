@@ -12,9 +12,10 @@ import { useI18n } from '../i18n/i18n';
 import { Icon, type IconName } from '../ui/Icon';
 import { useStore } from '../app/store';
 import { thumbnailUrl } from '../app/thumbs';
+import { AssetEditorView } from './AssetEditor';
 import '../app/start.css';
 import {
-  cancelPackImport, closePackImport, runPackImport, setAllPackFolders, setPackName, togglePackFolder,
+  openAssetEditor, cancelPackImport, closePackImport, runPackImport, setAllPackFolders, setPackName, togglePackFolder,
   addAssetsToCollection, createCollection, deleteCollectionEverywhere, importDroppedFiles, refreshVault, renameCollectionEverywhere, selectAsset, setThumbSize, setVaultFilter,
   shownAssets, toggleFavorite, updateSelectedAssets, type VaultItem,
 } from '../app/vault';
@@ -49,12 +50,14 @@ export function VaultPanel() {
   const thumbPx = useStore((s) => s.vault.thumbPx);
   const root = useStore((s) => s.root?.root);
   const pack = useStore((s) => s.vault.pack !== null);
+  const editing = useStore((s) => s.vault.editor !== null);
   const [dropping, setDropping] = useState(false);
   useEffect(() => {
     void refreshVault();
   }, [root]);
   const shown = useMemo(() => shownAssets(), [items, filter]);
   const sel = new Set(selected);
+  if (editing) return <AssetEditorView />;
 
   const onDrop = (e: DragEvent) => {
     setDropping(false);
@@ -218,6 +221,7 @@ function AssetCard({ item, selected, selection }: { item: VaultItem; selected: b
         e.dataTransfer.effectAllowed = 'copy';
       }}
       onClick={pick}
+      onDoubleClick={() => openAssetEditor(item.relPath)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -484,6 +488,9 @@ export function AssetPropertiesPanel() {
           if (el) el.indeterminate = fav === 'mixed';
         }} onChange={(e) => edit((a) => ({ ...a, favorite: e.target.checked }))} />
       </div>
+      {one && one.asset.assetKind !== 'sound' && (
+        <button className="btn sm" onClick={() => openAssetEditor(one.relPath)}><Icon name="sliders" />{t('editor.open')} …</button>
+      )}
       {one && SIZED.includes(one.asset.assetKind) && <GridPreview item={one} />}
     </div>
   );

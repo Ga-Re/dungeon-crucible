@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addToCollection, assetDefaults, collectionsOf, commonValue, filterAssets, kindFromFile, packDefaults, parseAssetSidecar, removeCollection, renameCollection, type CatalogItem,
+  addToCollection, assetDefaults, collectionsOf, commonValue, filterAssets, kindFromFile, packDefaults, parseAssetSidecar, pixelsToCells, removeCollection, renameCollection, type CatalogItem,
 } from './assets';
 import type { AssetSidecar } from './sidecar';
 
@@ -103,5 +103,11 @@ describe('defaults from a pack (DC-040b)', () => {
     expect(out.get('a/door-1.png')!.group).toBeUndefined();
     expect(out.get('a/wall 1.png')!.group).toBe('P: wall');
     expect(out.get('a/wall 2.webp')!.group).toBe('P: wall');
+  });
+});
+
+describe('outline in cells (DC-109)', () => {
+  it('maps image pixels onto the footprint', () => {
+    expect(pixelsToCells([[0, 0], [200, 100], [100, 200]], 200, 200, { w: 2, h: 2 })).toEqual([[0, 0], [2, 1], [1, 2]]);
   });
 });

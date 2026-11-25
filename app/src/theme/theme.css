@@ -382,3 +382,19 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .pack-folders .ic { width: 14px; height: 14px; color: var(--fg-faint); }
 .pack-progress { width: 100%; height: 10px; accent-color: var(--accent); }
 .pack-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Asset editor (DC-109) ---------- */
+.asset-editor { position: relative; display: flex; flex-direction: column; height: 100%; background: var(--panel); }
+.asset-editor-name { font-family: var(--font-head); font-size: 14px; letter-spacing: 0.03em; }
+.asset-editor .vault-bar .btn .ic { transform: rotate(90deg); }
+.asset-stage { flex: 1; min-height: 0; padding: 16px 320px 16px 16px; background: var(--canvas); }
+.asset-stage svg { width: 100%; height: 100%; touch-action: none; }
+.asset-stage svg.tool-circle, .asset-stage svg.tool-polygon, .asset-stage svg.tool-light { cursor: crosshair; }
+.asset-grid line { stroke: var(--line); }
+.asset-footprint { fill: none; stroke: var(--fg-faint); stroke-dasharray: 0.08 0.06; }
+.asset-cover circle, .asset-cover polygon { fill: rgba(63, 157, 226, 0.25); stroke: var(--sel); }
+.asset-cover .handle, .asset-light .handle { fill: var(--sel); stroke: var(--edge); }
+.asset-light circle { fill: none; }
+.asset-light .handle { stroke: var(--edge); }
+.asset-draft { fill: none; stroke: var(--sel); }
+.asset-panel { top: 52px; max-height: calc(100% - 62px); }

@@ -32,6 +32,16 @@ export interface VaultState {
   newCollections: string[];
   /** The "import pack" dialog while open (DC-040b). */
   pack: PackDialog | null;
+  /** The asset editor while open (DC-109): the asset's changes, saved on OK. */
+  editor: AssetEditor | null;
+}
+
+export type EditorTool = 'select' | 'circle' | 'polygon' | 'light';
+
+export interface AssetEditor {
+  relPath: string;
+  draft: AssetSidecar;
+  tool: EditorTool;
 }
 
 export interface PackDialog {
@@ -122,9 +132,10 @@ async function writeAsset(item: VaultItem, next: AssetSidecar): Promise<VaultIte
  * Changes the given assets (each through `change`) and saves them; the catalog gets a new list,
  * so every view updates. A failed write is reported; what was saved before it stays.
  */
-async function updateAssets(paths: readonly string[], change: (a: AssetSidecar) => AssetSidecar): Promise<void> {
+async function updateAssets(paths: readonly string[], change: (a: AssetSidecar) => AssetSidecar): Promise<boolean> {
   const wanted = new Set(paths);
   const items = [...state.vault.items];
+  let ok = true;
   try {
     for (let k = 0; k < items.length; k++) {
       const item = items[k];
@@ -133,24 +144,26 @@ async function updateAssets(paths: readonly string[], change: (a: AssetSidecar) 
       if (next !== item.asset || item.raw === null) items[k] = await writeAsset(item, next);
     }
   } catch {
+    ok = false;
     log('log.assetWriteFailed');
   } finally {
     state.vault.items = items;
     emit();
   }
+  return ok;
 }
 
 /** Edits every selected asset (Properties panel; a multi-selection gets the same change). */
-export function updateSelectedAssets(change: (a: AssetSidecar) => AssetSidecar): Promise<void> {
+export function updateSelectedAssets(change: (a: AssetSidecar) => AssetSidecar): Promise<boolean> {
   return updateAssets(state.vault.selected, change);
 }
 
-export function toggleFavorite(relPath: string): Promise<void> {
+export function toggleFavorite(relPath: string): Promise<boolean> {
   return updateAssets([relPath], (a) => ({ ...a, favorite: !a.favorite }));
 }
 
 /** Puts assets into a collection (dragged onto it, or the selection). */
-export function addAssetsToCollection(paths: readonly string[], name: string): Promise<void> {
+export function addAssetsToCollection(paths: readonly string[], name: string): Promise<boolean> {
   state.vault.newCollections = state.vault.newCollections.filter((c) => c.toLowerCase() !== name.toLowerCase());
   return updateAssets(paths, (a) => addToCollection(a, name));
 }
@@ -249,6 +262,53 @@ export async function importDroppedFiles(files: readonly File[]): Promise<void> 
     }
   }
   await importedFiles(out);
+}
+
+/* ---------- Asset editor (DC-109) ---------- */
+
+/**
+ * Opens the editor for an asset in the Vault's centre. A light source without a light gets one in
+ * its middle (a torch), an effect without settings a loop – both only saved on OK.
+ */
+export function openAssetEditor(relPath: string): void {
+  const item = state.vault.items.find((i) => i.relPath === relPath);
+  if (!item) return;
+  const a = item.asset;
+  const size = a.sizeCells ?? { w: 1, h: 1 };
+  const draft: AssetSidecar = {
+    ...a,
+    sizeCells: size,
+    ...(a.assetKind === 'light' && !a.light ? { light: { x: size.w / 2, y: size.h / 2, brightFt: 20, dimFt: 40, color: '#ffb14a', flicker: 0.3 } } : {}),
+    ...(a.assetKind === 'effect' && !a.effect ? { effect: { loop: true, trigger: false } } : {}),
+  };
+  state.vault.editor = { relPath, draft, tool: 'select' };
+  state.vault.selected = [relPath];
+  emit();
+}
+
+export function updateEditorDraft(change: (a: AssetSidecar) => AssetSidecar): void {
+  const e = state.vault.editor;
+  if (!e) return;
+  state.vault.editor = { ...e, draft: change(e.draft) };
+  emit();
+}
+
+export function setEditorTool(tool: EditorTool): void {
+  if (state.vault.editor) state.vault.editor = { ...state.vault.editor, tool };
+  emit();
+}
+
+/** OK: writes the asset's sidecar and returns to the catalog; on a failed write the editor stays open. */
+export async function saveAssetEditor(): Promise<void> {
+  const e = state.vault.editor;
+  if (!e || !(await updateAssets([e.relPath], () => e.draft))) return;
+  state.vault.editor = null;
+  emit();
+}
+
+export function closeAssetEditor(): void {
+  state.vault.editor = null;
+  emit();
 }
 
 /* ---------- Pack import (DC-040b) ---------- */

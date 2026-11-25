@@ -198,7 +198,7 @@ function initial(): AppState {
     editStart: false,
     recent: [],
     notice: null,
-    vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null },
+    vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null },
     soundboard: initialSoundboard(),
   };
   s.vision = updateVision(scene);

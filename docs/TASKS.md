@@ -397,9 +397,18 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   „_2x2“. Versteckte Dateien, Sidecars, andere Dateitypen und Verknüpfungen werden übersprungen; das Fenster
   kennt nur ein Kennzeichen des Packs und Ordnernamen aus dem Scan. Schon vorhandene Dateien bleiben
   unverändert (keine Pack-Tags nachträglich).
-- **DC-109 Asset-Editor** (E-27; T-202): in der Vault-Mitte – Größe in Feldern, Deckungsmaske (Kreis/Polygon,
+- ✓ **DC-109 Asset-Editor** (E-27; T-202): in der Vault-Mitte – Größe in Feldern, Deckungsmaske (Kreis/Polygon,
   Vorschlag aus Transparenz), Licht (hell/dämmrig, Farbe, Flackern), Effekt-Verhalten (Dauerschleife an/aus,
-  einmal auslösen, mit Licht/Ton).
+  einmal auslösen, mit Licht/Ton). DM-Entscheidungen (2026-11-25): Deckung hält auch Licht auf (wie Sicht); vorerst
+  nur volle Deckung.
+  Erledigt: Doppelklick auf ein Asset (oder „Asset bearbeiten …“ im Asset-Panel) öffnet es in der Vault-Mitte
+  auf dem 5-ft-Raster in seiner Größe; Befehls-Panel mit Größe, Deckungsmaske (Kreis aufziehen, Polygon klicken,
+  „Aus Umriss vorschlagen“ aus dem Alphakanal – größter Umriss, vereinfacht –, Griffe ziehen, Entfernen), Licht
+  (bei Lichtquellen immer, sonst „Bringt ein Licht mit“: hell/dämmrig, Farbe, Flackern, Position per Klick) und
+  bei Effekten Dauerschleife bzw. einmal auslösen; OK speichert, Abbrechen/Esc verwirft. Format: `cover`,
+  `light`, `effect` im Asset-Sidecar (Version 2, noch nicht in `main`, daher ohne Versionssprung); Masken und
+  Licht in Feld-Koordinaten der Grundfläche. Ton am Effekt kommt mit DC-104; wirksam werden Maske und Licht mit
+  DC-041/DC-108.
 - **DC-041 Assets auf der Karte** (E-27; T-144): in der Kartenschmiede platzieren (auch direkt eine Datei wählen),
   drehen in 15°-Schritten, skalieren, Varianten durchschalten; auf dem TV unter dem Nebel, Effekte animiert;
   Szenen blenden platzierte Assets aus wie andere Kartenelemente (DC-103).

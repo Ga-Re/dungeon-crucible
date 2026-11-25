@@ -163,3 +163,9 @@ export function packDefaults(pack: string, paths: readonly string[]): Map<string
   }
   return out;
 }
+
+/** Image pixels → cells of the asset's footprint (the image fills its footprint). */
+export function pixelsToCells(points: readonly [number, number][], imgW: number, imgH: number, size: { w: number; h: number }): [number, number][] {
+  const round = (v: number) => Math.round(v * 1000) / 1000;
+  return points.map(([x, y]) => [round((x / imgW) * size.w), round((y / imgH) * size.h)]);
+}

@@ -106,6 +106,20 @@ export const AssetSidecarSchema = z.object({
   group: z.string().min(1).optional(),
   collections: z.array(z.string()).default([]),
   favorite: z.boolean().default(false),
+  /**
+   * Cover mask (DC-109): blocks sight and light behind it while the asset itself stays visible.
+   * In cells from the footprint's top left corner, so it turns and scales with the placed asset.
+   */
+  cover: z
+    .discriminatedUnion('shape', [
+      z.object({ shape: z.literal('circle'), x: z.number(), y: z.number(), r: z.number().positive() }),
+      z.object({ shape: z.literal('polygon'), points: z.array(z.tuple([z.number(), z.number()])).min(3) }),
+    ])
+    .optional(),
+  /** The light a light source (or an effect) brings: position in cells, radii in ft, flicker 0–1. */
+  light: z.object({ x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color, flicker: z.number().min(0).max(1).default(0) }).optional(),
+  /** How an effect plays: in a loop (switched on/off in the scene) and/or once on a click. */
+  effect: z.object({ loop: z.boolean().default(true), trigger: z.boolean().default(false) }).optional(),
 });
 export type AssetSidecar = z.infer<typeof AssetSidecarSchema>;
 

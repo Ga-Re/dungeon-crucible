@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DcApi, LibraryEntry } from '../platform/desktop-api';
 import { refreshLibraryMaps } from './library';
 import { state } from './store';
-import { closePackImport, runPackImport, startPackImport, togglePackFolder, deleteCollectionEverywhere, importVaultAssets, refreshVault, renameCollectionEverywhere, selectAsset, toggleFavorite, updateSelectedAssets } from './vault';
+import { closeAssetEditor, openAssetEditor, saveAssetEditor, updateEditorDraft, closePackImport, runPackImport, startPackImport, togglePackFolder, deleteCollectionEverywhere, importVaultAssets, refreshVault, renameCollectionEverywhere, selectAsset, toggleFavorite, updateSelectedAssets } from './vault';
 
 /** The Asset Vault on a library kept in memory (DC-040). */
 let files: Map<string, string>;
@@ -196,5 +196,33 @@ describe('pack import (DC-040b)', () => {
     expect(state.vault.pack).toMatchObject({ phase: 'done', result: { imported: 2, reused: 2, skipped: 0, cancelled: false } });
     closePackImport();
     expect(state.vault.pack).toBeNull();
+  });
+});
+
+describe('the asset editor (DC-109)', () => {
+  it('edits a draft – size, cover, light – and saves it on OK; unknown fields survive', async () => {
+    await refreshVault();
+    openAssetEditor('library/oak.png');
+    expect(state.vault.editor).toMatchObject({ relPath: 'library/oak.png', tool: 'select' });
+    updateEditorDraft((a) => ({ ...a, sizeCells: { w: 2, h: 2 }, cover: { shape: 'circle', x: 1, y: 1, r: 0.5 } }));
+    // Nothing is written before OK.
+    expect(JSON.parse(files.get('library/oak.png.dm.json')!).cover).toBeUndefined();
+    await saveAssetEditor();
+    expect(JSON.parse(files.get('library/oak.png.dm.json')!)).toMatchObject({ sizeCells: { w: 2, h: 2 }, cover: { shape: 'circle', x: 1, y: 1, r: 0.5 }, plugin: { x: 1 } });
+    expect(state.vault.editor).toBeNull();
+  });
+
+  it('a light source starts with a light in its middle, an effect with a loop; Cancel discards', async () => {
+    files.set('library/torch.png', '');
+    files.set('library/torch.png.dm.json', JSON.stringify({ kind: 'asset', schemaVersion: 2, name: 'Torch', assetKind: 'light', sizeCells: { w: 1, h: 2 } }));
+    files.set('library/portal.webm', '');
+    files.set('library/portal.webm.dm.json', JSON.stringify({ kind: 'asset', schemaVersion: 2, name: 'Portal', assetKind: 'effect' }));
+    await refreshVault();
+    openAssetEditor('library/torch.png');
+    expect(state.vault.editor!.draft.light).toMatchObject({ x: 0.5, y: 1, brightFt: 20, dimFt: 40 });
+    closeAssetEditor();
+    expect(JSON.parse(files.get('library/torch.png.dm.json')!).light).toBeUndefined();
+    openAssetEditor('library/portal.webm');
+    expect(state.vault.editor!.draft.effect).toEqual({ loop: true, trigger: false });
   });
 });

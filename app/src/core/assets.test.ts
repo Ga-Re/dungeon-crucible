@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addToCollection, assetDefaults, collectionsOf, commonValue, filterAssets, kindFromFile, packDefaults, parseAssetSidecar, pixelsToCells, removeCollection, renameCollection, type CatalogItem,
+  addToCollection, assetDefaults, collectionsOf, searchSuggestions, subkindsOf, commonValue, filterAssets, kindFromFile, packDefaults, parseAssetSidecar, pixelsToCells, removeCollection, renameCollection, type CatalogItem,
 } from './assets';
 import { ASSET_VERSION, type AssetSidecar } from './sidecar';
 
@@ -109,5 +109,36 @@ describe('defaults from a pack (DC-040b)', () => {
 describe('outline in cells (DC-109)', () => {
   it('maps image pixels onto the footprint', () => {
     expect(pixelsToCells([[0, 0], [200, 100], [100, 200]], 200, 200, { w: 2, h: 2 })).toEqual([[0, 0], [2, 1], [1, 2]]);
+  });
+});
+
+describe('subkinds in the Browser (E-31, DC-111)', () => {
+  it('lists the subkinds of a kind with their numbers, by their label', () => {
+    const list = [asset({ subkind: 'building' }), asset({ subkind: 'building' }), asset({ subkind: 'nature' }), asset({}), asset({ assetKind: 'tile', subkind: 'floor' })];
+    expect(subkindsOf(list, 'prop')).toEqual([{ subkind: 'building', n: 2 }, { subkind: 'nature', n: 1 }]);
+    expect(subkindsOf(list, 'prop', (s) => (s === 'nature' ? 'A nature' : s)).map((x) => x.subkind)).toEqual(['nature', 'building']);
+  });
+});
+
+describe('search suggestions (E-31, DC-114)', () => {
+  const list = [
+    asset({ name: 'Simple hut', subkind: 'building', tags: ['burning', 'roof'], environments: ['village'], collections: ['Brandenburg'] }),
+    asset({ name: 'Barrel', subkind: 'furniture', tags: ['Wood'] }),
+  ];
+  const labels = { kind: (k: string) => (k === 'prop' ? 'Prop' : k), subkind: (s: string) => ({ building: 'Gebäude', furniture: 'Möbel' })[s] ?? s, env: (e: string) => (e === 'village' ? 'Dorf' : e) };
+
+  it('offers what starts with the text typed – tags, kinds, subkinds, environments, collections, names – by their labels', () => {
+    expect(searchSuggestions(list, 'b', labels).map((s) => [s.type, s.label])).toEqual([
+      ['tag', 'burning'], ['collection', 'Brandenburg'], ['name', 'Barrel'],
+    ]);
+    expect(searchSuggestions(list, 'ge', labels)).toEqual([{ type: 'subkind', value: 'building', label: 'Gebäude', kind: 'prop' }]);
+    expect(searchSuggestions(list, 'DO', labels)).toEqual([{ type: 'environment', value: 'village', label: 'Dorf' }]);
+    expect(searchSuggestions(list, '', labels)).toEqual([]);
+  });
+
+  it('the free text also finds translated kinds and subkinds and collections', () => {
+    const items = list.map((a, i) => ({ relPath: `library/${i}.png`, asset: a }));
+    expect(filterAssets(items, { query: 'gebäu' }, labels).map((a) => a.asset.name)).toEqual(['Simple hut']);
+    expect(filterAssets(items, { query: 'brandenb' }, labels).map((a) => a.asset.name)).toEqual(['Simple hut']);
   });
 });

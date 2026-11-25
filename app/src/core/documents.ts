@@ -15,7 +15,7 @@
 import { z } from 'zod';
 import { migrateArea, migrateAreaOverride } from './areas';
 
-export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' | 'session';
+export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' | 'object' | 'session';
 
 /** Current version of each document kind. */
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
@@ -24,6 +24,7 @@ export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   scene: 7,
   creature: 1,
   asset: 3,
+  object: 1,
   session: 1,
 };
 
@@ -77,6 +78,7 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     // Version 3 adds the anchor, door and interior (E-29): none yet.
     2: (doc) => doc,
   },
+  object: {},
   session: {},
 };
 

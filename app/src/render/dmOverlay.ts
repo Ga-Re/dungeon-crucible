@@ -498,6 +498,16 @@ function drawChangedMark(g: CanvasRenderingContext2D, x: number, y: number, px: 
  * A placed asset's footprint for the DM: the selected one outlined with its turn marked, one
  * whose file is missing as a labelled placeholder, one hidden in this scene faint and dashed.
  */
+/** How far (screen px) the turning handle of a selected asset sits above its top edge. */
+export const ROTATE_HANDLE_PX = 22;
+
+/** Where the turning handle of a selected asset is (map px), at `zoom`. */
+export function rotateHandleAt(fp: Footprint, zoom: number): Point {
+  const r = (fp.rotation * Math.PI) / 180;
+  const d = fp.h / 2 + ROTATE_HANDLE_PX / zoom;
+  return { x: fp.cx + d * Math.sin(r), y: fp.cy - d * Math.cos(r) };
+}
+
 function drawPlacement(g: CanvasRenderingContext2D, a: { fp: Footprint; name: string; selected: boolean; missing: boolean; hidden: boolean }, px: number): void {
   if (!a.selected && !a.missing && !a.hidden) return;
   const { cx, cy, w, h, rotation } = a.fp;
@@ -519,11 +529,18 @@ function drawPlacement(g: CanvasRenderingContext2D, a: { fp: Footprint; name: st
   }
   g.strokeRect(-w / 2, -h / 2, w, h);
   if (a.selected) {
-    // Which way is "up" for the asset: a tick at its top edge.
+    // Which way is "up" for the asset, ending in the handle that turns it (E-31, DC-113).
     g.setLineDash([]);
     g.beginPath();
     g.moveTo(0, -h / 2);
-    g.lineTo(0, -h / 2 - 12 * px);
+    g.lineTo(0, -h / 2 - ROTATE_HANDLE_PX * px);
+    g.stroke();
+    g.beginPath();
+    g.arc(0, -h / 2 - ROTATE_HANDLE_PX * px, 6 * px, 0, Math.PI * 2);
+    g.fillStyle = '#3f9de2';
+    g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.9)';
+    g.lineWidth = 1.5 * px;
     g.stroke();
   }
   if (a.missing) {

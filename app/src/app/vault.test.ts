@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DcApi, LibraryEntry } from '../platform/desktop-api';
 import { refreshLibraryMaps } from './library';
 import { state } from './store';
-import { backToCatalog, closeAssetTab, draftChanged, closeAssetEditor, openAssetEditor, saveAssetEditor, updateEditorDraft, closePackImport, runPackImport, startPackImport, togglePackFolder, deleteCollectionEverywhere, importVaultAssets, refreshVault, renameCollectionEverywhere, selectAsset, toggleFavorite, updateSelectedAssets } from './vault';
+import { backToCatalog, closeAssetTab, draftChanged, closeAssetEditor, openAssetEditor, saveAssetEditor, updateEditorDraft, closePackImport, runPackImport, startPackImport, togglePackFolder, deleteCollectionEverywhere, importVaultAssets, refreshVault, renameCollectionEverywhere, selectEntry, shownEntries, toggleFavorite, updateSelectedAssets } from './vault';
 
 /** The Asset Vault on a library kept in memory (DC-040). */
+const selectAsset = (relPath: string, mode: 'single' | 'toggle' | 'range') => selectEntry(shownEntries().find((e) => e.key === relPath)!, mode);
 let files: Map<string, string>;
 let picked: string[];
 
@@ -134,7 +135,7 @@ describe('the Asset Vault', () => {
 
   it('selects one, toggles more, and a range', async () => {
     await refreshVault();
-    const order = state.vault.items.map((i) => i.relPath);
+    const order = shownEntries().map((e) => e.key);
     selectAsset(order[0], 'single');
     selectAsset(order[2], 'range');
     expect(state.vault.selected).toEqual(order.slice(0, 3));
@@ -193,7 +194,12 @@ describe('pack import (DC-040b)', () => {
     togglePackFolder('Sounds');
     await runPackImport();
     expect(asked).toEqual(['Trees']);
-    expect(JSON.parse(files.get('library/oak_01.png.dm.json')!)).toMatchObject({ name: 'oak 01', tags: ['Trees', 'pack: Forest Pack'], group: 'Forest Pack: oak' });
+    expect(JSON.parse(files.get('library/oak_01.png.dm.json')!)).toMatchObject({ name: 'oak 01', tags: ['Trees', 'pack: Forest Pack'] });
+    // The variant group became an object (E-31): its files share it, the group field is gone.
+    const obj = JSON.parse(files.get('library/forest-pack-oak.object.json')!);
+    expect(obj).toMatchObject({ kind: 'object', name: 'Forest Pack: oak' });
+    expect(obj.variants.map((v: { file: string }) => v.file)).toContain('oak_01.png');
+    expect(JSON.parse(files.get('library/oak_01.png.dm.json')!).group).toBeUndefined();
     // A file the library had is left as it is.
     expect(JSON.parse(files.get('library/oak.png.dm.json')!).tags).toBeUndefined();
     expect(state.vault.pack).toMatchObject({ phase: 'done', result: { imported: 2, reused: 2, skipped: 0, cancelled: false } });

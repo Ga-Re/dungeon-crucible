@@ -494,7 +494,9 @@ function InteriorFields({ inside, setInside, innerKind, setInnerKind }: { inside
   const items = useStore((s) => s.vault.items);
   const { draft, tool } = editor;
   const i = draft.interior;
-  const group = draft.group ? items.filter((x) => x.asset.group === draft.group && x.relPath !== editor.relPath) : [];
+  // The other variants of its object (E-31) can be its inside.
+  const object = useStore((s) => s.vault.objects.find((o) => o.doc.variants.some((v) => `library/${v.file}` === editor.relPath)));
+  const group = object ? items.filter((x) => x.relPath !== editor.relPath && object.doc.variants.some((v) => `library/${v.file}` === x.relPath)) : [];
   const setInterior = (patch: Partial<NonNullable<AssetSidecar['interior']>>) => updateEditorDraft((a) => (a.interior ? { ...a, interior: { ...a.interior, ...patch } } : a));
   const setTrigger = (patch: Partial<NonNullable<AssetSidecar['interior']>['trigger']>) => i && setInterior({ trigger: { ...i.trigger, ...patch } });
   const toggle = (on: boolean) =>

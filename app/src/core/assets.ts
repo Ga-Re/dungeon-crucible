@@ -90,8 +90,20 @@ export interface CatalogFilter {
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
-/** The items matching every filter given; the query looks at name, tags, subkind, environments and file name. */
-export function filterAssets(items: readonly CatalogItem[], f: CatalogFilter): CatalogItem[] {
+/** How built-in keys are shown (translated); without, the keys themselves. */
+export interface Labels {
+  kind: (k: string) => string;
+  subkind: (s: string) => string;
+  env: (e: string) => string;
+}
+
+const AS_IS: Labels = { kind: (k) => k, subkind: (s) => s, env: (e) => e };
+
+/**
+ * The items matching every filter given; the query looks at name, tags, kind, subkind,
+ * environments, collections and file name – built-in ones also by their labels.
+ */
+export function filterAssets(items: readonly CatalogItem[], f: CatalogFilter, labels: Labels = AS_IS): CatalogItem[] {
   const q = (f.query ?? '').trim().toLowerCase();
   return items.filter(({ relPath, asset: a }) => {
     if (f.kinds && f.kinds.length > 0 && !f.kinds.includes(a.assetKind)) return false;
@@ -101,8 +113,42 @@ export function filterAssets(items: readonly CatalogItem[], f: CatalogFilter): C
     if (f.collection && !a.collections.some((c) => same(c, f.collection!))) return false;
     if (f.favorites && !a.favorite) return false;
     if (!q) return true;
-    return [a.name, a.subkind ?? '', ...a.tags, ...a.environments, baseName(relPath)].some((v) => v.toLowerCase().includes(q));
+    const sub = a.subkind ? [a.subkind, labels.subkind(a.subkind)] : [];
+    return [a.name, labels.kind(a.assetKind), ...sub, ...a.tags, ...a.environments, ...a.environments.map(labels.env), ...a.collections, baseName(relPath)].some((v) => v.toLowerCase().includes(q));
   });
+}
+
+/** A suggestion while typing a search (E-31, DC-114): what it filters for and how it is shown. */
+export type SearchSuggestion =
+  | { type: 'tag' | 'environment' | 'collection' | 'name'; value: string; label: string }
+  | { type: 'kind'; value: AssetKind; label: string }
+  | { type: 'subkind'; value: string; label: string; kind: AssetKind };
+
+/**
+ * What the assets have that starts with `text` (any case, by label): tags, kinds, subkinds,
+ * environments, collections and names – in that order, each sorted, at most `max`.
+ */
+export function searchSuggestions(assets: readonly AssetSidecar[], text: string, labels: Labels = AS_IS, max = 8, names: readonly string[] = []): SearchSuggestion[] {
+  const q = text.trim().toLowerCase();
+  if (!q) return [];
+  const starts = (label: string) => label.toLowerCase().startsWith(q);
+  const uniq = <T extends { label: string }>(xs: T[]) => [...new Map(xs.map((x) => [x.label.toLowerCase(), x])).values()].filter((x) => starts(x.label)).sort((a, b) => a.label.localeCompare(b.label));
+  const out: SearchSuggestion[] = [
+    ...uniq(assets.flatMap((a) => a.tags.map((t) => ({ type: 'tag' as const, value: t, label: t })))),
+    ...uniq(assets.map((a) => ({ type: 'kind' as const, value: a.assetKind, label: labels.kind(a.assetKind) }))),
+    ...uniq(assets.flatMap((a) => (a.subkind ? [{ type: 'subkind' as const, value: a.subkind, label: labels.subkind(a.subkind), kind: a.assetKind }] : []))),
+    ...uniq(assets.flatMap((a) => a.environments.map((e) => ({ type: 'environment' as const, value: e, label: labels.env(e) })))),
+    ...uniq(assets.flatMap((a) => a.collections.map((c) => ({ type: 'collection' as const, value: c, label: c })))),
+    ...uniq([...names, ...assets.map((a) => a.name)].map((n) => ({ type: 'name' as const, value: n, label: n }))),
+  ];
+  return out.slice(0, max);
+}
+
+/** The subkinds the assets of `kind` use, each with how many have it (E-31, DC-111); in the order of `label`. */
+export function subkindsOf(assets: readonly AssetSidecar[], kind: AssetKind, label: (s: string) => string = (s) => s): { subkind: string; n: number }[] {
+  const counts = new Map<string, number>();
+  for (const a of assets) if (a.assetKind === kind && a.subkind) counts.set(a.subkind, (counts.get(a.subkind) ?? 0) + 1);
+  return [...counts].map(([subkind, n]) => ({ subkind, n })).sort((a, b) => label(a.subkind).localeCompare(label(b.subkind)));
 }
 
 /** Every collection the items use, sorted, one spelling each. */

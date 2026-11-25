@@ -9,9 +9,10 @@ import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
 import type { InteriorTrigger } from '../core/sidecar';
+import { randomChoices, rollPlacement, type PlaceOptions } from '../core/assetObjects';
 import { drawnPlacements, footprintPolygon, interiorChanges, interiorOf, interiorWalls } from '../core/interiors';
-import { rotateAboutAnchor, scaleAboutAnchor, snapAnchored } from '../core/anchor';
-import { assetShapes, footprintOf, hitsPlacement, nextVariant, snapPlacement } from '../core/placement';
+import { anchorPoint, rotateAboutAnchor, scaleAboutAnchor, snapAnchored } from '../core/anchor';
+import { assetShapes, footprintOf, hitsPlacement, nextVariant, snapPlacement, type Footprint } from '../core/placement';
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
 import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision, type VisionExtras } from '../core/vision';
@@ -145,6 +146,10 @@ export interface AppState {
   currentLayer: string;
   /** Play-once effects started in this session, by placement id → when (DC-110; not saved). */
   effectRuns: Record<string, number>;
+  /** The placing mode while on (E-31, DC-116): an asset placed with each click, previewed under the pointer. */
+  placing: Placing | null;
+  /** The placing mode's options as last used (kept for the next time, this session). */
+  placeOptions: Omit<PlaceOptions, 'variant'> & { snap: boolean };
   /** Houses a player character came into whose interior waits for the DM's yes (E-29; not saved). */
   interiorAsks: { id: string; name: string }[];
   /** Open documents as tabs (E-30, DC-034), in order; the active one is what `scene` shows. */
@@ -242,6 +247,8 @@ function initial(): AppState {
     currentLayer: BASE_LAYER,
     effectRuns: {},
     interiorAsks: [],
+    placing: null,
+    placeOptions: { randomRotation: false, rotationStep: 90, rotation: 0, randomScale: false, scaleSpread: 0.1, snap: true },
     tabs: [],
     activeTab: null,
     creatureTab: null,
@@ -251,7 +258,7 @@ function initial(): AppState {
     tvAsk: null,
     tvMapPending: false,
     blackUntilRelease: false,
-    vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null, drafts: {} },
+    vault: { items: [], objects: [], object: null, objectFiles: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null, drafts: {} },
     soundboard: initialSoundboard(),
   };
   s.vision = updateVision(scene);
@@ -824,11 +831,15 @@ export function setWorkspace(ws: WorkspaceId): void {
   state.areaCommand = null;
   state.wallCommand = null;
   state.tool = 'select';
+  // Placing goes on in the Map Forge and the Orchestrator only (DC-116).
+  if (ws !== 'forge' && ws !== 'play') state.placing = null;
   showLayer(layerFor(ws));
   emit();
 }
 
 export function setTool(tool: ToolId): void {
+  // Another tool ends the placing mode (DC-116).
+  state.placing = null;
   // One command at a time: another tool ends "create area" and "draw walls".
   if (tool !== 'area') state.areaCommand = null;
   if (tool !== 'wall') state.wallCommand = null;
@@ -1547,7 +1558,11 @@ export function placedAssetAt(p: Point): string | null {
  * its anchor – onto a near wall if the asset says so, turned along it – else the footprint snaps.
  */
 function snappedPlace(a: Pick<MapAssetPlacement, 'assetPath' | 'scale' | 'rotation'>, p: Point): { x: number; y: number; rotation: number } {
-  if (!state.snap) return { ...p, rotation: a.rotation };
+  return placedAt(a, p, state.snap);
+}
+
+function placedAt(a: Pick<MapAssetPlacement, 'assetPath' | 'scale' | 'rotation'>, p: Point, snap: boolean): { x: number; y: number; rotation: number } {
+  if (!snap) return { ...p, rotation: a.rotation };
   const info = state.assetInfo[a.assetPath];
   const walls = state.scene.walls.filter((w) => w.kind !== 'cliff');
   return snapAnchored({ ...p, rotation: a.rotation, scale: a.scale }, info ?? {}, state.scene.map.grid, walls)
@@ -1567,12 +1582,16 @@ function setEditableAssets(list: MapAssetPlacement[]): void {
   else state.scene.ownAssets = list;
 }
 
-/** Places a library asset at `p` (snapped to the grid), as one undoable step: on the map in the Map Forge, else in the scene. */
-export function placeAsset(assetPath: string, p: Point): string | null {
+/**
+ * Places a library asset at `p` (snapped to the grid unless `snap` is off), turned and sized as
+ * given, as one undoable step: on the map in the Map Forge, else in the scene.
+ */
+export function placeAsset(assetPath: string, p: Point, how: { rotation?: number; scale?: number; snap?: boolean } = {}): string | null {
   checkpoint();
   const id = freshId('asset');
-  const at = snappedPlace({ assetPath, scale: 1, rotation: 0 }, p);
-  editableAssets().push({ id, assetPath, x: at.x, y: at.y, rotation: at.rotation, scale: 1, ...onCurrentLayer() });
+  const scale = how.scale ?? 1;
+  const at = placedAt({ assetPath, scale, rotation: how.rotation ?? 0 }, p, how.snap ?? state.snap);
+  editableAssets().push({ id, assetPath, x: at.x, y: at.y, rotation: at.rotation, scale, ...onCurrentLayer() });
   state.selectedAssetId = id;
   state.selectedWallIds = [];
   state.selectedZoneId = null;
@@ -1581,6 +1600,85 @@ export function placeAsset(assetPath: string, p: Point): string | null {
   recomputeVision();
   emit();
   return id;
+}
+
+/* ---------- Placing mode (E-31, DC-116) ---------- */
+
+export interface Placing {
+  /** What is placed: an object's main variant or a single asset (as the catalog lists it). */
+  path: string;
+  name: string;
+  /** Its variants (an object's, else the asset alone) and those "random" chooses from (no house's inside). */
+  variants: string[];
+  random: string[];
+  variant: string | 'random';
+  /** What the next click places (already rolled, so the preview shows it). */
+  next: { path: string; rotation: number; scale: number };
+  /** Where the preview is (snapped as it will be placed); null: the pointer is off the map. */
+  at: { x: number; y: number; rotation: number } | null;
+}
+
+function placeOptions(): PlaceOptions {
+  const o = state.placeOptions;
+  return { variant: state.placing?.variant ?? 'random', randomRotation: o.randomRotation, rotationStep: o.rotationStep, rotation: o.rotation, randomScale: o.randomScale, scaleSpread: o.scaleSpread };
+}
+
+function rollNext(): void {
+  const p = state.placing;
+  if (p) p.next = rollPlacement(placeOptions(), p.random, Math.random);
+}
+
+/**
+ * Starts placing `path` (a catalog entry: an object's main variant or a single asset) with each
+ * click; an object starts with a random variant, a single asset as it is.
+ */
+export function startPlacing(path: string, name: string): void {
+  const o = state.vault.objects.find((x) => x.doc.variants.some((v) => `library/${v.file}` === path));
+  const variants = o ? o.doc.variants.map((v) => `library/${v.file}`).filter((v) => state.vault.items.some((i) => i.relPath === v)) : [path];
+  state.areaCommand = null;
+  state.wallCommand = null;
+  state.placing = { path, name, variants, random: randomChoices(path, state.vault.items, state.vault.objects), variant: variants.length > 1 ? 'random' : path, next: { path, rotation: 0, scale: 1 }, at: null };
+  rollNext();
+  emit();
+}
+
+/** Changes the placing mode's options; what is placed next is rolled anew. */
+export function setPlacing(patch: Partial<Omit<PlaceOptions, 'variant'> & { snap: boolean }> & { variant?: string }): void {
+  if (!state.placing) return;
+  const { variant, ...rest } = patch;
+  state.placeOptions = { ...state.placeOptions, ...rest };
+  if (variant !== undefined) state.placing.variant = variant;
+  rollNext();
+  emit();
+}
+
+/** The preview follows the pointer (snapped as it will be placed); null: off the map. */
+export function previewPlacing(p: Point | null): void {
+  const pl = state.placing;
+  if (!pl) return;
+  const at = p ? placedAt({ assetPath: pl.next.path, scale: pl.next.scale, rotation: pl.next.rotation }, p, state.placeOptions.snap) : null;
+  // Redrawn only when the preview moves (snapped, most pointer moves change nothing).
+  if (at?.x === pl.at?.x && at?.y === pl.at?.y && at?.rotation === pl.at?.rotation) return;
+  pl.at = at;
+  emit();
+}
+
+/** A click: places what the preview shows there, and rolls the next. */
+export function placeHere(p: Point): void {
+  const pl = state.placing;
+  if (!pl) return;
+  placeAsset(pl.next.path, p, { rotation: pl.next.rotation, scale: pl.next.scale, snap: state.placeOptions.snap });
+  // Placing a row: the one just placed is not selected (no frame or handle in the way).
+  state.selectedAssetId = null;
+  rollNext();
+  previewPlacing(p);
+}
+
+/** Esc, a right click or ✕: the placing mode ends. */
+export function stopPlacing(): void {
+  if (!state.placing) return;
+  state.placing = null;
+  emit();
 }
 
 export function selectPlacedAsset(id: string | null): void {
@@ -1618,6 +1716,28 @@ export function rotatePlacedAsset(id: string, delta: number): void {
   // About the anchor (E-29); without one about the centre.
   Object.assign(a, rotateAboutAnchor(a, state.assetInfo[a.assetPath] ?? {}, state.scene.map.grid, delta));
   recomputeVision();
+  emit();
+}
+
+/** The point a placed asset turns about: its anchor (E-29), else its centre. */
+export function placedPivot(id: string): Point | null {
+  const a = placed(id);
+  return a ? anchorPoint(a, state.assetInfo[a.assetPath] ?? {}, state.scene.map.grid) : null;
+}
+
+/** The footprint of a placed asset the DM edits here, if any. */
+export function placedFootprint(id: string): Footprint | null {
+  const a = placed(id);
+  return a ? footprint(a) : null;
+}
+
+/** Turns a placed asset to `rotation` about its anchor (live while dragging the handle, DC-113; the caller sets the checkpoint). */
+export function turnPlacedAssetTo(id: string, rotation: number, final: boolean): void {
+  const a = placed(id);
+  if (!a) return;
+  Object.assign(a, rotateAboutAnchor(a, state.assetInfo[a.assetPath] ?? {}, state.scene.map.grid, rotation - a.rotation));
+  markDirty();
+  recomputeVision(final);
   emit();
 }
 

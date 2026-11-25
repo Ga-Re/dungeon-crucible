@@ -380,6 +380,26 @@ input[type='checkbox'] { accent-color: var(--accent); }
   background: var(--overlay); color: var(--fg-faint); cursor: pointer; opacity: 0; }
 .vault-card:hover .vault-star, .vault-card:focus-within .vault-star, .vault-star.on, .vault-star:focus-visible { opacity: 1; }
 .vault-star .ic { width: 15px; height: 15px; }
+/* The Vault's search with suggestions (E-31). */
+.vault-search { position: relative; flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 4px; }
+.vault-search > input { width: 100%; }
+.vault-suggest { position: absolute; top: calc(100% + 2px); left: 0; width: 100%; max-width: 360px; margin: 0; list-style: none; z-index: 90; }
+.vault-suggest li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 5px 8px; border-radius: 3px; cursor: pointer; }
+.vault-suggest li.on, .vault-suggest li:hover { background: var(--sel-soft); }
+.vault-suggest small { color: var(--fg-faint); font-size: 10.5px; }
+.vault-filters .chip .ic { width: 11px; height: 11px; margin-left: 4px; }
+/* Subkinds under their kind in the Vault's Browser (E-31). */
+.vault-subkinds { margin: 0 0 2px; padding-left: 22px; }
+.vault-subkinds .tn { padding-top: 2px; padding-bottom: 2px; font-size: 12px; }
+.vault-variants { margin-left: auto; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--panel); border: 1px solid var(--line); font-size: 10.5px; color: var(--fg-dim); text-align: center; }
+/* An object's variants (E-31) in the Properties panel. */
+.vault-variant-list { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.vault-variant { display: flex; align-items: center; gap: 2px; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--panel-2); }
+.vault-variant.sel { border-color: var(--sel); background: var(--sel-soft); }
+.vault-variant-pick { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 3px; border: 0; background: none; color: var(--fg); font: inherit; cursor: pointer; text-align: left; }
+.vault-variant-pick .vault-thumb { width: 36px; height: 36px; flex: none; border-radius: 3px; }
+.vault-variant-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vault-variant .ab-btn.on { color: var(--accent); }
 .vault-star.on { color: var(--accent); }
 .vault-star.on .ic path { fill: currentColor; }
 .vault-drop { position: absolute; inset: 8px; display: grid; place-items: center; border: 2px dashed var(--sel); border-radius: 6px; background: var(--sel-soft);

@@ -88,6 +88,8 @@ export interface AssetDraw {
   rotation: number;
   /** A play-once effect: when this run started (ms); it plays once from there, then disappears. */
   once?: number;
+  /** Opacity (a roof the DM sees through, E-29; never on the TV); none: opaque. */
+  alpha?: number;
 }
 
 /** A scene's effect state (DC-110): looping effects switched off, play-once effects started. */
@@ -102,7 +104,7 @@ export interface EffectState {
  * plays; without scene state (the Map Forge) every effect shows, looping.
  */
 export function assetShapes(
-  placements: readonly MapAssetPlacement[],
+  placements: readonly (MapAssetPlacement & { alpha?: number })[],
   info: Readonly<Record<string, { url: string | null; video: boolean; sizeCells?: { w: number; h: number }; effect?: { loop: boolean; trigger: boolean } }>>,
   grid: GridConfig,
   play?: EffectState,
@@ -121,7 +123,7 @@ export function assetShapes(
       }
     }
     const fp = footprintOf(p, i.sizeCells, grid);
-    out.push({ id: p.id, url: i.url, video: i.video, x: fp.cx, y: fp.cy, width: fp.w, height: fp.h, rotation: fp.rotation, ...(once === undefined ? {} : { once }) });
+    out.push({ id: p.id, url: i.url, video: i.video, x: fp.cx, y: fp.cy, width: fp.w, height: fp.h, rotation: fp.rotation, ...(once === undefined ? {} : { once }), ...(p.alpha === undefined ? {} : { alpha: p.alpha }) });
   }
   return out;
 }

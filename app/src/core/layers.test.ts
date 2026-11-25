@@ -3,11 +3,11 @@ import { readDocument } from './documents';
 import { DEFAULT_GRID } from './grid';
 import { activeLayers, drawOrder, triggerChanges } from './layers';
 import { allPlacements, commitStart, mapSidecarFromScene, resetToStart, sceneFromDocuments, sceneIssues, sceneOverrideFromScene, startOf } from './persistence';
-import { MapSidecarSchema, SceneOverrideSchema, SCENE_VERSION, type MapSidecar, type SceneOverride } from './sidecar';
+import { MAP_VERSION, MapSidecarSchema, SceneOverrideSchema, SCENE_VERSION, type MapSidecar, type SceneOverride } from './sidecar';
 
 /** Layers of a map (E-28, DC-101). */
 const map: MapSidecar = MapSidecarSchema.parse({
-  kind: 'map', schemaVersion: 4, name: 'Camp', resource: 'camp.png', isVideo: false, widthPx: 1000, heightPx: 1000, grid: { ...DEFAULT_GRID },
+  kind: 'map', schemaVersion: MAP_VERSION, name: 'Camp', resource: 'camp.png', isVideo: false, widthPx: 1000, heightPx: 1000, grid: { ...DEFAULT_GRID },
   layers: [
     { id: 'inside', name: 'Tent inside', height: 2, defaultActive: false, counter: 'roof' },
     { id: 'roof', name: 'Tent roof', height: 3, defaultActive: true },
@@ -33,13 +33,13 @@ const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
 describe('files', () => {
   it('a version 3 map has no layers: everything is on the base layer', () => {
     const r = readDocument('map', MapSidecarSchema, JSON.stringify({ kind: 'map', schemaVersion: 3, name: 'Old', resource: 'a.png', widthPx: 10, heightPx: 10, grid: DEFAULT_GRID, walls: [{ id: 'w', kind: 'wall', x1: 0, y1: 0, x2: 1, y2: 0 }] }));
-    expect(r.ok && r.value).toMatchObject({ schemaVersion: 4, layers: [] });
+    expect(r.ok && r.value).toMatchObject({ schemaVersion: MAP_VERSION, layers: [] });
     expect(r.ok && r.value.walls[0].layer).toBeUndefined();
   });
 
   it('a version 5 scene switches no layer', () => {
     const r = readDocument('scene', SceneOverrideSchema, JSON.stringify({ kind: 'scene', schemaVersion: 5, name: 'S', mapSidecar: 'm', fog: { revealed: [], remembered: [] } }));
-    expect(r.ok && r.value).toMatchObject({ schemaVersion: 6, layers: {} });
+    expect(r.ok && r.value).toMatchObject({ schemaVersion: SCENE_VERSION, layers: {} });
   });
 });
 

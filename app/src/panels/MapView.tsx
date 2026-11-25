@@ -12,6 +12,7 @@ import { areaContains, partFromDrag, partFromPoints, vertexAt, type VertexRef } 
 import { AreaCommandPanel } from './AreaCommandPanel';
 import { WallCommandPanel } from './WallCommandPanel';
 import { assetShapes, footprintOf, hitsPlacement, ROTATE_STEP } from '../core/placement';
+import { drawnPlacements } from '../core/interiors';
 import { allPlacements } from '../core/persistence';
 import { ASSET_DRAG } from './VaultPanels';
 import { refreshVault, requestAssetUrls } from '../app/vault';
@@ -35,7 +36,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
-  editableHere, shownInForge, activateAsset, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
+  editableHere, shownInForge, activateAsset, answerInteriorAsk, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -143,9 +144,14 @@ function DmMap() {
       // Placed assets: their files' URLs are looked up once, the first time they are shown.
       // The Map Forge leaves out layers hidden in the editor.
       const placements = allPlacements(sc).filter((a) => state.ws !== 'forge' || shownInForge(a));
-      requestAssetUrls([...new Set(placements.map((a) => a.assetPath))]);
+      // Houses (E-29): in a scene as switched there, the DM seeing through roofs if set; the Map Forge shows outsides.
+      const inScene = state.layer !== 'map';
+      const drawn = drawnPlacements(placements, state.assetInfo, inScene ? sc.interiorsOn : {}, inScene && state.roofsSeeThrough);
+      // Inner pictures are looked up with their houses, so switching shows them at once.
+      const inner = placements.flatMap((a) => state.assetInfo[a.assetPath]?.interior?.asset ?? []);
+      requestAssetUrls([...new Set([...placements.map((a) => a.assetPath), ...inner])]);
       // In a scene, effects follow its state (switched off, played once); the Map Forge shows all.
-      r.setAssets(assetShapes(placements, state.assetInfo, sc.map.grid, state.layer === 'map' ? undefined : { effectsOn: sc.effectsOn, runs: state.effectRuns }));
+      r.setAssets(assetShapes(drawn, state.assetInfo, sc.map.grid, inScene ? { effectsOn: sc.effectsOn, runs: state.effectRuns } : undefined));
       const active = state.ws === 'play' ? initiativeOrder()[state.turn]?.id : undefined;
       r.setTokens(
         sc.tokens.map((k): TokenShape => ({
@@ -195,7 +201,8 @@ function DmMap() {
         overlay.height = Math.round(s.height * dpr);
       }
       const g = overlay.getContext('2d');
-      if (g) drawDmOverlay(g, state.ws === 'forge' ? shownLayers(state.scene) : state.scene, state.vision, view.current, dpr, overlayState(), Date.now());
+      // Doors of placed assets are drawn like drawn doors (E-29); in a scene with their gaps.
+      if (g) drawDmOverlay(g, state.ws === 'forge' ? shownLayers({ ...state.scene, walls: [...state.scene.walls, ...assetDoors(state.scene)] }) : withAssetDoors(state.scene), state.vision, view.current, dpr, overlayState(), Date.now());
     };
     raf = requestAnimationFrame(tick);
     return () => {
@@ -375,7 +382,7 @@ function DmMap() {
           return;
         }
         if (state.ws === 'play') {
-          const door = state.scene.walls.find((w) => (w.kind === 'door' || w.kind === 'secret-door') && Math.hypot((w.x1 + w.x2) / 2 - p.x, (w.y1 + w.y2) / 2 - p.y) < cell * 0.45);
+          const door = sightWalls(state.scene).find((w) => (w.kind === 'door' || w.kind === 'secret-door') && Math.hypot((w.x1 + w.x2) / 2 - p.x, (w.y1 + w.y2) / 2 - p.y) < cell * 0.45);
           if (door && (door.kind === 'door' || door.open)) {
             toggleDoor(door.id);
             return;
@@ -622,6 +629,7 @@ function DmMap() {
         aria-label={t('panel.map')}
       />
       {hintKey && mapPresent && <div className="map-hint">{t(hintKey)}</div>}
+      {ws === 'play' && <InteriorAsks />}
       {ws === 'forge' && <AreaCommandPanel />}
       {ws === 'forge' && <WallCommandPanel />}
       {ws === 'forge' && <CalibrationPanel />}
@@ -741,4 +749,24 @@ function templateDraft(shape: TemplateShape, a: Point, b: Point) {
   const lenPx = Math.hypot(b.x - a.x, b.y - a.y);
   const sizeFt = Math.max(g.feetPerCell, Math.round(lenPx / g.cellWidth) * g.feetPerCell);
   return { shape, x: a.x, y: a.y, angle: Math.atan2(b.y - a.y, b.x - a.x), sizeFt, color: '#e2a03c' };
+}
+
+/** "Show the interior?" after a player character came into a house set to ask first (E-29): yes or no, without blocking play. */
+function InteriorAsks() {
+  const { t } = useI18n();
+  const asks = useStore((s) => s.interiorAsks);
+  if (!asks.length) return null;
+  return (
+    <div className="interior-asks" role="status">
+      {asks.map((a) => (
+        <div key={a.id} className="interior-ask">
+          <span>{t('interior.ask', { name: a.name })}</span>
+          <div className="library-buttons">
+            <button className="btn sm pri" onClick={() => answerInteriorAsk(a.id, true)}>{t('interior.yes')}</button>
+            <button className="btn sm" onClick={() => answerInteriorAsk(a.id, false)}>{t('interior.no')}</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }

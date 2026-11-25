@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   addToCollection, assetDefaults, collectionsOf, commonValue, filterAssets, kindFromFile, packDefaults, parseAssetSidecar, pixelsToCells, removeCollection, renameCollection, type CatalogItem,
 } from './assets';
-import type { AssetSidecar } from './sidecar';
+import { ASSET_VERSION, type AssetSidecar } from './sidecar';
 
 /** Asset library (E-27, DC-040). */
 const asset = (p: Partial<AssetSidecar> = {}): AssetSidecar => ({
-  kind: 'asset', schemaVersion: 2, name: 'Barrel', assetKind: 'prop', tags: [], environments: [], collections: [], favorite: false, ...p,
+  kind: 'asset', schemaVersion: ASSET_VERSION, name: 'Barrel', assetKind: 'prop', tags: [], environments: [], collections: [], favorite: false, ...p,
 });
 
 describe('defaults from the file name', () => {

@@ -71,12 +71,28 @@ export const mapLayerSchema = z.object({
 export type MapLayer = z.infer<typeof mapLayerSchema>;
 
 /** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 4;
+export const MAP_VERSION = 5;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
-export const SCENE_VERSION = 6;
+export const SCENE_VERSION = 7;
 
-/** An asset placed on a map or in a scene (DC-041, DC-110): its file, centre, turn and scale. */
-export const placementSchema = z.object({ id, assetPath: z.string(), variant: z.string().optional(), x: z.number(), y: z.number(), rotation: z.number().default(0), scale: z.number().positive().default(1), layer: layerRef });
+/**
+ * When a house's interior is shown (E-29): by the DM's click only, when a player character steps
+ * into its footprint, or when one comes within `nearFt` of it; `confirm` asks the DM first;
+ * `leaveOff` shows the outside again once no player character is inside (or near) any more.
+ */
+export const interiorTriggerSchema = z.object({
+  mode: z.enum(['click', 'enter', 'near']).default('enter'),
+  nearFt: z.number().min(0).default(10),
+  confirm: z.boolean().default(false),
+  leaveOff: z.boolean().default(true),
+});
+export type InteriorTrigger = z.infer<typeof interiorTriggerSchema>;
+
+/**
+ * An asset placed on a map or in a scene (DC-041, DC-110): its file, centre, turn and scale; a
+ * house may trigger its interior differently from its asset (E-29).
+ */
+export const placementSchema = z.object({ id, assetPath: z.string(), variant: z.string().optional(), x: z.number(), y: z.number(), rotation: z.number().default(0), scale: z.number().positive().default(1), layer: layerRef, interiorTrigger: interiorTriggerSchema.optional() });
 
 export const MapSidecarSchema = z.object({
   kind: z.literal('map'),
@@ -112,7 +128,7 @@ export type MapSidecar = z.infer<typeof MapSidecarSchema>;
 export const ASSET_KINDS = ['prop', 'tile', 'texture', 'effect', 'light', 'sound', 'handout'] as const;
 export type AssetKind = (typeof ASSET_KINDS)[number];
 
-export const ASSET_VERSION = 2;
+export const ASSET_VERSION = 3;
 
 /**
  * Sidecar of a library file other than a map (E-27, DC-040): props, map pieces, textures,
@@ -144,6 +160,27 @@ export const AssetSidecarSchema = z.object({
     .optional(),
   /** The light a light source (or an effect) brings: position in cells, radii in ft, flicker 0–1. */
   light: z.object({ x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color, flicker: z.number().min(0).max(1).default(0) }).optional(),
+  /**
+   * Anchor (E-29, DC-042): in cells from the footprint's top left corner; the placed asset turns and
+   * scales about it and it snaps to the grid – or, with `wallSnap`, onto a near wall.
+   */
+  anchor: z.object({ x: z.number(), y: z.number(), wallSnap: z.boolean().default(false) }).optional(),
+  /**
+   * Door line (E-29, DC-042), in cells like the anchor: where the asset is placed it becomes a door
+   * (opened and closed in the scene) and cuts a gap into a wall it lies on.
+   */
+  door: z.object({ x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() }).optional(),
+  /**
+   * Interior (E-29, DC-042): another asset of its group shown instead of this one (the roof) when
+   * triggered, with its walls, doors and windows in cells; while shown, the cover mask is off.
+   */
+  interior: z
+    .object({
+      asset: z.string().min(1),
+      walls: z.array(z.object({ kind: z.enum(['wall', 'door', 'window']).default('wall'), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() })).default([]),
+      trigger: interiorTriggerSchema.default({ mode: 'enter', nearFt: 10, confirm: false, leaveOff: true }),
+    })
+    .optional(),
   /** How an effect plays: in a loop (switched on/off in the scene) and/or once on a click. */
   effect: z.object({ loop: z.boolean().default(true), trigger: z.boolean().default(false) }).optional(),
 });
@@ -250,6 +287,8 @@ export const SceneOverrideSchema = z.object({
   effects: z.record(z.string(), z.boolean()).default({}),
   /** Layers switched in this scene's play state (E-28), by id → active. Not listed: their default. */
   layers: z.record(z.string(), z.boolean()).default({}),
+  /** Houses showing their interior in this scene's play state (E-29), by placement id. Not listed: outside. */
+  interiors: z.record(z.string(), z.boolean()).default({}),
   tokens: z.array(tokenSchema).default([]),
   templates: z.array(z.object({ id, shape: z.enum(['cone', 'sphere', 'line', 'cube']), x: z.number(), y: z.number(), angle: z.number(), sizeFt: z.number().positive(), color })).default([]),
   combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
@@ -273,6 +312,7 @@ export const SceneOverrideSchema = z.object({
     assets: z.array(placementSchema).default([]),
     effects: z.record(z.string(), z.boolean()).default({}),
     layers: z.record(z.string(), z.boolean()).default({}),
+    interiors: z.record(z.string(), z.boolean()).default({}),
   }).optional(),
   /** Walls, areas and lights that exist only in this scene (E-24). */
   added: z.object({ walls: z.array(mapWallSchema).default([]), zones: z.array(mapAreaSchema).default([]), lights: z.array(mapLightSchema).default([]) }).default({ walls: [], zones: [], lights: [] }),

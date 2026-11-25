@@ -51,6 +51,7 @@ export function startOf(ov: SceneOverride): SceneStart {
     assets: ov.assets.map((a) => ({ ...a })),
     effects: { ...ov.effects },
     layers: { ...ov.layers },
+    interiors: { ...ov.interiors },
   };
 }
 
@@ -75,6 +76,7 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
       assets: fromView.assets,
       effects: fromView.effects,
       layers: fromView.layers,
+      interiors: fromView.interiors,
     },
   };
 }
@@ -99,6 +101,7 @@ export function resetToStart(ov: SceneOverride): SceneOverride {
     assets: start.assets.map((a) => ({ ...a })),
     effects: { ...start.effects },
     layers: { ...start.layers },
+    interiors: { ...start.interiors },
     templates: [],
     combat: { round: 1, turn: 0 },
     start,
@@ -185,6 +188,11 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
   const own = [...scene.ownAssets, ...off.filter((a) => !mapAssets.has(a.id))];
   const all = <K extends 'walls' | 'zones' | 'lights'>(k: K) => [...scene[k], ...scene.hidden[k], ...scene.inactive[k]] as Scene[K];
   const orphanedHidden = (previous?.hidden ?? []).filter((id) => !known.has(id));
+  // Door and interior states of placements that are gone are left out (E-29).
+  const placements = new Set([...map.assets.map((a) => a.id), ...own.map((a) => a.id)]);
+  const ofPlacement = (key: string) => placements.has(key.replace(/:(door|in\d+)$/, ''));
+  const assetDoors = Object.fromEntries(Object.entries(scene.assetDoorsOpen).filter(([k]) => ofPlacement(k)));
+  const interiors = Object.fromEntries(Object.entries(scene.interiorsOn).filter(([k]) => placements.has(k)));
   return {
     kind: 'scene',
     schemaVersion: SCENE_VERSION,
@@ -192,13 +200,14 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     mapSidecar,
     fog: copyFog(scene.fog),
     ...(scene.fogEffect ? { fogEffect: { ...scene.fogEffect } } : {}),
-    doors: Object.fromEntries(all('walls').filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])),
+    doors: { ...Object.fromEntries(all('walls').filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])), ...assetDoors },
     lights: { ...Object.fromEntries(all('lights').map((l) => [l.id, l.on])), ...scene.assetLightsOn },
     discoveredZones: all('zones').filter((z) => z.secret && z.discovered).map((z) => z.id),
     hidden: [...hiddenIds(scene.hidden), ...orphanedHidden],
     assets: own.map((a) => ({ ...a })),
     effects: { ...scene.effectsOn },
     layers: { ...scene.layersOn },
+    interiors,
     tokens: scene.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: scene.templates.map((t) => ({ ...t })),
     combat: { ...combat },
@@ -252,6 +261,8 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const ownAssets = onMap ? [] : (state?.assets ?? []).map((a) => ({ ...a }));
   // Asset lights are stored with the map lights, by `<placement>:light`.
   const assetLightsOn = Object.fromEntries(Object.entries(lightsOn).filter(([id]) => id.endsWith(':light')));
+  // Likewise doors of assets with the map doors, by `<placement>:door` and `<placement>:in<n>` (E-29).
+  const assetDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => /:(door|in\d+)$/.test(id)));
   return {
     map: {
       id: slugify(map.name),
@@ -275,9 +286,11 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     lights: shownOn(lights),
     inactive: { walls: inactiveOf(walls), zones: inactiveOf(zones), lights: inactiveOf(lights), assets: inactiveOf([...map.assets.map((a) => ({ ...a })), ...ownAssets]) },
     layersOn: onMap ? {} : { ...(state?.layers ?? {}) },
+    interiorsOn: onMap ? {} : { ...(state?.interiors ?? {}) },
     hidden: { walls: hiddenOf(walls), zones: hiddenOf(zones), lights: hiddenOf(lights), assets: hiddenOf([...map.assets.map((a) => ({ ...a })), ...ownAssets]) },
     ownAssets: shownOn(ownAssets),
     assetLightsOn,
+    assetDoorsOpen,
     effectsOn: onMap ? {} : { ...(state?.effects ?? {}) },
     ambient: map.ambient,
     tokens: onMap ? [] : (state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),

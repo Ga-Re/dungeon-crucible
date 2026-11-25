@@ -7,12 +7,16 @@ import type { Point } from '../core/geometry';
 import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
-import { assetShapes, footprintOf, hitsPlacement, nextVariant, rotateBy, scaleBy, snapPlacement } from '../core/placement';
+import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
+import type { InteriorTrigger } from '../core/sidecar';
+import { drawnPlacements, footprintPolygon, interiorChanges, interiorOf, interiorWalls } from '../core/interiors';
+import { rotateAboutAnchor, scaleAboutAnchor, snapAnchored } from '../core/anchor';
+import { assetShapes, footprintOf, hitsPlacement, nextVariant, snapPlacement } from '../core/placement';
 import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
 import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision, type VisionExtras } from '../core/vision';
 import { placementCovers, placementLights } from '../core/cover';
-import { hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
+import { forgetIn, hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
 import { lockedAreas } from '../core/persistence';
 import { newId, slugId } from '../core/documents';
 import { chainOf, moveEnds, removeWalls, withoutDegenerate, type WallEnd } from '../core/walls';
@@ -58,6 +62,8 @@ export interface AppState {
   showGrid: boolean;
   viewAsPlayer: boolean;
   dmSeeThrough: boolean;
+  /** The DM sees through houses' roofs to their interior (E-29); the TV never does. */
+  roofsSeeThrough: boolean;
   /** The fog's look on this device (Dungeon-Manager's fog settings). */
   fogLook: FogLook;
   memoryOpacity: number;
@@ -138,6 +144,8 @@ export interface AppState {
   currentLayer: string;
   /** Play-once effects started in this session, by placement id → when (DC-110; not saved). */
   effectRuns: Record<string, number>;
+  /** Houses a player character came into whose interior waits for the DM's yes (E-29; not saved). */
+  interiorAsks: { id: string; name: string }[];
   /** The Asset Vault: catalog, filter, selection (E-27, DC-040). */
   vault: VaultState;
   /** Recently used campaigns (start screen). */
@@ -157,6 +165,7 @@ function initial(): AppState {
     showGrid: true,
     viewAsPlayer: false,
     dmSeeThrough: true,
+    roofsSeeThrough: true,
     fogLook: readFogLook(typeof localStorage === 'undefined' ? undefined : localStorage),
     memoryOpacity: 0.6,
     brushCells: 1.5,
@@ -213,6 +222,7 @@ function initial(): AppState {
     selectedAssetId: null,
     currentLayer: BASE_LAYER,
     effectRuns: {},
+    interiorAsks: [],
     vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null },
     soundboard: initialSoundboard(),
   };
@@ -313,6 +323,8 @@ function restore(snap: string): void {
   const walls = new Set(state.scene.walls.map((w) => w.id));
   state.selectedWallIds = state.selectedWallIds.filter((id) => walls.has(id));
   if (state.selectedAssetId && !editableAssets().some((a) => a.id === state.selectedAssetId)) state.selectedAssetId = null;
+  // Who is in which house as of this step (E-29): stepping back into a house is no new entering.
+  interiorInside = charactersInHouses();
   recomputeVision();
   state.canUndo = history.canUndo;
   state.canRedo = history.canRedo;
@@ -365,6 +377,8 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   clearWallEditing();
   recomputeVision();
   layerInside = charactersInTriggers();
+  interiorInside = charactersInHouses();
+  state.interiorAsks = [];
   clearHistory();
   state.sceneVersion++;
   emit();
@@ -450,6 +464,8 @@ export function showLayer(layer: ViewLayer): void {
   clearWallEditing();
   recomputeVision();
   layerInside = charactersInTriggers();
+  interiorInside = charactersInHouses();
+  state.interiorAsks = [];
   clearHistory();
 }
 
@@ -471,7 +487,7 @@ export function setTool(tool: ToolId): void {
   emit();
 }
 
-export function toggle(key: 'snap' | 'showGrid' | 'viewAsPlayer' | 'dmSeeThrough' | 'moveLock'): void {
+export function toggle(key: 'snap' | 'showGrid' | 'viewAsPlayer' | 'dmSeeThrough' | 'roofsSeeThrough' | 'moveLock'): void {
   state[key] = !state[key];
   emit();
 }
@@ -515,9 +531,10 @@ export function recomputeVision(final = true): void {
   if (!final && Date.now() - visionAt < visionCost * 2) return;
   const started = performance.now();
   const extras = assetExtras(state.scene);
-  state.vision = updateVision(state.scene, extras);
+  const seen = withAssetDoors(state.scene);
+  state.vision = updateVision(seen, extras);
   state.visible = visiblePolygons(state.vision);
-  state.lights = litSources(state.scene, extras);
+  state.lights = litSources(seen, extras);
   visionCost = performance.now() - started;
   visionAt = Date.now();
   const now = Date.now();
@@ -541,10 +558,22 @@ export function moveToken(id: string, p: Point, final: boolean): void {
   if (t.kind === 'pc') recomputeVision(final);
   // A character that stepped into or out of a trigger area switches its layer (E-28).
   if (final && t.kind === 'pc') applyLayerTriggers();
+  // Likewise a house with an interior (E-29).
+  if (final && t.kind === 'pc') applyInteriorTriggers();
   emit();
 }
 
 export function toggleDoor(id: string): void {
+  if (assetDoors(state.scene).some((d) => d.id === id)) {
+    // An asset's door (E-29): scene state.
+    checkpoint();
+    const open = !state.scene.assetDoorsOpen[id];
+    state.scene.assetDoorsOpen = { ...state.scene.assetDoorsOpen, [id]: open };
+    log(open ? 'log.doorOpened' : 'log.doorClosed');
+    recomputeVision();
+    emit();
+    return;
+  }
   const w = state.scene.walls.find((x) => x.id === id);
   if (!w || (w.kind !== 'door' && w.kind !== 'secret-door')) return;
   checkpoint();
@@ -1025,10 +1054,16 @@ export interface AssetInfo {
   cover?: AssetSidecar['cover'];
   light?: AssetSidecar['light'];
   effect?: AssetSidecar['effect'];
+  anchor?: AssetSidecar['anchor'];
+  door?: AssetSidecar['door'];
+  interior?: AssetSidecar['interior'];
 }
 
 export function setAssetInfo(info: Record<string, AssetInfo>): void {
   state.assetInfo = info;
+  // Who is in which house needs the houses' sizes and triggers: a campaign opened before the
+  // library was read would otherwise count everyone inside as just entered on the first move.
+  interiorInside = charactersInHouses();
   // Masks and lights of placed assets may have changed (DC-108) – here and in the TV's view.
   viewVersion++;
   recomputeVision();
@@ -1049,16 +1084,103 @@ export function assetExtras(scene: Scene): VisionExtras {
   if (!placed.length) return {};
   // The same lists while nothing changed: sight and light keep what they built for them.
   const g = scene.map.grid;
-  const key = `${g.cellWidth},${g.cellHeight}|${placed.map((a) => `${a.assetPath},${a.x},${a.y},${a.rotation},${a.scale}`).join(';')}|${JSON.stringify(scene.assetLightsOn)}`;
+  const key = `${g.cellWidth},${g.cellHeight}|${placed.map((a) => `${a.assetPath},${a.x},${a.y},${a.rotation},${a.scale}`).join(';')}|${JSON.stringify(scene.assetLightsOn)}|${JSON.stringify(scene.interiorsOn)}`;
   if (extrasCache && extrasCache.key === key && extrasCache.info === state.assetInfo) return extrasCache.extras;
   // An asset's light may be switched off in the scene (DC-110).
   const lights = placementLights(placed, state.assetInfo, g).map((l) => ({ ...l, on: scene.assetLightsOn[l.id] ?? true }));
-  const extras = { covers: placementCovers(placed, state.assetInfo, g), lights };
+  // A house showing its interior has no cover mask: its inner walls count instead (E-29).
+  const covered = placed.filter((a) => !(scene.interiorsOn[a.id] && state.assetInfo[a.assetPath]?.interior));
+  const extras = { covers: placementCovers(covered, state.assetInfo, g), lights };
   extrasCache = { key, info: state.assetInfo, extras };
   return extras;
 }
 
 let extrasCache: { key: string; info: Record<string, AssetInfo>; extras: VisionExtras } | null = null;
+
+/* ---------- Interiors (E-29, DC-042) ---------- */
+
+let interiorInside = new Set<string>();
+
+function charactersInHouses(): Set<string> {
+  if (state.layer === 'map') return new Set();
+  return interiorChanges(allPlacements(state.scene), state.assetInfo, state.scene.map.grid, characters(), new Set()).inside;
+}
+
+/** Shows a house's interior or its outside, one undoable step (scene state; the Map Forge shows outsides). */
+export function setInterior(id: string, on: boolean): void {
+  const a = allPlacements(state.scene).find((x) => x.id === id);
+  const info = a && state.assetInfo[a.assetPath];
+  if (state.layer === 'map' || !a || !info?.interior || !!state.scene.interiorsOn[id] === on) return;
+  checkpoint();
+  state.scene.interiorsOn = { ...state.scene.interiorsOn, [id]: on };
+  // Inside is unexplored until seen from inside (DM decision 2026-11-25): seeing the roof from
+  // outside remembered the whole footprint, which would show the floor plan dimmed on the TV.
+  if (on) state.scene.fog = forgetIn(state.scene.fog, footprintPolygon(a, info.sizeCells, state.scene.map.grid));
+  state.interiorAsks = state.interiorAsks.filter((x) => x.id !== id);
+  log(on ? 'log.interiorOn' : 'log.interiorOff', { name: info.name });
+  recomputeVision();
+  emit();
+}
+
+/** A placed house's own interior trigger, or none for its asset's (one undoable step). */
+export function setPlacementInteriorTrigger(id: string, trigger: InteriorTrigger | undefined): void {
+  const a = placed(id);
+  if (!a) return;
+  checkpoint();
+  if (trigger) a.interiorTrigger = { ...trigger };
+  else delete a.interiorTrigger;
+  markDirty();
+  emit();
+}
+
+/** The DM's answer to "show the interior?" after a player character came in. */
+export function answerInteriorAsk(id: string, yes: boolean): void {
+  if (yes) setInterior(id, true);
+  state.interiorAsks = state.interiorAsks.filter((x) => x.id !== id);
+  emit();
+}
+
+/** After a player character moved: houses they came into show their interior (or ask first), houses all left their outside. */
+function applyInteriorTriggers(): void {
+  if (state.layer === 'map') return;
+  const placed = allPlacements(state.scene);
+  const r = interiorChanges(placed, state.assetInfo, state.scene.map.grid, characters(), interiorInside);
+  interiorInside = r.inside;
+  for (const id of r.entered) {
+    const p = placed.find((x) => x.id === id)!;
+    const i = interiorOf(p, state.assetInfo)!;
+    if (state.scene.interiorsOn[id]) continue;
+    if (i.trigger.confirm) {
+      if (!state.interiorAsks.some((x) => x.id === id)) state.interiorAsks = [...state.interiorAsks, { id, name: state.assetInfo[p.assetPath]?.name ?? id }];
+    } else setInterior(id, true);
+  }
+  for (const id of r.left) {
+    const p = placed.find((x) => x.id === id);
+    state.interiorAsks = state.interiorAsks.filter((x) => x.id !== id);
+    if (p && interiorOf(p, state.assetInfo)?.trigger.leaveOff) setInterior(id, false);
+  }
+}
+
+/** The walls sight and light use (E-29): the scene's, cut open where placed assets bring doors, plus those doors. */
+export function sightWalls(scene: Scene): readonly Wall[] {
+  const placed = allPlacements(scene);
+  const inner = interiorWalls(placed, state.assetInfo, scene.map.grid, scene.interiorsOn, scene.assetDoorsOpen);
+  return wallsWithAssetDoors(scene.walls, placed, state.assetInfo, scene.map.grid, scene.assetDoorsOpen, inner);
+}
+
+/** The scene with the walls sight and light use (itself if no asset brings a door). */
+export function withAssetDoors(scene: Scene): Scene {
+  const walls = sightWalls(scene);
+  // The list itself, not a copy: sight and light keep what they computed for the same list.
+  return walls === scene.walls ? scene : { ...scene, walls: walls as Wall[] };
+}
+
+/** The doors placed assets bring – door assets and shown interiors – as walls. */
+export function assetDoors(scene: Scene): Wall[] {
+  const placed = allPlacements(scene);
+  const inner = interiorWalls(placed, state.assetInfo, scene.map.grid, scene.interiorsOn, scene.assetDoorsOpen).filter((w) => w.kind === 'door');
+  return [...assetDoorWalls(placed, state.assetInfo, scene.map.grid, scene.assetDoorsOpen), ...inner];
+}
 
 function footprint(a: MapAssetPlacement) {
   return footprintOf(a, state.assetInfo[a.assetPath]?.sizeCells, state.scene.map.grid);
@@ -1070,8 +1192,16 @@ export function placedAssetAt(p: Point): string | null {
   return hit?.id ?? null;
 }
 
-function snappedCentre(a: Pick<MapAssetPlacement, 'assetPath' | 'scale' | 'rotation'>, p: Point): Point {
-  return state.snap ? snapPlacement(state.scene.map.grid, p, state.assetInfo[a.assetPath]?.sizeCells, a.scale, a.rotation) : p;
+/**
+ * Where a placement dropped with its centre at `p` comes to lie: an anchored asset (E-29) snaps
+ * its anchor – onto a near wall if the asset says so, turned along it – else the footprint snaps.
+ */
+function snappedPlace(a: Pick<MapAssetPlacement, 'assetPath' | 'scale' | 'rotation'>, p: Point): { x: number; y: number; rotation: number } {
+  if (!state.snap) return { ...p, rotation: a.rotation };
+  const info = state.assetInfo[a.assetPath];
+  const walls = state.scene.walls.filter((w) => w.kind !== 'cliff');
+  return snapAnchored({ ...p, rotation: a.rotation, scale: a.scale }, info ?? {}, state.scene.map.grid, walls)
+    ?? { ...snapPlacement(state.scene.map.grid, p, info?.sizeCells, a.scale, a.rotation), rotation: a.rotation };
 }
 
 /**
@@ -1091,8 +1221,8 @@ function setEditableAssets(list: MapAssetPlacement[]): void {
 export function placeAsset(assetPath: string, p: Point): string | null {
   checkpoint();
   const id = freshId('asset');
-  const at = snappedCentre({ assetPath, scale: 1, rotation: 0 }, p);
-  editableAssets().push({ id, assetPath, x: at.x, y: at.y, rotation: 0, scale: 1, ...onCurrentLayer() });
+  const at = snappedPlace({ assetPath, scale: 1, rotation: 0 }, p);
+  editableAssets().push({ id, assetPath, x: at.x, y: at.y, rotation: at.rotation, scale: 1, ...onCurrentLayer() });
   state.selectedAssetId = id;
   state.selectedWallIds = [];
   state.selectedZoneId = null;
@@ -1121,9 +1251,10 @@ function placed(id: string): MapAssetPlacement | undefined {
 export function moveAssetTo(id: string, p: Point, final: boolean): void {
   const a = placed(id);
   if (!a) return;
-  const at = final ? snappedCentre(a, p) : p;
+  const at = final ? snappedPlace(a, p) : { ...p, rotation: a.rotation };
   a.x = at.x;
   a.y = at.y;
+  a.rotation = at.rotation;
   markDirty();
   // Its mask and light move with it (DC-108).
   recomputeVision(final);
@@ -1134,7 +1265,8 @@ export function rotatePlacedAsset(id: string, delta: number): void {
   const a = placed(id);
   if (!a) return;
   checkpoint();
-  a.rotation = rotateBy(a.rotation, delta);
+  // About the anchor (E-29); without one about the centre.
+  Object.assign(a, rotateAboutAnchor(a, state.assetInfo[a.assetPath] ?? {}, state.scene.map.grid, delta));
   recomputeVision();
   emit();
 }
@@ -1143,7 +1275,7 @@ export function scalePlacedAsset(id: string, factor: number): void {
   const a = placed(id);
   if (!a) return;
   checkpoint();
-  a.scale = scaleBy(a.scale, factor);
+  Object.assign(a, scaleAboutAnchor(a, state.assetInfo[a.assetPath] ?? {}, state.scene.map.grid, factor));
   recomputeVision();
   emit();
 }
@@ -1183,6 +1315,16 @@ export function activateAsset(id: string): boolean {
   const a = allPlacements(state.scene).find((x) => x.id === id);
   const info = a && state.assetInfo[a.assetPath];
   if (!a || !info) return false;
+  // A house shows its interior or its outside (E-29).
+  if (info.interior) {
+    setInterior(id, !state.scene.interiorsOn[id]);
+    return true;
+  }
+  // A door asset opens and closes (E-29).
+  if (info.door) {
+    toggleDoor(assetDoorId(id));
+    return true;
+  }
   if (info.effect && !info.effect.loop && info.effect.trigger) {
     state.effectRuns = { ...state.effectRuns, [id]: Date.now() };
     log('log.effectPlayed', { name: info.name });
@@ -1824,7 +1966,8 @@ export function produceFrame(now: number): PlayerFrame {
     seedKey: state.mapResource,
     lights: tv.lights,
     // Only the scene's shown placements: assets it hides never reach the TV.
-    assets: assetShapes(allPlacements(tv.scene), state.assetInfo, tv.scene.map.grid, { effectsOn: tv.scene.effectsOn, runs: state.effectRuns }),
+    // Houses as switched in the scene (E-29); the TV never sees through a roof.
+    assets: assetShapes(drawnPlacements(allPlacements(tv.scene), state.assetInfo, tv.scene.interiorsOn, false), state.assetInfo, tv.scene.map.grid, { effectsOn: tv.scene.effectsOn, runs: state.effectRuns }),
     covers: assetExtras(tv.scene).covers,
   });
   return state.frame;
@@ -1849,8 +1992,9 @@ function tvView(): { scene: Scene; visible: Polygon[]; lights: LitSource[] } {
     }
     const scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, state.scene.table, 'scene');
     const extras = assetExtras(scene);
-    const vision = updateVision(scene, extras);
-    tvCache = { version: viewVersion, scene, visible: visiblePolygons(vision), lights: litSources(scene, extras) };
+    const seen = withAssetDoors(scene);
+    const vision = updateVision(seen, extras);
+    tvCache = { version: viewVersion, scene, visible: visiblePolygons(vision), lights: litSources(seen, extras) };
   }
   // Table settings (blackout, rotation, centre) stay live.
   tvCache.scene.table = state.scene.table;

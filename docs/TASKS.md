@@ -46,6 +46,7 @@ Geklärt im Interview mit dem DM (Skill `topic-interviewer`). „Wie DM“ heiß
 | E-23 | Arbeitsweise | **Sammel-Branch** je Thema, ein PR am Ende, der DM gibt den Merge frei. Nachfragen bei Abhängigkeiten, Dateiformat/Ordnern, Abweichungen vom Plan, Sicherheit und wenn etwas nicht ganz klar ist. Regeln in `CLAUDE.md`; Skills `topic-interviewer`, `next-task`, `finish-task`, `ui-design` und Agent `reviewer` in `.claude/`. | DM: PR je Task, Agent merged selbst |
 | E-27 | Assets | **Bibliothek zuerst**, dann Pack-Import, Asset-Editor, Platzieren, Deckung, szeneneigene Assets. **Arten fest** (Prop, Kartenteil, Textur, Effekt, Lichtquelle, Geräusch, Handout) mit **Unterarten** als Vorschlag plus eigene; **Umgebungen** als Vorschlagsliste plus eigene, mehrere je Asset. Der **Asset-Vault** zeigt alle Bibliotheksdateien außer Karten und Kreaturen (auch Audio). **Sidecar je Datei** (Asset-Format Version 2): Name, Art, Unterart, Tags, Umgebungen, Größe in Feldern, Gruppe (Varianten), Sammlungen, Favorit, später Maske/Licht/Effekt-Verhalten; „zuletzt benutzt“ ist Geräte-Einstellung. Formate PNG, WebP, JPG, WebM (mit Transparenz), MP4. Import: mehrere Dateien/Ziehen, Pack mit Unterordner-Wahl, aus Karte/Handout heraus; Duplikate per Hash; Ordnernamen → Tags plus „pack: …“; Größe aus „_2x2“, Art aus Dateityp, Varianten gebündelt (je Datei ein Asset, gemeinsame Gruppe); Namenskonflikte automatisch umbenennen. Vault: Vorschau-Raster in der Mitte, Filter/Sammlungen links, Eigenschaften mit 5-ft-Vorschau rechts; Mehrfachauswahl, Stern, Ziehen auf Sammlung, Sammlungen verwalten. **Vorschaubild-Cache im App-Datenordner**; das Asset-Protokoll liefert daraus nur Bilder und nur an das DM-Fenster (DM-Freigabe Sicherheit). Editor in der Vault-Mitte: Größe, Deckungsmaske (Kreis/Polygon, Vorschlag aus Transparenz), Licht (hell/dämmrig, Farbe, Flackern), Effekt-Verhalten je Effekt einstellbar (Dauerschleife an/aus, einmal auslösen, mit Licht/Ton). Platzieren auf der Karte, Szenen blenden aus; **szeneneigene Assets** als Ausnahme zu DC-103 (Start oder Spiel, Maske/Licht nur in der Szene). TV: Assets unter dem Nebel, Effekte animiert, ausgeblendete nie. | Bibliothek vor Durchstich; Varianten je Datei statt gebündelt im Sidecar |
 | E-28 | Ebenen (Zeichenebenen) | **Eigene, benannte Ebenen** in der Kartenschmiede plus Grundebene „Karte“; Wände, Bereiche, Lichter und Assets gehören je zu einer Ebene. Zwei Schalter: **im Editor sichtbar** (nur DM-Fenster, Arbeitshilfe; dazu Sperre gegen Bearbeiten) und **in der Szene aktiv** (wirkt für Spieler: inaktive Ebenen gibt es für Sicht, Wände, Licht und TV nicht; je Szene, Start und Spiel getrennt). Standard aktiv/inaktiv je Ebene. Auslöser: von Hand im Orchestrator, optional automatisch über einen Bereich (Spielerfigur betritt ihn → aktiv; beim Verlassen wieder inaktiv, einstellbar). **Gegenebene** (Innen ↔ Außen): wird die eine aktiv, wird die andere inaktiv. Ein Element wirkt nur, wenn seine Ebene aktiv und es selbst nicht ausgeblendet ist (DC-103 bleibt). **Höhen-Level** = Zeichenreihenfolge der Assets (keine Höhe für die Sicht). Bedienung: Ebenenliste im Browser (anlegen, umbenennen, löschen → Elemente auf „Karte“, Reihenfolge, Auge, Schloss, im Orchestrator „aktiv“), aktuelle Ebene für Neues, Elemente verschieben, Einstellungen je Ebene. Format: Karte Version 4, Szene Version 6, mit Migration. | Eigene Ebenen statt fester Art-Ebenen; zusätzlich szenenwirksam |
+| E-29 | Smart Prefabs und Innenräume | **Anker** am Asset (im Asset-Editor gesetzt): Drehpunkt, rastet am Raster und an Wänden ein (Ausrichtung entlang der Wand). **Tür-Asset**: bringt eine im Asset-Editor gezeichnete Türlinie mit; auf eine Wand gelegt, rastet es ein und schneidet die Wand dort auf; danach wie eine gezeichnete Tür (öffnen, schließen, verschlossen). **Innenräume als Asset-Varianten**: ein Haus-Asset wählt ein anderes Asset seiner Gruppe als Innenansicht und bringt Innenwände, -türen und -fenster mit (im Asset-Editor gezeichnet, gelten überall). Außen blockiert die Deckungsmaske (DC-108), innen gelten statt ihrer die Innenwände; Wechsel mit Überblendung. **Auslöser**: DM-Klick, Spielerfigur betritt das Haus, Spielerfigur kommt auf einen Abstand heran – je optional mit Rückfrage (Hinweis mit Ja/Nein im DM-Fenster, blockiert nicht, ohne Antwort bleibt es außen). Standard am Asset, je Platzierung abweichend einstellbar. Beim Verlassen aller Spielerfiguren wieder außen (einstellbar). **TV**: ist ein Haus innen, sieht ihn jeder; Sicht und Nebel regeln weiter, was drinnen sichtbar ist. **DM-Fenster**: Dächer für den DM per Schalter im Orchestrator durchsichtig. Format: Asset Version 3, Karte Version 5, Szene Version 7 (Innen/Außen je Haus und Türzustände der Asset-Türen; Start und Spiel getrennt), mit Migration. Reihenfolge: Anker → Tür → Innenräume. | Innenräume am Asset statt nur über Ebenen |
 
 **Bleibt aus Dungeon Crucible:** Pergament als drittes Theme, das eigene Docking mit echten Fenstern und
 Hover-Flyout (statt dockview und Kanten-Leisten), Export/Import ganzer Kampagnen als Archiv – beim Export wählbar:
@@ -446,7 +447,41 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   aufgeräumt (ein Licht nahe einer Wandecke brachte die Clipping-Bibliothek zum Abbruch); scheitert das Zuschneiden
   eines Lichts für den TV, bleibt es dort dunkel. Bekannt: PixiJS prüft beim ersten Video mit einem `data:`-Video,
   das die CSP blockiert – harmlose Meldung in der Konsole, Pixi nimmt den Standard.
-- **DC-042 Smart Prefabs, Innenräume als Asset-Varianten** (T-202, T-146).
+- ✓ **DC-042 Smart Prefabs, Innenräume als Asset-Varianten** (E-29; T-202, T-146). Masken, Lichter und Effekte
+  am Asset sind mit DC-108/DC-109/DC-110 erledigt. Schritte: 1. Anker (Drehpunkt, Einrasten an Raster und Wänden);
+  2. Tür-Asset (Türlinie, schneidet die Wand auf); 3. Innenräume (Innen-Asset, Innenwände, Auslöser mit Abstand und
+  Rückfrage, Überblendung, Dächer für den DM durchsichtig). Format: Asset V3, Karte V5, Szene V7.
+  Erledigt (Schritt 1): Asset Version 3 mit Anker (`anchor`: Punkt in Feldern, „an Wänden einrasten“). Im
+  Asset-Editor „Anker setzen“ (rastet auf Viertelfelder ein, Griff zum Ziehen), Schalter und Entfernen. Platzierte
+  Assets drehen und skalieren um den Anker; beim Ablegen rastet der Anker auf Ecken, Kantenmitten und Feldmitten
+  ein – mit Wand-Rasten auf eine nahe Wand (Abstand Anker–Mitte plus ein halbes Feld), entlang gedreht, auf der
+  Seite, auf der man es abgelegt hat. Platzierungen speichern weiter die Mitte (Karte unverändert).
+  Erledigt (Schritt 2): Tür-Asset – im Asset-Editor „Ist eine Tür“ (Türlinie quer durch die Mitte, ohne Anker
+  einer in der Mitte mit Wand-Rasten), Türlinie zeichnen und an den Enden ziehen (Viertelfelder). Platziert wird
+  die Linie zur Tür; liegt sie auf einer Wand, bekommt die Wand dort eine Lücke. Beides wird beim Berechnen von
+  Sicht und Licht abgeleitet – die Wände der Karte bleiben wie gezeichnet, Verschieben oder Löschen des Assets
+  verschiebt bzw. schließt die Lücke. Öffnen/Schließen im Orchestrator per Klick auf Tür oder Asset (rückgängig
+  machbar), gespeichert in den Türen der Szene unter `<Platzierung>:door` – dafür braucht es weder Karte V5 noch
+  Szene V7. Der Anker rastet auch entlang der Wand auf das Halbfeld-Gitter (Türen sitzen mittig im Feld).
+  Erledigt (Schritt 3): Innenräume – Asset Version 3 mit `interior` (Innen-Asset aus der Gruppe, Innenwände,
+  -türen, -fenster in Feldern, Auslöser), Karte Version 5 (eigener Auslöser je Platzierung), Szene Version 7
+  (`interiors` im Spielzustand und im Start), jeweils mit Migration. Im Asset-Editor: „Hat einen Innenraum“ (nur mit
+  einem anderen Asset derselben Gruppe), Innen-Asset wählen, „Inneres zeigen und bearbeiten“ (Bühne zeigt das
+  Innenbild), Wand/Tür/Fenster aufziehen (Viertelfelder), letzte entfernen; Auslöser: nur per Klick, beim Betreten,
+  beim Nähern (Abstand in ft), „Vorher fragen“, „Wieder außen, wenn alle gegangen sind“. In der Kartenschmiede je
+  Platzierung „Wie am Asset“ oder ein eigener Auslöser. Im Orchestrator: Klick auf das Haus schaltet innen/außen
+  (rückgängig machbar, Protokoll); Spielerfiguren lösen beim Betreten/Nähern aus, mit Rückfrage als Hinweis mit
+  „Zeigen“/„Jetzt nicht“ oben rechts auf der Karte (blockiert nicht). Innen: Innenbild statt Dach, Deckungsmaske
+  aus, Innenwände zählen für Sicht und Licht, Innentüren öffnen per Klick (gespeichert unter `<Platzierung>:in<n>`).
+  Der Wechsel wird überblendet (DM-Fenster und TV). „DM sieht durch Dächer“ im Panel Nebel (Standard an): außen
+  zeigt das DM-Fenster das Innenbild unter einem halb durchsichtigen Dach; der TV nie. Die Kartenschmiede zeigt
+  Häuser immer von außen. Rückfrage nur beim Hineingehen; Verlassen schaltet ohne Rückfrage zurück.
+  Nach dem Review (DM-Entscheidung 2026-11-25): Das Innere gilt als unerforscht, bis es gesehen wird – beim
+  Umschalten auf innen vergisst der Nebel die Erinnerung auf der Hausfläche (vom DM Aufgedecktes bleibt). Außerdem:
+  Wand-Cache erkennt nachträglich ergänzte/geänderte Wände, Auslöser nach dem Laden der Bibliothek und nach
+  Rückgängig neu bestimmt, Überblendung in richtiger Zeichenreihenfolge, Zustände gelöschter Häuser werden nicht
+  gespeichert. „Verschlossen“ (E-29) gibt es noch nicht – auch nicht für gezeichnete Türen; kommt es, gilt es für
+  Asset-Türen mit.
 - ✓ **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
   Deckungsmaske eines Assets fest (Kreis oder Polygon auf dem Bild – Baum, Säule, Statue); ein platziertes Asset ist
   automatisch maskiert: Die Maske dreht und skaliert mit, sie wird nur am Asset geändert und gilt dann überall

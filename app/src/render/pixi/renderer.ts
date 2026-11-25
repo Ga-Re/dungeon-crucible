@@ -147,6 +147,8 @@ export interface AssetShape {
   readonly rotation: number;
   /** A play-once effect (DC-110): when this run started; a new value plays it again from the start. */
   readonly once?: number | undefined;
+  /** Opacity 0–1 (a roof the DM sees through, E-29); none: opaque. */
+  readonly alpha?: number | undefined;
 }
 
 /** Dungeon Crucible: one light's glow (map pixels), clipped to the area it lights. */
@@ -313,7 +315,37 @@ export async function createRenderer(
   // Placed assets (Dungeon Crucible): above the grid, below light, tokens and fog.
   const assetLayer = new Container();
   world.addChild(assetLayer);
-  const builtAssets = new Map<string, { url: string; sprite: Sprite; width: number; height: number; run: number | undefined }>();
+  type BuiltAsset = { url: string; sprite: Sprite; width: number; height: number; run: number | undefined; alpha: number; fadeIn: number | null; previous: { sprite: Sprite; key: string } | null };
+  const builtAssets = new Map<string, BuiltAsset>();
+  // An asset whose picture changes (a house's roof and interior, E-29) crossfades: the old picture
+  // fades out above the new one fading in.
+  const ASSET_FADE_MS = 400;
+  let fadingOut: { id: string; sprite: Sprite; key: string; from: number; start: number }[] = [];
+  const fadingIn = new Set<BuiltAsset>();
+  const stepAssetFades = () => {
+    if (!fadingOut.length && !fadingIn.size) return;
+    const t = now();
+    fadingOut = fadingOut.filter((f) => {
+      const k = Math.min(1, (t - f.start) / ASSET_FADE_MS);
+      f.sprite.alpha = f.from * (1 - k);
+      if (k < 1) return true;
+      dropSprite(f.sprite);
+      return false;
+    });
+    for (const b of fadingIn) {
+      const k = Math.min(1, (t - (b.fadeIn ?? t)) / ASSET_FADE_MS);
+      b.sprite.alpha = b.alpha * k;
+      if (k >= 1) {
+        b.fadeIn = null;
+        fadingIn.delete(b);
+      }
+    }
+  };
+  const assetsFading = () => fadingOut.length > 0 || fadingIn.size > 0;
+  const dropSprite = (sprite: Sprite) => {
+    assetLayer.removeChild(sprite);
+    sprite.destroy();
+  };
   // One texture per file (and one looping video element per video file), kept until teardown.
   const assetTextures = new Map<string, { texture: Promise<Texture | null>; video: HTMLVideoElement | null; ready: Texture | null }>();
   let playingVideos = 0;
@@ -352,38 +384,72 @@ export async function createRenderer(
     const keep = new Set(next.map((a) => a.id));
     for (const [id, built] of builtAssets) {
       if (keep.has(id)) continue;
-      assetLayer.removeChild(built.sprite);
-      built.sprite.destroy();
+      dropSprite(built.sprite);
+      if (built.previous) dropSprite(built.previous.sprite);
+      fadingIn.delete(built);
       builtAssets.delete(id);
     }
-    next.forEach((a, index) => {
+    // A placement gone in the middle of a crossfade takes its old picture along.
+    fadingOut = fadingOut.filter((f) => {
+      if (keep.has(f.id)) return true;
+      dropSprite(f.sprite);
+      return false;
+    });
+    // Children in drawing order: each placement's picture, its old one (fading out) right above.
+    let pos = 0;
+    next.forEach((a) => {
       // A play-once effect has its own video (it restarts on its own); loops share one per file.
       const source = a.once === undefined ? a.url : `${a.url}#once:${a.id}`;
       let built = builtAssets.get(a.id);
       if (!built || built.url !== source) {
+        // A new picture for the same placement: the old one stays until the new one has loaded,
+        // then they crossfade. Changed again meanwhile: the one still shown stays the old one.
+        let previous: { sprite: Sprite; key: string } | null = null;
         if (built) {
-          assetLayer.removeChild(built.sprite);
-          built.sprite.destroy();
+          if (built.previous) {
+            previous = built.previous;
+            dropSprite(built.sprite);
+          } else previous = { sprite: built.sprite, key: built.url };
+          fadingIn.delete(built);
         }
         const sprite = new Sprite();
         sprite.anchor.set(0.5);
-        built = { url: source, sprite, width: a.width, height: a.height, run: undefined };
+        if (previous) sprite.alpha = 0;
+        built = { url: source, sprite, width: a.width, height: a.height, run: undefined, alpha: a.alpha ?? 1, fadeIn: null, previous };
         builtAssets.set(a.id, built);
         const target = built;
         void loadAssetTexture(source, a.video, a.once !== undefined).then((texture) => {
-          if (destroyed || builtAssets.get(a.id) !== target || !texture) return;
+          if (destroyed || builtAssets.get(a.id) !== target) return;
+          if (!texture) {
+            // The new picture failed: the old one must not stand in for it.
+            if (target.previous) dropSprite(target.previous.sprite);
+            target.previous = null;
+            requestDraw();
+            return;
+          }
           sprite.texture = texture;
           // The size was set for the empty sprite; the picture now fills it.
           sprite.setSize(target.width, target.height);
+          if (target.previous) {
+            const start = now();
+            target.fadeIn = start;
+            fadingIn.add(target);
+            fadingOut.push({ id: a.id, sprite: target.previous.sprite, key: target.previous.key, from: target.previous.sprite.alpha, start });
+            target.previous = null;
+          } else sprite.alpha = target.alpha;
           requestDraw();
         });
       }
       const sprite = built.sprite;
-      assetLayer.addChildAt(sprite, Math.min(index, assetLayer.children.length));
+      assetLayer.addChildAt(sprite, Math.min(pos++, assetLayer.children.length));
+      const old = [...(built.previous ? [built.previous.sprite] : []), ...fadingOut.filter((f) => f.id === a.id).map((f) => f.sprite)];
+      for (const o of old) assetLayer.addChildAt(o, Math.min(pos++, assetLayer.children.length));
       sprite.position.set(a.x, a.y);
       sprite.angle = a.rotation;
       built.width = a.width;
       built.height = a.height;
+      built.alpha = a.alpha ?? 1;
+      if (built.fadeIn === null && sprite.texture !== Texture.EMPTY) sprite.alpha = built.alpha;
       // A new run of a play-once effect: from the start, shown until it ends.
       if (a.once !== undefined && built.run !== a.once) {
         built.run = a.once;
@@ -401,7 +467,12 @@ export async function createRenderer(
       if (sprite.texture !== Texture.EMPTY) sprite.setSize(a.width, a.height);
     });
     // Files no placement shows any more are freed (GPU memory; videos stop decoding).
-    const used = new Set(next.map((a) => (a.once === undefined ? a.url : `${a.url}#once:${a.id}`)));
+    // Pictures still shown while their placement crossfades count as shown.
+    const used = new Set([
+      ...next.map((a) => (a.once === undefined ? a.url : `${a.url}#once:${a.id}`)),
+      ...fadingOut.map((f) => f.key),
+      ...[...builtAssets.values()].flatMap((b) => (b.previous ? [b.previous.key] : [])),
+    ]);
     for (const [url, entry] of assetTextures) {
       if (used.has(url)) continue;
       entry.video?.pause();
@@ -930,13 +1001,14 @@ export async function createRenderer(
         stepOutgoing();
         stepGlides();
         stepFlicker();
+        stepAssetFades();
         applyCamera();
         // Looping asset videos: their frames go to the GPU, and the next draw follows.
         if (playingVideos > 0) for (const t of assetTextures.values()) if (t.video) t.ready?.source.update();
         app.render();
         gate.drawn();
         showVideo();
-        if (playingVideos > 0 || flickering.length > 0) requestDraw();
+        if (playingVideos > 0 || flickering.length > 0 || assetsFading()) requestDraw();
       } catch (error) {
         // ADR-0010: on renderer errors the raw video must not stay visible.
         gate.renderFailed();

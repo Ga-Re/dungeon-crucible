@@ -37,6 +37,25 @@ describe('placed assets', () => {
     expect(a().assetPath).toBe('library/oak_02.png');
   });
 
+  it('an anchored asset (E-29) snaps its anchor onto a near wall, turned along it, and turns about the anchor', () => {
+    setWorkspace('forge');
+    setAssetInfo({ ...info, 'library/torch.png': { name: 'torch', kind: 'light', sizeCells: { w: 1, h: 1 }, url: 'dc-asset://file/torch.png', video: false, anchor: { x: 0.5, y: 0, wallSnap: true } } });
+    // A wall far from the crypt's own.
+    state.scene.walls.push({ id: 'far', kind: 'wall', x1: 7000, y1: 7000, x2: 8000, y2: 7000 });
+    const id = placeAsset('library/torch.png', { x: 7210, y: 7050 })!;
+    const a = () => state.scene.map.assets.find((x) => x.id === id)!;
+    // Anchor (top middle) on the wall, the torch below it.
+    expect(a()).toMatchObject({ x: 7210, y: 7035, rotation: 0 }); // 7210: on the half-cell lattice (35 px)
+    // Dragged above the wall: turned round (anchor on the lattice: 7315).
+    moveAssetTo(id, { x: 7300, y: 6960 }, true);
+    expect(a()).toMatchObject({ rotation: 180 });
+    expect(Math.round(a().y)).toBe(6965);
+    rotatePlacedAsset(id, 90);
+    // The anchor stays on the wall: the centre moved to its side.
+    expect(Math.round(a().x)).toBe(7315 + 35);
+    expect(Math.round(a().y)).toBe(7000);
+  });
+
   it('the Orchestrator places assets in the scene only; map assets are only hidden there', () => {
     setWorkspace('forge');
     setAssetInfo(info);

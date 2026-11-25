@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { areaBounds } from './areas';
 import { History } from './history';
 import { commitStart, lockedAreas, mapSidecarFromScene, mapSidecarPath, manifestFromState, resetToStart, sceneFromDocuments, sceneOverrideFromScene, slugify, startOf, tableFromManifest } from './persistence';
-import { CampaignManifestSchema, MapSidecarSchema, SceneOverrideSchema } from './sidecar';
+import { CampaignManifestSchema, MAP_VERSION, MapSidecarSchema, SceneOverrideSchema } from './sidecar';
 import { createSampleScene } from '../sample/crypt';
 import { updateVision, visiblePolygons } from './vision';
 import { hideAll, rememberSeen, revealAll } from './fogModel';
@@ -85,7 +85,7 @@ describe('history', () => {
 describe('map sidecar round trip', () => {
   it('keeps the catalog data (tags, theme, type, POIs, assets)', () => {
     const map = MapSidecarSchema.parse({
-      kind: 'map', schemaVersion: 4, name: 'Tavern', resource: 'library/tavern.webp', widthPx: 1000, heightPx: 800,
+      kind: 'map', schemaVersion: MAP_VERSION, name: 'Tavern', resource: 'library/tavern.webp', widthPx: 1000, heightPx: 800,
       tags: ['town', 'inn'], biome: 'city', mapType: 'building', fogBiome: 'kueste', fogStrength: 0.5,
       grid: { type: 'square', cellWidth: 50, cellHeight: 50, originX: 0, originY: 0, rotationDeg: 0, feetPerCell: 5 },
       pois: [{ id: 'poi-bar', name: 'Bar', x: 10, y: 20, icon: 'flag' }],

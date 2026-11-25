@@ -39,6 +39,12 @@ export function revealIn(fog: LevelFog, area: Polygon, locked: readonly Polygon[
   return parts.reduce((f, p) => revealArea(f, p), fog);
 }
 
+/** Forgets what was remembered in `area` (it is unexplored again); what the DM revealed stays. */
+export function forgetIn(fog: LevelFog, area: Polygon): LevelFog {
+  if (!fog.remembered.length) return fog;
+  return { ...fog, remembered: fromClip(difference(asGeom(fog.remembered), asGeom([area]))) };
+}
+
 /** Hides `area`; with `remember`, what was revealed there becomes memory fog. */
 export function hideIn(fog: LevelFog, area: Polygon, remember = false): LevelFog {
   return hideArea(fog, area, remember);

@@ -30,7 +30,7 @@ import {
 import { buildPlayerFrame, MAX_FRAME_AGE_MS, parsePlayerFrame, playerLighting } from './projection';
 import { litSources, tokensVisibleToPlayers, updateVision } from './vision';
 import { createSampleScene } from '../sample/crypt';
-import { CreatureSchema, GridSchema, MapSidecarSchema, parseSidecar, resourcePathForSidecar, sidecarPathFor } from './sidecar';
+import { CreatureSchema, GridSchema, MAP_VERSION, MapSidecarSchema, parseSidecar, resourcePathForSidecar, sidecarPathFor } from './sidecar';
 
 const seq = (...vals: number[]) => {
   let i = 0;
@@ -253,7 +253,7 @@ describe('sidecars', () => {
     expect(resourcePathForSidecar('maps/crypt.webp')).toBeNull();
   });
   it('validates a map sidecar and reports errors', () => {
-    const ok = parseSidecar(MapSidecarSchema, JSON.stringify({ kind: 'map', schemaVersion: 4, name: 'Crypt', resource: 'maps/crypt.webp', widthPx: 2000, heightPx: 1400, grid: DEFAULT_GRID }));
+    const ok = parseSidecar(MapSidecarSchema, JSON.stringify({ kind: 'map', schemaVersion: MAP_VERSION, name: 'Crypt', resource: 'maps/crypt.webp', widthPx: 2000, heightPx: 1400, grid: DEFAULT_GRID }));
     expect(ok.ok).toBe(true);
     const bad = parseSidecar(CreatureSchema, JSON.stringify({ kind: 'creature', schemaVersion: 1, name: '' }));
     expect(bad.ok).toBe(false);

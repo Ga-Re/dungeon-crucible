@@ -71,7 +71,7 @@ describe('the Asset Vault', () => {
   it('imports files with their defaults and selects them', async () => {
     picked = ['rock_2x2.png', 'portal.webm'];
     await importVaultAssets();
-    expect(JSON.parse(files.get('library/rock_2x2.png.dm.json')!)).toMatchObject({ kind: 'asset', schemaVersion: 2, name: 'rock', assetKind: 'prop', sizeCells: { w: 2, h: 2 } });
+    expect(JSON.parse(files.get('library/rock_2x2.png.dm.json')!)).toMatchObject({ kind: 'asset', schemaVersion: 3, name: 'rock', assetKind: 'prop', sizeCells: { w: 2, h: 2 } });
     expect(JSON.parse(files.get('library/portal.webm.dm.json')!)).toMatchObject({ assetKind: 'effect' });
     expect(state.vault.selected).toEqual(['library/rock_2x2.png', 'library/portal.webm']);
   });

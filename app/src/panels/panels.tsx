@@ -5,6 +5,7 @@ import { FOG_BIOMES, type TableRotation, type Wall, type WallKind } from '../cor
 import { abilityModifier, ABILITIES, CONDITIONS, evaluateEncounter, proficiencyBonusForCr, proficiencyBonusForLevel, xpForCr, type ChallengeRating } from '../core/rules/rules2024';
 import { d20Test } from '../core/rules/dice';
 import { playerOfToken } from '../core/party';
+import type { InteriorTrigger } from '../core/sidecar';
 import { useI18n } from '../i18n/i18n';
 import type { MessageKey } from '../i18n/en';
 import { TableView, type FrameSource } from '../table/TableView';
@@ -14,7 +15,7 @@ import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  setElementsLayer, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
+  setElementsLayer, setPlacementInteriorTrigger, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { importMapIntoCampaign, switchScene } from '../app/campaign';
@@ -378,9 +379,36 @@ function PlacedAssetProperties({ id }: { id: string }) {
       <NumberRow id="pa-rot" label={t('placed.rotation')} value={a.rotation} step={15} onCommit={(v) => rotatePlacedAsset(id, v - a.rotation)} />
       <NumberRow id="pa-scale" label={t('placed.scale')} value={a.scale} step={0.25} min={0.25} max={8} onCommit={(v) => v > 0 && scalePlacedAsset(id, v / a.scale)} />
       <LayerRow ids={[id]} />
+      {info?.interior && <PlacedInteriorTrigger id={id} own={a.interiorTrigger} fromAsset={info.interior.trigger} />}
       {hasVariants && <button className="btn sm" onClick={() => cycleAssetVariant(id)}><Icon name="next" />{t('placed.variant')}</button>}
       <button className="btn sm danger" onClick={() => deletePlacedAsset(id)}><Icon name="trash" />{t('placed.remove')}</button>
       <p className="hint">{t('picker.hint')}</p>
+    </>
+  );
+}
+
+/** A placed house's interior trigger (E-29): the asset's, or its own. */
+function PlacedInteriorTrigger({ id, own, fromAsset }: { id: string; own: InteriorTrigger | undefined; fromAsset: InteriorTrigger }) {
+  const { t } = useI18n();
+  const tr = own ?? fromAsset;
+  const set = (patch: Partial<InteriorTrigger>) => setPlacementInteriorTrigger(id, { ...tr, ...patch });
+  return (
+    <>
+      <div className="row"><label htmlFor="pa-int">{t('editor.trigger.mode')}</label>
+        <select id="pa-int" value={own ? own.mode : 'asset'} onChange={(e) => (e.target.value === 'asset' ? setPlacementInteriorTrigger(id, undefined) : set({ mode: e.target.value as InteriorTrigger['mode'] }))}>
+          <option value="asset">{t('interior.asAsset', { mode: t(`interior.mode.${fromAsset.mode}`) })}</option>
+          <option value="click">{t('interior.mode.click')}</option>
+          <option value="enter">{t('interior.mode.enter')}</option>
+          <option value="near">{t('interior.mode.near')}</option>
+        </select>
+      </div>
+      {own && own.mode === 'near' && <NumberRow id="pa-near" label={t('interior.nearFt')} value={own.nearFt} step={5} min={0} onCommit={(v) => v >= 0 && set({ nearFt: v })} />}
+      {own && own.mode !== 'click' && (
+        <>
+          <label className="cmd-check"><input type="checkbox" checked={own.confirm} onChange={(e) => set({ confirm: e.target.checked })} />{t('interior.confirm')}</label>
+          <label className="cmd-check"><input type="checkbox" checked={own.leaveOff} onChange={(e) => set({ leaveOff: e.target.checked })} />{t('interior.leaveOff')}</label>
+        </>
+      )}
     </>
   );
 }
@@ -438,6 +466,7 @@ export function FogPanel() {
   const mem = useStore((s) => s.memoryOpacity);
   const brush = useStore((s) => s.brushCells);
   const dmSee = useStore((s) => s.dmSeeThrough);
+  const roofsSee = useStore((s) => s.roofsSeeThrough);
   const dmHidden = useStore((s) => s.dmFogHidden);
   const mode = useStore((s) => s.fogMode);
   const ws = useStore((s) => s.ws);
@@ -502,6 +531,7 @@ export function FogPanel() {
       <div className="row"><label htmlFor="f-mem">{t('fog.memoryOpacity')}</label><input id="f-mem" type="range" min={0.2} max={0.95} step={0.05} value={mem} onChange={(e) => setFogOption('memoryOpacity', Number(e.target.value))} /></div>
       <div className="row"><label htmlFor="f-brush">{t('fog.brushSize')}</label><input id="f-brush" type="range" min={0.5} max={6} step={0.5} value={brush} onChange={(e) => setFogOption('brushCells', Number(e.target.value))} /></div>
       <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={dmSee} onChange={() => toggle('dmSeeThrough')} />{t('fog.dmSeeThrough')}</label>
+      <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={roofsSee} onChange={() => toggle('roofsSeeThrough')} />{t('fog.roofsSeeThrough')}</label>
       <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={dmHidden} onChange={toggleDmFog} />{t('fog.hideInDm')}</label>
     </div>
   );

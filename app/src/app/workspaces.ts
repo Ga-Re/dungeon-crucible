@@ -120,7 +120,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
           {
             label: 'group.grid',
             buttons: [
-              { id: 'tool:calibrate', icon: 'calib', label: 'tool.calibrate', tool: 'calibrate' },
+              { id: 'grid:calibrate', icon: 'calib', label: 'tool.calibrate' },
               { id: 'toggle:snap', icon: 'magnet', label: 'tool.snap' },
             ],
           },

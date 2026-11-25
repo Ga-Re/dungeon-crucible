@@ -3,6 +3,7 @@
  * (DM window only)" sit above the fog). Never used for the table.
  */
 import type { Point } from '../core/geometry';
+import type { GridBox } from '../core/grid';
 import { labelPoint } from '../core/areas';
 import type { Polygon } from '../core/poly/types';
 import type { Scene, Wall, WallKind } from '../core/scene';
@@ -28,7 +29,8 @@ export interface OverlayState {
   /** Where dragged wall ends are right now. */
   wallEnds: Point | null;
   brush: { p: Point; r: number } | null;
-  calibPoints: Point[];
+  /** "Calibrate grid": the box over N×N cells of the printed grid (E-7). */
+  calibBox: { box: GridBox; cells: number } | null;
   draftTemplate: TemplateLike | null;
   /** "Create area": the shape so far, the part being drawn and a polygon or lasso path (DC-013). */
   areaDraft: { shape: Polygon[]; part: Polygon | null; path: Point[]; color: string; subtract: boolean; editing: string | null } | null;
@@ -289,14 +291,29 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     g.arc(o.brush.p.x, o.brush.p.y, o.brush.r, 0, Math.PI * 2);
     g.stroke();
   }
-  o.calibPoints.forEach((p, i) => {
-    g.strokeStyle = '#3f9de2';
-    g.lineWidth = 2 * px;
-    g.beginPath();
-    g.arc(p.x, p.y, 10 * px, 0, Math.PI * 2);
-    g.stroke();
-    label(g, String(i + 1), p.x + 12 * px, p.y - 12 * px, px);
-  });
+  if (o.calibBox) drawCalibBox(g, o.calibBox.box, o.calibBox.cells, px);
+}
+
+/** The calibration box with its N×N cells, to lay over the map's printed grid. */
+function drawCalibBox(g: CanvasRenderingContext2D, b: GridBox, cells: number, px: number): void {
+  g.save();
+  g.fillStyle = 'rgba(63,157,226,.12)';
+  g.fillRect(b.x, b.y, b.size, b.size);
+  g.strokeStyle = '#3f9de2';
+  g.lineWidth = 1.5 * px;
+  g.beginPath();
+  for (let i = 1; i < cells; i++) {
+    const d = (b.size * i) / cells;
+    g.moveTo(b.x + d, b.y);
+    g.lineTo(b.x + d, b.y + b.size);
+    g.moveTo(b.x, b.y + d);
+    g.lineTo(b.x + b.size, b.y + d);
+  }
+  g.stroke();
+  g.lineWidth = 2.5 * px;
+  g.strokeRect(b.x, b.y, b.size, b.size);
+  g.restore();
+  label(g, `${cells}×${cells}`, b.x, b.y - 8 * px, px);
 }
 
 function label(g: CanvasRenderingContext2D, text: string, x: number, y: number, px: number): void {

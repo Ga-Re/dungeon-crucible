@@ -98,7 +98,7 @@ Startzustand), dann die Kartenschmiede auf dieser Basis.
 | Ambient-Sound und Übergang als Kartendaten | ✗ | ✗ | T-176b |
 | Raster Quadrat | ✓ | ✓ | |
 | Raster Hex | ✗ | ✓ | wird entfernt (E-7, DC-098) |
-| Rastereinmessung | ✓ N×N-Box | ✓ 3-Punkt | E-7 |
+| Rastereinmessung | ✓ N×N-Box | ✓ N×N-Box | E-7, DC-021 |
 | Ebenen (Stockwerke) mit eigenem Bild, Freigabe auf dem TV | ✓ | ✗ | |
 | Bereiche/Räume als Polygon, Ellipse, Lasso, je Ebene, geheim | ✓ | ◐ | DC: nur Rechtecke, Biom-Override ohne UI |
 | Bereiche additiv zeichnen (Vereinigung) | ✓ | ✗ | |
@@ -318,8 +318,15 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Sichtbarkeit und Sperre beim Bearbeiten.
 - **DC-020 Ebenen (Stockwerke)**: anlegen, umbenennen, eigenes Bild gleicher Größe, Arbeitsebene vs. TV-Ebene,
   Freigabe, Nebel je Ebene (T-118a/c/d).
-- **DC-021 Rastereinmessung per N×N-Box** statt 3-Punkt, als Befehls-Panel; Raster verschieben; Schwenken während
-  des Einmessens (T-177, T-251).
+- ✓ **DC-021 Rastereinmessung per N×N-Box** statt 3-Punkt, als Befehls-Panel; Raster verschieben; Schwenken während
+  des Einmessens (T-177, T-251). Erledigt: Befehls-Panel „Raster einmessen“ (Menüband Karte › Raster): Felder je
+  Seite 1–10 (Standard 3); ein auf der Karte aufgezogenes Quadrat über N×N Felder des gedruckten Rasters ergibt
+  Zellgröße und Versatz, das Raster zeigt sich sofort (beim Einmessen immer sichtbar); innen ziehen verschiebt Box
+  und Raster, Pfeiltasten 1 px (Umschalt 10 px), Zellgröße und Versatz auch als Zahl; OK speichert als ein
+  rückgängig machbarer Schritt, Abbrechen/Esc oder ein anderes Werkzeug stellt das alte Raster wieder her, Speichern
+  während des Einmessens schreibt die Vorschau nicht. Schwenken mit mittlerer/rechter Maustaste oder Leertaste. Die
+  3-Punkt-Kalibrierung ist entfernt; die Box misst kein gedrehtes Raster (Drehung wird 0, das Feld bleibt in der
+  Datei).
 - **DC-022 Zuschneiden, Drehen, Bildanpassung** nicht-destruktiv (T-192).
 - **DC-023 Kartenvarianten** je Ebene (Tag/Nacht/zerstört) (T-191).
 - **DC-024 UVTT-Import** mit Raster, Wänden, Türen, Lichtern (T-198).

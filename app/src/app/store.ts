@@ -4,7 +4,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import type { Point } from '../core/geometry';
-import { applyCalibration, calibrateFromThreePoints, snapToCell, tableZoomForPhysicalGrid } from '../core/grid';
+import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { rollDice, type RollResult } from '../core/rules/dice';
@@ -77,8 +77,8 @@ export interface AppState {
   round: number;
   scene: Scene;
   vision: ViewerVision[];
-  calibPoints: Point[];
-  lastCalibration: { w: number; h: number; r: number } | null;
+  /** "Calibrate grid" while it runs (Map Forge, E-7). */
+  calibration: CalibrationCommand | null;
   /** "Draw walls" while it runs (Map Forge, DC-014). */
   wallCommand: WallCommand | null;
   /** Selected walls of the map (Map Forge): one, several (Shift) or a chain (double-click). */
@@ -159,8 +159,7 @@ function initial(): AppState {
     round: 1,
     scene,
     vision: [],
-    calibPoints: [],
-    lastCalibration: null,
+    calibration: null,
     wallCommand: null,
     selectedWallIds: [],
     log: [],
@@ -368,7 +367,9 @@ function playingAmbience(): { path: string; volume: number }[] {
  */
 export function commitView(): void {
   if (!state.mapDoc) return;
-  const s = state.scene;
+  // A grid being calibrated is only a preview until OK.
+  const cal = state.calibration;
+  const s = cal ? { ...state.scene, map: { ...state.scene.map, grid: cal.before } } : state.scene;
   const map = mapSidecarFromScene(s, state.mapResource, state.layer, state.mapDoc);
   const doc = state.sceneDoc;
   if (doc && state.layer !== 'map') {
@@ -402,6 +403,7 @@ export function refreshView(): void {
 /** Shows another layer: the map alone (Map Forge), the scene's play state, or its start state. */
 export function showLayer(layer: ViewLayer): void {
   if (layer === state.layer) return;
+  dropCalibration();
   commitView();
   state.layer = layer;
   viewVersion++;
@@ -430,8 +432,8 @@ export function setTool(tool: ToolId): void {
   // One command at a time: another tool ends "create area" and "draw walls".
   if (tool !== 'area') state.areaCommand = null;
   if (tool !== 'wall') state.wallCommand = null;
+  if (tool !== 'calibrate') dropCalibration();
   state.tool = tool;
-  state.calibPoints = [];
   emit();
 }
 
@@ -531,9 +533,11 @@ function reversed<T extends Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>>(w: T): T {
   return { ...w, x1: w.x2, y1: w.y2, x2: w.x1, y2: w.y1 };
 }
 
+/** A different scene or layer is shown: running Map Forge commands and the wall selection end. */
 function clearWallEditing(): void {
   state.wallCommand = null;
   state.selectedWallIds = [];
+  state.calibration = null;
 }
 
 /** Starts "draw walls" in the Map Forge (one command at a time: another tool ends it). */
@@ -542,6 +546,7 @@ export function startWallCommand(): void {
   const kind = state.wallCommand?.kind ?? 'wall';
   state.wallCommand = { kind, chain: chainsByDefault(kind), flip: false, walls: [], start: null };
   state.areaCommand = null;
+  dropCalibration();
   state.tool = 'wall';
   emit();
 }
@@ -722,6 +727,7 @@ export function startAreaCommand(areaId?: string): void {
   if (z) state.selectedZoneId = z.id;
   state.tool = 'area';
   state.wallCommand = null;
+  dropCalibration();
   emit();
 }
 
@@ -882,23 +888,99 @@ export function resetSceneFogEffect(): void {
   emit();
 }
 
-export function addCalibrationPoint(p: Point): void {
-  state.calibPoints.push(p);
-  if (state.calibPoints.length === 3) {
-    const [a, b, c] = state.calibPoints;
-    try {
-      const r = calibrateFromThreePoints(a, b, c);
-      checkpoint();
-      state.scene.map.grid = applyCalibration(state.scene.map.grid, r);
-      state.lastCalibration = { w: r.cellWidth, h: r.cellHeight, r: r.rotationDeg };
-      log('log.calibrated');
-    } catch {
-      /* identical points: ignore */
-    }
-    state.calibPoints = [];
-    state.tool = 'select';
-  }
+/* ---------- "Calibrate grid" command (E-7, DC-021) ---------- */
+
+/** The running "calibrate grid" command; the map's grid shows its result live until OK. */
+export interface CalibrationCommand {
+  /** How many cells the box spans in each direction (1–10). */
+  cells: number;
+  /** The box laid over the printed grid; none before one is dragged or after typing values. */
+  box: GridBox | null;
+  /** The grid before the command, for Cancel and for saving while it runs. */
+  before: GridConfig;
+}
+
+export const CALIBRATION_CELLS = { min: 1, max: 10, default: 3 };
+
+export function startCalibration(): void {
+  if (state.layer !== 'map') return;
+  state.areaCommand = null;
+  state.wallCommand = null;
+  if (!state.calibration) state.calibration = { cells: CALIBRATION_CELLS.default, box: null, before: { ...state.scene.map.grid } };
+  state.tool = 'calibrate';
   emit();
+}
+
+function previewGrid(grid: GridConfig): void {
+  state.scene.map.grid = grid;
+  emit();
+}
+
+/** A box dragged over the printed grid (live while dragging). */
+export function setCalibrationBox(box: GridBox): void {
+  const c = state.calibration;
+  if (!c) return;
+  state.calibration = { ...c, box };
+  previewGrid(gridFromBox(state.scene.map.grid, box, c.cells));
+}
+
+export function setCalibrationCells(cells: number): void {
+  const c = state.calibration;
+  if (!c || !Number.isInteger(cells) || cells < CALIBRATION_CELLS.min || cells > CALIBRATION_CELLS.max) return;
+  state.calibration = { ...c, cells };
+  if (c.box) previewGrid(gridFromBox(state.scene.map.grid, c.box, cells));
+  else emit();
+}
+
+/** Fine adjustment (arrow keys, dragging the box): moves the box and the grid together. */
+export function moveCalibration(dx: number, dy: number): void {
+  const c = state.calibration;
+  if (!c) return;
+  if (c.box) state.calibration = { ...c, box: { ...c.box, x: c.box.x + dx, y: c.box.y + dy } };
+  previewGrid(shiftGrid(state.scene.map.grid, dx, dy));
+}
+
+/** Values typed in the panel; the box no longer matches them and goes away. */
+export function setCalibrationGrid(patch: { cellWidth?: number; originX?: number; originY?: number }): void {
+  const c = state.calibration;
+  if (!c) return;
+  const g = state.scene.map.grid;
+  const cell = patch.cellWidth !== undefined && patch.cellWidth >= 4 ? patch.cellWidth : g.cellWidth;
+  state.calibration = { ...c, box: null };
+  previewGrid({ ...g, cellWidth: cell, cellHeight: cell, rotationDeg: 0, originX: patch.originX ?? g.originX, originY: patch.originY ?? g.originY });
+}
+
+/** OK: the previewed grid becomes the map's, as one undoable step. */
+export function finishCalibration(): boolean {
+  const c = state.calibration;
+  if (!c || state.layer !== 'map') return false;
+  const grid = state.scene.map.grid;
+  // The undo step must hold the grid from before the preview.
+  state.scene.map.grid = c.before;
+  checkpoint();
+  state.scene.map.grid = grid;
+  state.calibration = null;
+  state.tool = 'select';
+  log('log.calibrated');
+  recomputeVision();
+  emit();
+  return true;
+}
+
+/** Cancel: the grid from before the command comes back. */
+export function cancelCalibration(): void {
+  if (!dropCalibration()) return;
+  if (state.tool === 'calibrate') state.tool = 'select';
+  emit();
+}
+
+/** Ends a running calibration without saving it; whether one ran. */
+function dropCalibration(): boolean {
+  const c = state.calibration;
+  if (!c) return false;
+  state.scene.map.grid = c.before;
+  state.calibration = null;
+  return true;
 }
 
 const TPL_COLORS: Record<TemplateShape, string> = { cone: '#e2554c', sphere: '#e2a03c', line: '#3f9de2', cube: '#a77bf3' };

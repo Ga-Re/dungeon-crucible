@@ -9,7 +9,7 @@ import { MonitorMenu } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
 import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, focusPanel, removeLegacyLayouts } from './docking';
 import {
-  clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, startWallCommand, redo, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
+  clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, startCalibration, startWallCommand, redo, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
@@ -144,6 +144,7 @@ function Ribbon() {
     if (b.id === 'toggle:editStart') return flags.editStart;
     if (b.id === 'area:create') return tool === 'area';
     if (b.id === 'walls:draw') return tool === 'wall';
+    if (b.id === 'grid:calibrate') return tool === 'calibrate';
     return false;
   };
 
@@ -169,6 +170,7 @@ function Ribbon() {
       case 'audio:stop': return stopAll();
       case 'fog:revealAll': return fogAll(true);
       case 'walls:draw': return startWallCommand();
+      case 'grid:calibrate': return startCalibration();
       case 'turn:next': return nextTurn();
       case 'templates:clear': return clearTemplates();
       case 'table:open': return void openTable();

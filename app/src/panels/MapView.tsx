@@ -5,12 +5,13 @@
  */
 import { useEffect, useMemo, useRef } from 'react';
 import type { Point } from '../core/geometry';
-import { gridDistanceFeet, snapToCorner } from '../core/grid';
+import { gridDistanceFeet, snapToCorner, squareBox } from '../core/grid';
 import { clearArea, openArea } from '../core/fogModel';
 import { circleArea, ellipseArea, strokeArea } from '../core/poly/shapes';
 import { partFromDrag, partFromPoints, vertexAt, type VertexRef } from '../core/areas';
 import { AreaCommandPanel } from './AreaCommandPanel';
 import { WallCommandPanel } from './WallCommandPanel';
+import { CalibrationPanel } from './CalibrationPanel';
 import { endsAt, nearestEnd, wallAt, type WallEnd } from '../core/walls';
 import type { Polygon } from '../core/poly/types';
 import { rectPolygon } from '../core/fogModel';
@@ -27,8 +28,9 @@ import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
 import { TableView, type FrameSource } from '../table/TableView';
 import {
-  addCalibrationPoint, addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
+  addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
+  cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -54,6 +56,8 @@ type Drag =
   | { kind: 'area-path'; path: Point[] }
   | { kind: 'area-corner'; at: VertexRef }
   | { kind: 'wall-ends'; ends: WallEnd[]; to: Point; moved: boolean }
+  | { kind: 'calib-box'; a: Point }
+  | { kind: 'calib-move'; last: Point }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
   | { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; invert: boolean; circle: boolean }
   | { kind: 'fog-path'; tool: 'fog-lasso' | 'fog-brush'; path: Point[]; invert: boolean };
@@ -122,7 +126,8 @@ function DmMap() {
       const sc = state.scene;
       const cell = sc.map.grid.cellWidth;
       void map?.set(sc.map.imageUrl, sc.map.isVideo);
-      r.setGrid(state.showGrid && sc.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: sc.map.grid.originX, offsetYPx: sc.map.grid.originY, alpha: 0.18 } : null);
+      // While calibrating, the grid is always shown: it is what is being adjusted.
+      r.setGrid((state.showGrid || state.calibration) && sc.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: sc.map.grid.originX, offsetYPx: sc.map.grid.originY, alpha: 0.18 } : null);
       const active = state.ws === 'play' ? initiativeOrder()[state.turn]?.id : undefined;
       r.setTokens(
         sc.tokens.map((k): TokenShape => ({
@@ -196,7 +201,8 @@ function DmMap() {
         const drawing = polygonDraft.current.length > 0 || drag.current !== null;
         drag.current = null;
         polygonDraft.current = [];
-        if (state.wallCommand) {
+        if (state.calibration) cancelCalibration();
+        else if (state.wallCommand) {
           // A chain being drawn ends first; then the command.
           if (state.wallCommand.start) endWallChain();
           else cancelWallCommand();
@@ -206,6 +212,14 @@ function DmMap() {
         if (polygonDraft.current.length > 0) finishPolygon(e.altKey);
         else if (state.areaCommand) finishAreaCommand();
         else if (state.wallCommand) finishWallCommand();
+        else if (state.calibration) finishCalibration();
+      }
+      // Calibrating: arrow keys move the grid by 1 px (Shift: 10 px).
+      const arrows: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      if (state.calibration && arrows[e.key]) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        moveCalibration(arrows[e.key][0] * step, arrows[e.key][1] * step);
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (state.wallCommand) undoWallPoint();
@@ -243,7 +257,7 @@ function DmMap() {
       wallDraft: wallDraftOf(),
       wallEnds: d?.kind === 'wall-ends' ? d.to : null,
       brush: state.tool === 'fog-brush' ? { p: mouse.current, r: state.brushCells * cell } : null,
-      calibPoints: state.calibPoints,
+      calibBox: state.calibration?.box ? { box: state.calibration.box, cells: state.calibration.cells } : null,
       draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
       fogDraft,
       areaDraft: areaDraftOf(d),
@@ -393,9 +407,13 @@ function DmMap() {
       case 'wall':
         addWallPoint(wallTarget(p, e.altKey));
         return;
-      case 'calibrate':
-        addCalibrationPoint(p);
+      case 'calibrate': {
+        // Inside the box: move it with the grid; elsewhere: drag a new box.
+        const b = state.calibration?.box;
+        const inside = b && p.x >= b.x && p.x <= b.x + b.size && p.y >= b.y && p.y <= b.y + b.size;
+        drag.current = inside ? { kind: 'calib-move', last: p } : { kind: 'calib-box', a: p };
         return;
+      }
       case 'cone':
       case 'sphere':
       case 'line':
@@ -419,6 +437,12 @@ function DmMap() {
       moveToken(d.id, { x: p.x + d.ox, y: p.y + d.oy }, false);
     } else if (d.kind === 'area-corner') {
       moveAreaCorner(d.at, cornerTarget(p, e.altKey), false);
+    } else if (d.kind === 'calib-box') {
+      // A click without dragging keeps the box there is.
+      if (Math.hypot(p.x - d.a.x, p.y - d.a.y) * view.current.zoom > 3) setCalibrationBox(squareBox(d.a, p));
+    } else if (d.kind === 'calib-move') {
+      moveCalibration(p.x - d.last.x, p.y - d.last.y);
+      d.last = p;
     } else if (d.kind === 'wall-ends') {
       // The whole drag is one undoable step; a click without moving changes nothing.
       if (!d.moved) checkpoint();
@@ -512,6 +536,7 @@ function DmMap() {
       {hintKey && mapPresent && <div className="map-hint">{t(hintKey)}</div>}
       {ws === 'forge' && <AreaCommandPanel />}
       {ws === 'forge' && <WallCommandPanel />}
+      {ws === 'forge' && <CalibrationPanel />}
       {!mapPresent && (
         <div className="map-empty">
           <Icon name="map" />

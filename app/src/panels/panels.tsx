@@ -218,7 +218,6 @@ export function PropertiesPanel() {
   const { t } = useI18n();
   const map = useStore((s) => s.scene.map);
   const selZone = useStore((s) => s.selectedZoneId);
-  const cal = useStore((s) => s.lastCalibration);
   const file = useStore((s) => s.mapFileName);
   const ambient = useStore((s) => s.scene.ambient);
   const selLight = useStore((s) => s.selectedLightId);
@@ -241,7 +240,6 @@ export function PropertiesPanel() {
         <input id="p-ft" type="number" min={1} value={map.grid.feetPerCell} onChange={(e) => { const v = Number(e.target.value); if (v > 0) { map.grid = { ...map.grid, feetPerCell: v }; emit(); } }} />
       </div>
       {map.widthPx > 0 && <div className="row"><label /><span className="hint mono">{map.widthPx}×{map.heightPx} px · {tileCount(map.widthPx, map.heightPx)} GPU tiles</span></div>}
-      {cal && <div className="row"><label /><span className="hint">{t('props.calibrated', { w: cal.w.toFixed(1), h: cal.h.toFixed(1), r: cal.r.toFixed(2) })}</span></div>}
       <div className="row"><label>{t('map.ambient')}</label><span>{t(ambient === 'lit' ? 'ambient.lit' : 'ambient.dark')}</span></div>
       <button className="btn sm" onClick={() => openMapSettings()}><Icon name="sliders" />{t('tool.mapSettings')} …</button>
       {light && (

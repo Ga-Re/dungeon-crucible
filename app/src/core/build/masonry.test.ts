@@ -75,7 +75,8 @@ describe('deriveWalls', () => {
   it('opens a door as the scene says; an open door blocks no sight', () => {
     const walls = deriveWalls([l], [door('d', 'a', 50)], { d: true });
     expect(walls.find((w) => w.id === 'd')?.open).toBe(true);
-    expect(sightBlockers(walls, { x: 50, y: 50 }).some((w) => w.id === 'd')).toBe(false);
+    const d = walls.find((w) => w.id === 'd');
+    expect(sightBlockers(walls, { x: 50, y: 50 })).not.toContain(d);
   });
 
   it('makes a secret door a secret-door wall', () => {

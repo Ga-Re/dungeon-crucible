@@ -103,6 +103,26 @@ describe('writeArchive / importArchive', () => {
     expect(scene.ambience[0].path).toBe('library/wind.ogg');
   });
 
+  it('map copies (E-32) come along: a renamed picture is followed inside the copy, a different copy of that name is renamed', async () => {
+    campaign();
+    write('library/crypt-cellar.map.json', JSON.stringify({ kind: 'map', name: 'Cellar', resource: 'library/crypt.webp' }));
+    write('campaigns/ashes/scenes/cellar.scene.json', JSON.stringify({ kind: 'scene', mapSidecar: 'library/crypt-cellar.map.json' }));
+    const zip = path.join(dir, 'ashes.zip');
+    await writeArchive(path.join(root, 'campaigns/ashes'), path.join(root, 'library'), ['crypt.webp', 'wind.ogg', 'crypt-cellar.map.json'], zip);
+    // Another library: a different crypt.webp and a different copy of the same name.
+    const other = path.join(dir, 'other');
+    fs.mkdirSync(path.join(other, 'library'), { recursive: true });
+    fs.writeFileSync(path.join(other, 'library/crypt.webp'), Buffer.alloc(10, 9));
+    fs.writeFileSync(path.join(other, 'library/crypt-cellar.map.json'), '{"theirs":true}');
+    const r = await importArchive(zip, other);
+    expect(r.library).toMatchObject({ renamed: 2 });
+    const lib = (f: string) => fs.readFileSync(path.join(other, 'library', f), 'utf8');
+    expect(lib('crypt-cellar.map.json')).toBe('{"theirs":true}');
+    expect(JSON.parse(lib('crypt-cellar-2.map.json'))).toMatchObject({ name: 'Cellar', resource: 'library/crypt-2.webp' });
+    const scene = JSON.parse(fs.readFileSync(path.join(other, 'campaigns', r.slug, 'scenes/cellar.scene.json'), 'utf8'));
+    expect(scene.mapSidecar).toBe('library/crypt-cellar-2.map.json');
+  });
+
   it('campaign-only export leaves the library out; older archives still import', async () => {
     campaign();
     const zip = path.join(dir, 'only.zip');

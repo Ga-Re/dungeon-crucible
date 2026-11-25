@@ -14,6 +14,7 @@ import { WallCommandPanel } from './WallCommandPanel';
 import { assetShapes, footprintOf, hitsPlacement, ROTATE_STEP } from '../core/placement';
 import { drawnPlacements } from '../core/interiors';
 import { PlacingPanel } from './PlacingPanel';
+import { MapCatalogView } from './MapCatalog';
 import { allPlacements } from '../core/persistence';
 import { ASSET_DRAG } from './VaultPanels';
 import { refreshVault, requestAssetUrls } from '../app/vault';
@@ -83,6 +84,7 @@ function DmMap() {
   const ws = useStore((s) => s.ws);
   const sceneVersion = useStore((s) => s.sceneVersion);
   const mapPresent = useStore((s) => hasMap(s.scene));
+  const catalog = useStore((s) => s.ws === 'forge' && s.forgeCatalog);
   const editStart = useStore((s) => s.editStart);
   const campaignOpen = useStore((s) => !!s.campaign);
   const dmFogHidden = useStore((s) => s.dmFogHidden);
@@ -231,6 +233,8 @@ function DmMap() {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest('input,textarea,select,[contenteditable]')) return;
+      // The map catalog covers the map (E-32): its keys do not reach the map hidden behind.
+      if (state.ws === 'forge' && state.forgeCatalog) return;
       if (e.code === 'Space') space.current = true;
       if (e.key === 'Escape' && state.placing) {
         // The placing mode ends (DC-116).
@@ -669,7 +673,9 @@ function DmMap() {
         onContextMenu={(e) => e.preventDefault()}
         aria-label={t('panel.map')}
       />
-      {hintKey && mapPresent && <div className="map-hint">{t(hintKey)}</div>}
+      {hintKey && mapPresent && !catalog && <div className="map-hint">{t(hintKey)}</div>}
+      {/* The Map Forge without a map open: the map catalog over the canvas (E-32, DC-117). */}
+      {catalog && <MapCatalogView />}
       {ws === 'play' && <InteriorAsks />}
       {ws === 'play' && <TvAsk />}
       <TvMapPending />
@@ -677,7 +683,7 @@ function DmMap() {
       {(ws === 'forge' || ws === 'play') && <PlacingPanel />}
       {ws === 'forge' && <WallCommandPanel />}
       {ws === 'forge' && <CalibrationPanel />}
-      {!mapPresent && (
+      {!mapPresent && !catalog && (
         <div className="map-empty">
           <Icon name="map" />
           <b>{t('map.empty.title')}</b>

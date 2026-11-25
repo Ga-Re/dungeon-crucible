@@ -21,6 +21,8 @@ import yazl from 'yazl';
 /** The campaign manifest (same name as `CAMPAIGN_FILE` in `src/core/sidecar.ts`). */
 export const CAMPAIGN_FILE_NAME = 'campaign.dm.json';
 export const SIDECAR_SUFFIX = '.dm.json';
+/** A map of its own on a library picture (E-32): `library/<name>.map.json`. */
+export const MAP_COPY_SUFFIX = '.map.json';
 
 export const ARCHIVE_LIMITS = {
   /** Total size of all files once extracted. */
@@ -159,7 +161,7 @@ export function campaignSlug(name: string): string {
 
 export function freeName(dir: string, name: string): string {
   if (!fs.existsSync(path.join(dir, name))) return name;
-  const ext = name.endsWith(SIDECAR_SUFFIX) ? '' : path.extname(name);
+  const ext = name.endsWith(SIDECAR_SUFFIX) ? '' : name.endsWith(MAP_COPY_SUFFIX) ? MAP_COPY_SUFFIX : path.extname(name);
   const stem = name.slice(0, name.length - ext.length);
   for (let i = 2; ; i++) if (!fs.existsSync(path.join(dir, `${stem}-${i}${ext}`))) return `${stem}-${i}${ext}`;
 }
@@ -198,7 +200,7 @@ export async function importArchive(zipFile: string, rootDir: string): Promise<I
     const renames = new Map<string, string>();
     const reused = new Set<string>();
     const names = [...plan.library.values()];
-    const media = names.filter((n) => !n.endsWith(SIDECAR_SUFFIX));
+    const media = names.filter((n) => !n.endsWith(SIDECAR_SUFFIX) && !n.endsWith(MAP_COPY_SUFFIX));
     for (const name of media) {
       const src = path.join(work, 'library', name);
       const dest = path.join(libraryDir, name);
@@ -229,6 +231,24 @@ export async function importArchive(zipFile: string, rootDir: string): Promise<I
       }
       await fs.promises.rename(path.join(work, 'library', name), dest);
     }
+    // Map copies (E-32), after their pictures: a renamed picture is followed inside the copy; a copy
+    // with the same name but other content gets a free name, and the campaign follows it.
+    for (const name of names.filter((n) => n.endsWith(MAP_COPY_SUFFIX))) {
+      const src = path.join(work, 'library', name);
+      if (renames.size > 0) await rewriteFile(src, referenceMap(renames));
+      const dest = path.join(libraryDir, name);
+      if (!fs.existsSync(dest)) {
+        await fs.promises.rename(src, dest);
+        result.added++;
+      } else if ((await sha256(src)) === (await sha256(dest))) {
+        result.reused++;
+      } else {
+        const free = freeName(libraryDir, name);
+        await fs.promises.rename(src, path.join(libraryDir, free));
+        renames.set(name, free);
+        result.renamed++;
+      }
+    }
 
     // The campaign, with references to renamed library files rewritten.
     if (renames.size > 0) await rewriteReferences(path.join(work, 'campaign'), renames);
@@ -254,27 +274,36 @@ async function readManifestName(file: string): Promise<string | null> {
 }
 
 /** Replaces `library/<old>` (and its sidecar path) in every string of every JSON file under `dir`. */
-async function rewriteReferences(dir: string, renames: Map<string, string>): Promise<void> {
+/** The library paths renamed on import, and their sidecars. */
+function referenceMap(renames: Map<string, string>): Map<string, string> {
   const map = new Map<string, string>();
   for (const [from, to] of renames) {
     map.set(`library/${from}`, `library/${to}`);
     map.set(`library/${from}${SIDECAR_SUFFIX}`, `library/${to}${SIDECAR_SUFFIX}`);
   }
+  return map;
+}
+
+/** A JSON file with every string that is a renamed library path rewritten; not JSON: left alone. */
+async function rewriteFile(file: string, map: Map<string, string>): Promise<void> {
   const walk = (v: unknown): unknown => {
     if (typeof v === 'string') return map.get(v) ?? v;
     if (Array.isArray(v)) return v.map(walk);
     if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
     return v;
   };
+  try {
+    const json: unknown = JSON.parse(await fs.promises.readFile(file, 'utf8'));
+    await fs.promises.writeFile(file, JSON.stringify(walk(json), null, 2));
+  } catch {
+    /* not JSON: leave it */
+  }
+}
+
+async function rewriteReferences(dir: string, renames: Map<string, string>): Promise<void> {
+  const map = referenceMap(renames);
   for (const rel of await filesUnder(dir)) {
-    if (!rel.endsWith('.json')) continue;
-    const file = path.join(dir, ...rel.split('/'));
-    try {
-      const json: unknown = JSON.parse(await fs.promises.readFile(file, 'utf8'));
-      await fs.promises.writeFile(file, JSON.stringify(walk(json), null, 2));
-    } catch {
-      /* not JSON: leave it */
-    }
+    if (rel.endsWith('.json')) await rewriteFile(path.join(dir, ...rel.split('/')), map);
   }
 }
 

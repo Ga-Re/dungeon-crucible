@@ -116,6 +116,10 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .tab-menu { width: 240px; }
 .tab-confirm { margin: 6px 8px; font-size: 12px; color: var(--fg); }
 .tab-confirm-buttons { padding: 0 8px 6px; }
+.doc-tab-fixed .doc-tab-name { padding-right: 10px; }
+/* The Map Forge's map catalog over the canvas (E-32). */
+.map-catalog { position: absolute; inset: 0; z-index: 4; }
+.map-catalog-preview { width: 100%; max-height: 180px; object-fit: contain; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--canvas); margin-bottom: 8px; }
 .doc-tab-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
 .doc-tab-close { display: grid; place-items: center; width: 20px; height: 20px; margin-right: 4px; border: none; border-radius: 3px; background: none; color: var(--fg-faint); cursor: pointer; }
 .doc-tab-close:hover { background: var(--panel-2); color: var(--fg); }

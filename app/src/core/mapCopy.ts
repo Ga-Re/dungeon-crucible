@@ -1,0 +1,51 @@
+/**
+ * Duplicating a map (E-32, DC-118): a copy is its own map file `library/<name>.map.json` on the
+ * same picture. "Only the map" takes the picture, grid, type, tags and landscape (and the fog's
+ * look); "with everything" also walls, areas, lights, assets, layers, points and the start fog –
+ * all under new ids, with the references between them following. Pure.
+ */
+import { slugId } from './documents';
+import type { MapSidecar } from './sidecar';
+
+/** A free map file for `name` in the (flat) library. */
+export function mapFileFor(name: string, taken: ReadonlySet<string>): string {
+  const base = slugId(name, 'map');
+  let p = `library/${base}.map.json`;
+  for (let i = 2; taken.has(p); i++) p = `library/${base}-${i}.map.json`;
+  return p;
+}
+
+/** A copy of `map` named `name`; `fresh(prefix)` gives a new id (random, never one in use). */
+export function duplicateMap(map: MapSidecar, name: string, withContent: boolean, fresh: (prefix: string) => string): MapSidecar {
+  const copy = structuredClone(map);
+  copy.name = name;
+  if (!withContent) {
+    const { startFog: _f, ...rest } = copy;
+    return { ...rest, walls: [], zones: [], lights: [], assets: [], layers: [], pois: [] };
+  }
+  const ids = new Map<string, string>();
+  const renew = <T extends { id: string }>(xs: T[], prefix: string) => xs.map((x) => {
+    const id = fresh(prefix);
+    ids.set(x.id, id);
+    return { ...x, id };
+  });
+  // Layers and areas first: other elements refer to them.
+  copy.layers = renew(copy.layers, 'layer');
+  copy.zones = renew(copy.zones, 'area');
+  copy.walls = renew(copy.walls, 'wall');
+  copy.lights = renew(copy.lights, 'light');
+  copy.assets = renew(copy.assets, 'asset');
+  copy.pois = renew(copy.pois, 'poi');
+  const ref = (id: string | undefined) => (id === undefined ? undefined : ids.get(id) ?? id);
+  const onLayer = <T extends { layer?: string }>(x: T): T => (x.layer ? { ...x, layer: ref(x.layer) } : x);
+  copy.layers = copy.layers.map((l) => ({
+    ...l,
+    ...(l.trigger ? { trigger: { ...l.trigger, area: ref(l.trigger.area)! } } : {}),
+    ...(l.counter ? { counter: ref(l.counter) } : {}),
+  }));
+  copy.walls = copy.walls.map(onLayer);
+  copy.zones = copy.zones.map(onLayer);
+  copy.lights = copy.lights.map(onLayer);
+  copy.assets = copy.assets.map(onLayer);
+  return copy;
+}

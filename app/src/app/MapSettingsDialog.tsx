@@ -2,6 +2,7 @@
  * "Map settings" (DC-011): the open map's name, type, landscape, tags, default fog and ambient
  * light. Edits a draft; OK applies it as one undoable step.
  */
+import { MAP_TYPES } from '../core/mapCatalog';
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { addTags, removeTag, suggestions } from '../core/catalog';
 import { FOG_BIOMES, type MapType } from '../core/scene';
@@ -10,7 +11,6 @@ import type { MessageKey } from '../i18n/en';
 import { applyMapSettings, currentMapSettings, useStore } from './store';
 import './start.css';
 
-const MAP_TYPES: MapType[] = ['dungeon', 'building', 'region', 'world', 'arena'];
 
 export function MapSettingsDialog({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();

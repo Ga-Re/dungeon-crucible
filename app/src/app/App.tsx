@@ -3,6 +3,7 @@ import { exploredShare } from '../core/fogModel';
 import { DockHost } from '../dock/DockHost';
 import { floatingBackend } from '../platform/bridge';
 import { draftChanged, importVaultAssets, startPackImport } from './vault';
+import { showMapCatalog } from './library';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
 import { mapCommands } from '../panels/MapView';
@@ -316,7 +317,8 @@ function DocTabs() {
   const { t } = useI18n();
   const tabs = useStore((s) => s.tabs);
   // In the Creatures workspace the creature shown; elsewhere the scene or map behind the tabs.
-  const active = useStore((s) => (s.ws === 'creatures' ? s.creatureTab : s.ws === 'vault' ? s.assetTab : s.ws === 'forge' || s.ws === 'play' ? s.activeTab : null));
+  const catalogOn = useStore((s) => s.ws === 'forge' && s.forgeCatalog);
+  const active = useStore((s) => (s.ws === 'creatures' ? s.creatureTab : s.ws === 'vault' ? s.assetTab : (s.ws === 'forge' && !s.forgeCatalog) || s.ws === 'play' ? s.activeTab : null));
   const creatures = useStore((s) => s.creatures);
   const assets = useStore((s) => s.vault.items);
   // Asset tabs whose draft has changes not saved with OK.
@@ -327,7 +329,6 @@ function DocTabs() {
   const pending = useStore((s) => s.dirty || s.saving);
   const [menu, setMenu] = useState<{ id: string; at: DOMRect } | null>(null);
   const [confirm, setConfirm] = useState<{ id: string; at: DOMRect; draft?: boolean } | null>(null);
-  if (!tabs.length) return null;
   const close = (id: string, el: HTMLElement) => {
     const at = el.closest('.doc-tab')!.getBoundingClientRect();
     // The TV's scene and an asset with an unsaved draft ask first.
@@ -342,6 +343,12 @@ function DocTabs() {
     : tab.name;
   return (
     <div className="doc-tabs" role="tablist" aria-label={t('tabs.label')}>
+      {/* The map catalog (E-32): always first, opens the Map Forge on it. */}
+      <div className={`doc-tab doc-tab-fixed ${catalogOn ? 'on' : ''}`}>
+        <button role="tab" aria-selected={catalogOn} className="doc-tab-name" title={t('mapCatalog.tabHint')} onClick={() => { if (state.ws !== 'forge') setWorkspace('forge'); showMapCatalog(); }}>
+          <Icon name="grid" /><span>{t('mapCatalog.tab')}</span>
+        </button>
+      </div>
       {tabs.map((tab) => {
         const on = tab.id === active;
         const name = nameOf(tab);

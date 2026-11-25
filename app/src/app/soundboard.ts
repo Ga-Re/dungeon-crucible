@@ -120,14 +120,17 @@ export async function importAudio(sfx: boolean): Promise<void> {
   const f = await importToLibrary('audio');
   if (!f) return;
   const subkind = sfx ? 'sfx' : 'ambience';
-  let existing: { asset: AssetSidecar; raw: Record<string, unknown> } | null = null;
+  let text: string | null = null;
   try {
-    const r = parseAssetSidecar(await readText(`${f.relPath}.dm.json`), f.relPath);
-    if (r.ok) existing = { asset: r.value, raw: r.raw };
+    text = await readText(`${f.relPath}.dm.json`);
   } catch {
     /* none yet */
   }
-  if (!existing || existing.asset.subkind !== subkind) {
+  const r = text === null ? null : parseAssetSidecar(text, f.relPath);
+  const existing = r?.ok ? { asset: r.value, raw: r.raw } : null;
+  // A sidecar that cannot be read (broken, or from a newer app version) is never written over.
+  const writable = text === null || existing !== null;
+  if (writable && (!existing || existing.asset.subkind !== subkind)) {
     const asset: AssetSidecar = existing?.asset ?? AssetSidecarSchema.parse({ kind: 'asset', schemaVersion: ASSET_VERSION, ...assetDefaults(f.relPath) });
     // Unknown fields of the file survive (file rules).
     await writeText(`${f.relPath}.dm.json`, JSON.stringify({ ...(existing?.raw ?? {}), ...asset, assetKind: 'sound', subkind }, null, 2));

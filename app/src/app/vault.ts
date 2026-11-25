@@ -95,24 +95,34 @@ export function selectAsset(relPath: string | null, mode: 'single' | 'toggle' | 
   emit();
 }
 
-/** Writes an asset's sidecar; unknown fields of what was read survive. */
-async function writeAsset(item: VaultItem, next: AssetSidecar): Promise<void> {
+/** Writes an asset's sidecar (unknown fields of what was read survive) and returns the item as now saved. */
+async function writeAsset(item: VaultItem, next: AssetSidecar): Promise<VaultItem> {
   const doc = AssetSidecarSchema.parse(next);
   const merged = keepUnknown(AssetSidecarSchema, item.raw ?? {}, doc) as Record<string, unknown>;
   await writeText(`${item.relPath}.dm.json`, JSON.stringify(merged, null, 2));
-  item.asset = doc;
-  item.raw = merged;
+  return { ...item, asset: doc, raw: merged };
 }
 
-/** Changes the given assets (each through `change`) and saves them. */
+/**
+ * Changes the given assets (each through `change`) and saves them; the catalog gets a new list,
+ * so every view updates. A failed write is reported; what was saved before it stays.
+ */
 async function updateAssets(paths: readonly string[], change: (a: AssetSidecar) => AssetSidecar): Promise<void> {
   const wanted = new Set(paths);
-  for (const item of state.vault.items) {
-    if (!wanted.has(item.relPath)) continue;
-    const next = change(item.asset);
-    if (next !== item.asset || item.raw === null) await writeAsset(item, next);
+  const items = [...state.vault.items];
+  try {
+    for (let k = 0; k < items.length; k++) {
+      const item = items[k];
+      if (!wanted.has(item.relPath)) continue;
+      const next = change(item.asset);
+      if (next !== item.asset || item.raw === null) items[k] = await writeAsset(item, next);
+    }
+  } catch {
+    log('log.assetWriteFailed');
+  } finally {
+    state.vault.items = items;
+    emit();
   }
-  emit();
 }
 
 /** Edits every selected asset (Properties panel; a multi-selection gets the same change). */
@@ -143,35 +153,46 @@ export async function renameCollectionEverywhere(from: string, to: string): Prom
   state.vault.newCollections = state.vault.newCollections.map((c) => (c === from ? to.trim() : c));
   const filter = state.vault.filter;
   if (filter.collection === from) state.vault.filter = { ...filter, collection: to.trim() };
-  await updateAssets(state.vault.items.map((i) => i.relPath), (a) => renameCollection(a, from, to.trim()));
+  await updateAssets(inCollection(from), (a) => renameCollection(a, from, to.trim()));
 }
 
 /** Deletes a collection: its assets stay, only without it. */
 export async function deleteCollectionEverywhere(name: string): Promise<void> {
   state.vault.newCollections = state.vault.newCollections.filter((c) => c !== name);
   if (state.vault.filter.collection === name) state.vault.filter = { ...state.vault.filter, collection: undefined };
-  await updateAssets(
-    state.vault.items.filter((i) => i.asset.collections.some((c) => c.toLowerCase() === name.toLowerCase())).map((i) => i.relPath),
-    (a) => removeCollection(a, name),
-  );
+  await updateAssets(inCollection(name), (a) => removeCollection(a, name));
 }
 
-/** Gives imported files without an asset sidecar their defaults, refreshes and selects them. */
+function inCollection(name: string): string[] {
+  return state.vault.items.filter((i) => i.asset.collections.some((c) => c.toLowerCase() === name.toLowerCase())).map((i) => i.relPath);
+}
+
+/**
+ * After an import: files copied just now get a sidecar with their defaults; a file the library had
+ * already keeps what it has – a map, an unreadable sidecar or one from a newer app version is
+ * never written over (file rules) and stays out of the Vault. Then refreshes and selects them.
+ */
 async function afterImport(imported: readonly LibraryImport[]): Promise<void> {
   await refreshVault();
   const byPath = new Map(state.vault.items.map((i) => [i.relPath, i]));
   const paths: string[] = [];
-  for (const f of imported) {
-    if (!kindFromFile(f.relPath)) continue;
-    let item = byPath.get(f.relPath);
-    if (!item) {
-      item = { relPath: f.relPath, size: 0, mtimeMs: 0, raw: null, asset: defaultsFor(f.relPath) };
-      state.vault.items.push(item);
+  let skipped = 0;
+  try {
+    for (const f of imported) {
+      if (!kindFromFile(f.relPath)) continue;
+      const item = byPath.get(f.relPath) ?? (f.reused ? null : { relPath: f.relPath, size: 0, mtimeMs: 0, raw: null, asset: defaultsFor(f.relPath) });
+      if (!item) {
+        skipped++;
+        continue;
+      }
+      if (item.raw === null) await writeAsset(item, item.asset);
+      paths.push(f.relPath);
     }
-    if (item.raw === null) await writeAsset(item, item.asset);
-    paths.push(f.relPath);
+  } catch {
+    log('log.assetWriteFailed');
   }
-  if (imported.length) log('log.assetsImported', { n: imported.length, reused: imported.filter((f) => f.reused).length });
+  if (paths.length) log('log.assetsImported', { n: paths.length, reused: imported.filter((f) => f.reused && paths.includes(f.relPath)).length });
+  if (skipped) log('log.assetsNotAssets', { n: skipped });
   await refreshVault();
   state.vault.selected = paths;
   state.vault.anchor = paths[0] ?? null;
@@ -181,7 +202,15 @@ async function afterImport(imported: readonly LibraryImport[]): Promise<void> {
 /** "Import": any number of files from the native dialog. */
 export async function importVaultAssets(): Promise<void> {
   if (!isDesktop()) return;
-  await afterImport(await importAssets());
+  let imported: LibraryImport[];
+  try {
+    imported = await importAssets();
+  } catch {
+    log('log.assetsImportFailed');
+    emit();
+    return;
+  }
+  await afterImport(imported);
 }
 
 /** Files dropped on the Vault: sent as bytes (never as paths). */

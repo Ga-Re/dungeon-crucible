@@ -186,7 +186,13 @@ export function VaultBrowser() {
     const data = e.dataTransfer.getData(ASSET_DRAG);
     if (!data) return;
     e.preventDefault();
-    void addAssetsToCollection(JSON.parse(data) as string[], name);
+    let paths: unknown;
+    try {
+      paths = JSON.parse(data);
+    } catch {
+      return;
+    }
+    if (Array.isArray(paths)) void addAssetsToCollection(paths.filter((p): p is string => typeof p === 'string'), name);
   };
   return (
     <div className="panel-body vault-browser">

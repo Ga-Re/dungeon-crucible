@@ -29,7 +29,13 @@ export async function listLibrary(library: string): Promise<LibraryEntry[]> {
   const out: LibraryEntry[] = [];
   for (const name of names) {
     if (name.startsWith('.') || name.endsWith(SIDECAR_SUFFIX)) continue;
-    const st = await fs.promises.stat(path.join(library, name));
+    let st: fs.Stats;
+    try {
+      st = await fs.promises.stat(path.join(library, name));
+    } catch {
+      // Gone meanwhile (a sync client) or a broken link: one file, not the whole list.
+      continue;
+    }
     if (!st.isFile()) continue;
     let sidecar: string | null = null;
     try {
@@ -47,8 +53,8 @@ async function sameContent(library: string, size: number, hash: () => Promise<st
   for (const name of await fs.promises.readdir(library)) {
     if (name.endsWith(SIDECAR_SUFFIX) || name.startsWith('.')) continue;
     const candidate = path.join(library, name);
-    const st = await fs.promises.stat(candidate);
-    if (!st.isFile() || st.size !== size) continue;
+    const st = await fs.promises.stat(candidate).catch(() => null);
+    if (!st?.isFile() || st.size !== size) continue;
     if ((await sha256(candidate)) === (await hash())) return name;
   }
   return null;
@@ -79,7 +85,14 @@ export async function addBytesToLibrary(library: string, fileName: string, bytes
   const existing = await sameContent(library, bytes.byteLength, once(async () => crypto.createHash('sha256').update(bytes).digest('hex')));
   if (existing) return { name: existing, reused: true };
   const name = freeName(library, fileName);
-  await fs.promises.writeFile(path.join(library, name), bytes, { flag: 'wx' });
+  // Written aside first: a crash leaves no half file in the library. `link` never replaces a file.
+  const tmp = path.join(library, `.${name}.tmp-drop`);
+  await fs.promises.writeFile(tmp, bytes);
+  try {
+    await fs.promises.link(tmp, path.join(library, name));
+  } finally {
+    await fs.promises.rm(tmp, { force: true });
+  }
   return { name, reused: false };
 }
 
@@ -118,6 +131,8 @@ export class ThumbCache {
     const file = this.file(key);
     if (bytes.byteLength > MAX_THUMB_BYTES || !isThumbImage(bytes)) throw new Error('Not a thumbnail');
     await fs.promises.mkdir(this.dir, { recursive: true });
-    await fs.promises.writeFile(file, bytes);
+    // Written aside, then renamed: a broken thumbnail is never kept.
+    await fs.promises.writeFile(`${file}.tmp`, bytes);
+    await fs.promises.rename(`${file}.tmp`, file);
   }
 }

@@ -41,8 +41,10 @@ beforeEach(() => {
     },
     importAssets: async () =>
       picked.map((name) => {
+        // A file the library has already is reused (same content), not copied.
+        const reused = files.has(`library/${name}`);
         files.set(`library/${name}`, '');
-        return { relPath: `library/${name}`, absPath: `/root/library/${name}`, reused: false };
+        return { relPath: `library/${name}`, absPath: `/root/library/${name}`, reused };
       }),
   };
   window.dc = api as DcApi;
@@ -74,6 +76,41 @@ describe('the Asset Vault', () => {
     expect(state.vault.selected).toEqual(['library/rock_2x2.png', 'library/portal.webm']);
   });
 
+  it('a file the library has as a map, unreadable or without a sidecar is left alone on import', async () => {
+    const before = new Map(files);
+    picked = ['crypt.png', 'broken.png', 'plain.png'];
+    await importVaultAssets();
+    for (const f of ['library/crypt.png.dm.json', 'library/broken.png.dm.json']) expect(files.get(f)).toBe(before.get(f));
+    expect(files.has('library/plain.png.dm.json')).toBe(false);
+    expect(state.vault.selected).toEqual([]);
+    expect(state.log[0]).toMatchObject({ key: 'log.assetsNotAssets', params: { n: 3 } });
+  });
+
+  it('renaming a collection writes only the assets in it', async () => {
+    await refreshVault();
+    await renameCollectionEverywhere('Forest', 'Old forest');
+    // The sound without a sidecar is not in the collection: no file for it.
+    expect(files.has('library/wind.ogg.dm.json')).toBe(false);
+  });
+
+  it('a change shows at once: the catalog list is a new one', async () => {
+    await refreshVault();
+    const list = state.vault.items;
+    await toggleFavorite('library/oak.png');
+    expect(state.vault.items).not.toBe(list);
+    expect(state.vault.items.find((i) => i.relPath === 'library/oak.png')!.asset.favorite).toBe(true);
+  });
+
+  it('a failed write is reported, not swallowed', async () => {
+    await refreshVault();
+    window.dc!.writeText = async () => {
+      throw new Error('disk full');
+    };
+    await toggleFavorite('library/oak.png');
+    expect(state.log[0]).toMatchObject({ key: 'log.assetWriteFailed' });
+    expect(state.vault.items.find((i) => i.relPath === 'library/oak.png')!.asset.favorite).toBe(false);
+  });
+
   it('edits the selection in the files; unknown fields survive', async () => {
     await refreshVault();
     selectAsset('library/oak.png', 'single');
@@ -103,5 +140,19 @@ describe('the Asset Vault', () => {
     expect(state.vault.selected).toEqual(order.slice(0, 3));
     selectAsset(order[1], 'toggle');
     expect(state.vault.selected).toEqual([order[0], order[2]]);
+  });
+});
+
+describe('importing audio in the soundboard', () => {
+  it('never writes over a sidecar it cannot read', async () => {
+    const { importAudio } = await import('./soundboard');
+    files.set('library/hum.ogg', '');
+    files.set('library/hum.ogg.dm.json', JSON.stringify({ kind: 'asset', schemaVersion: 99, name: 'Hum' }));
+    window.dc!.importToLibrary = async () => ({ relPath: 'library/hum.ogg', absPath: '/root/library/hum.ogg', reused: true });
+    window.dc!.listFiles = async () => [];
+    state.campaign = { slug: 'c', name: 'C' };
+    await importAudio(true);
+    expect(JSON.parse(files.get('library/hum.ogg.dm.json')!)).toEqual({ kind: 'asset', schemaVersion: 99, name: 'Hum' });
+    state.campaign = null;
   });
 });

@@ -383,7 +383,9 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   nie als Pfad), Duplikate per Hash. Vorschaubilder erzeugt das DM-Fenster, der Hauptprozess hält sie im
   App-Datenordner (nur PNG/WebP, Schlüssel aus Pfad/Größe/Zeit) – enger als freigegeben: ohne Änderung am
   Asset-Protokoll. Die Kartenliste der Schmiede zeigt keine Assets mehr. Änderungen im Vault sind nicht
-  rückgängig machbar (direkt in die Sidecars). „Zuletzt benutzt“ kommt mit DC-041 (Platzieren).
+  rückgängig machbar (direkt in die Sidecars). „Zuletzt benutzt“ kommt mit DC-041 (Platzieren). Import einer
+  Datei, die die Bibliothek schon als Karte, unlesbar oder aus neuerer App-Version hat: bleibt unverändert,
+  Hinweis im Log (keine Umwandlung in ein Asset).
 - **DC-040b Pack-Import** (E-27; T-231): Ordner wählen, Unterordner ankreuzen, Fortschritt und Abbrechen ohne
   halbe Dateien; Ordnernamen → Tags plus „pack: …“; Varianten (oak_01, oak_02 …) als Gruppe; Namenskonflikte
   automatisch umbenennen. Import aus Karte/Handout heraus kommt mit DC-041 bzw. den Handouts.

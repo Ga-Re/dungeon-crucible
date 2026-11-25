@@ -9,7 +9,7 @@ import type { AssetKind } from '../core/sidecar';
 import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
-import { placeAsset, recentAssets, setRandomVariant, useStore } from '../app/store';
+import { placeAsset, recentAssets, startPlacing, useStore } from '../app/store';
 import { mapCommands } from './MapView';
 import { thumbnailUrl } from '../app/thumbs';
 import { importVaultAssets, refreshVault, type VaultItem } from '../app/vault';
@@ -22,7 +22,6 @@ export function AssetPicker() {
   const { t } = useI18n();
   const items = useStore((s) => s.vault.items);
   const objects = useStore((s) => s.vault.objects);
-  const random = useStore((s) => s.randomVariant);
   const root = useStore((s) => s.root?.root);
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<AssetKind | null>(null);
@@ -53,12 +52,6 @@ export function AssetPicker() {
           </button>
         ))}
       </div>
-      {objects.length > 0 && (
-        <label className="cmd-check" title={t('picker.randomHint')}>
-          <input type="checkbox" checked={random} onChange={(e) => setRandomVariant(e.target.checked)} />
-          {t('picker.random')}
-        </label>
-      )}
       {recent.length > 0 && !query && !kind && (
         <>
           <div className="sec">{t('picker.recent')}</div>
@@ -101,6 +94,8 @@ function PickerTile({ entry }: { entry: CatalogEntry<VaultItem> }) {
         if (e.key === 'Enter' && at) placeAsset(item.relPath, at);
       }}
       draggable
+      // A click starts the placing mode (DC-116): place it with each click on the map.
+      onClick={() => startPlacing(item.relPath, name)}
       title={a.sizeCells ? `${name} · ${a.sizeCells.w}×${a.sizeCells.h}` : name}
       onDragStart={(e) => {
         e.dataTransfer.setData(ASSET_DRAG, JSON.stringify([item.relPath]));

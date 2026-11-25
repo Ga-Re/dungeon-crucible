@@ -13,6 +13,7 @@ import { AreaCommandPanel } from './AreaCommandPanel';
 import { WallCommandPanel } from './WallCommandPanel';
 import { assetShapes, footprintOf, hitsPlacement, ROTATE_STEP } from '../core/placement';
 import { drawnPlacements } from '../core/interiors';
+import { PlacingPanel } from './PlacingPanel';
 import { allPlacements } from '../core/persistence';
 import { ASSET_DRAG } from './VaultPanels';
 import { refreshVault, requestAssetUrls } from '../app/vault';
@@ -36,7 +37,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
-  editableHere, shownInForge, activateAsset, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
+  editableHere, shownInForge, activateAsset, placeHere, previewPlacing, stopPlacing, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -150,9 +151,12 @@ function DmMap() {
       const drawn = drawnPlacements(placements, state.assetInfo, inScene ? sc.interiorsOn : {}, inScene && state.roofsSeeThrough);
       // Inner pictures are looked up with their houses, so switching shows them at once.
       const inner = placements.flatMap((a) => state.assetInfo[a.assetPath]?.interior?.asset ?? []);
-      requestAssetUrls([...new Set([...placements.map((a) => a.assetPath), ...inner])]);
+      // The placing mode's preview (DC-116): see-through, above the rest – in this window only.
+      const pl = state.placing;
+      const ghost = pl?.at ? [{ id: '__placing', assetPath: pl.next.path, x: pl.at.x, y: pl.at.y, rotation: pl.at.rotation, scale: pl.next.scale, alpha: 0.55 }] : [];
+      requestAssetUrls([...new Set([...placements.map((a) => a.assetPath), ...inner, ...ghost.map((g) => g.assetPath)])]);
       // In a scene, effects follow its state (switched off, played once); the Map Forge shows all.
-      r.setAssets(assetShapes(drawn, state.assetInfo, sc.map.grid, inScene ? { effectsOn: sc.effectsOn, runs: state.effectRuns } : undefined));
+      r.setAssets(assetShapes([...drawn, ...ghost], state.assetInfo, sc.map.grid, inScene ? { effectsOn: sc.effectsOn, runs: state.effectRuns } : undefined));
       const active = state.ws === 'play' ? initiativeOrder()[state.turn]?.id : undefined;
       r.setTokens(
         sc.tokens.map((k): TokenShape => ({
@@ -228,6 +232,11 @@ function DmMap() {
     const down = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest('input,textarea,select,[contenteditable]')) return;
       if (e.code === 'Space') space.current = true;
+      if (e.key === 'Escape' && state.placing) {
+        // The placing mode ends (DC-116).
+        stopPlacing();
+        return;
+      }
       if (e.key === 'Escape') {
         // A polygon being clicked goes first; then the running command.
         const drawing = polygonDraft.current.length > 0 || drag.current !== null;
@@ -369,6 +378,12 @@ function DmMap() {
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const p = toWorld(e);
     const r = canvasRef.current!.getBoundingClientRect();
+    // The placing mode (DC-116): a click places, a right click ends it; the middle button still pans.
+    if (state.placing && !space.current && e.button !== 1) {
+      if (e.button === 2) stopPlacing();
+      else placeHere(p);
+      return;
+    }
     if (e.button === 1 || e.button === 2 || state.tool === 'pan' || space.current) {
       drag.current = { kind: 'pan', sx: e.clientX - r.left, sy: e.clientY - r.top, vx: view.current.x, vy: view.current.y };
       return;
@@ -524,6 +539,8 @@ function DmMap() {
     const p = toWorld(e);
     mouse.current = p;
     const d = drag.current;
+    // The placing mode's preview follows the pointer (not while panning).
+    if (state.placing && d?.kind !== 'pan') previewPlacing(p);
     if (!d) return;
     if (d.kind === 'pan') {
       const r = canvasRef.current!.getBoundingClientRect();
@@ -616,6 +633,7 @@ function DmMap() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerLeave={() => state.placing && previewPlacing(null)}
         onDoubleClick={(e) => {
           if (state.tool === 'fog-polygon' || state.tool === 'area') finishPolygon(e.altKey);
           else if (state.tool === 'wall') endWallChain();
@@ -656,6 +674,7 @@ function DmMap() {
       {ws === 'play' && <TvAsk />}
       <TvMapPending />
       {ws === 'forge' && <AreaCommandPanel />}
+      {(ws === 'forge' || ws === 'play') && <PlacingPanel />}
       {ws === 'forge' && <WallCommandPanel />}
       {ws === 'forge' && <CalibrationPanel />}
       {!mapPresent && (

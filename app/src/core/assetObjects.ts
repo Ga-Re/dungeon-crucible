@@ -111,16 +111,44 @@ export function catalogEntries<T extends Item>(items: readonly T[], objects: rea
 }
 
 /**
- * A random variant of the object `relPath` belongs to (E-31, DC-115), from its variants that are
- * no house's inside; an asset in no object is itself. `random` gives 0 ≤ x < 1.
+ * The variants a random placement chooses from (E-31, DC-115): those of the object `relPath`
+ * belongs to that are no house's inside; an asset in no object is the only one.
  */
-export function randomVariant(relPath: string, items: readonly Item[], objects: readonly ObjectFile[], random: () => number): string {
+export function randomChoices(relPath: string, items: readonly Item[], objects: readonly ObjectFile[]): string[] {
   const o = objects.find((x) => x.doc.variants.some((v) => `library/${v.file}` === relPath));
-  if (!o) return relPath;
+  if (!o) return [relPath];
   const paths = o.doc.variants.map((v) => `library/${v.file}`);
   const mine = items.filter((i) => paths.includes(i.relPath));
   const insides = new Set(mine.flatMap((i) => (i.asset.interior ? [i.asset.interior.asset] : [])));
   const choice = mine.map((i) => i.relPath).filter((p) => !insides.has(p));
-  if (!choice.length) return relPath;
-  return choice[Math.min(choice.length - 1, Math.floor(random() * choice.length))];
+  return choice.length ? choice : [relPath];
+}
+
+/** How the placing mode places (E-31, DC-116). */
+export interface PlaceOptions {
+  /** A variant's path, or one at random each time. */
+  variant: string | 'random';
+  randomRotation: boolean;
+  rotationStep: 'free' | 15 | 90;
+  /** The turn when not random (degrees). */
+  rotation: number;
+  randomScale: boolean;
+  /** Random size within 1 ± this (e.g. 0.1: 90–110 %). */
+  scaleSpread: number;
+}
+
+/**
+ * What the next click places: the variant (one of `choices` at random, or the one chosen), the
+ * turn and the size – from `random` (0 ≤ x < 1), drawn in that order.
+ */
+export function rollPlacement(o: PlaceOptions, choices: readonly string[], random: () => number): { path: string; rotation: number; scale: number } {
+  const pick = <T,>(xs: readonly T[]) => xs[Math.min(xs.length - 1, Math.floor(random() * xs.length))];
+  const path = o.variant === 'random' ? pick(choices) : o.variant;
+  let rotation = o.rotation;
+  if (o.randomRotation) {
+    const step = o.rotationStep === 'free' ? 1 : o.rotationStep;
+    rotation = Math.floor(random() * (360 / step)) * step;
+  }
+  const scale = o.randomScale ? Math.round((1 - o.scaleSpread + random() * 2 * o.scaleSpread) * 100) / 100 : 1;
+  return { path, rotation, scale };
 }

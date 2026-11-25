@@ -566,10 +566,18 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Arten, Unterarten, Umgebungen, Sammlungen, Namen (auch Objektnamen); Pfeiltasten/Enter oder Klick machen daraus
   einen Filter (Chip mit ✕). Ein Objekt passt über eine seiner Varianten oder seinen Namen; die Freitextsuche findet
   auch übersetzte Arten/Unterarten und Sammlungen. (Das Assets-Panel der Karte hat weiter die einfache Suche.)
-- ✓ **DC-115 Zufällige Variante** (E-31): Schalter „Zufällige Variante“ im Assets-Panel (Geräte-Einstellung, nur wenn
-  es Objekte gibt); an, legt jedes Ablegen eines Objekts eine zufällige seiner Varianten, nie eine Innenansicht.
+- ✓ **DC-115 Zufällige Variante** (E-31): „Zufällige Variante“ – nach DM-Entscheidung im Platzier-Panel (DC-116)
+  statt als Schalter im Assets-Panel; wählt nie eine Innenansicht.
 - ✓ **DC-113 Drehgriff** (E-31): am ausgewählten Asset (Kartenschmiede; szeneneigene im Orchestrator) ein runder
   Griff über der Oberkante; ziehen dreht stufenlos um den Anker (sonst die Mitte), ein Rückgängig-Schritt.
+- ✓ **DC-116 Platzier-Modus** (E-31; DM-Wunsch 2026-11-25): Ein Klick auf ein Asset im Assets-Panel öffnet ein
+  Befehls-Panel „… platzieren“; über der Karte zeigt eine halb durchsichtige Vorschau, was der nächste Klick legt
+  (Variante, Drehung, Größe schon ausgewürfelt), jeder Klick platziert eines (ein Rückgängig-Schritt je Asset), der
+  Modus bleibt bis Esc, Rechtsklick, ✕/„Fertig“, einem anderen Werkzeug oder einem anderen Arbeitsbereich.
+  Einstellungen (DM-Entscheidungen): Variante wählen oder „Zufällige Variante“ (ohne Innenansichten), zufällige
+  Drehung in Schritten frei/15°/90° (sonst feste Drehung), zufällige Größe ± %, Einrasten am Raster. Der Schalter
+  „Zufällige Variante“ aus DC-115 ist ins Panel gewandert; Ziehen aus der Seitenleiste legt die Hauptvariante. Die
+  Vorschau erscheint nur im DM-Fenster. In der Kartenschmiede auf der Karte, im Orchestrator szeneneigen.
 - **DC-043 Kreaturen global** in der Bibliothek (Werteblock-Editor umziehen); Spielercharaktere siehe DC-096.
 - **DC-044 Tokenbilder**: Token und Porträt, Token aus Porträt, Fraktionsring, ausgeschnittene Figur (T-203, T-208).
 - **DC-045 Klone, Begegnungsgruppen, Gestalten, SRD-Import, eigene Footprints** (T-204–207, T-241).

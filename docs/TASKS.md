@@ -285,7 +285,8 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   (1. Bearbeiten und Ketten, 2. Einweg-Wände, 3. Deckung); „Wände zeichnen“ als Befehls-Panel (Art, Kette,
   OK/Abbrechen), Bearbeiten direkt mit „Auswählen“ (Endpunkte ziehen, Entf löscht, Art im Eigenschaften-Panel);
   Ketten = Gelenke über gemeinsame Endpunkte, das Format der Wände bleibt; Klippen und Deckung bringen Karte und
-  Szene auf Version 3 mit Migration.
+  Szene auf Version 3 mit Migration. Klippe (DM, 2026-11-25): oben ist links der Zeichenrichtung, ein Pfeil zeigt
+  zur unteren Seite, „Richtung umdrehen“ im Zeichnen- und im Eigenschaften-Panel; Licht verhält sich wie Sicht.
   Erledigt (Schritt 1): Befehls-Panel „Wände zeichnen“ (Menüband Wände) oben rechts über der Karte: Art (Wand,
   Tür, Geheimtür, Fenster) mit kurzer Erklärung, Kette an/aus (Wand und Fenster ketten, Türen nicht), letztes Stück
   entfernen (auch Rücktaste); Enden rasten an vorhandenen Wandenden und am Raster ein, Alt zeichnet frei;
@@ -296,6 +297,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   das Eigenschaften-Panel zeigt Anzahl, Art (änderbar) und Länge. Die Einzel-Werkzeuge Wand/Tür/Geheimtür/Fenster
   und „Letzte entfernen“ sind entfernt. Abweichung: Das Gelenk löst Umschalt statt Alt, weil Alt beim Klick ein
   Ping ist und beim Ziehen frei setzt.
+- **DC-107 Kontextsensitiver Karten-Editor** (DM-Wunsch 2026-11-25, `docs/KARTENEDITOR.md`): Dungeon- und
+  Wildnis-/Stadtkarten selbst zeichnen – Wände, Wege, Flüsse, Gebäude, Türen, Brücken als editierbare Absichten
+  (Intent-Modell mit Seeds), Regel-Pipeline für Ecken, Kreuzungen, Durchbrüche, Übergänge, handgezeichnete Optik und
+  Detailstreuung, daraus Sicht- und Bewegungsdaten. Assets bleiben frei platzierbar (DC-041). DM-Entscheidung
+  (2026-11-25): eigenes Thema nach DC-014; zu Beginn Interview und Entscheidung zum Datenmodell (u. a. Wände als
+  Linienzüge, Türen auf Wänden – heute einzelne Strecken, also Migration). Umfasst DC-026 und DC-027 ganz oder teilweise.
 - **DC-015 Assets und Ebenen** – Props siehe DC-041, Stockwerke DC-020, Zeichenebenen DC-101 (E-18).
 
 ### 3.3 Kartenschmiede (weiter)

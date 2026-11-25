@@ -421,8 +421,22 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   ausgeblendeten Platzierungen (Projektion). Fehlt die Datei, zeigt die Schmiede einen Platzhalter. Ausblenden im
   Orchestrator mit „Ein-/ausblenden“; Kartenformat unverändert (`assets` gab es schon). Maske und Licht der Assets
   wirken mit DC-108; Effekte einmal auslösen kommt mit DC-110 bzw. dem Orchestrator.
-- **DC-110 Szeneneigene Assets** (E-27): Assets nur in einer Szene, beim Vorbereiten (Start) oder im Spiel
+- ✓ **DC-110 Szeneneigene Assets** (E-27): Assets nur in einer Szene, beim Vorbereiten (Start) oder im Spiel
   (Spielzustand, „Szene zurücksetzen“ entfernt sie); Maske und Licht gelten nur in dieser Szene.
+  DM-Entscheidungen (2026-11-25): Szene Version 5 (`assets` und `effects` im Spielzustand und im Start;
+  Asset-Lichter im vorhandenen `lights`); dazu Asset-Lichter je Szene an/aus, Flackern darstellen, Effekte
+  steuern (Schleife an/aus, einmal auslösen); Bedienung wie in der Schmiede (Panel „Assets“ auch im Orchestrator,
+  mit „Auswählen“ nur szeneneigene Assets bearbeiten; Kartenassets nur ein-/ausblenden).
+  Erledigt: Szenendatei Version 5; zur Laufzeit liegen die szeneneigenen Assets neben denen der Karte (Sicht,
+  Licht, Darstellung, TV nehmen beide); beim Vorbereiten platziert gehören sie zum Start, im Spiel zum
+  Spielzustand; „Szene zurücksetzen“ übernimmt den Start. Panel „Assets“ auch im Orchestrator (Ziehen/Enter);
+  „Auswählen“ verschiebt, dreht, skaliert und löscht nur szeneneigene Assets. Ein Klick auf ein Asset schaltet sein
+  Licht bzw. einen Schleifen-Effekt (rückgängig machbar, gespeichert) oder spielt einen Einmal-Effekt ab (nicht
+  gespeichert; im DM-Fenster und auf dem TV einmal, dann verschwindet er); ein Effekt ohne Einstellung gilt als
+  Schleife. Flackern der Asset-Lichter im DM-Fenster und auf dem TV. Robustheit: das Sichtpolygon wird immer
+  aufgeräumt (ein Licht nahe einer Wandecke brachte die Clipping-Bibliothek zum Abbruch); scheitert das Zuschneiden
+  eines Lichts für den TV, bleibt es dort dunkel. Bekannt: PixiJS prüft beim ersten Video mit einem `data:`-Video,
+  das die CSP blockiert – harmlose Meldung in der Konsole, Pixi nimmt den Standard.
 - **DC-042 Smart Prefabs, Innenräume als Asset-Varianten** (T-202, T-146).
 - ✓ **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
   Deckungsmaske eines Assets fest (Kreis oder Polygon auf dem Bild – Baum, Säule, Statue); ein platziertes Asset ist

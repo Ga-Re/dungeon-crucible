@@ -80,7 +80,7 @@ export const PlayerFrameSchema = z.object({
   lighting: z.object({
     darkness: z.number().min(0).max(1),
     lit: z.array(polygonSchema),
-    glows: z.array(z.object({ x: z.number(), y: z.number(), brightPx: z.number().min(0), dimPx: z.number().min(0), color: z.string(), area: z.array(polygonSchema) })),
+    glows: z.array(z.object({ x: z.number(), y: z.number(), brightPx: z.number().min(0), dimPx: z.number().min(0), color: z.string(), flicker: z.number().min(0).max(1).optional(), area: z.array(polygonSchema) })),
   }),
   tokens: z.array(
     z.object({
@@ -102,7 +102,7 @@ export const PlayerFrameSchema = z.object({
   ),
   pings: z.array(z.object({ x: z.number(), y: z.number(), age: z.number().nonnegative() })),
   /** Placed assets (DC-041): under the fog like the map; assets a scene hides are never sent. */
-  assets: z.array(z.object({ url: z.string(), video: z.boolean(), x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive(), rotation: z.number() })).default([]),
+  assets: z.array(z.object({ url: z.string(), video: z.boolean(), x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive(), rotation: z.number(), once: z.number().optional() })).default([]),
 });
 
 export type PlayerFrame = z.infer<typeof PlayerFrameSchema>;
@@ -132,7 +132,15 @@ export interface ProjectionOptions {
 export function playerLighting(scene: Scene, lights: readonly LitSource[], clear: readonly Polygon[]): PlayerFrame['lighting'] {
   if (scene.ambient === 'lit') return { darkness: 0, lit: [], glows: [] };
   const clip = (ps: readonly Polygon[]) => (ps.length && clear.length ? fromClip(intersection(asGeom(ps), asGeom(clear))) : []);
-  const glows = lights.map((l) => ({ x: l.x, y: l.y, brightPx: l.brightPx, dimPx: l.dimPx, color: l.color, area: clip(l.area) })).filter((g) => g.area.length > 0);
+  // A light whose clipping fails is left out: the TV stays dark there rather than showing more.
+  const safeClip = (ps: readonly Polygon[]) => {
+    try {
+      return clip(ps);
+    } catch {
+      return [];
+    }
+  };
+  const glows = lights.map((l) => ({ x: l.x, y: l.y, brightPx: l.brightPx, dimPx: l.dimPx, color: l.color, ...(l.flicker ? { flicker: l.flicker } : {}), area: safeClip(l.area) })).filter((g) => g.area.length > 0);
   return { darkness: DARKNESS, lit: glows.flatMap((g) => g.area), glows };
 }
 
@@ -182,7 +190,7 @@ export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFram
     lighting: playerLighting(scene, o.lights, clearArea(scene.fog, o.visible)),
     templates: scene.templates.map((t) => ({ shape: t.shape, x: t.x, y: t.y, angle: t.angle, sizeFt: t.sizeFt, color: t.color })),
     pings: scene.pings.map((p) => ({ x: p.x, y: p.y, age: Math.max(0, o.now - p.at) })),
-    assets: (o.assets ?? []).map((a) => ({ url: a.url, video: a.video, x: a.x, y: a.y, width: a.width, height: a.height, rotation: a.rotation })),
+    assets: (o.assets ?? []).map((a) => ({ url: a.url, video: a.video, x: a.x, y: a.y, width: a.width, height: a.height, rotation: a.rotation, ...(a.once === undefined ? {} : { once: a.once }) })),
   };
 }
 

@@ -12,6 +12,7 @@ import { areaContains, partFromDrag, partFromPoints, vertexAt, type VertexRef } 
 import { AreaCommandPanel } from './AreaCommandPanel';
 import { WallCommandPanel } from './WallCommandPanel';
 import { assetShapes, footprintOf, hitsPlacement, ROTATE_STEP } from '../core/placement';
+import { allPlacements } from '../core/persistence';
 import { ASSET_DRAG } from './VaultPanels';
 import { refreshVault, requestAssetUrls } from '../app/vault';
 import { CalibrationPanel } from './CalibrationPanel';
@@ -34,7 +35,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
-  assetExtras, currentChanges, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
+  activateAsset, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -60,7 +61,7 @@ type Drag =
   | { kind: 'area-path'; path: Point[] }
   | { kind: 'area-corner'; at: VertexRef }
   | { kind: 'wall-ends'; ends: WallEnd[]; to: Point; moved: boolean }
-  | { kind: 'asset-move'; id: string; ox: number; oy: number; moved: boolean }
+  | { kind: 'asset-move'; id: string; ox: number; oy: number; moved: boolean; activate?: boolean }
   | { kind: 'calib-box'; a: Point }
   | { kind: 'calib-move'; last: Point }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
@@ -140,8 +141,10 @@ function DmMap() {
       // While calibrating, the grid is always shown: it is what is being adjusted.
       r.setGrid((state.showGrid || state.calibration) && sc.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: sc.map.grid.originX, offsetYPx: sc.map.grid.originY, alpha: 0.18 } : null);
       // Placed assets: their files' URLs are looked up once, the first time they are shown.
-      requestAssetUrls([...new Set(sc.map.assets.map((a) => a.assetPath))]);
-      r.setAssets(assetShapes(sc.map.assets, state.assetInfo, sc.map.grid));
+      const placements = allPlacements(sc);
+      requestAssetUrls([...new Set(placements.map((a) => a.assetPath))]);
+      // In a scene, effects follow its state (switched off, played once); the Map Forge shows all.
+      r.setAssets(assetShapes(placements, state.assetInfo, sc.map.grid, state.layer === 'map' ? undefined : { effectsOn: sc.effectsOn, runs: state.effectRuns }));
       const active = state.ws === 'play' ? initiativeOrder()[state.turn]?.id : undefined;
       r.setTokens(
         sc.tokens.map((k): TokenShape => ({
@@ -292,7 +295,7 @@ function DmMap() {
       fogDraft,
       areaDraft: areaDraftOf(d),
       assets: [
-        ...state.scene.map.assets.map((a) => placementLook(a, false)),
+        ...allPlacements(state.scene).map((a) => placementLook(a, false)),
         ...(state.layer === 'map' ? [] : state.scene.hidden.assets.map((a) => placementLook(a, true))),
       ],
       covers: state.ws === 'forge' ? (assetExtras(state.scene).covers ?? []) : [],
@@ -379,6 +382,21 @@ function DmMap() {
         }
         selectToken(null);
         selectLight(null);
+        // In a scene: a click on an asset switches its light or effect; the scene's own assets are
+        // also selected and can be dragged (a click without moving still switches, DC-110).
+        if (state.layer !== 'map') {
+          const asset = anyAssetAt(p);
+          if (asset) {
+            const own = editableAssets().find((x) => x.id === asset);
+            if (own) {
+              selectPlacedAsset(asset);
+              drag.current = { kind: 'asset-move', id: asset, ox: own.x - p.x, oy: own.y - p.y, moved: false, activate: true };
+              return;
+            }
+            if (activateAsset(asset)) return;
+          }
+          selectPlacedAsset(null);
+        }
         if (state.layer === 'map') {
           const tol = HANDLE_PX / view.current.zoom;
           // An end is grabbed with every wall joined there; Shift takes only the selected walls' ends.
@@ -401,7 +419,7 @@ function DmMap() {
           const asset = placedAssetAt(p);
           if (asset) {
             selectPlacedAsset(asset);
-            const a = state.scene.map.assets.find((x) => x.id === asset)!;
+            const a = editableAssets().find((x) => x.id === asset)!;
             drag.current = { kind: 'asset-move', id: asset, ox: a.x - p.x, oy: a.y - p.y, moved: false };
             return;
           }
@@ -536,6 +554,7 @@ function DmMap() {
     } else if (d.kind === 'asset-move') {
       const q = toWorld(e);
       if (d.moved) moveAssetTo(d.id, { x: q.x + d.ox, y: q.y + d.oy }, true);
+      else if (d.activate) activateAsset(d.id);
     } else if (d.kind === 'template') {
       addTemplate(d.shape, d.a, d.b);
     } else if (d.kind === 'fog-rect' || d.kind === 'fog-ellipse') {
@@ -579,7 +598,7 @@ function DmMap() {
         }}
         onWheel={onWheel}
         onDragOver={(e) => {
-          const asset = e.dataTransfer.types.includes(ASSET_DRAG) && state.layer === 'map';
+          const asset = e.dataTransfer.types.includes(ASSET_DRAG);
           if (e.dataTransfer.types.includes(CREATURE_DRAG) || asset) {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'copy';
@@ -656,7 +675,7 @@ function placementLook(a: MapAssetPlacement, hidden: boolean) {
 /** The placed asset (shown or hidden in this scene) at `p`. */
 function placementAt(p: Point): string | null {
   const sc = state.scene;
-  const all = [...sc.map.assets, ...sc.hidden.assets].reverse();
+  const all = [...allPlacements(sc), ...sc.hidden.assets].reverse();
   return all.find((a) => hitsPlacement(footprintOf(a, state.assetInfo[a.assetPath]?.sizeCells, sc.map.grid), p))?.id ?? null;
 }
 

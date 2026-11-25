@@ -10,7 +10,7 @@
  */
 import { EMPTY_LEVEL_FOG } from './fogModel';
 import type { LevelFog, Polygon } from './poly/types';
-import { DEFAULT_TABLE, type HiddenElements, type Scene, type Zone } from './scene';
+import { DEFAULT_TABLE, type HiddenElements, type MapAssetPlacement, type Scene, type Zone } from './scene';
 import { diffElements, resolveElements, type MapElements, type SceneLayer } from './mapLayers';
 import { MAP_VERSION, SCENE_VERSION, SCHEMA_VERSION, type CampaignManifest, type MapSidecar, type Player, type SceneOverride } from './sidecar';
 
@@ -47,6 +47,8 @@ export function startOf(ov: SceneOverride): SceneStart {
     discoveredZones: [...ov.discoveredZones],
     ambience: ov.ambience.map((a) => ({ ...a })),
     hidden: [...ov.hidden],
+    assets: ov.assets.map((a) => ({ ...a })),
+    effects: { ...ov.effects },
   };
 }
 
@@ -68,13 +70,15 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
       discoveredZones: fromView.discoveredZones,
       ambience: ambience.map((a) => ({ ...a })),
       hidden: fromView.hidden,
+      assets: fromView.assets,
+      effects: fromView.effects,
     },
   };
 }
 
 /**
  * "Reset scene": the play state becomes the start state again – fog, tokens, doors, lights,
- * discovered areas, hidden map elements, ambience; combat back to round 1; spell templates gone; the scene's live fog
+ * discovered areas, hidden map elements, scene-own assets, effects, ambience; combat back to round 1; spell templates gone; the scene's live fog
  * look back to the map's.
  */
 export function resetToStart(ov: SceneOverride): SceneOverride {
@@ -89,6 +93,8 @@ export function resetToStart(ov: SceneOverride): SceneOverride {
     discoveredZones: [...start.discoveredZones],
     ambience: start.ambience.map((a) => ({ ...a })),
     hidden: [...start.hidden],
+    assets: start.assets.map((a) => ({ ...a })),
+    effects: { ...start.effects },
     templates: [],
     combat: { round: 1, turn: 0 },
     start,
@@ -158,12 +164,15 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
  * The scene file for a view of the scene layer: its changes of `map` (by element id, plus its own
  * elements; orphaned overrides and hidden ids of `previous` are kept) and its state.
  */
-export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: string, combat: { round: number; turn: number }, map: Pick<MapSidecar, 'walls' | 'zones' | 'lights'>, previous?: SceneLayer & { hidden?: string[] }): SceneOverride {
+export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: string, combat: { round: number; turn: number }, map: Pick<MapSidecar, 'walls' | 'zones' | 'lights' | 'assets'>, previous?: SceneLayer & { hidden?: string[] }): SceneOverride {
   const base = elementsFromSidecar(map);
   const current = elementsFromScene(scene);
   const layer = diffElements(base, current, previous);
   // Hidden ids whose element is gone are kept too, until the DM cleans them up.
-  const known = new Set([...elementIds(base, current), ...scene.map.assets.map((a) => a.id), ...scene.hidden.assets.map((a) => a.id)]);
+  const known = new Set([...elementIds(base, current), ...scene.map.assets.map((a) => a.id), ...scene.ownAssets.map((a) => a.id), ...scene.hidden.assets.map((a) => a.id)]);
+  // The scene's own assets, shown or hidden – never the map's.
+  const mapAssets = new Set(map.assets.map((a) => a.id));
+  const own = [...scene.ownAssets, ...scene.hidden.assets.filter((a) => !mapAssets.has(a.id))];
   const orphanedHidden = (previous?.hidden ?? []).filter((id) => !known.has(id));
   return {
     kind: 'scene',
@@ -173,9 +182,11 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     fog: copyFog(scene.fog),
     ...(scene.fogEffect ? { fogEffect: { ...scene.fogEffect } } : {}),
     doors: Object.fromEntries([...scene.walls, ...scene.hidden.walls].filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])),
-    lights: Object.fromEntries([...scene.lights, ...scene.hidden.lights].map((l) => [l.id, l.on])),
+    lights: { ...Object.fromEntries([...scene.lights, ...scene.hidden.lights].map((l) => [l.id, l.on])), ...scene.assetLightsOn },
     discoveredZones: [...scene.zones, ...scene.hidden.zones].filter((z) => z.secret && z.discovered).map((z) => z.id),
     hidden: [...hiddenIds(scene.hidden), ...orphanedHidden],
+    assets: own.map((a) => ({ ...a })),
+    effects: { ...scene.effectsOn },
     tokens: scene.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: scene.templates.map((t) => ({ ...t })),
     combat: { ...combat },
@@ -221,6 +232,9 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const lights = elements.lights.map((l) => ({ ...l, on: lightsOn[l.id] ?? true }));
   const shown = <T extends { id: string }>(xs: T[]) => xs.filter((x) => !hide.has(x.id));
   const hiddenOf = <T extends { id: string }>(xs: T[]) => xs.filter((x) => hide.has(x.id));
+  const ownAssets = onMap ? [] : (state?.assets ?? []).map((a) => ({ ...a }));
+  // Asset lights are stored with the map lights, by `<placement>:light`.
+  const assetLightsOn = Object.fromEntries(Object.entries(lightsOn).filter(([id]) => id.endsWith(':light')));
   return {
     map: {
       id: slugify(map.name),
@@ -241,7 +255,10 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     walls: shown(walls),
     zones: shown(zones),
     lights: shown(lights),
-    hidden: { walls: hiddenOf(walls), zones: hiddenOf(zones), lights: hiddenOf(lights), assets: hiddenOf(map.assets.map((a) => ({ ...a }))) },
+    hidden: { walls: hiddenOf(walls), zones: hiddenOf(zones), lights: hiddenOf(lights), assets: hiddenOf([...map.assets.map((a) => ({ ...a })), ...ownAssets]) },
+    ownAssets: shown(ownAssets),
+    assetLightsOn,
+    effectsOn: onMap ? {} : { ...(state?.effects ?? {}) },
     ambient: map.ambient,
     tokens: onMap ? [] : (state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: onMap ? [] : (state?.templates ?? []).map((t) => ({ ...t })),
@@ -260,7 +277,8 @@ export function sceneIssues(map: MapSidecar, override: SceneOverride | null): { 
   const base = elementsFromSidecar(map);
   const layer = layerOf(override);
   const r = resolveElements(base, layer);
-  const known = new Set([...elementIds(base, layer.added), ...map.assets.map((a) => a.id)]);
+  const own = [...(override?.assets ?? []), ...(override?.start?.assets ?? [])];
+  const known = new Set([...elementIds(base, layer.added), ...map.assets.map((a) => a.id), ...own.map((a) => a.id)]);
   const hidden = [...(override?.hidden ?? []), ...(override?.start?.hidden ?? [])].filter((id) => !known.has(id));
   return { orphaned: [...new Set([...r.orphaned, ...hidden])].sort(), invalid: r.invalid };
 }
@@ -358,4 +376,9 @@ export function manifestFromState(name: string, activeScene: string | null, tabl
       rotation: table.rotation,
     },
   };
+}
+
+/** Every placed asset of a view: the map's (shown) and the scene's own (DC-110). */
+export function allPlacements(scene: Pick<Scene, 'map' | 'ownAssets'>): MapAssetPlacement[] {
+  return [...scene.map.assets, ...scene.ownAssets];
 }

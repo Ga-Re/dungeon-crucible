@@ -145,6 +145,8 @@ export interface AssetShape {
   readonly width: number;
   readonly height: number;
   readonly rotation: number;
+  /** A play-once effect (DC-110): when this run started; a new value plays it again from the start. */
+  readonly once?: number | undefined;
 }
 
 /** Dungeon Crucible: one light's glow (map pixels), clipped to the area it lights. */
@@ -154,6 +156,8 @@ export interface LightGlow {
   readonly brightPx: number;
   readonly dimPx: number;
   readonly color: string;
+  /** 0–1: how much the glow flickers (asset lights, DC-110). */
+  readonly flicker?: number | undefined;
   readonly area: readonly Polygon[];
 }
 
@@ -297,26 +301,37 @@ export async function createRenderer(
   const gridLayer = new Graphics();
   world.addChild(gridLayer);
   let gridInput: GridLines | null = null;
+  // Flickering glows (DC-110): their brightness wavers each frame, each light differently.
+  let flickering: { sprite: Sprite; base: number; amount: number; seed: number }[] = [];
+  const stepFlicker = () => {
+    const t = now() / 1000;
+    for (const f of flickering) {
+      const wave = Math.sin(t * 9.1 + f.seed) * 0.5 + Math.sin(t * 23.7 + f.seed * 2.3) * 0.3 + Math.sin(t * 3.3 + f.seed * 5.1) * 0.2;
+      f.sprite.alpha = f.base * (1 - f.amount * 0.5 * (0.5 + 0.5 * wave));
+    }
+  };
   // Placed assets (Dungeon Crucible): above the grid, below light, tokens and fog.
   const assetLayer = new Container();
   world.addChild(assetLayer);
-  const builtAssets = new Map<string, { url: string; sprite: Sprite; width: number; height: number }>();
+  const builtAssets = new Map<string, { url: string; sprite: Sprite; width: number; height: number; run: number | undefined }>();
   // One texture per file (and one looping video element per video file), kept until teardown.
   const assetTextures = new Map<string, { texture: Promise<Texture | null>; video: HTMLVideoElement | null; ready: Texture | null }>();
   let playingVideos = 0;
-  const loadAssetTexture = (url: string, isVideo: boolean) => {
-    let entry = assetTextures.get(url);
+  const loadAssetTexture = (key: string, isVideo: boolean, once = false) => {
+    let entry = assetTextures.get(key);
     if (entry) return entry.texture;
+    // The key of a play-once video carries its placement after the file's URL.
+    const url = key.split("#once:")[0];
     if (isVideo) {
       const video = document.createElement("video");
       video.crossOrigin = "anonymous";
-      video.loop = true;
+      video.loop = !once;
       video.muted = true;
       video.playsInline = true;
       video.src = url;
       const texture = new Promise<Texture | null>((resolve) => {
         video.onloadeddata = () => {
-          void video.play().catch(() => undefined);
+          if (!once) void video.play().catch(() => undefined);
           resolve(Texture.from(video));
         };
         video.onerror = () => resolve(null);
@@ -330,7 +345,7 @@ export async function createRenderer(
     }
     const own = entry;
     void own.texture.then((t) => (own.ready = t));
-    assetTextures.set(url, own);
+    assetTextures.set(key, own);
     return own.texture;
   };
   const drawAssets = (next: readonly AssetShape[]) => {
@@ -342,18 +357,20 @@ export async function createRenderer(
       builtAssets.delete(id);
     }
     next.forEach((a, index) => {
+      // A play-once effect has its own video (it restarts on its own); loops share one per file.
+      const source = a.once === undefined ? a.url : `${a.url}#once:${a.id}`;
       let built = builtAssets.get(a.id);
-      if (!built || built.url !== a.url) {
+      if (!built || built.url !== source) {
         if (built) {
           assetLayer.removeChild(built.sprite);
           built.sprite.destroy();
         }
         const sprite = new Sprite();
         sprite.anchor.set(0.5);
-        built = { url: a.url, sprite, width: a.width, height: a.height };
+        built = { url: source, sprite, width: a.width, height: a.height, run: undefined };
         builtAssets.set(a.id, built);
         const target = built;
-        void loadAssetTexture(a.url, a.video).then((texture) => {
+        void loadAssetTexture(source, a.video, a.once !== undefined).then((texture) => {
           if (destroyed || builtAssets.get(a.id) !== target || !texture) return;
           sprite.texture = texture;
           // The size was set for the empty sprite; the picture now fills it.
@@ -367,10 +384,24 @@ export async function createRenderer(
       sprite.angle = a.rotation;
       built.width = a.width;
       built.height = a.height;
+      // A new run of a play-once effect: from the start, shown until it ends.
+      if (a.once !== undefined && built.run !== a.once) {
+        built.run = a.once;
+        const video = assetTextures.get(source)?.video;
+        sprite.visible = true;
+        if (video) {
+          video.currentTime = 0;
+          video.onended = () => {
+            sprite.visible = false;
+            requestDraw();
+          };
+          void video.play().catch(() => undefined);
+        }
+      }
       if (sprite.texture !== Texture.EMPTY) sprite.setSize(a.width, a.height);
     });
     // Files no placement shows any more are freed (GPU memory; videos stop decoding).
-    const used = new Set(next.map((a) => a.url));
+    const used = new Set(next.map((a) => (a.once === undefined ? a.url : `${a.url}#once:${a.id}`)));
     for (const [url, entry] of assetTextures) {
       if (used.has(url)) continue;
       entry.video?.pause();
@@ -609,6 +640,7 @@ export async function createRenderer(
     const key = JSON.stringify([lightInput, mapSize]);
     if (key === lightBuiltFrom) return;
     lightBuiltFrom = key;
+    flickering = [];
     // The darkness is a fog layer and goes with its mask texture; the glows share their texture,
     // so they go without it.
     for (const child of lightLayer.removeChildren()) {
@@ -633,6 +665,7 @@ export async function createRenderer(
       sprite.blendMode = "add";
       // Brighter where the bright radius is a larger share of the dim one.
       sprite.alpha = 0.22 + 0.25 * Math.min(1, glow.brightPx / glow.dimPx);
+      if (glow.flicker) flickering.push({ sprite, base: sprite.alpha, amount: glow.flicker, seed: glow.x * 0.013 + glow.y * 0.029 });
       const mask = new Graphics();
       for (const polygon of glow.area) {
         mask.poly(flat(polygon.outer)).fill({ color: 0xffffff });
@@ -896,13 +929,14 @@ export async function createRenderer(
         stepLiving();
         stepOutgoing();
         stepGlides();
+        stepFlicker();
         applyCamera();
         // Looping asset videos: their frames go to the GPU, and the next draw follows.
         if (playingVideos > 0) for (const t of assetTextures.values()) if (t.video) t.ready?.source.update();
         app.render();
         gate.drawn();
         showVideo();
-        if (playingVideos > 0) requestDraw();
+        if (playingVideos > 0 || flickering.length > 0) requestDraw();
       } catch (error) {
         // ADR-0010: on renderer errors the raw video must not stay visible.
         gate.renderFailed();

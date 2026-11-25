@@ -21,7 +21,7 @@ export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' |
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
   map: 3,
-  scene: 4,
+  scene: 5,
   creature: 1,
   asset: 2,
   session: 1,
@@ -56,6 +56,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
       if (isRecord(doc['start'])) out['start'] = { ...doc['start'], hidden };
       return out;
     },
+    // Version 5 adds scene-own assets and effect states (DC-110): nothing to change.
+    4: (doc) => doc,
   },
   creature: {},
   // The first asset format (variants with props, never used by files) → E-27 (DC-040).

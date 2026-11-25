@@ -32,6 +32,8 @@ export interface LitSource {
   brightPx: number;
   dimPx: number;
   color: string;
+  /** Flicker 0–1 (asset lights, DC-110). */
+  flicker?: number;
   /** Line of sight from the light ∩ its dim radius: light stops at walls. */
   area: Polygon[];
 }
@@ -98,12 +100,10 @@ function segmentsOf(masks: readonly Mask[]): Segment[] {
  */
 function reachWithCovers(scene: Scene, from: Point, radius: number, covers: readonly Polygon[], showMasks: boolean): { outline: VisibilityPoint[]; area: Polygon[] } {
   const walls = sightBlockers(scene.walls, from);
-  if (!covers.length) {
-    const outline = visibilityPolygon(from, radius, walls);
-    return { outline, area: sightPolygon(from, radius, outline) };
-  }
+  // Tidied (1/100 px, no near duplicates): almost equal points trip the clipping library.
+  const open = tidy(visibilityPolygon(from, radius, walls));
+  if (!covers.length) return { outline: open, area: sightPolygon(from, radius, open) };
   // Only masks walls alone let be seen (a corner in view, in reach) can block anything seen.
-  const open = visibilityPolygon(from, radius, walls);
   const inView = masksOf(covers).filter(
     (m) =>
       m.maxX >= from.x - radius && m.minX <= from.x + radius && m.maxY >= from.y - radius && m.minY <= from.y + radius &&
@@ -132,7 +132,13 @@ function tidy(points: readonly VisibilityPoint[]): VisibilityPoint[] {
  * failure never shows more than the masks allow (it fails closed).
  */
 function withCoverFallback<T>(covers: readonly Polygon[], work: (showMasks: boolean) => T, closed: T): T {
-  if (!covers.length) return work(false);
+  if (!covers.length) {
+    try {
+      return work(false);
+    } catch {
+      return closed;
+    }
+  }
   try {
     return work(true);
   } catch {
@@ -163,10 +169,10 @@ function wallsKey(walls: readonly Wall[]): string {
 export function litSources(scene: Scene, extras: VisionExtras = {}): LitSource[] {
   const covers = extras.covers ?? NO_COVERS;
   const sources = [
-    ...[...scene.lights, ...(extras.lights ?? [])].filter((l) => l.on && l.dimFt > 0).map((l) => ({ x: l.x, y: l.y, bright: l.brightFt, dim: l.dimFt, color: l.color })),
+    ...[...scene.lights, ...(extras.lights ?? [])].filter((l) => l.on && l.dimFt > 0).map((l) => ({ x: l.x, y: l.y, bright: l.brightFt, dim: l.dimFt, color: l.color, flicker: l.flicker })),
     ...scene.tokens
       .filter((t) => (t.lightFt ?? 0) > 0 && t.hp > 0)
-      .map((t) => ({ x: t.x, y: t.y, bright: t.lightFt ?? 0, dim: (t.lightFt ?? 0) * 2, color: '#ffb14a' })),
+      .map((t) => ({ x: t.x, y: t.y, bright: t.lightFt ?? 0, dim: (t.lightFt ?? 0) * 2, color: '#ffb14a', flicker: undefined })),
   ];
   let byCovers = lightCache.get(scene.walls);
   if (!byCovers) lightCache.set(scene.walls, (byCovers = new WeakMap()));
@@ -182,7 +188,7 @@ export function litSources(scene: Scene, extras: VisionExtras = {}): LitSource[]
       if (cache.size > 500) cache.clear();
       cache.set(key, area);
     }
-    return { x: s.x, y: s.y, brightPx: feetToPx(scene, s.bright), dimPx, color: s.color, area };
+    return { x: s.x, y: s.y, brightPx: feetToPx(scene, s.bright), dimPx, color: s.color, ...(s.flicker ? { flicker: s.flicker } : {}), area };
   });
 }
 

@@ -51,7 +51,10 @@ export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brigh
 /** Version 2: areas are polygons (DC-013). */
 export const MAP_VERSION = 3;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
-export const SCENE_VERSION = 4;
+export const SCENE_VERSION = 5;
+
+/** An asset placed on a map or in a scene (DC-041, DC-110): its file, centre, turn and scale. */
+export const placementSchema = z.object({ id, assetPath: z.string(), variant: z.string().optional(), x: z.number(), y: z.number(), rotation: z.number().default(0), scale: z.number().positive().default(1) });
 
 export const MapSidecarSchema = z.object({
   kind: z.literal('map'),
@@ -78,7 +81,7 @@ export const MapSidecarSchema = z.object({
   startFog: levelFogSchema.optional(),
   /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */
   ambient: z.enum(['dark', 'lit']).default('dark'),
-  assets: z.array(z.object({ id, assetPath: z.string(), variant: z.string().optional(), x: z.number(), y: z.number(), rotation: z.number().default(0), scale: z.number().positive().default(1) })).default([]),
+  assets: z.array(placementSchema).default([]),
 });
 export type MapSidecar = z.infer<typeof MapSidecarSchema>;
 
@@ -218,6 +221,10 @@ export const SceneOverrideSchema = z.object({
   discoveredZones: z.array(z.string()).default([]),
   /** Map elements hidden in this scene's play state (DC-103), by id. */
   hidden: z.array(z.string()).default([]),
+  /** Assets placed in this scene only, in its play state (DC-110). */
+  assets: z.array(placementSchema).default([]),
+  /** Looping effects (map's or scene's assets) by placement id → playing. Not listed: playing. */
+  effects: z.record(z.string(), z.boolean()).default({}),
   tokens: z.array(tokenSchema).default([]),
   templates: z.array(z.object({ id, shape: z.enum(['cone', 'sphere', 'line', 'cube']), x: z.number(), y: z.number(), angle: z.number(), sizeFt: z.number().positive(), color })).default([]),
   combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
@@ -237,6 +244,9 @@ export const SceneOverrideSchema = z.object({
     ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
     /** Map elements hidden from the start (prepared, e.g. a buried corridor). */
     hidden: z.array(z.string()).default([]),
+    /** Assets placed for the start (prepared, e.g. a campfire). */
+    assets: z.array(placementSchema).default([]),
+    effects: z.record(z.string(), z.boolean()).default({}),
   }).optional(),
   /** Walls, areas and lights that exist only in this scene (E-24). */
   added: z.object({ walls: z.array(mapWallSchema).default([]), zones: z.array(mapAreaSchema).default([]), lights: z.array(mapLightSchema).default([]) }).default({ walls: [], zones: [], lights: [] }),

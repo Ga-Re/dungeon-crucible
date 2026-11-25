@@ -867,8 +867,9 @@ export function setWorkspace(ws: WorkspaceId): void {
 }
 
 export function setTool(tool: ToolId): void {
-  // Another tool ends the placing mode (DC-116).
+  // Another tool ends the placing mode (DC-116); a map open behind the catalog comes to the front.
   state.placing = null;
+  if (state.forgeCatalog && state.activeTab) state.forgeCatalog = false;
   // One command at a time: another tool ends "create area" and "draw walls".
   if (tool !== 'area') state.areaCommand = null;
   if (tool !== 'wall') state.wallCommand = null;

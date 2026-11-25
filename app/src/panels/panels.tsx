@@ -143,7 +143,6 @@ export function BrowserPanel() {
   );
 }
 
-/** Map Forge: the maps of the global library, searchable; open one, or move it to the trash. */
 function ZoneActions({ id }: { id: string }) {
   const { t } = useI18n();
   const z = state.scene.zones.find((q) => q.id === id);

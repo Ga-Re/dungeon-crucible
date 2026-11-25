@@ -594,6 +594,13 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Auslöse-Bereich, Gegenebene – folgen); offene Änderungen werden vorher gespeichert. Kopien stehen mit „Kopie“ im
   Katalog; eine unlesbare Kopie oder eine ohne Bild wird gemeldet und ausgelassen. Papierkorb: eine Kopie nur,
   solange keine Szene sie benutzt; ein Bild nicht, solange Kopien es benutzen (Hinweis).
+  Nach dem Review (DM-Entscheidung 2026-11-25): Der Kampagnen-Export nimmt Kopien mit; der Import behandelt sie wie
+  Kartendateien (fehlt: anlegen; gleicher Inhalt: benutzen; anderer Inhalt: freier Name `<name>-2.map.json`, die
+  Szenen folgen; ein umbenanntes Bild wird in der Kopie nachgezogen). Außerdem: eine noch nie geöffnete Karte öffnet
+  wieder (Bild aus dem Pfad); aus dem Katalog geht es zurück zur offenen Karte (Tab, „Bearbeiten“, Szene); eine
+  Kopie überschreibt keine Datei der Bibliothek (auch keine unlesbare); solange eine Kopie unlesbar ist, kommt kein
+  Bild in den Papierkorb; Tasten wirken nicht auf die Karte hinter dem Katalog, ein Werkzeug holt sie nach vorn;
+  gemerkte Tabs mit Bildpfad werden auf die Kartendatei umgestellt.
 - **DC-043 Kreaturen global** in der Bibliothek (Werteblock-Editor umziehen); Spielercharaktere siehe DC-096.
 - **DC-044 Tokenbilder**: Token und Porträt, Token aus Porträt, Fraktionsring, ausgeschnittene Figur (T-203, T-208).
 - **DC-045 Klone, Begegnungsgruppen, Gestalten, SRD-Import, eigene Footprints** (T-204–207, T-241).

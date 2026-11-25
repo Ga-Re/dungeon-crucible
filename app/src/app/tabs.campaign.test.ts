@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DcApi } from '../platform/desktop-api';
-import { closeCampaign, closeScene, closeTab, newCampaign, newCreature, newSceneOnMap, openCampaign, putOnTv, saveCampaign, showTab, switchScene } from './campaign';
+import { closeCampaign, closeScene, closeTab, newCampaign, newCreature, newSceneOnMap, openCampaign, pictureOf, putOnTv, saveCampaign, showTab, switchScene } from './campaign';
+import { showMapCatalog } from './library';
 import { activateSession, checkpoint, moveToken, openCreatureTab, setWorkspace, state } from './store';
 
 /** Scene tabs with the campaign's files (E-30, DC-034): saving, closing, opening again. Files kept in memory. */
@@ -133,5 +134,22 @@ describe('scene tabs and the campaign files', () => {
     expect(state.ws).toBe('play');
     expect(state.activeTab).toBe(a);
     expect(state.tabs.map((t) => t.id)).toEqual([a, b]);
+  });
+
+  it('back from the map catalog to the tab already open: its tab, "Edit" or its scene in the list show it again (E-32)', async () => {
+    await newCampaign('C', true);
+    const a = state.scenePath!;
+    setWorkspace('forge');
+    expect(state.forgeCatalog).toBe(false);
+    showMapCatalog();
+    expect(state.forgeCatalog).toBe(true);
+    await switchScene(a);
+    expect(state.forgeCatalog).toBe(false);
+    expect(state.activeTab).toBe(a);
+  });
+
+  it('a map not opened yet is opened by its picture, never by its sidecar path', () => {
+    expect(pictureOf('library/plain.png.dm.json')).toBe('library/plain.png');
+    expect(pictureOf('library/plain.png')).toBe('library/plain.png');
   });
 });

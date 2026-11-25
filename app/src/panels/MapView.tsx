@@ -233,6 +233,8 @@ function DmMap() {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest('input,textarea,select,[contenteditable]')) return;
+      // The map catalog covers the map (E-32): its keys do not reach the map hidden behind.
+      if (state.ws === 'forge' && state.forgeCatalog) return;
       if (e.code === 'Space') space.current = true;
       if (e.key === 'Escape' && state.placing) {
         // The placing mode ends (DC-116).

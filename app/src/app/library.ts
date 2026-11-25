@@ -55,6 +55,8 @@ export async function refreshLibraryMaps(): Promise<void> {
   const scenes = await campaignMapScenes();
   const maps: LibraryMap[] = [];
   const entries = await listLibrary();
+  libraryNames = new Set(entries.map((e) => `library/${e.name}`));
+  unreadableCopies = 0;
   const pictures = new Map(entries.map((e) => [`library/${e.name}`, e]));
   for (const e of entries) {
     // Copies (E-32): their own map files, on a picture of the library.
@@ -64,6 +66,7 @@ export async function refreshLibraryMaps(): Promise<void> {
       const pic = side ? pictures.get(side.resource) : undefined;
       if (!side || !pic) {
         log('log.mapUnreadable', { file: e.name });
+        unreadableCopies++;
         continue;
       }
       maps.push(catalogEntry(mapFile, side.resource, side, pic, true, scenes));
@@ -88,6 +91,10 @@ export async function refreshLibraryMaps(): Promise<void> {
 }
 
 const MAP_COPY_SUFFIX = '.map.json';
+/** Every file of the library as last listed: a new copy never takes one's name, read or not. */
+let libraryNames = new Set<string>();
+/** Copies that could not be read: their pictures are unknown, so no picture goes to the trash meanwhile. */
+let unreadableCopies = 0;
 
 function catalogEntry(mapFile: string, resource: string, side: MapSidecar | null, pic: { name: string; size: number; mtimeMs: number }, copy: boolean, scenes: MapScenes): LibraryMap {
   return {
@@ -192,7 +199,7 @@ export async function mapUsage(mapFile: string): Promise<MapUsage[]> {
 /** Why a map cannot go to the trash (E-32): a copy scenes use, or a picture copies still use. */
 export function trashBlocked(m: LibraryMap, usage: readonly MapUsage[]): 'copyUsed' | 'pictureShared' | null {
   if (m.copy) return usage.length > 0 ? 'copyUsed' : null;
-  return state.libraryMaps.some((x) => x.copy && x.resource === m.resource) ? 'pictureShared' : null;
+  return unreadableCopies > 0 || state.libraryMaps.some((x) => x.copy && x.resource === m.resource) ? 'pictureShared' : null;
 }
 
 /**
@@ -231,7 +238,7 @@ export async function duplicateLibraryMap(mapFile: string, name: string, withCon
   await saveCampaign();
   const doc = latestMap(mapFile) ?? (await readDoc(mapFile, 'map', MapSidecarSchema));
   if (!doc) return null;
-  const taken = new Set(state.libraryMaps.map((m) => m.mapFile));
+  const taken = new Set([...libraryNames, ...state.libraryMaps.map((m) => m.mapFile)]);
   const ids = new Set([...doc.walls, ...doc.zones, ...doc.lights, ...doc.assets, ...doc.layers, ...doc.pois].map((x) => x.id));
   const fresh = (prefix: string) => {
     const id = newId(prefix, (x) => ids.has(x));

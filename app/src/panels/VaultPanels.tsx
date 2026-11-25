@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import { addTags, removeTag } from '../core/catalog';
-import { collectionsOf, commonValue, ENVIRONMENTS, SUBKINDS, subkindsOf } from '../core/assets';
+import { collectionsOf, commonValue, ENVIRONMENTS, searchSuggestions, SUBKINDS, subkindsOf, type CatalogFilter, type Labels, type SearchSuggestion } from '../core/assets';
 import { ASSET_KINDS, type AssetKind, type AssetSidecar } from '../core/sidecar';
 import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
@@ -58,8 +58,10 @@ export function VaultPanel() {
   useEffect(() => {
     void refreshVault();
   }, [root]);
+  const labels = useLabels();
+  const searchLabels = useMemo(() => ({ kind: (k: string) => t(`assetKind.${k}` as MessageKey), subkind: labels.subkind, env: labels.env }), [t]);
   // Each object once (E-31), each other asset by itself.
-  const shown = useMemo(() => shownEntries(), [items, objects, filter]);
+  const shown = useMemo(() => shownEntries(searchLabels), [items, objects, filter, searchLabels]);
   const total = useMemo(() => items.length - objects.reduce((n, o) => n + o.doc.variants.length - 1, 0), [items, objects]);
   const sel = new Set(selected);
   // One editor per asset: its local state (pictures, a polygon being drawn) never carries over.
@@ -86,7 +88,7 @@ export function VaultPanel() {
       onDrop={onDrop}
     >
       <div className="vault-bar">
-        <input type="search" value={filter.query ?? ''} placeholder={t('vault.search')} aria-label={t('vault.search')} onChange={(e) => setVaultFilter({ query: e.target.value })} />
+        <SearchBox labels={searchLabels} />
         <span className="hint">{t('vault.count', { n: shown.length, total })}</span>
         <label className="vault-size" title={t('vault.thumbSize')}>
           <Icon name="grid" />
@@ -674,6 +676,89 @@ function AddVariant({ target }: { target: string }) {
         <option value="">{t('vault.addVariantPick')}</option>
         {free.map((i) => <option key={i.relPath} value={i.relPath}>{i.asset.name}</option>)}
       </select>
+    </div>
+  );
+}
+
+/**
+ * The Vault's search (E-31, DC-114): free text, and suggestions while typing – tags, kinds,
+ * subkinds, environments, collections, names starting with what was typed. A suggestion picked
+ * becomes a filter, shown as a chip to remove.
+ */
+function SearchBox({ labels }: { labels: Labels }) {
+  const { t } = useI18n();
+  const items = useStore((s) => s.vault.items);
+  const objects = useStore((s) => s.vault.objects);
+  const filter = useStore((s) => s.vault.filter);
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(-1);
+  const text = filter.query ?? '';
+  const list = useMemo(() => searchSuggestions(items.map((i) => i.asset), text, labels, 8, objects.map((o) => o.doc.name)), [items, objects, text, labels]);
+  const pick = (s: SearchSuggestion) => {
+    if (s.type === 'tag') setVaultFilter({ tag: s.value, query: '' });
+    else if (s.type === 'kind') setVaultFilter({ kinds: [s.value], subkind: undefined, query: '' });
+    else if (s.type === 'subkind') setVaultFilter({ kinds: [s.kind], subkind: s.value, query: '' });
+    else if (s.type === 'environment') setVaultFilter({ environment: s.value, query: '' });
+    else if (s.type === 'collection') setVaultFilter({ collection: s.value, query: '' });
+    else setVaultFilter({ query: s.value });
+    setOpen(false);
+    setHi(-1);
+  };
+  const chips: { key: string; label: string; clear: Partial<CatalogFilter> }[] = [
+    ...(filter.tag ? [{ key: 'tag', label: `${t('props.tags')}: ${filter.tag}`, clear: { tag: undefined } }] : []),
+    ...(filter.subkind ? [{ key: 'sub', label: `${t('vault.subkind')}: ${labels.subkind(filter.subkind)}`, clear: { subkind: undefined } }] : []),
+    ...(filter.environment ? [{ key: 'env', label: `${t('vault.environments')}: ${labels.env(filter.environment)}`, clear: { environment: undefined } }] : []),
+    ...(filter.collection ? [{ key: 'col', label: `${t('vault.collections')}: ${filter.collection}`, clear: { collection: undefined } }] : []),
+  ];
+  const typeLabel: Record<SearchSuggestion['type'], MessageKey> = { tag: 'props.tags', kind: 'vault.kind', subkind: 'vault.subkind', environment: 'vault.environments', collection: 'vault.collections', name: 'props.name' };
+  return (
+    <div className="vault-search">
+      <input
+        type="search"
+        role="combobox"
+        aria-expanded={open && list.length > 0}
+        aria-controls="vault-suggest"
+        aria-activedescendant={hi >= 0 ? `vault-suggest-${hi}` : undefined}
+        value={text}
+        placeholder={t('vault.search')}
+        aria-label={t('vault.search')}
+        onChange={(e) => {
+          setVaultFilter({ query: e.target.value });
+          setOpen(true);
+          setHi(-1);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' && list.length) {
+            e.preventDefault();
+            setOpen(true);
+            setHi((hi + 1) % list.length);
+          } else if (e.key === 'ArrowUp' && list.length) {
+            e.preventDefault();
+            setHi(hi <= 0 ? list.length - 1 : hi - 1);
+          } else if (e.key === 'Enter' && open && hi >= 0 && list[hi]) {
+            e.preventDefault();
+            pick(list[hi]);
+          } else if (e.key === 'Escape') setOpen(false);
+        }}
+      />
+      {open && list.length > 0 && (
+        <ul id="vault-suggest" className="menu vault-suggest" role="listbox" aria-label={t('vault.suggestions')}>
+          {list.map((s, i) => (
+            <li key={`${s.type}:${s.value}`} id={`vault-suggest-${i}`} role="option" aria-selected={i === hi} className={i === hi ? 'on' : ''} onMouseDown={(e) => { e.preventDefault(); pick(s); }}>
+              <span>{s.label}</span><small>{t(typeLabel[s.type])}</small>
+            </li>
+          ))}
+        </ul>
+      )}
+      {chips.length > 0 && (
+        <div className="chips vault-filters">
+          {chips.map((c) => (
+            <button key={c.key} className="chip on" title={t('vault.clearFilter')} onClick={() => setVaultFilter(c.clear)}>{c.label}<Icon name="close" /></button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

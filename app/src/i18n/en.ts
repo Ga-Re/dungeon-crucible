@@ -556,6 +556,8 @@ export const en = {
   'vault.removeVariant': 'Take out of the object',
   'vault.addVariant': 'Add a variant',
   'vault.addVariantPick': 'Choose an asset …',
+  'vault.suggestions': 'Suggestions',
+  'vault.clearFilter': 'Remove this filter',
   'vault.group': 'Group (variants)',
   'vault.file': 'File',
   'vault.preview': 'On the 5-ft grid',

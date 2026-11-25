@@ -380,6 +380,14 @@ input[type='checkbox'] { accent-color: var(--accent); }
   background: var(--overlay); color: var(--fg-faint); cursor: pointer; opacity: 0; }
 .vault-card:hover .vault-star, .vault-card:focus-within .vault-star, .vault-star.on, .vault-star:focus-visible { opacity: 1; }
 .vault-star .ic { width: 15px; height: 15px; }
+/* The Vault's search with suggestions (E-31). */
+.vault-search { position: relative; flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 4px; }
+.vault-search > input { width: 100%; }
+.vault-suggest { position: absolute; top: calc(100% + 2px); left: 0; width: 100%; max-width: 360px; margin: 0; list-style: none; z-index: 90; }
+.vault-suggest li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 5px 8px; border-radius: 3px; cursor: pointer; }
+.vault-suggest li.on, .vault-suggest li:hover { background: var(--sel-soft); }
+.vault-suggest small { color: var(--fg-faint); font-size: 10.5px; }
+.vault-filters .chip .ic { width: 11px; height: 11px; margin-left: 4px; }
 /* Subkinds under their kind in the Vault's Browser (E-31). */
 .vault-subkinds { margin: 0 0 2px; padding-left: 22px; }
 .vault-subkinds .tn { padding-top: 2px; padding-bottom: 2px; font-size: 12px; }

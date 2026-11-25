@@ -556,6 +556,8 @@ export const de: Partial<Record<MessageKey, string>> = {
   'vault.removeVariant': 'Aus dem Objekt nehmen',
   'vault.addVariant': 'Variante hinzufügen',
   'vault.addVariantPick': 'Asset wählen …',
+  'vault.suggestions': 'Vorschläge',
+  'vault.clearFilter': 'Diesen Filter entfernen',
   'vault.group': 'Gruppe (Varianten)',
   'vault.file': 'Datei',
   'vault.preview': 'Auf dem 5-ft-Raster',

@@ -5,7 +5,7 @@
  * What counts as an asset: a file with an asset sidecar (or an older audio sidecar), and audio
  * without one. Maps (map sidecar, or an image without any sidecar) stay in the Map Forge.
  */
-import { addToCollection, assetDefaults, filterAssets, kindFromFile, packDefaults, parseAssetSidecar, removeCollection, renameCollection, type CatalogFilter, type CatalogItem } from '../core/assets';
+import { addToCollection, assetDefaults, filterAssets, kindFromFile, packDefaults, parseAssetSidecar, removeCollection, renameCollection, type CatalogFilter, type CatalogItem, type Labels } from '../core/assets';
 import { applyObjects, catalogEntries, objectFileFor, objectsFromGroups, parseAssetObject, sharedOf, type CatalogEntry, type ObjectFile } from '../core/assetObjects';
 import { keepUnknown } from '../core/documents';
 import { ASSET_VERSION, AssetObjectSchema, AssetSidecarSchema, OBJECT_VERSION, type AssetObject, type AssetSidecar } from '../core/sidecar';
@@ -138,10 +138,20 @@ async function writeObject(o: VaultObject): Promise<VaultObject | null> {
   }
 }
 
-/** The catalog as shown (E-31): each object once, each other asset by itself; those matching the filter (an object by any variant). */
-export function shownEntries(): CatalogEntry<VaultItem>[] {
-  const match = new Set(filterAssets(state.vault.items, state.vault.filter));
-  return catalogEntries(state.vault.items, state.vault.objects).filter((e) => e.variants.some((v) => match.has(v)));
+/** How the catalog shows built-in keys: set by the view that shows it (translated). */
+let labelsInUse: Labels | undefined;
+
+/**
+ * The catalog as shown (E-31): each object once, each other asset by itself; those matching the
+ * filter – an object by any of its variants, or by its own name.
+ */
+export function shownEntries(labels: Labels | undefined = labelsInUse): CatalogEntry<VaultItem>[] {
+  labelsInUse = labels;
+  const f = state.vault.filter;
+  const match = new Set(filterAssets(state.vault.items, f, labels));
+  const q = (f.query ?? '').trim().toLowerCase();
+  const others = q ? new Set(filterAssets(state.vault.items, { ...f, query: undefined }, labels)) : match;
+  return catalogEntries(state.vault.items, state.vault.objects).filter((e) => e.variants.some((v) => match.has(v)) || (!!e.object && !!q && e.name.toLowerCase().includes(q) && e.variants.some((v) => others.has(v))));
 }
 
 /** The object an item is a variant of, if any. */

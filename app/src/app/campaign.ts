@@ -27,7 +27,7 @@ import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { checkpoint, commitView, emit, layerFor, log, onDirty, refreshView, replaceScene, setWorkspace, showLayer, state } from './store';
+import { activateSession, checkpoint, clearTabs, closeSessionTab, commitView, emit, isSceneOpen, layerFor, log, onDirty, refreshView, replaceScene, setWorkspace, showLayer, state } from './store';
 import { applySceneAmbience, refreshAudioFiles, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
@@ -282,6 +282,7 @@ export async function closeCampaign({ toStart = true } = {}): Promise<void> {
   originals.clear();
   readOnly.clear();
   replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
+  clearTabs();
   if (toStart) state.home = true;
   emit();
 }
@@ -421,6 +422,7 @@ export async function loadScene(scenePath: string, table: Partial<Scene['table']
   void applySceneAmbience(ov.ambience);
 }
 
+/** Shows scene `scenePath`: its tab if it is open (E-30), else it opens in a new tab. */
 export async function switchScene(scenePath: string): Promise<void> {
   if (scenePath === state.scenePath) return;
   await saveCampaign();
@@ -428,10 +430,22 @@ export async function switchScene(scenePath: string): Promise<void> {
   const black = state.scene.table.blackout;
   state.scene.table.blackout = true;
   emit();
-  await loadScene(scenePath);
+  if (isSceneOpen(scenePath)) {
+    activateSession(scenePath);
+    if (state.sceneDoc) await applySceneAmbience(state.editStart ? startOf(state.sceneDoc).ambience : state.sceneDoc.ambience);
+  } else await loadScene(scenePath);
   state.scene.table.blackout = black;
   emit();
   await saveCampaign();
+}
+
+/** Closes the tab of scene `scenePath` (saved first); the one shown gives way to its neighbour. */
+export async function closeScene(scenePath: string): Promise<void> {
+  if (scenePath === state.scenePath) await saveCampaign();
+  closeSessionTab(scenePath);
+  if (state.sceneDoc) await applySceneAmbience(state.sceneDoc.ambience);
+  // The campaign remembers the scene shown now.
+  await saveCampaign(true);
 }
 
 export async function saveCampaign(force = false): Promise<void> {

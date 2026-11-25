@@ -14,7 +14,7 @@ import {
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
-import { closeCampaign, importMapIntoCampaign, refreshRoot, saveCampaign, setEditStart, startAutosave } from './campaign';
+import { closeCampaign, closeScene, importMapIntoCampaign, refreshRoot, saveCampaign, setEditStart, startAutosave, switchScene } from './campaign';
 import { ResetSceneDialog } from './ResetSceneDialog';
 import { MapSettingsDialog } from './MapSettingsDialog';
 import { ExportDialog } from './ExportDialog';
@@ -103,6 +103,7 @@ function AppBar() {
         <b>{campaign?.name ?? t('campaign.none')}</b>
         <span className="hint">{campaign ? (saving ? t('campaign.saving') : dirty ? t('campaign.unsaved') : t('campaign.saved')) : t('campaign.notSaved')}</span>
       </span>
+      {campaign && <DocTabs />}
       <button className="ab-btn" title={t('panels.menu')} onClick={(e) => setPanelsMenu(panelsMenu ? null : e.currentTarget.getBoundingClientRect())}><Icon name="list" /><span>{t('panels.menu')}</span></button>
       {panelsMenu && <PanelsMenu anchor={panelsMenu} onClose={() => setPanelsMenu(null)} />}
       <div className="ab-right">
@@ -307,5 +308,34 @@ function StatusBar() {
       <span className="sep" />
       <span className={!tableOpen ? '' : blackout ? 'bad' : 'safe'}>● {!tableOpen ? t('status.tableOff') : blackout ? t('status.tableBlack') : t('status.tableSafe')}</span>
     </footer>
+  );
+}
+
+/**
+ * The open documents as tabs in the title bar (E-30, DC-034): a click shows one, the ✕ (or a
+ * middle click) closes it. The one shown carries a dot while its changes are not saved yet.
+ */
+function DocTabs() {
+  const { t } = useI18n();
+  const tabs = useStore((s) => s.tabs);
+  const active = useStore((s) => s.scenePath);
+  const pending = useStore((s) => s.dirty || s.saving);
+  if (!tabs.length) return null;
+  return (
+    <div className="doc-tabs" role="tablist" aria-label={t('tabs.label')}>
+      {tabs.map((tab) => {
+        const on = tab.id === active;
+        return (
+          <div key={tab.id} className={`doc-tab ${on ? 'on' : ''}`} onAuxClick={(e) => e.button === 1 && void closeScene(tab.id)}>
+            <button role="tab" aria-selected={on} className="doc-tab-name" title={tab.name} onClick={() => void switchScene(tab.id)}>
+              <Icon name="map" />
+              <span>{tab.name}</span>
+              {on && pending && <span className="doc-tab-dot" aria-label={t('tabs.unsaved')} />}
+            </button>
+            <button className="doc-tab-close" title={t('tabs.close')} aria-label={`${t('tabs.close')}: ${tab.name}`} onClick={() => void closeScene(tab.id)}><Icon name="close" /></button>
+          </div>
+        );
+      })}
+    </div>
   );
 }

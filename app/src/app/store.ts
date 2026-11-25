@@ -25,6 +25,7 @@ import type { Polygon } from '../core/poly/types';
 import { readFogLook, saveCoverFrom, saveFadeSeconds, saveFogEdge, saveFogMotion, saveFogQuality, saveFogSpeed, saveSoftEdges, type CoverFrom, type FogLook, type FogQuality } from './fog-settings';
 import { lookToWire } from '../render/fogOptions';
 import type { MonitorInfo } from '../platform/bridge';
+import { emptyScene } from '../core/emptyScene';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
 import type { AssetKind, AssetSidecar, Creature, MapLayer, Player } from '../core/sidecar';
@@ -146,6 +147,8 @@ export interface AppState {
   effectRuns: Record<string, number>;
   /** Houses a player character came into whose interior waits for the DM's yes (E-29; not saved). */
   interiorAsks: { id: string; name: string }[];
+  /** Open documents as tabs (E-30, DC-034), in order; the active one is what `scene` shows. */
+  tabs: DocTab[];
   /** The Asset Vault: catalog, filter, selection (E-27, DC-040). */
   vault: VaultState;
   /** Recently used campaigns (start screen). */
@@ -223,6 +226,7 @@ function initial(): AppState {
     currentLayer: BASE_LAYER,
     effectRuns: {},
     interiorAsks: [],
+    tabs: [],
     vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null },
     soundboard: initialSoundboard(),
   };
@@ -273,7 +277,7 @@ export function log(key: MessageKey, params?: Record<string, string | number>): 
 
 /* ---------- Undo / redo & dirty tracking ---------- */
 
-const history = new History<string>(100);
+let history = new History<string>(100);
 const dirtyListeners = new Set<() => void>();
 
 export function onDirty(fn: () => void): () => void {
@@ -360,6 +364,8 @@ function freshId(prefix: string): string {
  * `layerFor(state.ws)`; `docs` are the map and scene as in their files (none: no map open).
  */
 export function replaceScene(scene: Scene, opts: { resource: string; fileName: string; scenePath: string | null; sceneName: string; round?: number; turn?: number; docs?: { map: MapSidecar | null; scene: SceneOverride | null } }): void {
+  // The scene shown so far stays open in its tab (E-30).
+  if (state.scenePath && state.scenePath !== opts.scenePath) stashSession();
   state.scene = scene;
   state.mapDoc = opts.docs?.map ?? null;
   state.sceneDoc = opts.docs?.scene ?? null;
@@ -379,10 +385,133 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   layerInside = charactersInTriggers();
   interiorInside = charactersInHouses();
   state.interiorAsks = [];
+  state.effectRuns = {};
+  // A scene of its own: its own undo history; the one before keeps its history in its tab.
+  history = new History<string>(100);
   clearHistory();
+  if (opts.scenePath && !state.tabs.some((x) => x.id === opts.scenePath)) state.tabs = [...state.tabs, { id: opts.scenePath, kind: 'scene', name: opts.sceneName }];
   state.sceneVersion++;
   emit();
 }
+
+/* ---------- Document tabs (E-30, DC-034) ---------- */
+
+/** An open document: for now a scene of the campaign, by its path. */
+export interface DocTab {
+  id: string;
+  kind: 'scene';
+  name: string;
+}
+
+/** What an open scene keeps while another tab is shown: its files, its undo history and its unsaved state. */
+interface Session {
+  scenePath: string;
+  sceneName: string;
+  mapResource: string;
+  mapFileName: string;
+  imageUrl: string | null;
+  sceneDoc: SceneOverride | null;
+  mapDoc: MapSidecar | null;
+  round: number;
+  turn: number;
+  editStart: boolean;
+  history: History<string>;
+  dirty: boolean;
+  effectRuns: Record<string, number>;
+  interiorAsks: { id: string; name: string }[];
+}
+
+const sessions = new Map<string, Session>();
+/** The maps of open scenes by resource: scenes on the same map share its latest edits. */
+const openMaps = new Map<string, MapSidecar>();
+
+/** Puts the scene shown away into its tab (its view becomes its files again). */
+function stashSession(): void {
+  if (!state.scenePath) return;
+  dropCalibration();
+  commitView();
+  if (state.mapDoc) openMaps.set(state.mapResource, state.mapDoc);
+  sessions.set(state.scenePath, {
+    scenePath: state.scenePath, sceneName: state.sceneName, mapResource: state.mapResource, mapFileName: state.mapFileName, imageUrl: state.scene.map.imageUrl,
+    sceneDoc: state.sceneDoc, mapDoc: state.mapDoc, round: state.round, turn: state.turn, editStart: state.editStart, history, dirty: state.dirty,
+    effectRuns: state.effectRuns, interiorAsks: state.interiorAsks,
+  });
+}
+
+/** Whether a scene is open in a tab (shown or not). */
+export function isSceneOpen(scenePath: string): boolean {
+  return state.tabs.some((x) => x.id === scenePath);
+}
+
+/** Shows the open scene `scenePath` (put away by `stashSession`), in the current workspace's layer. */
+export function activateSession(scenePath: string): boolean {
+  const s = sessions.get(scenePath);
+  if (!s || scenePath === state.scenePath) return false;
+  stashSession();
+  sessions.delete(scenePath);
+  const mapDoc = openMaps.get(s.mapResource) ?? s.mapDoc;
+  state.mapDoc = mapDoc;
+  state.sceneDoc = s.sceneDoc;
+  state.scenePath = s.scenePath;
+  state.sceneName = s.sceneName;
+  state.mapResource = s.mapResource;
+  state.mapFileName = s.mapFileName;
+  state.round = s.round;
+  state.turn = s.turn;
+  state.editStart = s.editStart;
+  state.layer = layerFor(state.ws);
+  state.effectRuns = s.effectRuns;
+  state.interiorAsks = s.interiorAsks;
+  history = s.history;
+  state.canUndo = history.canUndo;
+  state.canRedo = history.canRedo;
+  const table = state.scene.table;
+  if (mapDoc) {
+    state.scene = sceneFromDocuments(mapDoc, s.sceneDoc, s.imageUrl, table, state.layer);
+    state.scene.table = table;
+  }
+  viewVersion++;
+  state.selectedTokenId = null;
+  state.selectedZoneId = null;
+  state.selectedLightId = null;
+  state.selectedAssetId = null;
+  clearWallEditing();
+  recomputeVision();
+  layerInside = charactersInTriggers();
+  interiorInside = charactersInHouses();
+  state.dirty = s.dirty;
+  state.sceneVersion++;
+  emit();
+  return true;
+}
+
+/**
+ * Closes the tab of `scenePath`: a tab in the background is just dropped (it was saved when it was
+ * put away); the one shown gives way to its neighbour, or to no scene. The caller saves first.
+ */
+export function closeSessionTab(scenePath: string): void {
+  const i = state.tabs.findIndex((x) => x.id === scenePath);
+  if (i < 0) return;
+  state.tabs = state.tabs.filter((x) => x.id !== scenePath);
+  if (scenePath !== state.scenePath) {
+    sessions.delete(scenePath);
+    emit();
+    return;
+  }
+  const next = state.tabs[Math.min(i, state.tabs.length - 1)];
+  // Nothing of the closed scene is kept: activating the next must not put it away again.
+  state.scenePath = null;
+  if (next && activateSession(next.id)) return;
+  replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
+}
+
+/** All tabs closed (the campaign closes). */
+export function clearTabs(): void {
+  sessions.clear();
+  openMaps.clear();
+  state.tabs = [];
+}
+
 
 /* ---------- Workspace & tools ---------- */
 

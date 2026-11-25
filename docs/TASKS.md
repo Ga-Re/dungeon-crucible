@@ -371,6 +371,11 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   (Szene, Karten-/Szenendatei, Rückgängig, Speichern) und die Tab-Leiste für Szenen; 2. TV per Befehl, TV-Szene im
   Hintergrund, Rückfrage im Orchestrator, Schließen der TV-Szene; 3. Karten-Tabs und „Auf den TV übernehmen“;
   4. Tabs je Kampagne wiederherstellen, TV nach dem Start geschwärzt.
+  Erledigt (Schritt 1): Jede offene Szene ist eine Sitzung (Karten- und Szenendatei, Rückgängig, ungespeicherter
+  Zustand, Effekte, Rückfragen); die Tab-Leiste in der Titelleiste zeigt die offenen Szenen (aktive mit Akzentlinie
+  und Punkt, solange nicht gespeichert), Klick wechselt (vorher wird gespeichert), ✕ oder Mittelklick schließt;
+  eine Szene aus dem Browser oder eine neue Karte öffnet sich als Tab. Szenen auf derselben Karte teilen deren
+  letzte Änderungen. Bis Schritt 2 folgt der TV noch dem aktiven Tab.
 - **DC-034b Kreaturen als Tabs** (E-30), **DC-034c Assets als Tabs**, **DC-034d Notizen und Handouts als Tabs** –
   auf der Tab-Leiste aus DC-034.
 - **DC-035 Papierkorb-Ansicht** mit Wiederherstellen (ohne Überschreiben) und „Papierkorb leeren“ von Hand; kein

@@ -146,7 +146,8 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     walls: elements.walls,
     zones: elements.zones,
     pois: m.pois.map((p) => ({ ...p })),
-    assets: m.assets.map((a) => ({ ...a })),
+    // Placed assets are edited in the Map Forge only; a scene's view may hide some (DC-041).
+    assets: (fromView ? m.assets : previous.assets).map((a) => ({ ...a })),
     lights: elements.lights,
     ambient: scene.ambient,
     ...(startFog ? { startFog: copyFog(startFog) } : {}),
@@ -162,7 +163,7 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
   const current = elementsFromScene(scene);
   const layer = diffElements(base, current, previous);
   // Hidden ids whose element is gone are kept too, until the DM cleans them up.
-  const known = elementIds(base, current);
+  const known = new Set([...elementIds(base, current), ...scene.map.assets.map((a) => a.id), ...scene.hidden.assets.map((a) => a.id)]);
   const orphanedHidden = (previous?.hidden ?? []).filter((id) => !known.has(id));
   return {
     kind: 'scene',
@@ -235,12 +236,12 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       region: map.biome,
       mapType: map.mapType,
       pois: map.pois.map((p) => ({ ...p })),
-      assets: map.assets.map((a) => ({ ...a, ...(a.variant === undefined ? {} : { variant: a.variant }) })),
+      assets: shown(map.assets.map((a) => ({ ...a, ...(a.variant === undefined ? {} : { variant: a.variant }) }))),
     },
     walls: shown(walls),
     zones: shown(zones),
     lights: shown(lights),
-    hidden: { walls: hiddenOf(walls), zones: hiddenOf(zones), lights: hiddenOf(lights) },
+    hidden: { walls: hiddenOf(walls), zones: hiddenOf(zones), lights: hiddenOf(lights), assets: hiddenOf(map.assets.map((a) => ({ ...a }))) },
     ambient: map.ambient,
     tokens: onMap ? [] : (state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: onMap ? [] : (state?.templates ?? []).map((t) => ({ ...t })),
@@ -259,7 +260,7 @@ export function sceneIssues(map: MapSidecar, override: SceneOverride | null): { 
   const base = elementsFromSidecar(map);
   const layer = layerOf(override);
   const r = resolveElements(base, layer);
-  const known = elementIds(base, layer.added);
+  const known = new Set([...elementIds(base, layer.added), ...map.assets.map((a) => a.id)]);
   const hidden = [...(override?.hidden ?? []), ...(override?.start?.hidden ?? [])].filter((id) => !known.has(id));
   return { orphaned: [...new Set([...r.orphaned, ...hidden])].sort(), invalid: r.invalid };
 }
@@ -282,13 +283,13 @@ export function withoutOrphans(override: SceneOverride, map: MapSidecar): SceneO
 }
 
 export function hiddenIds(h: HiddenElements): string[] {
-  return [...h.walls, ...h.zones, ...h.lights].map((x) => x.id);
+  return [...h.walls, ...h.zones, ...h.lights, ...h.assets].map((x) => x.id);
 }
 
 /** How a scene's element differs from the map: hidden, changed fields, or only in this scene. */
 export interface ElementChange {
   id: string;
-  kind: keyof MapElements;
+  kind: keyof MapElements | 'assets';
   status: 'hidden' | 'changed' | 'own';
 }
 
@@ -305,6 +306,8 @@ export function sceneChanges(base: MapElements, view: Scene): ElementChange[] {
       else if (layer.overrides[el.id]) out.push({ id: el.id, kind, status: 'changed' });
     }
   }
+  // Placed assets: a scene only hides them.
+  for (const a of view.hidden.assets) out.push({ id: a.id, kind: 'assets', status: 'hidden' });
   return out;
 }
 
@@ -326,7 +329,7 @@ export function resetElement(view: Scene, base: MapElements, id: string): Scene 
     walls: fromMap(view.walls, 'walls'),
     zones: fromMap(view.zones, 'zones'),
     lights: fromMap(view.lights, 'lights'),
-    hidden: { walls: fromMap(view.hidden.walls, 'walls'), zones: fromMap(view.hidden.zones, 'zones'), lights: fromMap(view.hidden.lights, 'lights') },
+    hidden: { ...view.hidden, walls: fromMap(view.hidden.walls, 'walls'), zones: fromMap(view.hidden.zones, 'zones'), lights: fromMap(view.hidden.lights, 'lights') },
   };
 }
 

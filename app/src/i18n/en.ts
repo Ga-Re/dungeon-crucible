@@ -429,6 +429,7 @@ export const en = {
   'editor.hint.circle': 'Drag from the centre to draw a circle.',
   'editor.hint.polygon': 'Click the corners; double-click, Enter or the first corner closes it.',
   'editor.hint.light': 'Click or drag where the light sits.',
+  'log.assetPlaced': '"{name}" placed on the map',
   'panel.asset': 'Asset',
   'vault.import': 'Import assets',
   'vault.search': 'Search name, tag, kind …',

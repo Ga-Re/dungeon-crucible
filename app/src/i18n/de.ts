@@ -429,6 +429,7 @@ export const de: Partial<Record<MessageKey, string>> = {
   'editor.hint.circle': 'Von der Mitte aus einen Kreis aufziehen.',
   'editor.hint.polygon': 'Ecken anklicken; Doppelklick, Enter oder die erste Ecke schließt.',
   'editor.hint.light': 'Klicken oder ziehen, wo das Licht sitzt.',
+  'log.assetPlaced': '„{name}“ auf die Karte gestellt',
   'panel.asset': 'Asset',
   'vault.import': 'Assets importieren',
   'vault.search': 'Name, Tag, Art suchen …',

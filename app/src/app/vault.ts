@@ -8,9 +8,9 @@
 import { addToCollection, assetDefaults, filterAssets, kindFromFile, packDefaults, parseAssetSidecar, removeCollection, renameCollection, type CatalogFilter, type CatalogItem } from '../core/assets';
 import { keepUnknown } from '../core/documents';
 import { ASSET_VERSION, AssetSidecarSchema, type AssetSidecar } from '../core/sidecar';
-import { cancelPack, importAssets, importDropped, importPack, isDesktop, listLibrary, onPackProgress, pickPack, writeText, type LibraryImport } from '../platform/bridge';
+import { absolutePath, assetUrl, cancelPack, importAssets, importDropped, importPack, isDesktop, listLibrary, onPackProgress, pickPack, writeText, type LibraryImport } from '../platform/bridge';
 import type { PackImported, PackScanInfo } from '../platform/desktop-api';
-import { emit, log, state } from './store';
+import { emit, log, setAssetInfo, state, type AssetInfo } from './store';
 
 export interface VaultItem extends CatalogItem {
   size: number;
@@ -77,7 +77,39 @@ export async function refreshVault(): Promise<void> {
   state.vault.items = items.sort((a, b) => a.asset.name.localeCompare(b.asset.name) || a.relPath.localeCompare(b.relPath));
   const known = new Set(items.map((i) => i.relPath));
   state.vault.selected = state.vault.selected.filter((p) => known.has(p));
+  updateAssetInfo();
   emit();
+}
+
+/** What placements need of each asset (DC-041), from the catalog; URLs already known are kept. */
+function updateAssetInfo(): void {
+  const info: Record<string, AssetInfo> = {};
+  for (const { relPath, asset: a } of state.vault.items) {
+    info[relPath] = {
+      name: a.name, kind: a.assetKind, video: /\.(webm|mp4)$/i.test(relPath), url: state.assetInfo[relPath]?.url ?? null,
+      ...(a.sizeCells ? { sizeCells: a.sizeCells } : {}), ...(a.group ? { group: a.group } : {}), ...(a.cover ? { cover: a.cover } : {}), ...(a.light ? { light: a.light } : {}),
+    };
+  }
+  setAssetInfo(info);
+}
+
+const resolving = new Set<string>();
+
+/** Finds the URLs of placed assets once (only those placed, not the whole library). */
+export function requestAssetUrls(paths: readonly string[]): void {
+  for (const p of paths) {
+    const known = state.assetInfo[p];
+    if (!known || known.url || resolving.has(p)) continue;
+    resolving.add(p);
+    void absolutePath(p)
+      .then(assetUrl)
+      .then((url) => {
+        const cur = state.assetInfo[p];
+        if (cur) setAssetInfo({ ...state.assetInfo, [p]: { ...cur, url } });
+      })
+      .catch(() => undefined)
+      .finally(() => resolving.delete(p));
+  }
 }
 
 function defaultsFor(relPath: string): AssetSidecar {

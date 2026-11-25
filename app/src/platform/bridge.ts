@@ -109,6 +109,10 @@ export const importToLibrary = (kind: 'map' | 'audio') => dc().importToLibrary(k
 export const listLibrary = () => dc().listLibrary();
 export const importAssets = () => dc().importAssets();
 export const importDropped = (fileName: string, bytes: Uint8Array) => dc().importDropped(fileName, bytes);
+export const pickPack = () => dc().pickPack();
+export const importPack = (token: string, folders: string[]) => dc().importPack(token, folders);
+export const cancelPack = (token: string) => dc().cancelPack(token);
+export const onPackProgress = (cb: Parameters<DcApi['onPackProgress']>[0]) => dc().onPackProgress(cb);
 export const readThumb = (key: string) => dc().readThumb(key);
 export const writeThumb = (key: string, bytes: Uint8Array) => dc().writeThumb(key, bytes);
 export const exportCampaignArchive = (slug: string, name: string, libraryFiles: string[]) => dc().exportCampaignArchive(slug, name, libraryFiles);

@@ -12,7 +12,9 @@ import { useI18n } from '../i18n/i18n';
 import { Icon, type IconName } from '../ui/Icon';
 import { useStore } from '../app/store';
 import { thumbnailUrl } from '../app/thumbs';
+import '../app/start.css';
 import {
+  cancelPackImport, closePackImport, runPackImport, setAllPackFolders, setPackName, togglePackFolder,
   addAssetsToCollection, createCollection, deleteCollectionEverywhere, importDroppedFiles, refreshVault, renameCollectionEverywhere, selectAsset, setThumbSize, setVaultFilter,
   shownAssets, toggleFavorite, updateSelectedAssets, type VaultItem,
 } from '../app/vault';
@@ -46,6 +48,7 @@ export function VaultPanel() {
   const selected = useStore((s) => s.vault.selected);
   const thumbPx = useStore((s) => s.vault.thumbPx);
   const root = useStore((s) => s.root?.root);
+  const pack = useStore((s) => s.vault.pack !== null);
   const [dropping, setDropping] = useState(false);
   useEffect(() => {
     void refreshVault();
@@ -93,6 +96,105 @@ export function VaultPanel() {
         </ul>
       )}
       {dropping && <div className="vault-drop" aria-hidden="true">{t('vault.drop')}</div>}
+      {pack && <PackImportDialog />}
+    </div>
+  );
+}
+
+function sizeText(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+/**
+ * "Import pack" (DC-040b): the pack's folders with ticks, then progress with Stop, then a summary.
+ * Modal: a long copy needs the DM's attention and must not be mixed with edits.
+ */
+function PackImportDialog() {
+  const { t } = useI18n();
+  const p = useStore((s) => s.vault.pack)!;
+  useEffect(() => {
+    const esc = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (p.phase === 'running') cancelPackImport();
+      else closePackImport();
+    };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [p.phase]);
+  const chosen = p.folders.filter((f) => p.chosen.has(f.path));
+  const files = chosen.reduce((n, f) => n + f.files, 0);
+  const bytes = chosen.reduce((n, f) => n + f.bytes, 0);
+  return (
+    <div className="start-modal" role="presentation">
+      <form
+        className="start-dialog pack-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pack-title"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (p.phase === 'choose') void runPackImport();
+          else if (p.phase === 'done') closePackImport();
+        }}
+      >
+        <h2 id="pack-title">{t('pack.title')}</h2>
+        {p.phase === 'choose' && (
+          <>
+            <label className="start-field">
+              <span>{t('pack.name')}</span>
+              <input value={p.name} autoFocus onChange={(e) => setPackName(e.target.value)} />
+            </label>
+            <p className="hint">{t('pack.nameHint', { name: p.name.trim() || 'Pack' })}</p>
+            <div className="pack-head">
+              <b>{t('pack.folders')}</b>
+              <button type="button" className="btn sm" onClick={() => setAllPackFolders(true)}>{t('pack.all')}</button>
+              <button type="button" className="btn sm" onClick={() => setAllPackFolders(false)}>{t('pack.none')}</button>
+            </div>
+            <ul className="pack-folders">
+              {p.folders.map((f) => {
+                const depth = f.path ? f.path.split('/').length : 0;
+                return (
+                  <li key={f.path} style={{ paddingLeft: depth * 16 }}>
+                    <label>
+                      <input type="checkbox" checked={p.chosen.has(f.path)} onChange={() => togglePackFolder(f.path)} />
+                      <Icon name="folder" />
+                      <span className="nm">{f.path ? f.path.split('/').pop() : t('pack.root')}</span>
+                      {f.files > 0 && <span className="meta">{t('pack.summary', { files: f.files, size: sizeText(f.bytes) })}</span>}
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="hint" role="status">{t('pack.summary', { files, size: sizeText(bytes) })}</p>
+            <div className="start-buttons">
+              <button type="button" className="btn" onClick={closePackImport}>{t('start.cancel')}</button>
+              <button type="submit" className="btn pri" disabled={files === 0}>{t('pack.start')}</button>
+            </div>
+          </>
+        )}
+        {p.phase === 'running' && p.progress && (
+          <>
+            <p role="status">{t('pack.running', { done: p.progress.done, total: p.progress.total })}</p>
+            <progress className="pack-progress" max={Math.max(1, p.progress.total)} value={p.progress.done} />
+            <p className="hint mono pack-file">{p.progress.file}</p>
+            <div className="start-buttons">
+              <button type="button" className="btn" autoFocus onClick={cancelPackImport}>{t('pack.cancel')}</button>
+            </div>
+          </>
+        )}
+        {p.phase === 'done' && p.result && (
+          <>
+            <p role="status">{t('pack.doneText', { imported: p.result.imported, reused: p.result.reused })}</p>
+            {p.result.skipped > 0 && <p className="hint">{t('pack.skipped', { n: p.result.skipped })}</p>}
+            {p.result.cancelled && <p className="hint">{t('pack.cancelled')}</p>}
+            <div className="start-buttons">
+              <button type="submit" className="btn pri" autoFocus>{t('pack.close')}</button>
+            </div>
+          </>
+        )}
+      </form>
     </div>
   );
 }

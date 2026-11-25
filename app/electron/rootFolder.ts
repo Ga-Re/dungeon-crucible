@@ -11,11 +11,12 @@
  * every access is confined to it (no absolute paths, no `..`, no way out through symbolic links).
  */
 import { app, dialog, type BrowserWindow } from 'electron';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CampaignListEntry, ExportResult, ImportResultInfo, LibraryEntry, LibraryImport, RootInfo } from '../src/platform/desktop-api';
+import type { CampaignListEntry, ExportResult, ImportResultInfo, LibraryEntry, LibraryImport, PackImported, PackProgress, PackScanInfo, RootInfo } from '../src/platform/desktop-api';
 import { ArchiveError, CAMPAIGN_FILE_NAME, SIDECAR_SUFFIX, campaignSlug, freeName, importArchive, writeArchive } from './archive';
-import { ASSET_EXTENSIONS, addBytesToLibrary, addFileToLibrary, listLibrary } from './library';
+import { ASSET_EXTENSIONS, addBytesToLibrary, addFileToLibrary, importPack, listLibrary, scanPack } from './library';
 import { folderName, isInside, listFilesIn, safeJoin, toRel, writeAtomic } from './files';
 
 const MAP_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'webm'];
@@ -215,6 +216,39 @@ export class RootFolder {
     const out: LibraryImport[] = [];
     for (const src of r.filePaths) out.push(this.libraryImport(await addFileToLibrary(path.join(root, 'library'), src)));
     return out;
+  }
+
+  /** Packs the DM picked this session: token → folder (DC-040b). The window never sends a path. */
+  private packs = new Map<string, { dir: string; cancelled: boolean }>();
+
+  /** Picks a pack folder in the native dialog and lists its folders. */
+  async pickPack(win: BrowserWindow): Promise<PackScanInfo | null> {
+    this.requireRoot();
+    const r = await dialog.showOpenDialog(win, { title: 'Import asset pack', properties: ['openDirectory'] });
+    const dir = r.filePaths[0];
+    if (r.canceled || !dir) return null;
+    const scan = await scanPack(dir);
+    const token = crypto.randomUUID();
+    this.packs.set(token, { dir, cancelled: false });
+    return { token, ...scan };
+  }
+
+  /** Imports the chosen folders of a picked pack, reporting progress; stops when cancelled. */
+  async importPack(token: string, folders: string[], progress: (p: PackProgress) => void): Promise<PackImported[]> {
+    const root = this.requireRoot();
+    const pack = this.packs.get(token);
+    if (!pack) throw new Error('Unknown pack');
+    pack.cancelled = false;
+    const files = await importPack(pack.dir, path.join(root, 'library'), folders, {
+      onProgress: (done, total, file) => progress({ token, done, total, file }),
+      cancelled: () => pack.cancelled,
+    });
+    return files.map((f) => ({ packPath: f.packPath, relPath: `library/${f.name}`, reused: f.reused }));
+  }
+
+  cancelPack(token: string): void {
+    const pack = this.packs.get(token);
+    if (pack) pack.cancelled = true;
   }
 
   /** Puts a file dropped on the DM window into the library (its bytes, under its own name). */

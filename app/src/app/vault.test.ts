@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DcApi, LibraryEntry } from '../platform/desktop-api';
 import { refreshLibraryMaps } from './library';
 import { state } from './store';
-import { deleteCollectionEverywhere, importVaultAssets, refreshVault, renameCollectionEverywhere, selectAsset, toggleFavorite, updateSelectedAssets } from './vault';
+import { closePackImport, runPackImport, startPackImport, togglePackFolder, deleteCollectionEverywhere, importVaultAssets, refreshVault, renameCollectionEverywhere, selectAsset, toggleFavorite, updateSelectedAssets } from './vault';
 
 /** The Asset Vault on a library kept in memory (DC-040). */
 let files: Map<string, string>;
@@ -154,5 +154,47 @@ describe('importing audio in the soundboard', () => {
     await importAudio(true);
     expect(JSON.parse(files.get('library/hum.ogg.dm.json')!)).toEqual({ kind: 'asset', schemaVersion: 99, name: 'Hum' });
     state.campaign = null;
+  });
+});
+
+describe('pack import (DC-040b)', () => {
+  it('chooses folders, imports them with folder tags, pack tag and variant groups, then sums up', async () => {
+    const progress: ((p: { token: string; done: number; total: number; file: string }) => void)[] = [];
+    let asked: string[] = [];
+    window.dc!.pickPack = async () => ({
+      token: 't1', name: 'Forest Pack',
+      folders: [{ path: '', files: 0, bytes: 0 }, { path: 'Trees', files: 2, bytes: 2 }, { path: 'Sounds', files: 1, bytes: 1 }, { path: 'Empty', files: 0, bytes: 0 }],
+    });
+    window.dc!.onPackProgress = (cb) => {
+      progress.push(cb);
+      return () => undefined;
+    };
+    window.dc!.importPack = async (_token, folders) => {
+      asked = folders;
+      files.set('library/oak_01.png', '');
+      files.set('library/oak_02.png', '');
+      progress.forEach((cb) => cb({ token: 't1', done: 2, total: 2, file: 'Trees/oak_02.png' }));
+      return [
+        { packPath: 'Trees/oak_01.png', relPath: 'library/oak_01.png', reused: false },
+        { packPath: 'Trees/oak_02.png', relPath: 'library/oak_02.png', reused: false },
+        { packPath: 'Trees/oak.png', relPath: 'library/oak.png', reused: true },
+        // The same picture twice in the pack: the second is the first one, copied just now.
+        { packPath: 'Trees/oak_01 copy.png', relPath: 'library/oak_01.png', reused: true },
+      ];
+    };
+    await startPackImport();
+    const pack = state.vault.pack!;
+    expect(pack.phase).toBe('choose');
+    // Folders with files are chosen; empty ones not.
+    expect([...pack.chosen].sort()).toEqual(['Sounds', 'Trees']);
+    togglePackFolder('Sounds');
+    await runPackImport();
+    expect(asked).toEqual(['Trees']);
+    expect(JSON.parse(files.get('library/oak_01.png.dm.json')!)).toMatchObject({ name: 'oak 01', tags: ['Trees', 'pack: Forest Pack'], group: 'Forest Pack: oak' });
+    // A file the library had is left as it is.
+    expect(JSON.parse(files.get('library/oak.png.dm.json')!).tags).toBeUndefined();
+    expect(state.vault.pack).toMatchObject({ phase: 'done', result: { imported: 2, reused: 2, skipped: 0, cancelled: false } });
+    closePackImport();
+    expect(state.vault.pack).toBeNull();
   });
 });

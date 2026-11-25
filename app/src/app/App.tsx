@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { exploredShare } from '../core/fogModel';
 import { DockHost } from '../dock/DockHost';
 import { floatingBackend } from '../platform/bridge';
-import { importVaultAssets } from './vault';
+import { importVaultAssets, startPackImport } from './vault';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
 import { mapCommands } from '../panels/MapView';
@@ -173,6 +173,7 @@ function Ribbon() {
       case 'walls:draw': return startWallCommand();
       case 'grid:calibrate': return startCalibration();
       case 'vault:import': return void importVaultAssets();
+      case 'vault:pack': return void startPackImport();
       case 'turn:next': return nextTurn();
       case 'templates:clear': return clearTemplates();
       case 'table:open': return void openTable();

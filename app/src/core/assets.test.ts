@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addToCollection, assetDefaults, collectionsOf, commonValue, filterAssets, kindFromFile, parseAssetSidecar, removeCollection, renameCollection, type CatalogItem,
+  addToCollection, assetDefaults, collectionsOf, commonValue, filterAssets, kindFromFile, packDefaults, parseAssetSidecar, removeCollection, renameCollection, type CatalogItem,
 } from './assets';
 import type { AssetSidecar } from './sidecar';
 
@@ -84,5 +84,24 @@ describe('the catalog', () => {
   it('a field shared by all selected assets, or "mixed"', () => {
     expect(commonValue([items[0].asset, items[1].asset], (a) => a.assetKind)).toBe('prop');
     expect(commonValue([items[0].asset, items[2].asset], (a) => a.assetKind)).toBe('mixed');
+  });
+});
+
+describe('defaults from a pack (DC-040b)', () => {
+  it('folders below the pack become tags, the pack a "pack:" tag; variants share a group', () => {
+    const out = packDefaults('Forest Pack', ['Trees/Oak/oak_01_2x2.png', 'Trees/Oak/oak_02_2x2.png', 'Trees/Oak/acorn.png', 'rock.png', 'Sounds/wind.ogg']);
+    expect(out.get('Trees/Oak/oak_01_2x2.png')).toEqual({ tags: ['Trees', 'Oak', 'pack: Forest Pack'], group: 'Forest Pack: oak' });
+    expect(out.get('Trees/Oak/oak_02_2x2.png')!.group).toBe('Forest Pack: oak');
+    // A single file is no variant.
+    expect(out.get('Trees/Oak/acorn.png')).toEqual({ tags: ['Trees', 'Oak', 'pack: Forest Pack'] });
+    expect(out.get('rock.png')).toEqual({ tags: ['pack: Forest Pack'] });
+    expect(out.get('Sounds/wind.ogg')).toEqual({ tags: ['Sounds', 'pack: Forest Pack'] });
+  });
+
+  it('only numbered siblings in the same folder are variants', () => {
+    const out = packDefaults('P', ['a/door-1.png', 'b/door-2.png', 'a/wall 1.png', 'a/wall 2.webp']);
+    expect(out.get('a/door-1.png')!.group).toBeUndefined();
+    expect(out.get('a/wall 1.png')!.group).toBe('P: wall');
+    expect(out.get('a/wall 2.webp')!.group).toBe('P: wall');
   });
 });

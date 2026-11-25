@@ -5,10 +5,11 @@
  * What counts as an asset: a file with an asset sidecar (or an older audio sidecar), and audio
  * without one. Maps (map sidecar, or an image without any sidecar) stay in the Map Forge.
  */
-import { addToCollection, assetDefaults, filterAssets, kindFromFile, parseAssetSidecar, removeCollection, renameCollection, type CatalogFilter, type CatalogItem } from '../core/assets';
+import { addToCollection, assetDefaults, filterAssets, kindFromFile, packDefaults, parseAssetSidecar, removeCollection, renameCollection, type CatalogFilter, type CatalogItem } from '../core/assets';
 import { keepUnknown } from '../core/documents';
 import { ASSET_VERSION, AssetSidecarSchema, type AssetSidecar } from '../core/sidecar';
-import { importAssets, importDropped, isDesktop, listLibrary, writeText, type LibraryImport } from '../platform/bridge';
+import { cancelPack, importAssets, importDropped, importPack, isDesktop, listLibrary, onPackProgress, pickPack, writeText, type LibraryImport } from '../platform/bridge';
+import type { PackImported, PackScanInfo } from '../platform/desktop-api';
 import { emit, log, state } from './store';
 
 export interface VaultItem extends CatalogItem {
@@ -29,6 +30,20 @@ export interface VaultState {
   thumbPx: number;
   /** Collections created in the Browser but not used by any asset yet. */
   newCollections: string[];
+  /** The "import pack" dialog while open (DC-040b). */
+  pack: PackDialog | null;
+}
+
+export interface PackDialog {
+  token: string;
+  /** Pack name for the "pack: …" tag and the variant groups (the folder's name, editable). */
+  name: string;
+  folders: PackScanInfo['folders'];
+  /** Folders to import. */
+  chosen: Set<string>;
+  phase: 'choose' | 'running' | 'done';
+  progress: { done: number; total: number; file: string } | null;
+  result: { imported: number; reused: number; skipped: number; cancelled: boolean } | null;
 }
 
 const AUDIO = /\.(mp3|ogg|oga|opus|wav|m4a|aac|flac)$/i;
@@ -168,32 +183,40 @@ function inCollection(name: string): string[] {
 }
 
 /**
- * After an import: files copied just now get a sidecar with their defaults; a file the library had
- * already keeps what it has – a map, an unreadable sidecar or one from a newer app version is
- * never written over (file rules) and stays out of the Vault. Then refreshes and selects them.
+ * After an import: files copied just now get a sidecar with their defaults (plus `extra` from a
+ * pack); a file the library had already keeps what it has – a map, an unreadable sidecar or one
+ * from a newer app version is never written over (file rules) and stays out of the Vault.
+ * Returns the assets now in the Vault and how many files were left alone.
  */
-async function afterImport(imported: readonly LibraryImport[]): Promise<void> {
+async function afterImport(imported: readonly LibraryImport[], extra?: (relPath: string) => Partial<AssetSidecar>): Promise<{ paths: string[]; skipped: number }> {
   await refreshVault();
   const byPath = new Map(state.vault.items.map((i) => [i.relPath, i]));
   const paths: string[] = [];
   let skipped = 0;
+  // Files copied just now first: a reused file may be one of them (the same picture twice).
+  const ordered = [...imported.filter((f) => !f.reused), ...imported.filter((f) => f.reused)];
   try {
-    for (const f of imported) {
+    for (const f of ordered) {
       if (!kindFromFile(f.relPath)) continue;
       const item = byPath.get(f.relPath) ?? (f.reused ? null : { relPath: f.relPath, size: 0, mtimeMs: 0, raw: null, asset: defaultsFor(f.relPath) });
       if (!item) {
         skipped++;
         continue;
       }
-      if (item.raw === null) await writeAsset(item, item.asset);
-      paths.push(f.relPath);
+      byPath.set(f.relPath, item.raw === null ? await writeAsset(item, { ...item.asset, ...extra?.(f.relPath) }) : item);
+      if (!paths.includes(f.relPath)) paths.push(f.relPath);
     }
   } catch {
     log('log.assetWriteFailed');
   }
-  if (paths.length) log('log.assetsImported', { n: paths.length, reused: imported.filter((f) => f.reused && paths.includes(f.relPath)).length });
   if (skipped) log('log.assetsNotAssets', { n: skipped });
   await refreshVault();
+  return { paths, skipped };
+}
+
+async function importedFiles(imported: readonly LibraryImport[]): Promise<void> {
+  const { paths } = await afterImport(imported);
+  if (paths.length) log('log.assetsImported', { n: paths.length, reused: imported.filter((f) => f.reused && paths.includes(f.relPath)).length });
   state.vault.selected = paths;
   state.vault.anchor = paths[0] ?? null;
   emit();
@@ -210,7 +233,7 @@ export async function importVaultAssets(): Promise<void> {
     emit();
     return;
   }
-  await afterImport(imported);
+  await importedFiles(imported);
 }
 
 /** Files dropped on the Vault: sent as bytes (never as paths). */
@@ -225,5 +248,103 @@ export async function importDroppedFiles(files: readonly File[]): Promise<void> 
       log('log.assetImportFailed', { file: f.name });
     }
   }
-  await afterImport(out);
+  await importedFiles(out);
+}
+
+/* ---------- Pack import (DC-040b) ---------- */
+
+/** "Import pack": picks a folder and opens the dialog with its folders (those with files chosen). */
+export async function startPackImport(): Promise<void> {
+  if (!isDesktop()) return;
+  let scan: PackScanInfo | null;
+  try {
+    scan = await pickPack();
+  } catch {
+    log('log.assetsImportFailed');
+    emit();
+    return;
+  }
+  if (!scan) return;
+  state.vault.pack = {
+    token: scan.token, name: scan.name, folders: scan.folders, chosen: new Set(scan.folders.filter((f) => f.files > 0).map((f) => f.path)),
+    phase: 'choose', progress: null, result: null,
+  };
+  emit();
+}
+
+export function setPackName(name: string): void {
+  if (state.vault.pack) state.vault.pack = { ...state.vault.pack, name };
+  emit();
+}
+
+/** Ticks a folder on or off; its subfolders follow. */
+export function togglePackFolder(path: string): void {
+  const p = state.vault.pack;
+  if (!p || p.phase !== 'choose') return;
+  const on = !p.chosen.has(path);
+  const chosen = new Set(p.chosen);
+  for (const f of p.folders) {
+    if (f.path !== path && !(path === '' || f.path.startsWith(`${path}/`))) continue;
+    if (on && f.files > 0) chosen.add(f.path);
+    else chosen.delete(f.path);
+  }
+  if (on) chosen.add(path);
+  state.vault.pack = { ...p, chosen };
+  emit();
+}
+
+export function setAllPackFolders(on: boolean): void {
+  const p = state.vault.pack;
+  if (!p || p.phase !== 'choose') return;
+  state.vault.pack = { ...p, chosen: new Set(on ? p.folders.filter((f) => f.files > 0).map((f) => f.path) : []) };
+  emit();
+}
+
+/** Copies the chosen folders, then gives the new files their pack tags and variant groups. */
+export async function runPackImport(): Promise<void> {
+  const p = state.vault.pack;
+  if (!p || p.phase !== 'choose' || p.chosen.size === 0) return;
+  const name = p.name.trim() || 'Pack';
+  state.vault.pack = { ...p, phase: 'running', progress: { done: 0, total: p.folders.filter((f) => p.chosen.has(f.path)).reduce((n, f) => n + f.files, 0), file: '' } };
+  emit();
+  const off = onPackProgress((pr) => {
+    const cur = state.vault.pack;
+    if (!cur || pr.token !== cur.token) return;
+    state.vault.pack = { ...cur, progress: { done: pr.done, total: pr.total, file: pr.file } };
+    emit();
+  });
+  let files: PackImported[] = [];
+  try {
+    files = await importPack(p.token, [...p.chosen].sort());
+  } catch {
+    log('log.assetsImportFailed');
+  } finally {
+    off();
+  }
+  const total = state.vault.pack?.progress?.total ?? files.length;
+  const defaults = packDefaults(name, files.map((f) => f.packPath));
+  // A library file's pack path is that of the file actually copied (not of a later equal one).
+  const byRel = new Map([...files.filter((f) => f.reused), ...files.filter((f) => !f.reused)].map((f) => [f.relPath, f.packPath]));
+  const { paths, skipped } = await afterImport(
+    files.map((f) => ({ relPath: f.relPath, absPath: '', reused: f.reused })),
+    (relPath) => defaults.get(byRel.get(relPath) ?? '') ?? {},
+  );
+  const fresh = new Set(files.filter((f) => !f.reused).map((f) => f.relPath));
+  const reused = files.filter((f) => f.reused && paths.includes(f.relPath)).length;
+  const result = { imported: paths.filter((p) => fresh.has(p)).length, reused, skipped, cancelled: files.length < total };
+  log('log.packImported', { pack: name, n: result.imported, reused });
+  state.vault.pack = state.vault.pack && { ...state.vault.pack, phase: 'done', result };
+  emit();
+}
+
+/** Stops a running pack import after the current file (files already copied stay). */
+export function cancelPackImport(): void {
+  const p = state.vault.pack;
+  if (p?.phase === 'running') void cancelPack(p.token).catch(() => undefined);
+}
+
+export function closePackImport(): void {
+  if (state.vault.pack?.phase === 'running') return;
+  state.vault.pack = null;
+  emit();
 }

@@ -386,9 +386,17 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   rückgängig machbar (direkt in die Sidecars). „Zuletzt benutzt“ kommt mit DC-041 (Platzieren). Import einer
   Datei, die die Bibliothek schon als Karte, unlesbar oder aus neuerer App-Version hat: bleibt unverändert,
   Hinweis im Log (keine Umwandlung in ein Asset).
-- **DC-040b Pack-Import** (E-27; T-231): Ordner wählen, Unterordner ankreuzen, Fortschritt und Abbrechen ohne
+- ✓ **DC-040b Pack-Import** (E-27; T-231): Ordner wählen, Unterordner ankreuzen, Fortschritt und Abbrechen ohne
   halbe Dateien; Ordnernamen → Tags plus „pack: …“; Varianten (oak_01, oak_02 …) als Gruppe; Namenskonflikte
   automatisch umbenennen. Import aus Karte/Handout heraus kommt mit DC-041 bzw. den Handouts.
+  Erledigt: „Pack importieren“ (Menüband Asset): Ordner im nativen Dialog wählen; Dialog mit Pack-Name und
+  Ordnerbaum (Häkchen, Unterordner folgen, Alle/Keine, Anzahl und Größe); Import Datei für Datei mit
+  Fortschritt und Abbrechen (bis dahin kopierte Dateien bleiben, keine halbe Datei: erst daneben schreiben, dann
+  verlinken); Duplikate über einen Größen-/Hash-Index der Bibliothek; Tags aus den Ordnern unter dem Pack plus
+  „pack: <Name>“, Varianten (nummerierte Geschwister im selben Ordner) mit Gruppe „<Pack>: <Grundname>“; Größe aus
+  „_2x2“. Versteckte Dateien, Sidecars, andere Dateitypen und Verknüpfungen werden übersprungen; das Fenster
+  kennt nur ein Kennzeichen des Packs und Ordnernamen aus dem Scan. Schon vorhandene Dateien bleiben
+  unverändert (keine Pack-Tags nachträglich).
 - **DC-109 Asset-Editor** (E-27; T-202): in der Vault-Mitte – Größe in Feldern, Deckungsmaske (Kreis/Polygon,
   Vorschlag aus Transparenz), Licht (hell/dämmrig, Farbe, Flackern), Effekt-Verhalten (Dauerschleife an/aus,
   einmal auslösen, mit Licht/Ton).

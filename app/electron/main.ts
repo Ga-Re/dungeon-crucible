@@ -165,6 +165,12 @@ function registerIpc(): void {
   handle('library:list', () => rootFolder.listLibrary());
   handle('library:importAssets', (w) => rootFolder.importAssets(w));
   handle('library:importDropped', (_w, name: unknown, data: unknown) => rootFolder.importDropped(str(name, 'name'), bytes(data)));
+  handle('library:pickPack', (w) => rootFolder.pickPack(w));
+  handle('library:importPack', (_w, token: unknown, folders: unknown) => {
+    if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string')) throw new Error('folders must be a list of text');
+    return rootFolder.importPack(str(token, 'token'), folders as string[], (p) => toMain('library:packProgress', p));
+  });
+  handle('library:cancelPack', (_w, token: unknown) => rootFolder.cancelPack(str(token, 'token')));
   handle('thumbs:read', (_w, key: unknown) => thumbs.read(str(key, 'key')));
   handle('thumbs:write', (_w, key: unknown, data: unknown) => thumbs.write(str(key, 'key'), bytes(data)));
   handle('archive:export', (w, slug: unknown, name: unknown, files: unknown) =>

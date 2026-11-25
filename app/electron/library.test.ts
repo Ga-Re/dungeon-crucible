@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { addBytesToLibrary, addFileToLibrary, listLibrary, ThumbCache } from './library';
+import { addBytesToLibrary, addFileToLibrary, importPack, listLibrary, scanPack, ThumbCache } from './library';
 
 /** Library files and the thumbnail cache (DC-040), in a temporary folder. */
 let tmp = '';
@@ -75,5 +75,60 @@ describe('ThumbCache', () => {
     await expect(cache.read('../../settings')).rejects.toThrow();
     await expect(cache.write(key, new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]))).rejects.toThrow();
     await expect(cache.write(key, new Uint8Array(600 * 1024).fill(0).map((v, i) => (i < 12 ? webp[i] : v)))).rejects.toThrow();
+  });
+});
+
+describe('pack import (DC-040b)', () => {
+  let pack = '';
+  beforeEach(() => {
+    pack = path.join(tmp, 'Forest Pack');
+    const put = (rel: string, data: Buffer | string) => {
+      fs.mkdirSync(path.dirname(path.join(pack, rel)), { recursive: true });
+      fs.writeFileSync(path.join(pack, rel), data);
+    };
+    put('Trees/Oak/oak_01.png', Buffer.concat([PNG, Buffer.from('1')]));
+    put('Trees/Oak/oak_02.png', Buffer.concat([PNG, Buffer.from('2')]));
+    put('Trees/readme.txt', 'x');
+    put('Rocks/rock.png', Buffer.concat([PNG, Buffer.from('r')]));
+    put('Rocks/rock-copy.png', Buffer.concat([PNG, Buffer.from('r')]));
+    put('.hidden/x.png', PNG);
+    put('top.png', Buffer.concat([PNG, Buffer.from('t')]));
+    fs.symlinkSync(path.join(tmp), path.join(pack, 'escape'));
+  });
+
+  it('lists the folders with their asset files; no hidden folders, other files or links', async () => {
+    const scan = await scanPack(pack);
+    expect(scan.name).toBe('Forest Pack');
+    expect(scan.folders).toEqual([
+      { path: '', files: 1, bytes: PNG.length + 1 },
+      { path: 'Rocks', files: 2, bytes: 2 * (PNG.length + 1) },
+      { path: 'Trees', files: 0, bytes: 0 },
+      { path: 'Trees/Oak', files: 2, bytes: 2 * (PNG.length + 1) },
+    ]);
+  });
+
+  it('copies only the chosen folders, reports progress, reuses equal files', async () => {
+    const progress: number[] = [];
+    const out = await importPack(pack, library, ['Rocks', 'Trees/Oak'], { onProgress: (done) => progress.push(done), cancelled: () => false });
+    expect(out.map((f) => [f.packPath, f.name, f.reused])).toEqual([
+      ['Rocks/rock-copy.png', 'rock-copy.png', false],
+      ['Rocks/rock.png', 'rock-copy.png', true],
+      ['Trees/Oak/oak_01.png', 'oak_01.png', false],
+      ['Trees/Oak/oak_02.png', 'oak_02.png', false],
+    ]);
+    expect(progress).toEqual([1, 2, 3, 4]);
+    expect(fs.readdirSync(library).sort()).toEqual(['oak_01.png', 'oak_02.png', 'rock-copy.png']);
+  });
+
+  it('stops when cancelled, leaving only whole files', async () => {
+    let n = 0;
+    const out = await importPack(pack, library, ['', 'Rocks', 'Trees/Oak'], { onProgress: () => n++, cancelled: () => n >= 2 });
+    expect(out).toHaveLength(2);
+    expect(fs.readdirSync(library).filter((f) => f.includes('tmp'))).toEqual([]);
+  });
+
+  it('refuses folders that were not in the scan', async () => {
+    await expect(importPack(pack, library, ['../'], { onProgress: () => undefined, cancelled: () => false })).rejects.toThrow();
+    await expect(importPack(pack, library, ['escape'], { onProgress: () => undefined, cancelled: () => false })).rejects.toThrow();
   });
 });

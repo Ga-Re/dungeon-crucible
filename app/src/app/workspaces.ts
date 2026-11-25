@@ -153,7 +153,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
     icon: 'box',
     name: 'ws.vault',
     desc: 'ws.vault.desc',
-    tabs: [{ label: 'tab.asset', groups: [{ label: 'group.create', buttons: [{ id: 'vault:import', icon: 'import', label: 'vault.import' }] }] }],
+    tabs: [{ label: 'tab.asset', groups: [{ label: 'group.create', buttons: [{ id: 'vault:import', icon: 'import', label: 'vault.import' }, { id: 'vault:pack', icon: 'archive', label: 'vault.importPack' }] }] }],
     layout: { center: 'vault', left: ['browser'], right: ['asset'], bottom: ['log'] },
   },
   creatures: {

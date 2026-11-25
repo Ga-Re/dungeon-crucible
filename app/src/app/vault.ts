@@ -31,6 +31,8 @@ export interface VaultState {
   objects: VaultObject[];
   /** The object picked in the catalog (its variants are `selected`, or one of them). */
   object: string | null;
+  /** Every object file listed, read or not: a new one never takes their names (E-31). */
+  objectFiles: string[];
   filter: CatalogFilter;
   /** Selected assets by path, in the order chosen. */
   selected: string[];
@@ -77,11 +79,15 @@ export async function refreshVault(): Promise<void> {
   if (!isDesktop() || !state.root?.root) return;
   const items: VaultItem[] = [];
   const objects: VaultObject[] = [];
+  const objectFiles: string[] = [];
+  let unread = false;
   for (const e of await listLibrary()) {
     const relPath = `library/${e.name}`;
     if (e.name.endsWith(OBJECT_SUFFIX)) {
+      objectFiles.push(relPath);
       const o = await readObject(relPath);
       if (o) objects.push(o);
+      else unread = true;
       continue;
     }
     if (!kindFromFile(relPath)) continue;
@@ -94,19 +100,34 @@ export async function refreshVault(): Promise<void> {
     // Maps, unreadable sidecars and ones from a newer app version are left alone.
     if (r.ok) items.push({ relPath, size: e.size, mtimeMs: e.mtimeMs, raw: r.raw, asset: r.value });
   }
-  // Groups of files from before (E-27) become objects (E-31): written once, then read as objects.
-  const taken = new Set(objects.map((o) => o.relPath));
-  for (const doc of objectsFromGroups(items, objects)) {
-    const relPath = objectFileFor(doc.name, taken);
-    taken.add(relPath);
-    const o = await writeObject({ relPath, doc, raw: {} });
-    if (o) objects.push(o);
+  // Groups of files from before (E-27) become objects (E-31) – never while an object file cannot be
+  // read (it may be that group's, or from a newer app), and never under a listed file's name. Once
+  // made, the files' group is cleared, so this happens once.
+  const taken = new Set(objectFiles);
+  const made: VaultObject[] = [];
+  if (!unread) {
+    for (const doc of objectsFromGroups(items, objects)) {
+      const relPath = objectFileFor(doc.name, taken);
+      taken.add(relPath);
+      const o = await writeObject({ relPath, doc, raw: {} });
+      if (o) {
+        objects.push(o);
+        objectFiles.push(relPath);
+        made.push(o);
+      }
+    }
   }
   state.vault.objects = objects;
+  state.vault.objectFiles = objectFiles;
   state.vault.items = applyObjects(items, objects).sort((a, b) => a.asset.name.localeCompare(b.asset.name) || a.relPath.localeCompare(b.relPath));
   const known = new Set(items.map((i) => i.relPath));
   state.vault.selected = state.vault.selected.filter((p) => known.has(p));
-  if (state.vault.object && !taken.has(state.vault.object)) state.vault.object = null;
+  if (state.vault.object && !objects.some((o) => o.relPath === state.vault.object)) state.vault.object = null;
+  if (made.length) {
+    // The size and kind of the first file now apply to all variants: the DM learns of it.
+    log('log.objectsMade', { n: made.length });
+    for (const o of made) for (const v of o.doc.variants) await clearGroup(`library/${v.file}`);
+  }
   updateAssetInfo();
   emit();
 }
@@ -244,13 +265,14 @@ export async function addVariant(target: string, variant: string): Promise<boole
   }
   const first = item(target);
   if (!first) return false;
-  const relPath = objectFileFor(first.asset.name, new Set(state.vault.objects.map((o) => o.relPath)));
+  const relPath = objectFileFor(first.asset.name, new Set([...state.vault.objectFiles, ...state.vault.objects.map((o) => o.relPath)]));
   const doc: AssetObject = {
     kind: 'object', schemaVersion: OBJECT_VERSION, name: first.asset.name, ...sharedOf(first.asset), main: file(target),
     variants: [{ file: file(target), name: first.asset.name }, { file: file(variant), name: added.asset.name }],
   };
   const ok = await saveObject({ relPath, doc, raw: {} }, doc);
   if (ok) {
+    state.vault.objectFiles = [...state.vault.objectFiles, relPath];
     state.vault.object = relPath;
     state.vault.selected = [target, variant];
     emit();
@@ -274,8 +296,11 @@ export async function removeVariant(relPath: string): Promise<boolean> {
     }
     for (const v of variants) await clearGroup(`library/${v.file}`);
     state.vault.objects = state.vault.objects.filter((x) => x.relPath !== o.relPath);
+    state.vault.objectFiles = state.vault.objectFiles.filter((x) => x !== o.relPath);
     if (state.vault.object === o.relPath) state.vault.object = null;
     state.vault.selected = state.vault.selected.filter((p) => p !== relPath);
+    // Variant cycling (V) and the like follow at once.
+    updateAssetInfo();
     emit();
     return true;
   }
@@ -296,6 +321,14 @@ export async function renameObject(objectPath: string, name: string): Promise<bo
   return o && n ? saveObject(o, { ...o.doc, name: n }) : false;
 }
 
+/** What dragging `paths` places: each object once, as its main variant; other assets as they are. */
+export function placedPathsOf(paths: readonly string[]): string[] {
+  return [...new Set(paths.map((p) => {
+    const o = objectOf(p);
+    return o ? `library/${o.doc.main}` : p;
+  }))];
+}
+
 /** The path placed for a catalog entry: an object's main variant, else the asset itself. */
 export function placedPathOf(entry: CatalogEntry<VaultItem>): string {
   return entry.variants[0].relPath;
@@ -307,7 +340,8 @@ function updateAssetInfo(): void {
   for (const { relPath, asset: a } of state.vault.items) {
     info[relPath] = {
       name: a.name, kind: a.assetKind, video: /\.(webm|mp4)$/i.test(relPath), url: state.assetInfo[relPath]?.url ?? null,
-      ...(a.sizeCells ? { sizeCells: a.sizeCells } : {}), ...(a.group ? { group: a.group } : {}), ...(a.cover ? { cover: a.cover } : {}), ...(a.light ? { light: a.light } : {}), ...(a.anchor ? { anchor: a.anchor } : {}), ...(a.door ? { door: a.door } : {}), ...(a.interior ? { interior: a.interior } : {}), // An effect never set in the editor loops.
+      // Variants of one object belong together (V cycles through them); a group alone no longer.
+      ...(a.sizeCells ? { sizeCells: a.sizeCells } : {}), ...(objectOf(relPath) ? { group: objectOf(relPath)!.relPath } : {}), ...(a.cover ? { cover: a.cover } : {}), ...(a.light ? { light: a.light } : {}), ...(a.anchor ? { anchor: a.anchor } : {}), ...(a.door ? { door: a.door } : {}), ...(a.interior ? { interior: a.interior } : {}), // An effect never set in the editor loops.
       ...(a.effect || a.assetKind === 'effect' ? { effect: a.effect ?? { loop: true, trigger: false } } : {}),
     };
   }
@@ -366,20 +400,25 @@ async function updateAssets(paths: readonly string[], change: (a: AssetSidecar) 
     return false;
   }
   let ok = true;
+  const written: VaultItem[] = [];
   try {
     for (let k = 0; k < items.length; k++) {
       const item = items[k];
       if (!wanted.has(item.relPath)) continue;
       const next = change(item.asset);
-      if (next !== item.asset || item.raw === null) items[k] = await writeAsset(item, next);
+      if (next !== item.asset || item.raw === null) {
+        items[k] = await writeAsset(item, next);
+        written.push(items[k]);
+      }
     }
   } catch {
     ok = false;
     log('log.assetWriteFailed');
   } finally {
     state.vault.items = items;
-    // Shared fields changed on a variant go to its object and from there to the other variants.
-    await syncObjects(items.filter((i) => wanted.has(i.relPath)));
+    // Shared fields changed on a variant go to its object and from there to the other variants
+    // (from a variant actually saved: one whose write failed keeps the object as it was).
+    await syncObjects(written);
     // Placed assets follow (size, mask, light, group).
     updateAssetInfo();
     emit();

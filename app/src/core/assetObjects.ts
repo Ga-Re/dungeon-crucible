@@ -74,13 +74,13 @@ export function objectsFromGroups(items: readonly Item[], objects: readonly Obje
   return out;
 }
 
-/** The items with their objects' shared fields (and the object's name as their group). */
+/** The items with their objects' shared fields (membership itself comes from the object files only). */
 export function applyObjects<T extends Item>(items: readonly T[], objects: readonly ObjectFile[]): T[] {
   const of = new Map<string, AssetObject>();
   for (const o of objects) for (const v of o.doc.variants) of.set(`library/${v.file}`, o.doc);
   return items.map((it) => {
     const o = of.get(it.relPath);
-    return o ? { ...it, asset: { ...it.asset, ...sharedOf(o), ...(o.subkind ? {} : { subkind: undefined }), ...(o.sizeCells ? {} : { sizeCells: undefined }), group: o.name } } : it;
+    return o ? { ...it, asset: { ...it.asset, ...sharedOf(o), ...(o.subkind ? {} : { subkind: undefined }), ...(o.sizeCells ? {} : { sizeCells: undefined }) } } : it;
   });
 }
 

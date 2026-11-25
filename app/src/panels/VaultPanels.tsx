@@ -18,7 +18,7 @@ import {
   openAssetEditor, cancelPackImport, closePackImport, runPackImport, setAllPackFolders, setPackName, togglePackFolder,
   addAssetsToCollection, createCollection, deleteCollectionEverywhere, importDroppedFiles, refreshVault, renameCollectionEverywhere, setThumbSize, setVaultFilter,
   shownEntries, toggleFavorite, updateSelectedAssets, type VaultItem,
-  addVariant, objectOf, placedPathOf, removeVariant, renameObject, selectEntry, selectVariant, setMainVariant,
+  addVariant, objectOf, placedPathOf, placedPathsOf, removeVariant, renameObject, selectEntry, selectVariant, setMainVariant,
 } from '../app/vault';
 import { catalogEntries, type CatalogEntry } from '../core/assetObjects';
 
@@ -62,7 +62,7 @@ export function VaultPanel() {
   const searchLabels = useMemo(() => ({ kind: (k: string) => t(`assetKind.${k}` as MessageKey), subkind: labels.subkind, env: labels.env }), [t]);
   // Each object once (E-31), each other asset by itself.
   const shown = useMemo(() => shownEntries(searchLabels), [items, objects, filter, searchLabels]);
-  const total = useMemo(() => items.length - objects.reduce((n, o) => n + o.doc.variants.length - 1, 0), [items, objects]);
+  const total = useMemo(() => catalogEntries(items, objects).length, [items, objects]);
   const sel = new Set(selected);
   // One editor per asset: its local state (pictures, a polygon being drawn) never carries over.
   if (editing) return <AssetEditorView key={editing} />;
@@ -226,8 +226,8 @@ function AssetCard({ entry, selected, selection }: { entry: CatalogEntry<VaultIt
       className={`vault-card ${selected ? 'sel' : ''}`}
       draggable
       onDragStart={(e) => {
-        // Dragging a selected card takes the whole selection along; an object its main variant.
-        const paths = selected && !entry.object ? selection : [placedPathOf(entry)];
+        // Dragging a selected card takes the whole selection along – each object as its main variant.
+        const paths = selected ? placedPathsOf(selection) : [placedPathOf(entry)];
         e.dataTransfer.setData(ASSET_DRAG, JSON.stringify(paths));
         e.dataTransfer.effectAllowed = 'copy';
       }}
@@ -667,7 +667,10 @@ function AddVariant({ target }: { target: string }) {
   const items = useStore((s) => s.vault.items);
   const objects = useStore((s) => s.vault.objects);
   const inObject = new Set(objects.flatMap((o) => o.doc.variants.map((v) => `library/${v.file}`)));
-  const free = items.filter((i) => !inObject.has(i.relPath) && i.relPath !== target);
+  // Variants are of one kind: a sound never joins a prop.
+  const o = objects.find((x) => x.relPath === target);
+  const kind = (o ? o.doc.assetKind : items.find((i) => i.relPath === target)?.asset.assetKind) ?? null;
+  const free = items.filter((i) => !inObject.has(i.relPath) && i.relPath !== target && i.asset.assetKind === kind);
   if (!free.length) return null;
   return (
     <div className="row">
@@ -717,7 +720,7 @@ function SearchBox({ labels }: { labels: Labels }) {
         type="search"
         role="combobox"
         aria-expanded={open && list.length > 0}
-        aria-controls="vault-suggest"
+        aria-controls={open && list.length > 0 ? 'vault-suggest' : undefined}
         aria-activedescendant={hi >= 0 ? `vault-suggest-${hi}` : undefined}
         value={text}
         placeholder={t('vault.search')}

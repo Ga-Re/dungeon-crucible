@@ -92,6 +92,11 @@ function PickerTile({ entry }: { entry: CatalogEntry<VaultItem> }) {
         // Keyboard: Enter places it in the middle of the map view.
         const at = mapCommands.centre();
         if (e.key === 'Enter' && at) placeAsset(item.relPath, at);
+        // Space starts the placing mode, as a click does.
+        if (e.key === ' ') {
+          e.preventDefault();
+          startPlacing(item.relPath, name);
+        }
       }}
       draggable
       // A click starts the placing mode (DC-116): place it with each click on the map.

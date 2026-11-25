@@ -194,7 +194,12 @@ describe('pack import (DC-040b)', () => {
     togglePackFolder('Sounds');
     await runPackImport();
     expect(asked).toEqual(['Trees']);
-    expect(JSON.parse(files.get('library/oak_01.png.dm.json')!)).toMatchObject({ name: 'oak 01', tags: ['Trees', 'pack: Forest Pack'], group: 'Forest Pack: oak' });
+    expect(JSON.parse(files.get('library/oak_01.png.dm.json')!)).toMatchObject({ name: 'oak 01', tags: ['Trees', 'pack: Forest Pack'] });
+    // The variant group became an object (E-31): its files share it, the group field is gone.
+    const obj = JSON.parse(files.get('library/forest-pack-oak.object.json')!);
+    expect(obj).toMatchObject({ kind: 'object', name: 'Forest Pack: oak' });
+    expect(obj.variants.map((v: { file: string }) => v.file)).toContain('oak_01.png');
+    expect(JSON.parse(files.get('library/oak_01.png.dm.json')!).group).toBeUndefined();
     // A file the library had is left as it is.
     expect(JSON.parse(files.get('library/oak.png.dm.json')!).tags).toBeUndefined();
     expect(state.vault.pack).toMatchObject({ phase: 'done', result: { imported: 2, reused: 2, skipped: 0, cancelled: false } });

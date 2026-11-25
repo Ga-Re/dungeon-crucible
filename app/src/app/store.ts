@@ -258,7 +258,7 @@ function initial(): AppState {
     tvAsk: null,
     tvMapPending: false,
     blackUntilRelease: false,
-    vault: { items: [], objects: [], object: null, filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null, drafts: {} },
+    vault: { items: [], objects: [], object: null, objectFiles: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null, drafts: {} },
     soundboard: initialSoundboard(),
   };
   s.vision = updateVision(scene);
@@ -1656,7 +1656,10 @@ export function setPlacing(patch: Partial<Omit<PlaceOptions, 'variant'> & { snap
 export function previewPlacing(p: Point | null): void {
   const pl = state.placing;
   if (!pl) return;
-  pl.at = p ? placedAt({ assetPath: pl.next.path, scale: pl.next.scale, rotation: pl.next.rotation }, p, state.placeOptions.snap) : null;
+  const at = p ? placedAt({ assetPath: pl.next.path, scale: pl.next.scale, rotation: pl.next.rotation }, p, state.placeOptions.snap) : null;
+  // Redrawn only when the preview moves (snapped, most pointer moves change nothing).
+  if (at?.x === pl.at?.x && at?.y === pl.at?.y && at?.rotation === pl.at?.rotation) return;
+  pl.at = at;
   emit();
 }
 

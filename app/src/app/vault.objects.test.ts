@@ -33,6 +33,7 @@ beforeEach(() => {
   window.dc = api as DcApi;
   state.root = { root: '/root', suggested: '/root' };
   state.vault.objects = [];
+  state.vault.objectFiles = [];
   state.vault.filter = {};
 });
 afterEach(() => {
@@ -78,5 +79,29 @@ describe('asset objects', () => {
     // No group left behind that would make the object again.
     await refreshVault();
     expect(files.has('library/barrel.object.json')).toBe(false);
+  });
+
+  it('never writes over an object file it cannot read (e.g. from a newer app): no group migration then', async () => {
+    const newer = JSON.stringify({ kind: 'object', schemaVersion: 2, name: 'Hut', future: true });
+    files.set('library/hut.object.json', newer);
+    await refreshVault();
+    expect(files.get('library/hut.object.json')).toBe(newer);
+    expect([...files.keys()].filter((k) => k.endsWith('.object.json'))).toEqual(['library/hut.object.json']);
+    // Nor does "Add a variant" take its name.
+    await addVariant('library/hut_roof.png', 'library/barrel.png');
+    expect(files.get('library/hut.object.json')).toBe(newer);
+  });
+
+  it('the migration clears the groups; an object taken apart does not come back after edits', async () => {
+    await refreshVault();
+    expect(side('library/hut_roof.png.dm.json').group).toBeUndefined();
+    await addVariant('library/barrel.png', 'library/barrel_2.png');
+    await removeVariant('library/barrel.png');
+    // Edit both barrels, then read the library again.
+    state.vault.selected = ['library/barrel.png', 'library/barrel_2.png'];
+    await updateSelectedAssets((a) => ({ ...a, environments: ['cellar'] }));
+    await refreshVault();
+    expect(files.has('library/barrel.object.json')).toBe(false);
+    expect(objectOf('library/barrel.png')).toBeNull();
   });
 });

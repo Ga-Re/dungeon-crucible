@@ -53,8 +53,8 @@ describe('the catalog', () => {
 
   it('variants take the shared fields of their object; their own tags stay', () => {
     const [r, b] = applyObjects([roof, burnt, rock], [obj]);
-    expect(r.asset).toMatchObject({ subkind: 'building', environments: ['village'], favorite: true, sizeCells: { w: 3, h: 3 }, tags: ['roof'], group: 'Simple hut' });
-    expect(b.asset).toMatchObject({ subkind: 'building', tags: ['burning'], group: 'Simple hut' });
+    expect(r.asset).toMatchObject({ subkind: 'building', environments: ['village'], favorite: true, sizeCells: { w: 3, h: 3 }, tags: ['roof'] });
+    expect(b.asset).toMatchObject({ subkind: 'building', tags: ['burning'] });
     expect(sharedOf(obj.doc)).toEqual({ assetKind: 'prop', subkind: 'building', environments: ['village'], collections: [], favorite: true, sizeCells: { w: 3, h: 3 } });
   });
 

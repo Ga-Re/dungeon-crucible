@@ -12,6 +12,7 @@ import { areaContains, partFromDrag, partFromPoints, vertexAt, type VertexRef } 
 import { AreaCommandPanel } from './AreaCommandPanel';
 import { WallCommandPanel } from './WallCommandPanel';
 import { assetShapes, footprintOf, hitsPlacement, ROTATE_STEP } from '../core/placement';
+import { allPlacements } from '../core/persistence';
 import { ASSET_DRAG } from './VaultPanels';
 import { refreshVault, requestAssetUrls } from '../app/vault';
 import { CalibrationPanel } from './CalibrationPanel';
@@ -34,7 +35,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
-  assetExtras, currentChanges, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
+  assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -140,8 +141,9 @@ function DmMap() {
       // While calibrating, the grid is always shown: it is what is being adjusted.
       r.setGrid((state.showGrid || state.calibration) && sc.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: sc.map.grid.originX, offsetYPx: sc.map.grid.originY, alpha: 0.18 } : null);
       // Placed assets: their files' URLs are looked up once, the first time they are shown.
-      requestAssetUrls([...new Set(sc.map.assets.map((a) => a.assetPath))]);
-      r.setAssets(assetShapes(sc.map.assets, state.assetInfo, sc.map.grid));
+      const placements = allPlacements(sc);
+      requestAssetUrls([...new Set(placements.map((a) => a.assetPath))]);
+      r.setAssets(assetShapes(placements, state.assetInfo, sc.map.grid));
       const active = state.ws === 'play' ? initiativeOrder()[state.turn]?.id : undefined;
       r.setTokens(
         sc.tokens.map((k): TokenShape => ({
@@ -292,7 +294,7 @@ function DmMap() {
       fogDraft,
       areaDraft: areaDraftOf(d),
       assets: [
-        ...state.scene.map.assets.map((a) => placementLook(a, false)),
+        ...allPlacements(state.scene).map((a) => placementLook(a, false)),
         ...(state.layer === 'map' ? [] : state.scene.hidden.assets.map((a) => placementLook(a, true))),
       ],
       covers: state.ws === 'forge' ? (assetExtras(state.scene).covers ?? []) : [],
@@ -401,7 +403,7 @@ function DmMap() {
           const asset = placedAssetAt(p);
           if (asset) {
             selectPlacedAsset(asset);
-            const a = state.scene.map.assets.find((x) => x.id === asset)!;
+            const a = editableAssets().find((x) => x.id === asset)!;
             drag.current = { kind: 'asset-move', id: asset, ox: a.x - p.x, oy: a.y - p.y, moved: false };
             return;
           }
@@ -656,7 +658,7 @@ function placementLook(a: MapAssetPlacement, hidden: boolean) {
 /** The placed asset (shown or hidden in this scene) at `p`. */
 function placementAt(p: Point): string | null {
   const sc = state.scene;
-  const all = [...sc.map.assets, ...sc.hidden.assets].reverse();
+  const all = [...allPlacements(sc), ...sc.hidden.assets].reverse();
   return all.find((a) => hitsPlacement(footprintOf(a, state.assetInfo[a.assetPath]?.sizeCells, sc.map.grid), p))?.id ?? null;
 }
 

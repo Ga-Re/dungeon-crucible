@@ -37,21 +37,54 @@ describe('placed assets', () => {
     expect(a().assetPath).toBe('library/oak_02.png');
   });
 
-  it('the Orchestrator cannot place, but hides and shows a placed asset', () => {
+  it('the Orchestrator places assets in the scene only; map assets are only hidden there', () => {
     setWorkspace('forge');
     setAssetInfo(info);
     const id = placeAsset('library/oak_01.png', { x: 500, y: 500 })!;
     setWorkspace('play');
-    expect(placeAsset('library/oak_01.png', { x: 600, y: 600 })).toBeNull();
+    const mapAssets = state.mapDoc!.assets.length;
+    const own = placeAsset('library/oak_01.png', { x: 600, y: 600 })!;
+    expect(state.scene.ownAssets.map((a) => a.id)).toEqual([own]);
+    // The map's asset cannot be selected (or moved) here; the scene's own can.
+    selectPlacedAsset(null);
     selectPlacedAsset(id);
     expect(state.selectedAssetId).toBeNull();
+    selectPlacedAsset(own);
+    expect(state.selectedAssetId).toBe(own);
     toggleHidden(id);
     expect(state.scene.map.assets.some((x) => x.id === id)).toBe(false);
     expect(state.scene.hidden.assets.map((x) => x.id)).toEqual([id]);
     commitView();
     expect(state.sceneDoc!.hidden).toContain(id);
-    expect(state.mapDoc!.assets.some((x) => x.id === id)).toBe(true);
+    expect(state.sceneDoc!.assets.map((a) => a.id)).toEqual([own]);
+    expect(state.mapDoc!.assets).toHaveLength(mapAssets);
     toggleHidden(id);
     expect(state.scene.map.assets.some((x) => x.id === id)).toBe(true);
+    // The scene's own asset hides and comes back as its own.
+    toggleHidden(own);
+    toggleHidden(own);
+    expect(state.scene.ownAssets.map((a) => a.id)).toEqual([own]);
+  });
+
+});
+
+describe('scene-own assets in the start and in play (DC-110)', () => {
+  it('prepared ones stay after a reset, those placed in play go', async () => {
+    const { resetScene, setEditStart } = await import('./campaign');
+    setWorkspace('play');
+    setAssetInfo({ 'library/fire.png': { name: 'fire', kind: 'prop', url: null, video: false } });
+    await setEditStart(true);
+    const prepared = placeAsset('library/fire.png', { x: 700, y: 700 })!;
+    await setEditStart(false);
+    expect(state.scene.ownAssets.map((a) => a.id)).not.toContain(prepared);
+    const played = placeAsset('library/fire.png', { x: 800, y: 800 })!;
+    commitView();
+    const ids = (xs: { id: string }[]) => xs.map((a) => a.id);
+    expect(ids(state.sceneDoc!.start!.assets)).toContain(prepared);
+    expect(ids(state.sceneDoc!.start!.assets)).not.toContain(played);
+    expect(ids(state.sceneDoc!.assets)).toContain(played);
+    await resetScene();
+    expect(ids(state.scene.ownAssets)).toContain(prepared);
+    expect(ids(state.scene.ownAssets)).not.toContain(played);
   });
 });

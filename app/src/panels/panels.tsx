@@ -233,7 +233,7 @@ function SceneChanges() {
     if (c.kind === 'zones') return [...scene.zones, ...scene.hidden.zones].find((z) => z.id === c.id)?.name ?? c.id;
     if (c.kind === 'lights') return t('changes.light');
     if (c.kind === 'assets') {
-      const a = [...scene.map.assets, ...scene.hidden.assets].find((x) => x.id === c.id);
+      const a = [...scene.map.assets, ...scene.ownAssets, ...scene.hidden.assets].find((x) => x.id === c.id);
       return (a && assetInfo[a.assetPath]?.name) ?? t('panel.asset');
     }
     const w = [...scene.walls, ...scene.hidden.walls].find((x) => x.id === c.id);
@@ -361,7 +361,7 @@ function WallProperties({ walls }: { walls: readonly Wall[] }) {
 /** The placed asset selected in the Map Forge (DC-041): its turn, scale, variant; remove it. */
 function PlacedAssetProperties({ id }: { id: string }) {
   const { t } = useI18n();
-  const a = useStore((s) => s.scene.map.assets.find((x) => x.id === id));
+  const a = useStore((s) => [...s.scene.map.assets, ...s.scene.ownAssets].find((x) => x.id === id));
   const info = useStore((s) => (a ? s.assetInfo[a.assetPath] : undefined));
   const hasVariants = useStore((s) => !!info?.group && Object.values(s.assetInfo).filter((i) => i.group === info.group).length > 1);
   if (!a) return null;

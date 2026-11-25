@@ -175,6 +175,12 @@ export interface Scene {
   zones: Zone[];
   /** Map elements this scene hides (none in the Map Forge). */
   hidden: HiddenElements;
+  /** Assets placed in this scene only (DC-110); none in the Map Forge. */
+  ownAssets: MapAssetPlacement[];
+  /** Lights of placed assets by light id (`<placement>:light`) → on. Not listed: on. */
+  assetLightsOn: Record<string, boolean>;
+  /** Looping effects by placement id → playing. Not listed: playing. */
+  effectsOn: Record<string, boolean>;
   tokens: Token[];
   templates: AreaTemplate[];
   pings: Ping[];

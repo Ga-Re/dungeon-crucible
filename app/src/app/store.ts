@@ -28,7 +28,7 @@ import { missingPartyTokens, tokenFromCreature } from '../core/party';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
-import { elementsFromSidecar, resetElement, sceneChanges, sceneIssues, withoutOrphans, type ElementChange } from '../core/persistence';
+import { allPlacements, elementsFromSidecar, resetElement, sceneChanges, sceneIssues, withoutOrphans, type ElementChange } from '../core/persistence';
 import { commitStart, layerOf, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, startOf, type ViewLayer } from '../core/persistence';
 import type { MapSidecar, SceneOverride } from '../core/sidecar';
 import type { CampaignInfo, RootInfo } from '../platform/bridge';
@@ -305,7 +305,7 @@ function restore(snap: string): void {
   // Selected walls that the step back (or forward) took away are no longer selected.
   const walls = new Set(state.scene.walls.map((w) => w.id));
   state.selectedWallIds = state.selectedWallIds.filter((id) => walls.has(id));
-  if (state.selectedAssetId && !state.scene.map.assets.some((a) => a.id === state.selectedAssetId)) state.selectedAssetId = null;
+  if (state.selectedAssetId && !editableAssets().some((a) => a.id === state.selectedAssetId)) state.selectedAssetId = null;
   recomputeVision();
   state.canUndo = history.canUndo;
   state.canRedo = history.canRedo;
@@ -332,7 +332,7 @@ export function clearHistory(): void {
 /** A new element id that no wall, area, light, template or token of the scene has (lowercase, random). */
 function freshId(prefix: string): string {
   const sc = state.scene;
-  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.hidden.assets].map((x) => x.id));
+  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.ownAssets, ...sc.hidden.assets].map((x) => x.id));
   return newId(slugId(prefix, 'el').slice(0, 40), (id) => taken.has(id));
 }
 
@@ -858,13 +858,15 @@ export function setAssetUrl(path: string, url: string): void {
 
 /** What the scene's shown placed assets add to sight and light: their masks and lights (DC-108). */
 export function assetExtras(scene: Scene): VisionExtras {
-  const placed = scene.map.assets;
+  const placed = allPlacements(scene);
   if (!placed.length) return {};
   // The same lists while nothing changed: sight and light keep what they built for them.
   const g = scene.map.grid;
-  const key = `${g.cellWidth},${g.cellHeight}|${placed.map((a) => `${a.assetPath},${a.x},${a.y},${a.rotation},${a.scale}`).join(';')}`;
+  const key = `${g.cellWidth},${g.cellHeight}|${placed.map((a) => `${a.assetPath},${a.x},${a.y},${a.rotation},${a.scale}`).join(';')}|${JSON.stringify(scene.assetLightsOn)}`;
   if (extrasCache && extrasCache.key === key && extrasCache.info === state.assetInfo) return extrasCache.extras;
-  const extras = { covers: placementCovers(placed, state.assetInfo, g), lights: placementLights(placed, state.assetInfo, g) };
+  // An asset's light may be switched off in the scene (DC-110).
+  const lights = placementLights(placed, state.assetInfo, g).map((l) => ({ ...l, on: scene.assetLightsOn[l.id] ?? true }));
+  const extras = { covers: placementCovers(placed, state.assetInfo, g), lights };
   extrasCache = { key, info: state.assetInfo, extras };
   return extras;
 }
@@ -877,7 +879,7 @@ function footprint(a: MapAssetPlacement) {
 
 /** The placed asset at `p` (the topmost), if any. */
 export function placedAssetAt(p: Point): string | null {
-  const hit = [...state.scene.map.assets].reverse().find((a) => hitsPlacement(footprint(a), p));
+  const hit = [...editableAssets()].reverse().find((a) => hitsPlacement(footprint(a), p));
   return hit?.id ?? null;
 }
 
@@ -885,13 +887,25 @@ function snappedCentre(a: Pick<MapAssetPlacement, 'assetPath' | 'scale' | 'rotat
   return state.snap ? snapPlacement(state.scene.map.grid, p, state.assetInfo[a.assetPath]?.sizeCells, a.scale, a.rotation) : p;
 }
 
-/** Places a library asset on the map at `p` (snapped to the grid), as one undoable step; Map Forge only. */
+/**
+ * The placed assets this view edits: the map's in the Map Forge, the scene's own elsewhere – while
+ * editing the start state those of the start, else those of the play state (DC-110).
+ */
+export function editableAssets(): MapAssetPlacement[] {
+  return state.layer === 'map' ? state.scene.map.assets : state.scene.ownAssets;
+}
+
+function setEditableAssets(list: MapAssetPlacement[]): void {
+  if (state.layer === 'map') state.scene.map.assets = list;
+  else state.scene.ownAssets = list;
+}
+
+/** Places a library asset at `p` (snapped to the grid), as one undoable step: on the map in the Map Forge, else in the scene. */
 export function placeAsset(assetPath: string, p: Point): string | null {
-  if (state.layer !== 'map') return null;
   checkpoint();
   const id = freshId('asset');
   const at = snappedCentre({ assetPath, scale: 1, rotation: 0 }, p);
-  state.scene.map.assets.push({ id, assetPath, x: at.x, y: at.y, rotation: 0, scale: 1 });
+  editableAssets().push({ id, assetPath, x: at.x, y: at.y, rotation: 0, scale: 1 });
   state.selectedAssetId = id;
   state.selectedWallIds = [];
   state.selectedZoneId = null;
@@ -903,7 +917,7 @@ export function placeAsset(assetPath: string, p: Point): string | null {
 }
 
 export function selectPlacedAsset(id: string | null): void {
-  if (id && state.layer !== 'map') return;
+  if (id && !editableAssets().some((a) => a.id === id)) return;
   state.selectedAssetId = id;
   if (id) {
     state.selectedWallIds = [];
@@ -913,7 +927,7 @@ export function selectPlacedAsset(id: string | null): void {
 }
 
 function placed(id: string): MapAssetPlacement | undefined {
-  return state.layer === 'map' ? state.scene.map.assets.find((a) => a.id === id) : undefined;
+  return editableAssets().find((a) => a.id === id);
 }
 
 /** Moves a placed asset (live while dragging; `final` snaps it). The caller sets the checkpoint for a drag. */
@@ -966,7 +980,7 @@ export function deletePlacedAsset(id: string): void {
   const a = placed(id);
   if (!a) return;
   checkpoint();
-  state.scene.map.assets = state.scene.map.assets.filter((x) => x.id !== id);
+  setEditableAssets(editableAssets().filter((x) => x.id !== id));
   if (state.selectedAssetId === id) state.selectedAssetId = null;
   recomputeVision();
   emit();
@@ -1003,7 +1017,7 @@ export function toggleHidden(id: string): void {
   if (state.layer === 'map') return;
   const sc = state.scene;
   const h = sc.hidden;
-  const hide = [...sc.walls, ...sc.zones, ...sc.lights, ...sc.map.assets].some((x) => x.id === id);
+  const hide = [...sc.walls, ...sc.zones, ...sc.lights, ...sc.map.assets, ...sc.ownAssets].some((x) => x.id === id);
   if (!hide && ![...h.walls, ...h.zones, ...h.lights, ...h.assets].some((x) => x.id === id)) return;
   checkpoint();
   // Moves the element (whichever kind it is) from one list to the other.
@@ -1013,6 +1027,8 @@ export function toggleHidden(id: string): void {
     [sc.zones, h.zones] = split(sc.zones, h.zones);
     [sc.lights, h.lights] = split(sc.lights, h.lights);
     [sc.map.assets, h.assets] = split(sc.map.assets, h.assets);
+    [sc.ownAssets, h.assets] = split(sc.ownAssets, h.assets);
+    if (state.selectedAssetId === id) state.selectedAssetId = null;
     state.selectedWallIds = state.selectedWallIds.filter((x) => x !== id);
     if (state.selectedZoneId === id) state.selectedZoneId = null;
     if (state.selectedLightId === id) state.selectedLightId = null;
@@ -1020,7 +1036,12 @@ export function toggleHidden(id: string): void {
     [h.walls, sc.walls] = split(h.walls, sc.walls);
     [h.zones, sc.zones] = split(h.zones, sc.zones);
     [h.lights, sc.lights] = split(h.lights, sc.lights);
-    [h.assets, sc.map.assets] = split(h.assets, sc.map.assets);
+    // A placed asset goes back where it belongs: the map's, or the scene's own.
+    const mapIds = new Set(state.mapDoc?.assets.map((a) => a.id) ?? []);
+    const back = h.assets.filter((a) => a.id === id);
+    h.assets = h.assets.filter((a) => a.id !== id);
+    if (back.length && mapIds.has(id)) sc.map.assets = [...sc.map.assets, ...back];
+    else sc.ownAssets = [...sc.ownAssets, ...back];
   }
   log(hide ? 'log.elementHidden' : 'log.elementShown');
   recomputeVision();
@@ -1573,7 +1594,7 @@ export function produceFrame(now: number): PlayerFrame {
     seedKey: state.mapResource,
     lights: tv.lights,
     // Only the scene's shown placements: assets it hides never reach the TV.
-    assets: assetShapes(tv.scene.map.assets, state.assetInfo, tv.scene.map.grid),
+    assets: assetShapes(allPlacements(tv.scene), state.assetInfo, tv.scene.map.grid),
     covers: assetExtras(tv.scene).covers,
   });
   return state.frame;

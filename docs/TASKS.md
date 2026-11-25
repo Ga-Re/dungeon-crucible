@@ -421,8 +421,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   ausgeblendeten Platzierungen (Projektion). Fehlt die Datei, zeigt die Schmiede einen Platzhalter. Ausblenden im
   Orchestrator mit „Ein-/ausblenden“; Kartenformat unverändert (`assets` gab es schon). Maske und Licht der Assets
   wirken mit DC-108; Effekte einmal auslösen kommt mit DC-110 bzw. dem Orchestrator.
-- **DC-110 Szeneneigene Assets** (E-27): Assets nur in einer Szene, beim Vorbereiten (Start) oder im Spiel
+- ◐ **DC-110 Szeneneigene Assets** (E-27): Assets nur in einer Szene, beim Vorbereiten (Start) oder im Spiel
   (Spielzustand, „Szene zurücksetzen“ entfernt sie); Maske und Licht gelten nur in dieser Szene.
+  DM-Entscheidungen (2026-11-25): Szene Version 5 (`assets` und `effects` im Spielzustand und im Start;
+  Asset-Lichter im vorhandenen `lights`); dazu Asset-Lichter je Szene an/aus, Flackern darstellen, Effekte
+  steuern (Schleife an/aus, einmal auslösen); Bedienung wie in der Schmiede (Panel „Assets“ auch im Orchestrator,
+  mit „Auswählen“ nur szeneneigene Assets bearbeiten; Kartenassets nur ein-/ausblenden).
 - **DC-042 Smart Prefabs, Innenräume als Asset-Varianten** (T-202, T-146).
 - ✓ **DC-108 Deckungsmasken am Asset** (T-193, T-202; DM-Wunsch 2026-11-25): Im Asset-Editor legt der DM die
   Deckungsmaske eines Assets fest (Kreis oder Polygon auf dem Bild – Baum, Säule, Statue); ein platziertes Asset ist

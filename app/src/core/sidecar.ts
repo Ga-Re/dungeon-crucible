@@ -36,7 +36,7 @@ export const GridSchema = z.object({
 });
 
 /** Map elements as built in the Map Forge (`open` of doors is scene state, kept only for old files). */
-export const mapWallSchema = z.object({ id, kind: z.enum(['wall', 'door', 'secret-door', 'window']), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(), open: z.boolean().optional() });
+export const mapWallSchema = z.object({ id, kind: z.enum(['wall', 'door', 'secret-door', 'window', 'cliff']), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(), open: z.boolean().optional() });
 /** An area (DC-013): polygons with holes in map pixels, possibly several parts; secret or not. */
 export const mapAreaSchema = z.object({
   id,
@@ -49,9 +49,9 @@ export const mapAreaSchema = z.object({
 export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color });
 
 /** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 2;
+export const MAP_VERSION = 3;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
-export const SCENE_VERSION = 2;
+export const SCENE_VERSION = 3;
 
 export const MapSidecarSchema = z.object({
   kind: z.literal('map'),

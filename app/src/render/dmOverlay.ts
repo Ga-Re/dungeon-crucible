@@ -124,7 +124,9 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
       g.setLineDash([8 * px, 5 * px]);
       strokeWall(g, { kind: o.wallDraft.kind, x1: next.a.x, y1: next.a.y, x2: next.b.x, y2: next.b.y }, px);
       g.restore();
+      // Both ends: where the piece starts and where it would end (snapped).
       drawEnd(g, next.a.x, next.a.y, px, true);
+      drawEnd(g, next.b.x, next.b.y, px, true);
     }
   }
 
@@ -332,6 +334,10 @@ function strokeWall(g: CanvasRenderingContext2D, w: Omit<Wall, 'id'>, px: number
     g.strokeStyle = 'rgba(127,200,230,.9)';
     g.lineWidth = 4 * px;
     g.setLineDash([6 * px, 4 * px]);
+  } else if (w.kind === 'cliff') {
+    drawCliff(g, w, px);
+    g.restore();
+    return;
   } else {
     g.strokeStyle = w.kind === 'secret-door' ? '#a77bf3' : '#c99a5b';
     g.lineWidth = (w.open ? 3 : 9) * px;
@@ -342,6 +348,47 @@ function strokeWall(g: CanvasRenderingContext2D, w: Omit<Wall, 'id'>, px: number
   g.lineTo(w.x2, w.y2);
   g.stroke();
   g.restore();
+}
+
+/**
+ * A cliff: an earthy edge with hachures on its lower side (right of the drawing direction on the
+ * map) and an arrow in the middle pointing down the cliff.
+ */
+function drawCliff(g: CanvasRenderingContext2D, w: Omit<Wall, 'id'>, px: number): void {
+  const dx = w.x2 - w.x1;
+  const dy = w.y2 - w.y1;
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return;
+  // Unit vectors along the edge and towards its lower side.
+  const ux = dx / len;
+  const uy = dy / len;
+  const nx = -uy;
+  const ny = ux;
+  g.strokeStyle = 'rgba(214,190,140,.95)';
+  g.lineWidth = 3 * px;
+  g.beginPath();
+  g.moveTo(w.x1, w.y1);
+  g.lineTo(w.x2, w.y2);
+  const step = 12 * px;
+  const tick = 7 * px;
+  for (let d = step / 2; d < len; d += step) {
+    const x = w.x1 + ux * d;
+    const y = w.y1 + uy * d;
+    g.moveTo(x, y);
+    g.lineTo(x + nx * tick - ux * tick * 0.4, y + ny * tick - uy * tick * 0.4);
+  }
+  g.stroke();
+  // The arrow: from the edge down the cliff.
+  const mx = (w.x1 + w.x2) / 2 + nx * 10 * px;
+  const my = (w.y1 + w.y2) / 2 + ny * 10 * px;
+  const a = 7 * px;
+  g.fillStyle = 'rgba(214,190,140,.95)';
+  g.beginPath();
+  g.moveTo(mx + nx * a * 1.6, my + ny * a * 1.6);
+  g.lineTo(mx + ux * a, my + uy * a);
+  g.lineTo(mx - ux * a, my - uy * a);
+  g.closePath();
+  g.fill();
 }
 
 /** A wall end: a small dot, or a handle square when its wall is selected (or it is being dragged). */

@@ -1,6 +1,6 @@
 /**
  * Command panel "Draw walls" (DC-014, E-6): over the map at its top right, not modal. The DM
- * picks the kind (wall, door, secret door, window) and whether clicks chain, then clicks the
+ * picks the kind (wall, door, secret door, window, cliff) and whether clicks chain, then clicks the
  * pieces on the map. Nothing is saved before OK; Cancel or Escape discards.
  */
 import type { KeyboardEvent } from 'react';
@@ -15,6 +15,7 @@ const KINDS: { id: WallKind; icon: IconName }[] = [
   { id: 'door', icon: 'door' },
   { id: 'secret-door', icon: 'secretdoor' },
   { id: 'window', icon: 'window' },
+  { id: 'cliff', icon: 'cliff' },
 ];
 
 export function WallCommandPanel() {
@@ -53,6 +54,9 @@ export function WallCommandPanel() {
           })}
         </div>
         <p className="hint"><b>{t(`wall.kind.${c.kind}` as MessageKey)}:</b> {t(`wall.about.${c.kind}` as MessageKey)}</p>
+        {c.kind === 'cliff' && (
+          <button type="button" className="btn sm" aria-pressed={c.flip} onClick={() => updateWallCommand({ flip: !c.flip })}><Icon name="redo" />{t('wall.flip')}</button>
+        )}
         <label className="cmd-check">
           <input type="checkbox" checked={c.chain} onChange={(e) => updateWallCommand({ chain: e.target.checked })} />
           {t('wall.cmd.chain')}

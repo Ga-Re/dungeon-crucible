@@ -71,7 +71,7 @@ describe('reading version 1 files', () => {
     const r = readDocument('map', MapSidecarSchema, JSON.stringify(v1));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.value.schemaVersion).toBe(2);
+    expect(r.value.schemaVersion).toBe(3);
     expect(r.value.zones[0]).toEqual({ id: 'vault', name: 'Vault', shape: [rectPolygon(10, 10, 30, 30)], secret: true, color: '#ffffff' });
   });
 

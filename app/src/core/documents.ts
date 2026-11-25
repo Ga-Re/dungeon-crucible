@@ -20,8 +20,8 @@ export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' |
 /** Current version of each document kind. */
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
-  map: 2,
-  scene: 2,
+  map: 3,
+  scene: 3,
   creature: 1,
   asset: 1,
   audio: 1,
@@ -33,7 +33,11 @@ type Raw = Record<string, unknown>;
 export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>> = {
   campaign: {},
   // Areas: rectangle and kind → polygons and "secret" (DC-013).
-  map: { 1: (doc) => ({ ...doc, ...(Array.isArray(doc['zones']) ? { zones: doc['zones'].map(migrateArea) } : {}) }) },
+  map: {
+    1: (doc) => ({ ...doc, ...(Array.isArray(doc['zones']) ? { zones: doc['zones'].map(migrateArea) } : {}) }),
+    // Version 3 adds cliffs (DC-014): nothing to change, older apps just must not write such files.
+    2: (doc) => doc,
+  },
   // The same for the scene's own areas and its overrides of map areas.
   scene: {
     1: (doc) => {
@@ -44,6 +48,7 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
       if (isRecord(added) && Array.isArray(added['zones'])) out['added'] = { ...added, zones: added['zones'].map(migrateArea) };
       return out;
     },
+    2: (doc) => doc,
   },
   creature: {},
   asset: {},

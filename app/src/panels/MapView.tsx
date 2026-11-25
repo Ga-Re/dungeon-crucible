@@ -254,7 +254,11 @@ function DmMap() {
   const wallDraftOf = (): OverlayState['wallDraft'] => {
     const c = state.wallCommand;
     if (!c) return null;
-    return { kind: c.kind, walls: c.walls, next: c.start ? { a: c.start, b: wallTarget(mouse.current, altHeld.current) } : null };
+    // Shown as they will be saved: flipped cliffs the other way round (the arrow points below).
+    const turn = c.flip && c.kind === 'cliff';
+    const walls = c.walls.map((w) => (c.flip && w.kind === 'cliff' ? { ...w, x1: w.x2, y1: w.y2, x2: w.x1, y2: w.y1 } : w));
+    const b = c.start ? wallTarget(mouse.current, altHeld.current) : null;
+    return { kind: c.kind, walls, next: c.start && b ? (turn ? { a: b, b: c.start } : { a: c.start, b }) : null };
   };
 
   /** Where a wall end goes: onto a nearby wall end, else the grid corner; exactly the pointer with Alt. */

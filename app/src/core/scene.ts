@@ -1,10 +1,11 @@
 /** Runtime scene model used by the DM window. Never sent to the table as a whole. */
-import type { Segment } from './geometry';
+import type { Point, Segment } from './geometry';
 import type { GridConfig, DisplaySpec } from './grid';
 import type { FogEffect, LevelFog, Polygon } from './poly/types';
 import type { Condition } from './rules/rules2024';
 
-export type WallKind = 'wall' | 'door' | 'secret-door' | 'window';
+/** A cliff or gallery is one way: one sees down from its upper side, not up from below (DC-014). */
+export type WallKind = 'wall' | 'door' | 'secret-door' | 'window' | 'cliff';
 
 export interface Wall extends Segment {
   id: string;
@@ -176,9 +177,20 @@ export function feetToPx(scene: Pick<Scene, 'map'>, feet: number): number {
   return (feet / scene.map.grid.feetPerCell) * scene.map.grid.cellWidth;
 }
 
-/** Segments that block sight: walls, closed doors (incl. secret). Windows let sight through. */
-export function sightBlockers(walls: readonly Wall[]): Segment[] {
-  return walls.filter((w) => w.kind === 'wall' || ((w.kind === 'door' || w.kind === 'secret-door') && !w.open));
+/**
+ * Segments that block sight (and light) from `from`: walls, closed doors (incl. secret), and
+ * cliffs seen from below. Windows let sight through.
+ */
+export function sightBlockers(walls: readonly Wall[], from: Point): Segment[] {
+  return walls.filter((w) => w.kind === 'wall' || ((w.kind === 'door' || w.kind === 'secret-door') && !w.open) || (w.kind === 'cliff' && belowCliff(w, from)));
+}
+
+/**
+ * Whether `p` is below a cliff: its upper side is left of the drawing direction (x1, y1) → (x2, y2)
+ * as seen on the map, whose y points down. A point on the edge counts as above.
+ */
+export function belowCliff(w: Segment, p: Point): boolean {
+  return (w.x2 - w.x1) * (p.y - w.y1) - (w.y2 - w.y1) * (p.x - w.x1) > 0;
 }
 
 export const DEFAULT_TABLE: TableSettings = {

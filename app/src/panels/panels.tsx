@@ -13,7 +13,7 @@ import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  deleteSelectedWalls, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
+  deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { importMapIntoCampaign, switchScene } from '../app/campaign';
@@ -285,13 +285,14 @@ function WallProperties({ walls }: { walls: readonly Wall[] }) {
         </select>
       </div>
       {one && <div className="row"><label>{t('wall.length')}</label><span className="mono">{Math.round((Math.hypot(one.x2 - one.x1, one.y2 - one.y1) / grid.cellWidth) * grid.feetPerCell * 10) / 10} ft</span></div>}
+      {kinds.has('cliff') && <button className="btn sm" onClick={flipSelectedCliffs}><Icon name="redo" />{t('wall.flip')}</button>}
       <p className="hint">{t('wall.editHint')}</p>
       <button className="btn sm danger" onClick={deleteSelectedWalls}><Icon name="trash" />{t('wall.delete')}</button>
     </>
   );
 }
 
-const WALL_KINDS: readonly WallKind[] = ['wall', 'door', 'secret-door', 'window'];
+const WALL_KINDS: readonly WallKind[] = ['wall', 'door', 'secret-door', 'window', 'cliff'];
 
 /* ---------- Fog ---------- */
 

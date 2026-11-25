@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { endsAt } from '../core/walls';
 import {
-  addWallPoint, cancelWallCommand, checkpoint, commitView, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, setTool, setWallKind,
+  flipSelectedCliffs, addWallPoint, cancelWallCommand, checkpoint, commitView, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, setTool, setWallKind,
   setWorkspace, startWallCommand, state, undo, undoWallPoint, updateWallCommand,
 } from './store';
 
@@ -133,5 +133,43 @@ describe('editing walls (DC-014)', () => {
     const door = state.scene.walls.find((w) => w.kind === 'door')!;
     selectWall(door.id);
     expect(state.selectedWallIds).toEqual([]);
+  });
+});
+
+describe('cliffs (DC-014, step 2)', () => {
+  it('draws cliffs chained; "flip" turns the drawn and the next pieces round; OK saves them so', () => {
+    setWorkspace('forge');
+    const before = state.scene.walls.length;
+    startWallCommand();
+    updateWallCommand({ kind: 'cliff' });
+    expect(state.wallCommand!.chain).toBe(true);
+    addWallPoint({ x: 0, y: 4000 });
+    addWallPoint({ x: 100, y: 4000 });
+    updateWallCommand({ flip: true });
+    addWallPoint({ x: 200, y: 4000 });
+    finishWallCommand();
+    // Saved reversed: the upper side (left of the direction) is now below on the map.
+    expect(state.scene.walls.slice(before)).toMatchObject([
+      { kind: 'cliff', x1: 100, y1: 4000, x2: 0, y2: 4000 },
+      { kind: 'cliff', x1: 200, y1: 4000, x2: 100, y2: 4000 },
+    ]);
+  });
+
+  it('flips the selected cliffs only, as one step', () => {
+    setWorkspace('forge');
+    startWallCommand();
+    updateWallCommand({ kind: 'cliff' });
+    addWallPoint({ x: 0, y: 5000 });
+    addWallPoint({ x: 100, y: 5000 });
+    updateWallCommand({ kind: 'wall' });
+    addWallPoint({ x: 100, y: 5100 });
+    finishWallCommand();
+    const [c, w] = state.scene.walls.slice(-2);
+    selectWallChain(c.id);
+    flipSelectedCliffs();
+    expect(state.scene.walls.find((q) => q.id === c.id)).toMatchObject({ x1: 100, x2: 0 });
+    expect(state.scene.walls.find((q) => q.id === w.id)).toMatchObject({ x1: 100, y1: 5000, x2: 100, y2: 5100 });
+    undo();
+    expect(state.scene.walls.find((q) => q.id === c.id)).toMatchObject({ x1: 0, x2: 100 });
   });
 });

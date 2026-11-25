@@ -514,15 +514,21 @@ export interface WallCommand {
   kind: WallKind;
   /** Each click continues from the last point; off: two clicks per piece. */
   chain: boolean;
+  /** Cliffs: saved the other way round, so the upper side is right of the drawing direction. */
+  flip: boolean;
   /** Drawn pieces; they get their ids on OK. */
   walls: Omit<Wall, 'id'>[];
   /** Where the next piece starts, if one was begun. */
   start: Point | null;
 }
 
-/** Walls and windows run on; doors are placed one by one. */
+/** Walls, windows and cliffs run on; doors are placed one by one. */
 function chainsByDefault(kind: WallKind): boolean {
-  return kind === 'wall' || kind === 'window';
+  return kind === 'wall' || kind === 'window' || kind === 'cliff';
+}
+
+function reversed<T extends Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>>(w: T): T {
+  return { ...w, x1: w.x2, y1: w.y2, x2: w.x1, y2: w.y1 };
 }
 
 function clearWallEditing(): void {
@@ -534,14 +540,14 @@ function clearWallEditing(): void {
 export function startWallCommand(): void {
   if (state.layer !== 'map') return;
   const kind = state.wallCommand?.kind ?? 'wall';
-  state.wallCommand = { kind, chain: chainsByDefault(kind), walls: [], start: null };
+  state.wallCommand = { kind, chain: chainsByDefault(kind), flip: false, walls: [], start: null };
   state.areaCommand = null;
   state.tool = 'wall';
   emit();
 }
 
 /** Changes the command's options; a new kind brings its own chain default unless `chain` is given. */
-export function updateWallCommand(patch: Partial<Pick<WallCommand, 'kind' | 'chain'>>): void {
+export function updateWallCommand(patch: Partial<Pick<WallCommand, 'kind' | 'chain' | 'flip'>>): void {
   const c = state.wallCommand;
   if (!c) return;
   const chain = patch.chain ?? (patch.kind && patch.kind !== c.kind ? chainsByDefault(patch.kind) : c.chain);
@@ -592,7 +598,8 @@ export function finishWallCommand(): boolean {
     const ids: string[] = [];
     for (const w of c.walls) {
       const id = freshId('wall');
-      state.scene.walls.push({ ...w, id });
+      // Pieces are kept in click order while drawing; "flip" applies to the cliffs on OK.
+      state.scene.walls.push({ ...(c.flip && w.kind === 'cliff' ? reversed(w) : w), id });
       ids.push(id);
     }
     state.selectedWallIds = ids;
@@ -656,6 +663,16 @@ export function setWallKind(kind: WallKind): void {
     const { open: _open, ...rest } = w;
     return kind === 'door' || kind === 'secret-door' ? { ...rest, kind, open: false } : { ...rest, kind };
   });
+  recomputeVision();
+  emit();
+}
+
+/** Turns the selected cliffs round (one step): their upper and lower sides swap. */
+export function flipSelectedCliffs(): void {
+  const sel = new Set(state.selectedWallIds);
+  if (state.layer !== 'map' || !state.scene.walls.some((w) => sel.has(w.id) && w.kind === 'cliff')) return;
+  checkpoint();
+  state.scene.walls = state.scene.walls.map((w) => (sel.has(w.id) && w.kind === 'cliff' ? reversed(w) : w));
   recomputeVision();
   emit();
 }

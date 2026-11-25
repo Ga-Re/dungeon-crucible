@@ -105,7 +105,7 @@ Startzustand), dann die Kartenschmiede auf dieser Basis.
 | Wände, Türen, Geheimtüren, Fenster | ✗ | ✓ | DC weiter (DM: Stufe 5) |
 | Wände bearbeiten (auswählen, verschieben, löschen) | ✗ | ✓ | DC-014: Befehls-Panel „Wände zeichnen“, Gelenke, Ketten |
 | Lichtquellen der Karte | ✗ | ✓ | |
-| Klippen/Galerien (Einweg), Deckung (Kreis/Polygon) | ✗ | ✗ | T-193 |
+| Klippen/Galerien (Einweg), Deckung (Kreis/Polygon) | ✗ | ◐ | T-193; DC-014: Klippen ✓, Deckung offen |
 | Automatische Wände, Leck-Prüfung, Testfigur | ✗ | ✗ | T-141, T-194 |
 | Parametrische Räume, Gelände mit Bewegungskosten, Treppen | ✗ | ✗ | T-195–197 |
 | Kartenvarianten (Tag/Nacht), Zuschneiden, Bildanpassung | ✗ | ✗ | T-191, T-192 |
@@ -297,6 +297,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   das Eigenschaften-Panel zeigt Anzahl, Art (änderbar) und Länge. Die Einzel-Werkzeuge Wand/Tür/Geheimtür/Fenster
   und „Letzte entfernen“ sind entfernt. Abweichung: Das Gelenk löst Umschalt statt Alt, weil Alt beim Klick ein
   Ping ist und beim Ziehen frei setzt.
+  Erledigt (Schritt 2): Wandart „Klippe oder Galerie“ – einseitig: von der oberen Seite (links der
+  Zeichenrichtung) sieht man hinunter, von unten nicht hinauf; Licht ebenso (jeder Betrachter und jede Lichtquelle
+  hat eigene Blocker). Im Zeichnen-Panel als fünfte Art (kettet), „Richtung umdrehen“ dort und im
+  Eigenschaften-Panel; auf der Karte mit Schraffur und Pfeil zur unteren Seite. Karte und Szene sind
+  `schemaVersion` 3 (Migration ohne Datenänderung: ältere App-Versionen schreiben solche Dateien nicht zurück).
+  Offen: Schritt 3 Deckung.
 - **DC-107 Kontextsensitiver Karten-Editor** (DM-Wunsch 2026-11-25, `docs/KARTENEDITOR.md`): Dungeon- und
   Wildnis-/Stadtkarten selbst zeichnen – Wände, Wege, Flüsse, Gebäude, Türen, Brücken als editierbare Absichten
   (Intent-Modell mit Seeds), Regel-Pipeline für Ecken, Kreuzungen, Durchbrüche, Übergänge, handgezeichnete Optik und

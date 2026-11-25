@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DcApi, LibraryEntry } from '../platform/desktop-api';
 import { refreshLibraryMaps } from './library';
 import { state } from './store';
-import { backToCatalog, closeAssetTab, draftChanged, closeAssetEditor, openAssetEditor, saveAssetEditor, updateEditorDraft, closePackImport, runPackImport, startPackImport, togglePackFolder, deleteCollectionEverywhere, importVaultAssets, refreshVault, renameCollectionEverywhere, selectAsset, toggleFavorite, updateSelectedAssets } from './vault';
+import { backToCatalog, closeAssetTab, draftChanged, closeAssetEditor, openAssetEditor, saveAssetEditor, updateEditorDraft, closePackImport, runPackImport, startPackImport, togglePackFolder, deleteCollectionEverywhere, importVaultAssets, refreshVault, renameCollectionEverywhere, selectEntry, shownEntries, toggleFavorite, updateSelectedAssets } from './vault';
 
 /** The Asset Vault on a library kept in memory (DC-040). */
+const selectAsset = (relPath: string, mode: 'single' | 'toggle' | 'range') => selectEntry(shownEntries().find((e) => e.key === relPath)!, mode);
 let files: Map<string, string>;
 let picked: string[];
 
@@ -134,7 +135,7 @@ describe('the Asset Vault', () => {
 
   it('selects one, toggles more, and a range', async () => {
     await refreshVault();
-    const order = state.vault.items.map((i) => i.relPath);
+    const order = shownEntries().map((e) => e.key);
     selectAsset(order[0], 'single');
     selectAsset(order[2], 'range');
     expect(state.vault.selected).toEqual(order.slice(0, 3));

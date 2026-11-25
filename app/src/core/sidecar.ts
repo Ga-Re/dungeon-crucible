@@ -186,6 +186,30 @@ export const AssetSidecarSchema = z.object({
 });
 export type AssetSidecar = z.infer<typeof AssetSidecarSchema>;
 
+export const OBJECT_VERSION = 1;
+
+/**
+ * An asset object with variants (E-31, DC-112): its own file next to the variants' files
+ * (`library/<name>.object.json`). It names its variants (files of the library, by file name) and
+ * its main variant, and holds what all of them share; each variant keeps its own tags, mask,
+ * light, anchor, door and interior in its sidecar.
+ */
+export const AssetObjectSchema = z.object({
+  kind: z.literal('object'),
+  schemaVersion: z.literal(OBJECT_VERSION),
+  name: z.string().min(1),
+  assetKind: z.enum(ASSET_KINDS),
+  subkind: z.string().min(1).optional(),
+  environments: z.array(z.string()).default([]),
+  sizeCells: z.object({ w: z.number().positive(), h: z.number().positive() }).optional(),
+  collections: z.array(z.string()).default([]),
+  favorite: z.boolean().default(false),
+  /** The variant shown for the object and placed by default (a file name of `variants`). */
+  main: z.string().min(1),
+  variants: z.array(z.object({ file: z.string().min(1), name: z.string().min(1) })).min(1),
+});
+export type AssetObject = z.infer<typeof AssetObjectSchema>;
+
 const scores = z.object({ str: z.number().int().min(1).max(30), dex: z.number().int().min(1).max(30), con: z.number().int().min(1).max(30), int: z.number().int().min(1).max(30), wis: z.number().int().min(1).max(30), cha: z.number().int().min(1).max(30) });
 
 const creatureObject = z.object({

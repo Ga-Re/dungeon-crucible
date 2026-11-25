@@ -251,7 +251,7 @@ function initial(): AppState {
     tvAsk: null,
     tvMapPending: false,
     blackUntilRelease: false,
-    vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null, drafts: {} },
+    vault: { items: [], objects: [], object: null, filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null, drafts: {} },
     soundboard: initialSoundboard(),
   };
   s.vision = updateVision(scene);

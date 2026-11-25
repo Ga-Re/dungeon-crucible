@@ -4,6 +4,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { filterAssets } from '../core/assets';
+import { catalogEntries, type CatalogEntry } from '../core/assetObjects';
 import type { AssetKind } from '../core/sidecar';
 import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
@@ -20,6 +21,7 @@ const PLACEABLE: readonly AssetKind[] = ['prop', 'tile', 'texture', 'effect', 'l
 export function AssetPicker() {
   const { t } = useI18n();
   const items = useStore((s) => s.vault.items);
+  const objects = useStore((s) => s.vault.objects);
   const root = useStore((s) => s.root?.root);
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<AssetKind | null>(null);
@@ -27,11 +29,16 @@ export function AssetPicker() {
     void refreshVault();
   }, [root]);
   const placeable = useMemo(() => items.filter((i) => PLACEABLE.includes(i.asset.assetKind)), [items]);
-  const shown = useMemo(() => filterAssets(placeable, { query, kinds: kind ? [kind] : [] }) as VaultItem[], [placeable, query, kind]);
+  // Each object once (E-31): found by any of its variants, placed as its main variant.
+  const entries = useMemo(() => catalogEntries(placeable, objects), [placeable, objects]);
+  const shown = useMemo(() => {
+    const match = new Set(filterAssets(placeable, { query, kinds: kind ? [kind] : [] }));
+    return entries.filter((e) => e.variants.some((v) => match.has(v)));
+  }, [entries, placeable, query, kind]);
   const recent = useMemo(() => {
-    const byPath = new Map(placeable.map((i) => [i.relPath, i]));
-    return recentAssets().map((p) => byPath.get(p)).filter((i): i is VaultItem => !!i);
-  }, [placeable, items]);
+    const byPath = new Map(entries.flatMap((e) => e.variants.map((v) => [v.relPath, e] as const)));
+    return [...new Set(recentAssets().map((p) => byPath.get(p)).filter((e): e is CatalogEntry<VaultItem> => !!e))];
+  }, [entries]);
   return (
     <div className="panel-body asset-picker">
       <div className="library-tools">
@@ -48,22 +55,23 @@ export function AssetPicker() {
       {recent.length > 0 && !query && !kind && (
         <>
           <div className="sec">{t('picker.recent')}</div>
-          <ul className="picker-grid">{recent.map((i) => <PickerTile key={`r-${i.relPath}`} item={i} />)}</ul>
+          <ul className="picker-grid">{recent.map((e) => <PickerTile key={`r-${e.key}`} entry={e} />)}</ul>
         </>
       )}
       <div className="sec">{t('picker.all')}</div>
       {placeable.length === 0 ? (
         <p className="hint">{t('picker.empty')}</p>
       ) : (
-        <ul className="picker-grid">{shown.map((i) => <PickerTile key={i.relPath} item={i} />)}</ul>
+        <ul className="picker-grid">{shown.map((e) => <PickerTile key={e.key} entry={e} />)}</ul>
       )}
       <p className="hint">{t('picker.hint')}</p>
     </div>
   );
 }
 
-function PickerTile({ item }: { item: VaultItem }) {
+function PickerTile({ entry }: { entry: CatalogEntry<VaultItem> }) {
   const { t } = useI18n();
+  const item = entry.variants[0];
   const [thumb, setThumb] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
@@ -73,26 +81,27 @@ function PickerTile({ item }: { item: VaultItem }) {
     };
   }, [item.relPath, item.size, item.mtimeMs]);
   const a = item.asset;
+  const name = entry.name;
   return (
     <li
       className="picker-tile"
       tabIndex={0}
       role="button"
-      aria-label={`${a.name}: ${t('picker.placeKey')}`}
+      aria-label={`${name}: ${t('picker.placeKey')}`}
       onKeyDown={(e) => {
         // Keyboard: Enter places it in the middle of the map view.
         const at = mapCommands.centre();
         if (e.key === 'Enter' && at) placeAsset(item.relPath, at);
       }}
       draggable
-      title={a.sizeCells ? `${a.name} · ${a.sizeCells.w}×${a.sizeCells.h}` : a.name}
+      title={a.sizeCells ? `${name} · ${a.sizeCells.w}×${a.sizeCells.h}` : name}
       onDragStart={(e) => {
         e.dataTransfer.setData(ASSET_DRAG, JSON.stringify([item.relPath]));
         e.dataTransfer.effectAllowed = 'copy';
       }}
     >
       <div className="vault-thumb">{thumb ? <img src={thumb} alt="" draggable={false} /> : <Icon name={KIND_ICONS[a.assetKind]} />}</div>
-      <span>{a.name}</span>
+      <span>{name}</span>
     </li>
   );
 }

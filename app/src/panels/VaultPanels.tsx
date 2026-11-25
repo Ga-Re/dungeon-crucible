@@ -16,9 +16,11 @@ import { AssetEditorView } from './AssetEditor';
 import '../app/start.css';
 import {
   openAssetEditor, cancelPackImport, closePackImport, runPackImport, setAllPackFolders, setPackName, togglePackFolder,
-  addAssetsToCollection, createCollection, deleteCollectionEverywhere, importDroppedFiles, refreshVault, renameCollectionEverywhere, selectAsset, setThumbSize, setVaultFilter,
-  shownAssets, toggleFavorite, updateSelectedAssets, type VaultItem,
+  addAssetsToCollection, createCollection, deleteCollectionEverywhere, importDroppedFiles, refreshVault, renameCollectionEverywhere, setThumbSize, setVaultFilter,
+  shownEntries, toggleFavorite, updateSelectedAssets, type VaultItem,
+  addVariant, objectOf, placedPathOf, removeVariant, renameObject, selectEntry, selectVariant, setMainVariant,
 } from '../app/vault';
+import type { CatalogEntry } from '../core/assetObjects';
 
 /** Drag type for assets dragged from the catalog (onto a collection, later onto the map). */
 export const ASSET_DRAG = 'application/x-dc-assets';
@@ -45,6 +47,7 @@ function useLabels() {
 export function VaultPanel() {
   const { t } = useI18n();
   const items = useStore((s) => s.vault.items);
+  const objects = useStore((s) => s.vault.objects);
   const filter = useStore((s) => s.vault.filter);
   const selected = useStore((s) => s.vault.selected);
   const thumbPx = useStore((s) => s.vault.thumbPx);
@@ -55,7 +58,9 @@ export function VaultPanel() {
   useEffect(() => {
     void refreshVault();
   }, [root]);
-  const shown = useMemo(() => shownAssets(), [items, filter]);
+  // Each object once (E-31), each other asset by itself.
+  const shown = useMemo(() => shownEntries(), [items, objects, filter]);
+  const total = useMemo(() => items.length - objects.reduce((n, o) => n + o.doc.variants.length - 1, 0), [items, objects]);
   const sel = new Set(selected);
   // One editor per asset: its local state (pictures, a polygon being drawn) never carries over.
   if (editing) return <AssetEditorView key={editing} />;
@@ -82,7 +87,7 @@ export function VaultPanel() {
     >
       <div className="vault-bar">
         <input type="search" value={filter.query ?? ''} placeholder={t('vault.search')} aria-label={t('vault.search')} onChange={(e) => setVaultFilter({ query: e.target.value })} />
-        <span className="hint">{t('vault.count', { n: shown.length, total: items.length })}</span>
+        <span className="hint">{t('vault.count', { n: shown.length, total })}</span>
         <label className="vault-size" title={t('vault.thumbSize')}>
           <Icon name="grid" />
           <input type="range" min={64} max={240} step={8} value={thumbPx} aria-label={t('vault.thumbSize')} onChange={(e) => setThumbSize(Number(e.target.value))} />
@@ -94,8 +99,8 @@ export function VaultPanel() {
         <p className="vault-empty hint">{t('vault.noMatch')}</p>
       ) : (
         <ul className="vault-grid" role="listbox" aria-multiselectable="true" aria-label={t('ws.vault')} style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbPx}px, 1fr))` }}>
-          {shown.map((item) => (
-            <AssetCard key={item.relPath} item={item} selected={sel.has(item.relPath)} selection={selected} />
+          {shown.map((entry) => (
+            <AssetCard key={entry.key} entry={entry} selected={entry.variants.every((v) => sel.has(v.relPath))} selection={selected} />
           ))}
         </ul>
       )}
@@ -203,11 +208,14 @@ function PackImportDialog() {
   );
 }
 
-function AssetCard({ item, selected, selection }: { item: VaultItem; selected: boolean; selection: readonly string[] }) {
+/** A catalog card: an asset, or an object (E-31) with its main variant's picture and the number of variants. */
+function AssetCard({ entry, selected, selection }: { entry: CatalogEntry<VaultItem>; selected: boolean; selection: readonly string[] }) {
   const { t } = useI18n();
+  const item = entry.variants[0];
   const thumb = useThumbnail(item);
   const a = item.asset;
-  const pick = (e: MouseEvent | KeyboardEvent) => selectAsset(item.relPath, e.shiftKey ? 'range' : e.metaKey || e.ctrlKey ? 'toggle' : 'single');
+  const name = entry.name;
+  const pick = (e: MouseEvent | KeyboardEvent) => selectEntry(entry, e.shiftKey ? 'range' : e.metaKey || e.ctrlKey ? 'toggle' : 'single');
   return (
     <li
       role="option"
@@ -216,8 +224,8 @@ function AssetCard({ item, selected, selection }: { item: VaultItem; selected: b
       className={`vault-card ${selected ? 'sel' : ''}`}
       draggable
       onDragStart={(e) => {
-        // Dragging a selected card takes the whole selection along.
-        const paths = selected ? selection : [item.relPath];
+        // Dragging a selected card takes the whole selection along; an object its main variant.
+        const paths = selected && !entry.object ? selection : [placedPathOf(entry)];
         e.dataTransfer.setData(ASSET_DRAG, JSON.stringify(paths));
         e.dataTransfer.effectAllowed = 'copy';
       }}
@@ -235,7 +243,8 @@ function AssetCard({ item, selected, selection }: { item: VaultItem; selected: b
       </div>
       <div className="vault-name">
         <Icon name={KIND_ICONS[a.assetKind]} />
-        <span title={a.name}>{a.name}</span>
+        <span title={name}>{name}</span>
+        {entry.object && <span className="vault-variants" title={t('vault.variants')}>{entry.variants.length}</span>}
       </div>
       <button
         className={`vault-star ${a.favorite ? 'on' : ''}`}
@@ -401,21 +410,24 @@ export function AssetPropertiesPanel() {
   const items = useStore((s) => s.vault.items);
   const selected = useStore((s) => s.vault.selected);
   const chosen = useMemo(() => items.filter((i) => selected.includes(i.relPath)), [items, selected]);
+  const objectPath = useStore((s) => s.vault.object);
+  const objects = useStore((s) => s.vault.objects);
+  // The object picked (E-31), while the selection is it or one of its variants.
+  const object = objects.find((o) => o.relPath === objectPath && chosen.every((c) => o.doc.variants.some((v) => `library/${v.file}` === c.relPath))) ?? null;
   if (chosen.length === 0) return <div className="panel-body hint">{t('vault.noSelection')}</div>;
   const assets = chosen.map((i) => i.asset);
   const one = chosen.length === 1 ? chosen[0] : null;
   const kind = commonValue(assets, (a) => a.assetKind);
   const subkind = commonValue(assets, (a) => a.subkind ?? '');
-  const group = commonValue(assets, (a) => a.group ?? '');
   const size = commonValue(assets, (a) => a.sizeCells ?? null);
   const fav = commonValue(assets, (a) => a.favorite);
   const union = (pick: (a: AssetSidecar) => string[]) => [...new Set(assets.flatMap(pick))];
   const edit = (change: (a: AssetSidecar) => AssetSidecar) => void updateSelectedAssets(change);
   const subkindKeys = kind === 'mixed' ? [] : SUBKINDS[kind];
-  const groups = [...new Set(items.map((i) => i.asset.group).filter((g): g is string => !!g))];
   return (
     <div className="panel-body vault-props">
-      <div className="sec">{one ? t('panel.asset') : t('vault.selected', { n: chosen.length })}</div>
+      {object && <ObjectSection object={object} selected={selected} />}
+      <div className="sec">{one ? t(object ? 'vault.variant' : 'panel.asset') : object ? t('vault.object') : t('vault.selected', { n: chosen.length })}</div>
       {one && (
         <>
           <TextRow label={t('props.name')} value={one.asset.name} onCommit={(v) => v.trim() && edit((a) => ({ ...a, name: v.trim() }))} />
@@ -454,27 +466,15 @@ export function AssetPropertiesPanel() {
         }}
         onRemove={(v) => edit((a) => ({ ...a, environments: a.environments.filter((x) => x !== v) }))}
       />
-      <ValueList
+      {(!object || one) && <ValueList
         label={t('props.tags')}
         values={union((a) => a.tags)}
         show={(v) => v}
         suggestions={[...new Set(items.flatMap((i) => i.asset.tags))]}
         onAdd={(v) => edit((a) => ({ ...a, tags: addTags(a.tags, v) }))}
         onRemove={(v) => edit((a) => ({ ...a, tags: removeTag(a.tags, v) }))}
-      />
+      />}
       {(kind === 'mixed' || SIZED.includes(kind)) && <SizeRow size={size} onChange={(s) => edit((a) => ({ ...a, sizeCells: s }))} />}
-      <TextRow
-        label={t('vault.group')}
-        value={group === 'mixed' ? '' : group}
-        placeholder={group === 'mixed' ? t('vault.mixed') : ''}
-        suggestions={groups}
-        onCommit={(v) =>
-          edit((a) => {
-            const { group: _g, ...rest } = a;
-            return v.trim() ? { ...rest, group: v.trim() } : rest;
-          })
-        }
-      />
       <ValueList
         label={t('vault.collections')}
         values={union((a) => a.collections)}
@@ -492,6 +492,7 @@ export function AssetPropertiesPanel() {
       {one && one.asset.assetKind !== 'sound' && (
         <button className="btn sm" onClick={() => openAssetEditor(one.relPath)}><Icon name="sliders" />{t('editor.open')} …</button>
       )}
+      {one && !object && !objectOf(one.relPath) && <AddVariant target={one.relPath} />}
       {one && SIZED.includes(one.asset.assetKind) && <GridPreview item={one} />}
     </div>
   );
@@ -592,5 +593,66 @@ function GridPreview({ item }: { item: VaultItem }) {
         {thumb && <img src={thumb} alt="" style={{ left: pad * cell, top: pad * cell, width: size.w * cell, height: size.h * cell }} />}
       </div>
     </>
+  );
+}
+
+/**
+ * The object picked (E-31, DC-112): its name, file and variants – each with its picture; a click
+ * picks one (its own tags, its editor), the star makes it the main variant, ✕ takes it out.
+ */
+function ObjectSection({ object, selected }: { object: NonNullable<ReturnType<typeof objectOf>>; selected: readonly string[] }) {
+  const { t } = useI18n();
+  const items = useStore((s) => s.vault.items);
+  const variants = object.doc.variants.map((v) => items.find((i) => i.relPath === `library/${v.file}`)).filter((i): i is VaultItem => !!i);
+  const one = selected.length === 1 ? selected[0] : null;
+  return (
+    <>
+      <div className="sec">{t('vault.object')}</div>
+      <TextRow label={t('props.name')} value={object.doc.name} onCommit={(v) => void renameObject(object.relPath, v)} />
+      <div className="row"><label>{t('vault.file')}</label><span className="mono hint" title={object.relPath}>{object.relPath.replace(/^library\//, '')}</span></div>
+      <div className="row"><label>{t('vault.variants')}</label>
+        <button className="btn sm" disabled={!one} onClick={() => selectEntry({ key: object.relPath, name: object.doc.name, object, variants }, 'single')}>{t('vault.wholeObject')}</button>
+      </div>
+      <ul className="vault-variant-list" aria-label={t('vault.variants')}>
+        {variants.map((v) => (
+          <VariantTile key={v.relPath} item={v} main={`library/${object.doc.main}` === v.relPath} on={one === v.relPath} />
+        ))}
+      </ul>
+      <AddVariant target={object.relPath} />
+    </>
+  );
+}
+
+function VariantTile({ item, main, on }: { item: VaultItem; main: boolean; on: boolean }) {
+  const { t } = useI18n();
+  const thumb = useThumbnail(item);
+  return (
+    <li className={`vault-variant ${on ? 'sel' : ''}`}>
+      <button className="vault-variant-pick" aria-pressed={on} title={item.asset.name} onClick={() => selectVariant(item.relPath)}>
+        <span className="vault-thumb">{thumb ? <img src={thumb} alt="" draggable={false} /> : <Icon name={KIND_ICONS[item.asset.assetKind]} />}</span>
+        <span className="vault-variant-name">{item.asset.name}</span>
+      </button>
+      <button className={`ab-btn ${main ? 'on' : ''}`} title={t('vault.mainVariant')} aria-label={`${t('vault.mainVariant')}: ${item.asset.name}`} aria-pressed={main} onClick={() => void setMainVariant(item.relPath)}><Icon name="star" /></button>
+      <button className="ab-btn" title={t('vault.removeVariant')} aria-label={`${t('vault.removeVariant')}: ${item.asset.name}`} onClick={() => void removeVariant(item.relPath)}><Icon name="close" /></button>
+    </li>
+  );
+}
+
+/** "Add a variant": a single asset of the library joins the object (or, for a single asset, makes one with it). */
+function AddVariant({ target }: { target: string }) {
+  const { t } = useI18n();
+  const items = useStore((s) => s.vault.items);
+  const objects = useStore((s) => s.vault.objects);
+  const inObject = new Set(objects.flatMap((o) => o.doc.variants.map((v) => `library/${v.file}`)));
+  const free = items.filter((i) => !inObject.has(i.relPath) && i.relPath !== target);
+  if (!free.length) return null;
+  return (
+    <div className="row">
+      <label htmlFor="as-addvar">{t('vault.addVariant')}</label>
+      <select id="as-addvar" value="" onChange={(e) => e.target.value && void addVariant(target, e.target.value)}>
+        <option value="">{t('vault.addVariantPick')}</option>
+        {free.map((i) => <option key={i.relPath} value={i.relPath}>{i.asset.name}</option>)}
+      </select>
+    </div>
   );
 }

@@ -550,9 +550,16 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   auf dem TV (E-25). Figuren in einer Maske (Zelt, Wagen) sind für die Spieler verborgen, bis eine ihrer Figuren
   in derselben Maske steht – umgesetzt in der Projektion; die Innenansicht (Inneres zeigen, wenn jemand eintritt)
   kommt über die Ebenen in Kartenschmiede und Szeneneditor (DC-101, Innenräume DC-042).
-- **DC-112 Objekte mit Varianten** (E-31): Objekt-Datei (Format, Lesen mit Prüfung und Migration der Gruppen),
-  Vault mit einer Karte je Objekt und den Varianten rechts, Varianten anlegen/entfernen/benennen, Hauptvariante,
-  gemeinsame Felder am Objekt; Pack-Import legt Objekte an; Platzieren eines Objekts legt die Hauptvariante.
+- ✓ **DC-112 Objekte mit Varianten** (E-31): Objekt-Datei `library/<name>.object.json` (Dateiart „object“ Version 1,
+  gelesen mit Prüfung; unlesbare werden gemeldet und ausgelassen). Beim Lesen der Bibliothek werden Gruppen ab zwei
+  Dateien ohne Objekt zu Objekten (damit legt auch der Pack-Import Objekte an). Die gemeinsamen Felder des Objekts
+  gelten für alle Varianten; eine Änderung daran (am Objekt oder an einer Variante) geht in die Objekt-Datei und an
+  alle Varianten. Vault: eine Karte je Objekt (Bild der Hauptvariante, Anzahl), rechts Objekt (Name, Datei,
+  Varianten mit Bild – Klick wählt eine, Stern = Hauptvariante, ✕ nimmt sie heraus), „Variante hinzufügen“ (aus
+  einem Einzel-Asset entsteht so ein Objekt), darunter die Felder der Auswahl (Tags nur je Variante). Ein Objekt mit
+  nur noch einer Variante löst sich auf (Datei in den Papierkorb, keine Gruppe bleibt zurück). Das Feld „Gruppe“
+  entfällt in der Oberfläche. Das Assets-Panel zeigt Objekte einmal und legt die Hauptvariante. Der Dateiname eines
+  Objekts folgt seinem Namen nicht (Umbenennen ändert nur den Namen).
 - **DC-111 Unterarten im Browser** (E-31): unter jeder Art ihre Unterarten mit Anzahl, als Filter.
 - **DC-114 Suche mit Vorschlägen** (E-31): Vorschläge beim Tippen aus Tags, Art/Unterart, Umgebungen, Sammlungen,
   Namen; Objekte passen über ihre Varianten.

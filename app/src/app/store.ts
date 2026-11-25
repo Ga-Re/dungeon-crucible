@@ -133,6 +133,8 @@ export interface AppState {
   assetInfo: Record<string, AssetInfo>;
   /** The placed asset selected in the Map Forge. */
   selectedAssetId: string | null;
+  /** Play-once effects started in this session, by placement id → when (DC-110; not saved). */
+  effectRuns: Record<string, number>;
   /** The Asset Vault: catalog, filter, selection (E-27, DC-040). */
   vault: VaultState;
   /** Recently used campaigns (start screen). */
@@ -206,6 +208,7 @@ function initial(): AppState {
     notice: null,
     assetInfo: {},
     selectedAssetId: null,
+    effectRuns: {},
     vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null },
     soundboard: initialSoundboard(),
   };
@@ -838,6 +841,7 @@ export interface AssetInfo {
   video: boolean;
   cover?: AssetSidecar['cover'];
   light?: AssetSidecar['light'];
+  effect?: AssetSidecar['effect'];
 }
 
 export function setAssetInfo(info: Record<string, AssetInfo>): void {
@@ -910,7 +914,7 @@ export function placeAsset(assetPath: string, p: Point): string | null {
   state.selectedWallIds = [];
   state.selectedZoneId = null;
   rememberRecentAsset(assetPath);
-  log('log.assetPlaced', { name: state.assetInfo[assetPath]?.name ?? assetPath });
+  log(state.layer === 'map' ? 'log.assetPlaced' : 'log.assetPlacedScene', { name: state.assetInfo[assetPath]?.name ?? assetPath });
   recomputeVision();
   emit();
   return id;
@@ -984,6 +988,49 @@ export function deletePlacedAsset(id: string): void {
   if (state.selectedAssetId === id) state.selectedAssetId = null;
   recomputeVision();
   emit();
+}
+
+/**
+ * A click on a placed asset in a scene (DC-110): a play-once effect plays, a looping effect is
+ * switched on or off, a light switched on or off (each undoable; playing once is not saved).
+ * Whether the asset had something to switch.
+ */
+export function activateAsset(id: string): boolean {
+  if (state.layer === 'map') return false;
+  const a = allPlacements(state.scene).find((x) => x.id === id);
+  const info = a && state.assetInfo[a.assetPath];
+  if (!a || !info) return false;
+  if (info.effect && !info.effect.loop && info.effect.trigger) {
+    state.effectRuns = { ...state.effectRuns, [id]: Date.now() };
+    log('log.effectPlayed', { name: info.name });
+    emit();
+    return true;
+  }
+  if (info.effect?.loop) {
+    checkpoint();
+    const on = state.scene.effectsOn[id] === false;
+    state.scene.effectsOn = { ...state.scene.effectsOn, [id]: on };
+    log(on ? 'log.effectOn' : 'log.effectOff', { name: info.name });
+    emit();
+    return true;
+  }
+  if (info.light) {
+    checkpoint();
+    const key = `${id}:light`;
+    const on = state.scene.assetLightsOn[key] === false;
+    state.scene.assetLightsOn = { ...state.scene.assetLightsOn, [key]: on };
+    log(on ? 'log.lightOn' : 'log.lightOff');
+    recomputeVision();
+    emit();
+    return true;
+  }
+  return false;
+}
+
+/** The shown placed asset (the map's or the scene's own) at `p`, the topmost. */
+export function anyAssetAt(p: Point): string | null {
+  const hit = [...allPlacements(state.scene)].reverse().find((a) => hitsPlacement(footprint(a), p));
+  return hit?.id ?? null;
 }
 
 const RECENT_KEY = 'dc.recentAssets';
@@ -1594,7 +1641,7 @@ export function produceFrame(now: number): PlayerFrame {
     seedKey: state.mapResource,
     lights: tv.lights,
     // Only the scene's shown placements: assets it hides never reach the TV.
-    assets: assetShapes(allPlacements(tv.scene), state.assetInfo, tv.scene.map.grid),
+    assets: assetShapes(allPlacements(tv.scene), state.assetInfo, tv.scene.map.grid, { effectsOn: tv.scene.effectsOn, runs: state.effectRuns }),
     covers: assetExtras(tv.scene).covers,
   });
   return state.frame;

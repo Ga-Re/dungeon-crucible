@@ -4,6 +4,8 @@ import { placementCovers, placementLights } from './cover';
 import { DEFAULT_GRID } from './grid';
 import { litSources, tokensVisibleToPlayers, updateVision, visiblePolygons } from './vision';
 import { createSampleScene } from '../sample/crypt';
+import { playerLighting } from './projection';
+import { clearArea } from './fogModel';
 
 /** Cover masks and lights of placed assets in sight and light (DC-108). 70 px cells. */
 const grid = { ...DEFAULT_GRID, cellWidth: 70, cellHeight: 70 };
@@ -133,5 +135,16 @@ describe('figures inside a mask (DM decision 2026-11-25)', () => {
     // A character steps in: the bandit shows.
     pc.x = 950;
     expect(seen()).toEqual(['v', 'b']);
+  });
+});
+
+describe('a light near a wall corner (regression, DC-110)', () => {
+  it('does not break the TV lighting', () => {
+    const s = createSampleScene();
+    const lights = [{ id: 'oak:light', x: 210, y: 1050, brightFt: 20, dimFt: 40, color: '#ffb14a', on: true, flicker: 0.3 }];
+    const lit = litSources(s, { lights });
+    const vis = visiblePolygons(updateVision(s, { lights }));
+    expect(() => playerLighting(s, lit, clearArea(s.fog, vis))).not.toThrow();
+    expect(playerLighting(s, lit, clearArea(s.fog, vis)).glows.length).toBeGreaterThan(0);
   });
 });

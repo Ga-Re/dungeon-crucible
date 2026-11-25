@@ -86,20 +86,42 @@ export interface AssetDraw {
   width: number;
   height: number;
   rotation: number;
+  /** A play-once effect: when this run started (ms); it plays once from there, then disappears. */
+  once?: number;
 }
 
-/** The placed assets that can be drawn: those whose file is known (a missing one shows nothing). */
+/** A scene's effect state (DC-110): looping effects switched off, play-once effects started. */
+export interface EffectState {
+  effectsOn: Readonly<Record<string, boolean>>;
+  runs: Readonly<Record<string, number>>;
+}
+
+/**
+ * The placed assets that can be drawn: those whose file is known (a missing one shows nothing).
+ * In a scene, a looping effect shows unless switched off and a play-once effect only while it
+ * plays; without scene state (the Map Forge) every effect shows, looping.
+ */
 export function assetShapes(
   placements: readonly MapAssetPlacement[],
-  info: Readonly<Record<string, { url: string | null; video: boolean; sizeCells?: { w: number; h: number } }>>,
+  info: Readonly<Record<string, { url: string | null; video: boolean; sizeCells?: { w: number; h: number }; effect?: { loop: boolean; trigger: boolean } }>>,
   grid: GridConfig,
+  play?: EffectState,
 ): AssetDraw[] {
   const out: AssetDraw[] = [];
   for (const p of placements) {
     const i = info[p.assetPath];
     if (!i?.url) continue;
+    let once: number | undefined;
+    if (play && i.effect) {
+      if (i.effect.loop) {
+        if (play.effectsOn[p.id] === false) continue;
+      } else {
+        once = play.runs[p.id];
+        if (once === undefined) continue;
+      }
+    }
     const fp = footprintOf(p, i.sizeCells, grid);
-    out.push({ id: p.id, url: i.url, video: i.video, x: fp.cx, y: fp.cy, width: fp.w, height: fp.h, rotation: fp.rotation });
+    out.push({ id: p.id, url: i.url, video: i.video, x: fp.cx, y: fp.cy, width: fp.w, height: fp.h, rotation: fp.rotation, ...(once === undefined ? {} : { once }) });
   }
   return out;
 }

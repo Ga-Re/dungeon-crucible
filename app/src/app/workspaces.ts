@@ -246,7 +246,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
     ],
     layout: {
       center: 'map',
-      left: ['browser', 'fog'],
+      left: ['browser', 'assets', 'fog'],
       right: ['initiative', 'party', 'table'],
       bottom: ['sound', 'dice', 'log'],
       floating: [{ id: 'preview', width: 360, height: 260 }],

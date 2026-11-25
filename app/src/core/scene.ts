@@ -64,6 +64,8 @@ export interface LightSource {
   dimFt: number;
   color: string;
   on: boolean;
+  /** How much an asset's light flickers (0–1, DC-110); placed lights do not. */
+  flicker?: number;
 }
 
 /** Ambient light of a map: dark (dungeon, night) or lit (daylight, well-lit hall). */

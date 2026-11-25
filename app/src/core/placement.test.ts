@@ -74,3 +74,33 @@ describe('the TV frame (DC-041)', () => {
     expect(PlayerFrameSchema.safeParse(frame).success).toBe(true);
   });
 });
+
+describe('effects in a scene (DC-110)', () => {
+  const info = {
+    'library/portal.webm': { url: 'u-portal', video: true, effect: { loop: true, trigger: false } },
+    'library/bolt.webm': { url: 'u-bolt', video: true, effect: { loop: false, trigger: true } },
+  };
+  const portal = { ...place(), id: 'portal', assetPath: 'library/portal.webm' };
+  const bolt = { ...place(), id: 'bolt', assetPath: 'library/bolt.webm' };
+
+  it('a looping effect shows unless switched off; a play-once effect only while it plays', () => {
+    const ids = (p: Parameters<typeof assetShapes>[3]) => assetShapes([portal, bolt], info, grid, p).map((a) => [a.id, a.once ?? null]);
+    expect(ids({ effectsOn: {}, runs: {} })).toEqual([['portal', null]]);
+    expect(ids({ effectsOn: { portal: false }, runs: { bolt: 1234 } })).toEqual([['bolt', 1234]]);
+    // The Map Forge (no scene state) shows every effect, looping.
+    expect(ids(undefined)).toEqual([['portal', null], ['bolt', null]]);
+  });
+});
+
+describe('flicker reaches the TV (DC-110)', () => {
+  it('a flickering light keeps its flicker in the frame', () => {
+    const scene = createSampleScene();
+    const lights = [{ x: 315, y: 875, brightPx: 70, dimPx: 140, color: '#ffaa00', flicker: 0.4, area: [rectPolygonForTest(0, 600, 700, 1200)] }];
+    const frame = buildPlayerFrame(scene, { seq: 1, now: 0, showGrid: true, memoryOpacity: 0.6, movementLocked: false, zoom: 1, look: { softEdges: true, fadeSeconds: 0.65, quality: 'medium' as const, edge: 1.2, motion: 1, speed: 5, coverFrom: 'middle' as const }, visible: [rectPolygonForTest(0, 600, 700, 1200)], quick: false, activeTokenId: null, seedKey: 'k', lights });
+    expect(frame.lighting.glows[0].flicker).toBe(0.4);
+  });
+});
+
+function rectPolygonForTest(x1: number, y1: number, x2: number, y2: number) {
+  return { outer: [[x1, y1], [x2, y1], [x2, y2], [x1, y2]] as [number, number][], holes: [] };
+}

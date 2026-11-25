@@ -42,7 +42,7 @@ export function placementLights(placements: readonly MapAssetPlacement[], info: 
     const l = a?.light;
     if (!l) continue;
     const [x, y] = toMap(p, a.sizeCells ?? { w: 1, h: 1 }, grid, [l.x, l.y]);
-    out.push({ id: `${p.id}:light`, x, y, brightFt: l.brightFt, dimFt: l.dimFt, color: l.color, on: true });
+    out.push({ id: `${p.id}:light`, x, y, brightFt: l.brightFt, dimFt: l.dimFt, color: l.color, on: true, ...(l.flicker > 0 ? { flicker: l.flicker } : {}) });
   }
   return out;
 }

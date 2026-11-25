@@ -200,6 +200,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
             buttons: [
               { id: 'toggle:editStart', icon: 'flag', label: 'tool.editStart' },
               { id: 'scene:reset', icon: 'reset', label: 'tool.resetScene' },
+              { id: 'tool:hide', icon: 'eyeoff', label: 'tool.hideElements', tool: 'hide' },
               { id: 'party:place', icon: 'users', label: 'tool.placeParty' },
             ],
           },

@@ -26,6 +26,7 @@ import { missingPartyTokens, tokenFromCreature } from '../core/party';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
+import { elementsFromSidecar, resetElement, sceneChanges, sceneIssues, withoutOrphans, type ElementChange } from '../core/persistence';
 import { commitStart, layerOf, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, startOf, type ViewLayer } from '../core/persistence';
 import type { MapSidecar, SceneOverride } from '../core/sidecar';
 import type { CampaignInfo, RootInfo } from '../platform/bridge';
@@ -36,7 +37,7 @@ export type WorkspaceId = 'forge' | 'vault' | 'creatures' | 'atlas' | 'play';
 
 export type ToolId =
   | 'select' | 'pan' | 'measure' | 'ping' | 'calibrate'
-  | 'area' | 'wall'
+  | 'area' | 'wall' | 'hide'
   | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
   | 'cone' | 'sphere' | 'line' | 'cube' | 'light';
 
@@ -287,6 +288,8 @@ export function checkpoint(): void {
 
 function restore(snap: string): void {
   const { map, ov } = JSON.parse(snap) as { map: MapSidecar; ov: SceneOverride | null };
+  // The scene file too: it holds what the view does not show (orphaned changes, the other state).
+  if (ov) state.sceneDoc = ov;
   const keepTable = state.scene.table;
   state.scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, keepTable, state.layer);
   state.scene.table = keepTable;
@@ -793,6 +796,71 @@ export function finishAreaCommand(): boolean {
   recomputeVision();
   emit();
   return true;
+}
+
+/* ---------- Hiding map elements in a scene (DC-103) ---------- */
+
+/**
+ * Hides a map element in the scene, or shows it again: while preparing ("edit start state") for
+ * the start, else for the play state. Not in the Map Forge, which edits the map itself.
+ */
+export function toggleHidden(id: string): void {
+  if (state.layer === 'map') return;
+  const sc = state.scene;
+  const h = sc.hidden;
+  const hide = [...sc.walls, ...sc.zones, ...sc.lights].some((x) => x.id === id);
+  if (!hide && ![...h.walls, ...h.zones, ...h.lights].some((x) => x.id === id)) return;
+  checkpoint();
+  // Moves the element (whichever kind it is) from one list to the other.
+  const split = <T extends { id: string }>(from: T[], to: T[]): [T[], T[]] => [from.filter((x) => x.id !== id), [...to, ...from.filter((x) => x.id === id)]];
+  if (hide) {
+    [sc.walls, h.walls] = split(sc.walls, h.walls);
+    [sc.zones, h.zones] = split(sc.zones, h.zones);
+    [sc.lights, h.lights] = split(sc.lights, h.lights);
+    state.selectedWallIds = state.selectedWallIds.filter((x) => x !== id);
+    if (state.selectedZoneId === id) state.selectedZoneId = null;
+    if (state.selectedLightId === id) state.selectedLightId = null;
+  } else {
+    [h.walls, sc.walls] = split(h.walls, sc.walls);
+    [h.zones, sc.zones] = split(h.zones, sc.zones);
+    [h.lights, sc.lights] = split(h.lights, sc.lights);
+  }
+  log(hide ? 'log.elementHidden' : 'log.elementShown');
+  recomputeVision();
+  emit();
+}
+
+/** "Reset to map": the element takes the map's fields again (its state stays). */
+export function resetToMap(id: string): void {
+  if (state.layer === 'map' || !state.mapDoc) return;
+  checkpoint();
+  state.scene = resetElement(state.scene, elementsFromSidecar(state.mapDoc), id);
+  log('log.elementReset');
+  recomputeVision();
+  emit();
+}
+
+/** "Clean up": removes the scene's changes that no longer fit the map (one undoable step). */
+export function cleanUpOrphans(): void {
+  if (state.layer === 'map' || !state.mapDoc) return;
+  commitView();
+  const doc = state.sceneDoc;
+  if (!doc) return;
+  const { orphaned, invalid } = sceneIssues(state.mapDoc, doc);
+  if (orphaned.length + invalid.length === 0) return;
+  checkpoint();
+  state.sceneDoc = withoutOrphans(doc, state.mapDoc);
+  log('log.orphansCleaned', { n: orphaned.length + invalid.length });
+  emit();
+}
+
+let changesCache: { version: number; changes: ElementChange[] } | null = null;
+
+/** How the elements of the scene shown differ from the map (none in the Map Forge); cached per state. */
+export function currentChanges(): ElementChange[] {
+  if (state.layer === 'map' || !state.mapDoc) return [];
+  if (changesCache?.version !== version) changesCache = { version, changes: sceneChanges(elementsFromSidecar(state.mapDoc), state.scene) };
+  return changesCache.changes;
 }
 
 /** Deletes an area of the map (undoable). Scene overrides of it stay in their files, orphaned. */

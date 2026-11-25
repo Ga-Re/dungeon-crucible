@@ -8,7 +8,7 @@ import type { Point } from '../core/geometry';
 import { gridDistanceFeet, snapToCorner, squareBox } from '../core/grid';
 import { clearArea, openArea } from '../core/fogModel';
 import { circleArea, ellipseArea, strokeArea } from '../core/poly/shapes';
-import { partFromDrag, partFromPoints, vertexAt, type VertexRef } from '../core/areas';
+import { areaContains, partFromDrag, partFromPoints, vertexAt, type VertexRef } from '../core/areas';
 import { AreaCommandPanel } from './AreaCommandPanel';
 import { WallCommandPanel } from './WallCommandPanel';
 import { CalibrationPanel } from './CalibrationPanel';
@@ -31,6 +31,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
+  currentChanges, toggleHidden,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -42,7 +43,7 @@ export const mapCommands: { fit: () => void } = { fit: () => undefined };
 
 const HINTS: Partial<Record<string, MessageKey>> = {
   select: 'hint.select', pan: 'hint.pan', measure: 'hint.measure', ping: 'hint.ping', calibrate: 'hint.calibrate',
-  area: 'hint.area', wall: 'hint.wall',
+  area: 'hint.area', wall: 'hint.wall', hide: 'hint.hide',
   'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
   'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom', light: 'hint.light',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
@@ -261,6 +262,7 @@ function DmMap() {
       draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
       fogDraft,
       areaDraft: areaDraftOf(d),
+      changed: new Set(currentChanges().filter((c) => c.status === 'changed').map((c) => c.id)),
     };
   };
 
@@ -366,6 +368,12 @@ function DmMap() {
       case 'light':
         addLight(snapPoint(p));
         return;
+      case 'hide': {
+        // Shown and hidden elements alike: a click hides or shows it again.
+        const id = elementAt(p, HANDLE_PX / view.current.zoom);
+        if (id) toggleHidden(id);
+        return;
+      }
       case 'measure':
         drag.current = { kind: 'measure', a: snapPoint(p), b: p };
         return;
@@ -557,6 +565,17 @@ function DmMap() {
       )}
     </div>
   );
+}
+
+/** The map element under `p` for "hide / show": a light, else a wall, else an area – shown or hidden. */
+function elementAt(p: Point, tol: number): string | null {
+  const sc = state.scene;
+  const r = sc.map.grid.cellWidth * 0.45;
+  const light = [...sc.lights, ...sc.hidden.lights].find((l) => Math.hypot(l.x - p.x, l.y - p.y) < r);
+  if (light) return light.id;
+  const wall = wallAt([...sc.walls, ...sc.hidden.walls], p, tol);
+  if (wall) return wall;
+  return [...sc.zones, ...sc.hidden.zones].reverse().find((z) => areaContains(z.shape, p))?.id ?? null;
 }
 
 /** Screen pixels within which a corner of the area is grabbed. */

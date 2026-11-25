@@ -353,9 +353,19 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     kleine Bilder (ein Türklick malt die Karte nicht neu). Die Karte malt sich kachelweise (`PaintedImage`), also ohne
     Canvas-Grenze; gemessen: 200 × 200 Felder, 400 Räume – Öffnen blockiert ≤ 0,7 s. Textur-Plätze (11) mit
     erzeugten Mustern als Ersatz, bis die Higgsfield-Bilder da sind (DM lädt Credits auf; Free-Tarif: Rechte vor dem
-    Einchecken prüfen). Offen: Higgsfield-Texturen, Tab „Bauen“ mit Zeichnen und Bearbeiten (Ausdehnung dabei neu
-    berechnen; nur geänderte Kacheln neu malen), „Neue gezeichnete Karte“ im Katalog (Vorschaubild, Anzeige
-    „Kartendatei“), `npm run bench` (braucht das 4K-Testvideo und den TV).
+    Einchecken prüfen).
+    Tab „Bauen“ (`app/build.ts`, `core/build/editing.ts`, `panels/BuildCommandPanel.tsx`): Bearbeiten, Mauer, Tür,
+    Einrasten. Mauer: Befehls-Panel mit Stil, Dicke (ft) und Einrasten (Raster, halbes Raster, 45°, frei; Alt frei),
+    Klick für Klick, Doppelklick/Enter beendet, Klick auf den Anfang schließt den Ring, Rücktaste nimmt den letzten
+    Punkt zurück; jede Mauer ist ein Schritt. Tür: Klick auf eine Mauer, mittig auf einem Feld, „geheim“ im Panel.
+    Bearbeiten: Punkte ziehen (rasten an anderen Mauern ein), Klick auf die Linie der ausgewählten Mauer fügt einen
+    Punkt ein, ein Ende auf ein anderes gezogen verbindet (auf das eigene: Ring), Entf löscht Punkt/Tür/Mauer, Türen
+    entlang der Mauer ziehen; Türen behalten bei Änderungen ihren Platz. Eigenschaften: Stil, Dicke, „Neu würfeln“,
+    „Hier teilen“, Löschen; Tür: Breite, geheim, Riss. Die Fläche einer gezeichneten Karte folgt dem Gezeichneten.
+    Katalog: „Neue gezeichnete Karte“ (Karte mit offener Kampagne), Karte mit Mauer-Symbol statt Vorschaubild,
+    „Kartendatei: Gezeichnete Karte“. Geprüft in der App (Raum mit Tür, Höhlenwand, Auswahl, Speichern).
+    Offen: Higgsfield-Texturen; Vorschaubild gezeichneter Karten im Katalog; bei sehr großen Karten nur geänderte
+    Kacheln neu malen; `npm run bench` (braucht das 4K-Testvideo und den TV).
   - **DC-107b Boden-Pinsel** mit sauberem Übergang an Mauern.
   - **DC-107c Eigene Mauern in Szenen** (Szene v8).
   - Danach (eigene Pakete): Wege/Flüsse/Brücken, Räume und Dächer, Detailstreuung, Wildnis-/Stadt-Modus.

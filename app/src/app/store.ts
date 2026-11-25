@@ -9,6 +9,7 @@ import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
 import { masonrySightWalls, toggledMasonryDoor, withMasonry } from '../core/build/sight';
+import type { BuildCommand, BuildSelection } from './build';
 import type { InteriorTrigger } from '../core/sidecar';
 import { randomChoices, rollPlacement, type PlaceOptions } from '../core/assetObjects';
 import { drawnPlacements, footprintPolygon, interiorChanges, interiorOf, interiorWalls } from '../core/interiors';
@@ -51,7 +52,9 @@ export type ToolId =
   | 'select' | 'pan' | 'measure' | 'ping' | 'calibrate'
   | 'area' | 'wall' | 'hide'
   | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
-  | 'cone' | 'sphere' | 'line' | 'cube' | 'light';
+  | 'cone' | 'sphere' | 'line' | 'cube' | 'light'
+  /** The Map Forge's "Build" tab (E-33): edit, draw walls, place doors. */
+  | 'build-edit' | 'build-wall' | 'build-door';
 
 export interface LogEntry {
   at: number;
@@ -98,6 +101,10 @@ export interface AppState {
   wallCommand: WallCommand | null;
   /** Selected walls of the map (Map Forge): one, several (Shift) or a chain (double-click). */
   selectedWallIds: string[];
+  /** Drawing walls or placing doors in the "Build" tab (E-33): options and the wall being drawn. */
+  buildCommand: BuildCommand | null;
+  /** The drawn wall selected (and one of its points), or a door on one (E-33). */
+  buildSelection: BuildSelection | null;
   log: LogEntry[];
   rolls: RollResult[];
   monitors: MonitorInfo[];
@@ -224,6 +231,8 @@ function initial(): AppState {
     calibration: null,
     wallCommand: null,
     selectedWallIds: [],
+    buildCommand: null,
+    buildSelection: null,
     log: [],
     rolls: [],
     monitors: [],
@@ -384,6 +393,9 @@ function restore(snap: string): void {
   // Selected walls that the step back (or forward) took away are no longer selected.
   const walls = new Set(state.scene.walls.map((w) => w.id));
   state.selectedWallIds = state.selectedWallIds.filter((id) => walls.has(id));
+  // Likewise a drawn wall or door (E-33).
+  const b = state.buildSelection;
+  if (b && !(b.door ? state.scene.map.masonryDoors.some((d) => d.id === b.door) : state.scene.map.masonry.some((w) => w.id === b.wall))) state.buildSelection = null;
   if (state.selectedAssetId && !editableAssets().some((a) => a.id === state.selectedAssetId)) state.selectedAssetId = null;
   // Who is in which house as of this step (E-29): stepping back into a house is no new entering.
   interiorInside = charactersInHouses();
@@ -411,9 +423,9 @@ export function clearHistory(): void {
 
 /** Replaces the whole scene (open campaign, switch scene, import map). */
 /** A new element id that no wall, area, light, template or token of the scene has (lowercase, random). */
-function freshId(prefix: string): string {
+export function freshId(prefix: string): string {
   const sc = state.scene;
-  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.ownAssets, ...sc.hidden.assets].map((x) => x.id));
+  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.ownAssets, ...sc.hidden.assets, ...sc.map.masonry, ...sc.map.masonryDoors].map((x) => x.id));
   return newId(slugId(prefix, 'el').slice(0, 40), (id) => taken.has(id));
 }
 
@@ -874,6 +886,8 @@ export function setTool(tool: ToolId): void {
   // One command at a time: another tool ends "create area" and "draw walls".
   if (tool !== 'area') state.areaCommand = null;
   if (tool !== 'wall') state.wallCommand = null;
+  if (tool !== 'build-wall' && tool !== 'build-door') state.buildCommand = null;
+  if (!tool.startsWith('build-')) state.buildSelection = null;
   if (tool !== 'calibrate') dropCalibration();
   state.tool = tool;
   emit();
@@ -1013,6 +1027,8 @@ function reversed<T extends Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>>(w: T): T {
 function clearWallEditing(): void {
   state.wallCommand = null;
   state.selectedWallIds = [];
+  state.buildCommand = null;
+  state.buildSelection = null;
   state.selectedAssetId = null;
   state.calibration = null;
 }

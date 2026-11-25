@@ -43,6 +43,61 @@ export interface OverlayState {
   areaDraft: { shape: Polygon[]; part: Polygon | null; path: Point[]; color: string; subtract: boolean; editing: string | null } | null;
   /** Outline of a fog tool's shape while drawing. */
   fogDraft: { polygon: Polygon | null; path: Point[]; mode: 'reveal' | 'hide' } | null;
+  /** The "Build" tab (E-33): the wall being drawn (and where its next point would go), the drawn wall or door selected. */
+  build?: BuildOverlay | null;
+}
+
+export interface BuildOverlay {
+  draft: readonly Point[];
+  next: Point | null;
+  thickness: number;
+  selected: { points: readonly Point[]; closed: boolean; thickness: number; point: number | null; door: { a: Point; b: Point } | null } | null;
+}
+
+function polyline(g: CanvasRenderingContext2D, points: readonly Point[], closed: boolean): void {
+  g.beginPath();
+  points.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)));
+  if (closed) g.closePath();
+}
+
+/** The wall being drawn as a see-through band of its thickness, the selection as a blue band with its points. */
+function drawBuild(g: CanvasRenderingContext2D, b: BuildOverlay, px: number): void {
+  g.save();
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  if (b.draft.length) {
+    const pts = b.next ? [...b.draft, b.next] : b.draft;
+    g.strokeStyle = 'rgba(232,176,75,.45)';
+    g.lineWidth = b.thickness;
+    polyline(g, pts, false);
+    g.stroke();
+    if (b.next) {
+      g.strokeStyle = 'rgba(232,176,75,.9)';
+      g.lineWidth = 1.5 * px;
+      g.setLineDash([8 * px, 5 * px]);
+      polyline(g, [b.draft[b.draft.length - 1], b.next], false);
+      g.stroke();
+      g.setLineDash([]);
+    }
+    for (const q of b.draft) drawEnd(g, q.x, q.y, px, false);
+    if (b.next) drawEnd(g, b.next.x, b.next.y, px, true);
+  }
+  const s = b.selected;
+  if (s) {
+    g.strokeStyle = SELECTED;
+    g.lineWidth = s.thickness + 8 * px;
+    polyline(g, s.points, s.closed);
+    g.stroke();
+    s.points.forEach((q, i) => drawEnd(g, q.x, q.y, px, i === s.point));
+    if (s.door) {
+      g.strokeStyle = '#3f9de2';
+      g.lineWidth = s.thickness + 10 * px;
+      g.lineCap = 'butt';
+      polyline(g, [s.door.a, s.door.b], false);
+      g.stroke();
+    }
+  }
+  g.restore();
 }
 
 const labels = new WeakMap<readonly Polygon[], Point>();
@@ -138,6 +193,8 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
       drawEnd(g, next.b.x, next.b.y, px, true);
     }
   }
+
+  if (o.build) drawBuild(g, o.build, px);
 
   for (const a of o.assets) drawPlacement(g, a, px);
   if (o.covers.length) {

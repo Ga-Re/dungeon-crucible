@@ -3,7 +3,10 @@
  * for the Map Forge, finds which campaigns use one, opens one in a scene, moves one to the trash.
  */
 import { readDocument } from '../core/documents';
-import { isDrawn, mapSidecarPath } from '../core/persistence';
+import { DRAWN_RESOURCE, isDrawn, mapSidecarPath } from '../core/persistence';
+import { drawnBounds } from '../core/build/masonry';
+import { DEFAULT_GRID } from '../core/grid';
+import { MAP_VERSION } from '../core/sidecar';
 import { CampaignManifestSchema, MapSidecarSchema, SceneOverrideSchema, type MapSidecar } from '../core/sidecar';
 import type { MapType } from '../core/scene';
 import type { MapFilter } from '../core/mapCatalog';
@@ -258,5 +261,28 @@ export async function duplicateLibraryMap(mapFile: string, name: string, withCon
   await refreshLibraryMaps();
   state.mapSelected = file;
   emit();
+  return file;
+}
+
+/**
+ * "New drawn map" (E-33): a map file of its own without a picture – its drawn walls will be its
+ * picture. It starts as an empty area of the default grid and opens in a tab of the Map Forge.
+ */
+export async function createDrawnMap(name: string): Promise<string | null> {
+  if (!isDesktop() || !state.root?.root) return null;
+  const taken = new Set([...libraryNames, ...state.libraryMaps.map((m) => m.mapFile)]);
+  const file = mapFileFor(name, taken);
+  const area = drawnBounds([], DEFAULT_GRID.cellWidth, 0);
+  const doc: MapSidecar = {
+    kind: 'map', schemaVersion: MAP_VERSION, name, resource: DRAWN_RESOURCE, isVideo: false,
+    widthPx: area.w, heightPx: area.h, origin: { x: area.x, y: area.y },
+    tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
+    layers: [], walls: [], zones: [], pois: [], lights: [], ambient: 'dark', assets: [], masonry: [], masonryDoors: [],
+  };
+  await writeDoc(file, MapSidecarSchema, doc);
+  log('log.drawnMapCreated', { name });
+  await refreshLibraryMaps();
+  state.mapSelected = file;
+  await openMapTab(file);
   return file;
 }

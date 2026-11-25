@@ -12,7 +12,7 @@ import { Icon } from '../ui/Icon';
 import { useStore } from '../app/store';
 import { newSceneOnMap, switchScene } from '../app/campaign';
 import {
-  duplicateLibraryMap, mapIsOpen, mapUsage, openLibraryMap, refreshLibraryMaps, selectCatalogMap, setMapFilter, trashBlocked, trashLibraryMap, updateLibraryMap, type LibraryMap, type MapUsage,
+  createDrawnMap, duplicateLibraryMap, mapIsOpen, mapUsage, openLibraryMap, refreshLibraryMaps, selectCatalogMap, setMapFilter, trashBlocked, trashLibraryMap, updateLibraryMap, type LibraryMap, type MapUsage,
 } from '../app/library';
 import { useThumbnail } from './VaultPanels';
 
@@ -46,6 +46,7 @@ export function MapCatalogView() {
       <div className="vault-bar">
         <input type="search" value={filter.query ?? ''} placeholder={t('library.search')} aria-label={t('library.search')} onChange={(e) => setMapFilter({ query: e.target.value })} />
         <span className="hint">{t('mapCatalog.count', { n: shown.length, total: maps.length })}</span>
+        <button className="btn sm" onClick={() => void createDrawnMap(t('mapCatalog.drawnName'))}><Icon name="wall" />{t('mapCatalog.newDrawn')}</button>
       </div>
       {maps.length === 0 ? (
         <p className="vault-empty hint">{t('library.empty')}</p>
@@ -68,10 +69,19 @@ export function MapCatalogView() {
   );
 }
 
+/** A picture's thumbnail; a drawn map (E-33) has no picture to show. */
+function MapThumb({ map }: { map: LibraryMap }) {
+  return map.drawn ? <Icon name="wall" /> : <PictureThumb map={map} />;
+}
+
+function PictureThumb({ map }: { map: LibraryMap }) {
+  const thumb = useThumbnail({ relPath: map.resource, size: map.size, mtimeMs: map.mtimeMs });
+  return thumb ? <img src={thumb} alt="" draggable={false} /> : <Icon name={map.isVideo ? 'play' : 'map'} />;
+}
+
 function MapCard({ map, selected, onMenu }: { map: LibraryMap; selected: boolean; onMenu: (x: number, y: number) => void }) {
   const { t } = useI18n();
   const typeLabel = useTypeLabel();
-  const thumb = useThumbnail({ relPath: map.resource, size: map.size, mtimeMs: map.mtimeMs });
   return (
     <li
       role="option"
@@ -94,7 +104,7 @@ function MapCard({ map, selected, onMenu }: { map: LibraryMap; selected: boolean
       }}
       title={`${map.name} · ${typeLabel(map.mapType)}`}
     >
-      <div className="vault-thumb">{thumb ? <img src={thumb} alt="" draggable={false} /> : <Icon name={map.isVideo ? 'play' : 'map'} />}</div>
+      <div className="vault-thumb"><MapThumb map={map} /></div>
       <div className="vault-name">
         <Icon name={map.isVideo ? 'play' : 'map'} />
         <span>{map.name}</span>
@@ -209,7 +219,7 @@ export function MapDetails() {
   return (
     <div className="panel-body vault-props">
       <div className="sec">{t('panel.map')}</div>
-      <MapPreview map={map} />
+      {!map.drawn && <MapPreview map={map} />}
       <DetailText label={t('props.name')} value={map.name} disabled={!editable} onCommit={(v) => v.trim() && void updateLibraryMap(mapFile, { name: v.trim() })} />
       <div className="row">
         <label htmlFor="mc-type">{t('mapSettings.type')}</label>

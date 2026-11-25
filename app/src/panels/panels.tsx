@@ -7,6 +7,8 @@ import { d20Test } from '../core/rules/dice';
 import { playerOfToken } from '../core/party';
 import type { InteriorTrigger } from '../core/sidecar';
 import { useI18n } from '../i18n/i18n';
+import { deleteBuildSelection, rerollMasonry, splitBuildWall, updateBuildDoor, updateMasonry, type BuildSelection } from '../app/build';
+import { MASONRY_STYLES, type MasonryStyle } from '../core/build/masonry';
 import type { MessageKey } from '../i18n/en';
 import { TableView, type FrameSource } from '../table/TableView';
 import { BIOMES } from '../render/pixi/fog-living';
@@ -240,6 +242,7 @@ function MapProperties() {
   const zone = state.scene.zones.find((z) => z.id === selZone);
   const selWalls = useStore((s) => s.selectedWallIds);
   const placedAsset = useStore((s) => s.selectedAssetId);
+  const buildSel = useStore((s) => s.buildSelection);
   const allWalls = useStore((s) => s.scene.walls);
   const walls = allWalls.filter((w) => selWalls.includes(w.id));
   return (
@@ -248,7 +251,7 @@ function MapProperties() {
       <div className="row"><label>{t('props.name')}</label><span>{map.name}</span></div>
       <div className="row"><label>{t('mapSettings.type')}</label><span>{t(`mapType.${map.mapType}` as MessageKey)}{map.region ? ` · ${map.region}` : ''}</span></div>
       {map.tags.length > 0 && <div className="row"><label>{t('props.tags')}</label><span className="prop-tags">{map.tags.map((tag) => <span key={tag} className="chip">{tag}</span>)}</span></div>}
-      <div className="row"><label>{t('props.file')}</label><span className="mono hint">{file}</span></div>
+      <div className="row"><label>{t('props.file')}</label>{map.drawn ? <span className="hint">{t('props.drawnMap')}</span> : <span className="mono hint">{file}</span>}</div>
       <div className="row"><label htmlFor="p-cell">{t('props.cellSize')}</label>
         <input id="p-cell" type="number" min={10} step={0.5} value={Number(map.grid.cellWidth.toFixed(2))} onChange={(e) => { const v = Number(e.target.value); if (v >= 10) { map.grid = { ...map.grid, cellWidth: v, cellHeight: v }; emit(); } }} />
       </div>
@@ -270,7 +273,9 @@ function MapProperties() {
         </>
       )}
       <div className="sec">{t('props.selection')}</div>
-      {placedAsset ? (
+      {buildSel ? (
+        <BuildProperties sel={buildSel} />
+      ) : placedAsset ? (
         <PlacedAssetProperties id={placedAsset} />
       ) : walls.length > 0 ? (
         <WallProperties walls={walls} />
@@ -283,6 +288,48 @@ function MapProperties() {
         </>
       ) : <p className="hint">{t('props.noSelection')}</p>}
     </div>
+  );
+}
+
+/** The drawn wall or door selected in the "Build" tab (E-33): style, thickness, look; door width, secret, crack. */
+function BuildProperties({ sel }: { sel: BuildSelection }) {
+  const { t } = useI18n();
+  const wall = useStore((s) => s.scene.map.masonry.find((w) => w.id === sel.wall));
+  const door = useStore((s) => (sel.door ? s.scene.map.masonryDoors.find((d) => d.id === sel.door) : undefined));
+  const grid = useStore((s) => s.scene.map.grid);
+  if (!wall) return <p className="hint">{t('props.noSelection')}</p>;
+  const ftPerPx = grid.feetPerCell / grid.cellWidth;
+  const ft = (px: number) => Math.round(px * ftPerPx * 100) / 100;
+  if (door)
+    return (
+      <>
+        <div className="row"><label>{t('props.name')}</label><span>{t('build.props.door')}{door.secret ? ` · ${t('build.secret')}` : ''}</span></div>
+        <NumberRow id="bd-width" label={t('build.width')} value={ft(door.width)} step={0.5} min={0.5} onCommit={(v) => v > 0 && updateBuildDoor(door.id, { width: v / ftPerPx })} />
+        <label className="cmd-check"><input type="checkbox" checked={door.secret} onChange={(e) => updateBuildDoor(door.id, { secret: e.target.checked })} />{t('build.secret')}</label>
+        {door.secret && (
+          <>
+            <label className="cmd-check"><input type="checkbox" checked={door.crack} onChange={(e) => updateBuildDoor(door.id, { crack: e.target.checked })} />{t('build.crack')}</label>
+            <p className="hint">{t('build.crackAbout')}</p>
+          </>
+        )}
+        <button className="btn sm danger" onClick={() => deleteBuildSelection()}><Icon name="trash" />{t('build.delete')}</button>
+      </>
+    );
+  return (
+    <>
+      <div className="row"><label>{t('props.name')}</label><span>{t('build.props.wall')}{wall.closed ? ` · ${t('build.ring')}` : ''}</span></div>
+      <div className="row"><label htmlFor="bw-style">{t('build.style')}</label>
+        <select id="bw-style" value={wall.style} onChange={(e) => updateMasonry(wall.id, { style: e.target.value as MasonryStyle })}>
+          {MASONRY_STYLES.map((s) => <option key={s} value={s}>{t(`build.style.${s}` as MessageKey)}</option>)}
+        </select>
+      </div>
+      <NumberRow id="bw-thick" label={t('build.thickness')} value={ft(wall.thickness)} step={0.25} min={0.25} onCommit={(v) => v > 0 && updateMasonry(wall.id, { thickness: v / ftPerPx })} />
+      <div className="cmd-line">
+        <button className="btn sm" onClick={() => rerollMasonry(wall.id)}><Icon name="reset" />{t('build.reroll')}</button>
+        {sel.point !== null && <button className="btn sm" onClick={splitBuildWall}><Icon name="line" />{t('build.split')}</button>}
+      </div>
+      <button className="btn sm danger" onClick={() => deleteBuildSelection()}><Icon name="trash" />{t('build.delete')}</button>
+    </>
   );
 }
 

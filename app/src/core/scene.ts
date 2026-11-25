@@ -3,7 +3,7 @@ import type { Point, Segment } from './geometry';
 import type { GridConfig, DisplaySpec } from './grid';
 import type { FogEffect, LevelFog, Polygon } from './poly/types';
 import type { Condition } from './rules/rules2024';
-import type { MapLayer } from './sidecar';
+import type { InteriorTrigger, MapLayer } from './sidecar';
 
 /** A cliff or gallery is one way: one sees down from its upper side, not up from below (DC-014). */
 export type WallKind = 'wall' | 'door' | 'secret-door' | 'window' | 'cliff';
@@ -161,6 +161,8 @@ export interface MapAssetPlacement {
   rotation: number;
   scale: number;
   layer?: string;
+  /** A house's own interior trigger (E-29); none: the asset's. */
+  interiorTrigger?: InteriorTrigger;
 }
 
 /** Catalog defaults of a map that has none yet. */
@@ -195,8 +197,10 @@ export interface Scene {
   assetLightsOn: Record<string, boolean>;
   /** Looping effects by placement id → playing. Not listed: playing. */
   effectsOn: Record<string, boolean>;
-  /** Doors of placed assets by door id (`<placement>:door`, E-29) → open. Not listed: closed. */
+  /** Doors of placed assets by door id (`<placement>:door`, inside `<placement>:in<n>`; E-29) → open. Not listed: closed. */
   assetDoorsOpen: Record<string, boolean>;
+  /** Houses showing their interior (E-29), by placement id. Not listed: outside. */
+  interiorsOn: Record<string, boolean>;
   tokens: Token[];
   templates: AreaTemplate[];
   pings: Ping[];

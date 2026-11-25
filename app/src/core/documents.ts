@@ -20,8 +20,8 @@ export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' |
 /** Current version of each document kind. */
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
-  map: 4,
-  scene: 6,
+  map: 5,
+  scene: 7,
   creature: 1,
   asset: 3,
   session: 1,
@@ -38,6 +38,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     2: (doc) => doc,
     // Version 4 adds layers (E-28): everything stays on the base layer.
     3: (doc) => doc,
+    // Version 5 lets a placed house trigger its interior differently (E-29): none yet.
+    4: (doc) => doc,
   },
   // The same for the scene's own areas and its overrides of map areas.
   scene: {
@@ -62,6 +64,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     4: (doc) => doc,
     // Version 6 adds the layers switched in a scene (E-28): none yet.
     5: (doc) => doc,
+    // Version 7 adds the houses showing their interior (E-29): none yet.
+    6: (doc) => doc,
   },
   creature: {},
   // The first asset format (variants with props, never used by files) → E-27 (DC-040).

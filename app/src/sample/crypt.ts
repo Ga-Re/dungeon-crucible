@@ -125,6 +125,7 @@ export function createSampleScene(): Scene {
     ownAssets: [],
     assetLightsOn: {},
     assetDoorsOpen: {},
+    interiorsOn: {},
     effectsOn: {},
     tokens,
     templates: [],

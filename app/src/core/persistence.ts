@@ -51,6 +51,7 @@ export function startOf(ov: SceneOverride): SceneStart {
     assets: ov.assets.map((a) => ({ ...a })),
     effects: { ...ov.effects },
     layers: { ...ov.layers },
+    interiors: { ...ov.interiors },
   };
 }
 
@@ -75,6 +76,7 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
       assets: fromView.assets,
       effects: fromView.effects,
       layers: fromView.layers,
+      interiors: fromView.interiors,
     },
   };
 }
@@ -99,6 +101,7 @@ export function resetToStart(ov: SceneOverride): SceneOverride {
     assets: start.assets.map((a) => ({ ...a })),
     effects: { ...start.effects },
     layers: { ...start.layers },
+    interiors: { ...start.interiors },
     templates: [],
     combat: { round: 1, turn: 0 },
     start,
@@ -199,6 +202,7 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     assets: own.map((a) => ({ ...a })),
     effects: { ...scene.effectsOn },
     layers: { ...scene.layersOn },
+    interiors: { ...scene.interiorsOn },
     tokens: scene.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: scene.templates.map((t) => ({ ...t })),
     combat: { ...combat },
@@ -252,8 +256,8 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const ownAssets = onMap ? [] : (state?.assets ?? []).map((a) => ({ ...a }));
   // Asset lights are stored with the map lights, by `<placement>:light`.
   const assetLightsOn = Object.fromEntries(Object.entries(lightsOn).filter(([id]) => id.endsWith(':light')));
-  // Likewise asset doors with the map doors, by `<placement>:door` (E-29).
-  const assetDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => id.endsWith(':door')));
+  // Likewise doors of assets with the map doors, by `<placement>:door` and `<placement>:in<n>` (E-29).
+  const assetDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => /:(door|in\d+)$/.test(id)));
   return {
     map: {
       id: slugify(map.name),
@@ -277,6 +281,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     lights: shownOn(lights),
     inactive: { walls: inactiveOf(walls), zones: inactiveOf(zones), lights: inactiveOf(lights), assets: inactiveOf([...map.assets.map((a) => ({ ...a })), ...ownAssets]) },
     layersOn: onMap ? {} : { ...(state?.layers ?? {}) },
+    interiorsOn: onMap ? {} : { ...(state?.interiors ?? {}) },
     hidden: { walls: hiddenOf(walls), zones: hiddenOf(zones), lights: hiddenOf(lights), assets: hiddenOf([...map.assets.map((a) => ({ ...a })), ...ownAssets]) },
     ownAssets: shownOn(ownAssets),
     assetLightsOn,

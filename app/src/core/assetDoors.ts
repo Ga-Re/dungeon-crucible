@@ -83,12 +83,20 @@ let cache: { walls: readonly Wall[]; key: string; out: readonly Wall[] } | null 
  * The walls sight and light use: the map's, cut open where asset doors lie, plus those doors.
  * The same list while nothing changed, so what was computed for it is kept.
  */
-export function wallsWithAssetDoors(walls: readonly Wall[], placements: readonly MapAssetPlacement[], info: DoorInfo, grid: GridConfig, open: Readonly<Record<string, boolean>>): readonly Wall[] {
+export function wallsWithAssetDoors(
+  walls: readonly Wall[],
+  placements: readonly MapAssetPlacement[],
+  info: DoorInfo,
+  grid: GridConfig,
+  open: Readonly<Record<string, boolean>>,
+  /** More walls placed assets bring (the interiors shown, E-29); they cut nothing. */
+  extra: readonly Wall[] = [],
+): readonly Wall[] {
   const doors = assetDoorWalls(placements, info, grid, open);
-  if (!doors.length) return walls;
-  const key = JSON.stringify(doors);
+  if (!doors.length && !extra.length) return walls;
+  const key = JSON.stringify([doors, extra]);
   if (cache && cache.walls === walls && cache.key === key) return cache.out;
-  const out = [...cutForDoors(walls, doors), ...doors];
+  const out = [...cutForDoors(walls, doors), ...doors, ...extra];
   cache = { walls, key, out };
   return out;
 }

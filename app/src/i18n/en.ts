@@ -464,6 +464,8 @@ export const en = {
   'layers.active': 'Active in this scene',
   'layers.mixed': 'different',
   'props.layer': 'Layer',
+  'log.interiorOn': '"{name}": interior shown',
+  'log.interiorOff': '"{name}": outside shown',
   'log.layerOn': 'Layer "{name}" on',
   'log.layerOff': 'Layer "{name}" off',
   'log.effectPlayed': 'Effect "{name}" played',

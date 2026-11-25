@@ -464,6 +464,8 @@ export const de: Partial<Record<MessageKey, string>> = {
   'layers.active': 'In dieser Szene aktiv',
   'layers.mixed': 'verschieden',
   'props.layer': 'Ebene',
+  'log.interiorOn': '„{name}“: Innenansicht',
+  'log.interiorOff': '„{name}“: Außenansicht',
   'log.layerOn': 'Ebene „{name}“ an',
   'log.layerOff': 'Ebene „{name}“ aus',
   'log.effectPlayed': 'Effekt „{name}“ abgespielt',

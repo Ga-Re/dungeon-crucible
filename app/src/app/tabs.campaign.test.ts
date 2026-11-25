@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DcApi } from '../platform/desktop-api';
-import { closeCampaign, closeScene, newCampaign, newSceneOnMap, openCampaign, putOnTv, saveCampaign, switchScene } from './campaign';
-import { activateSession, checkpoint, moveToken, state } from './store';
+import { closeCampaign, closeScene, closeTab, newCampaign, newCreature, newSceneOnMap, openCampaign, putOnTv, saveCampaign, showTab, switchScene } from './campaign';
+import { activateSession, checkpoint, moveToken, openCreatureTab, setWorkspace, state } from './store';
 
 /** Scene tabs with the campaign's files (E-30, DC-034): saving, closing, opening again. Files kept in memory. */
 let files: Map<string, string>;
@@ -85,5 +85,37 @@ describe('scene tabs and the campaign files', () => {
     expect(state.tvScenePath).toBeNull();
     // Now the soundboard follows B and has its ambience.
     expect(state.soundboard.ambience.some((x) => x.id === 'library/wind.ogg')).toBe(true);
+  });
+
+  it('creatures open as tabs in the Creatures workspace; the scene behind and the TV stay', async () => {
+    await newCampaign('C', true);
+    const a = state.scenePath!;
+    await putOnTv(a);
+    setWorkspace('play');
+    const lyra = state.creatures.find((c) => c.role === 'pc')!;
+    openCreatureTab(lyra.id);
+    expect(state.ws).toBe('creatures');
+    expect(state.tabs.map((t) => t.kind)).toEqual(['scene', 'creature']);
+    expect(state.creatures[state.selectedCreatureIdx].id).toBe(lyra.id);
+    expect(state.activeTab).toBe(a);
+    expect(state.tvScenePath).toBe(a);
+    // The scene's tab: back to the Orchestrator.
+    await showTab(a);
+    expect(state.ws).toBe('play');
+    // A new creature has an id of its own and opens as a tab.
+    newCreature('monster', 'Ghast');
+    const ghast = state.creatures.at(-1)!;
+    expect(state.creatures.filter((c) => c.id === ghast.id)).toHaveLength(1);
+    expect(state.creatureTab).toBe(`creature:${ghast.id}`);
+    // Kept with the campaign, back on opening.
+    await saveCampaign(true);
+    await closeCampaign({ toStart: false });
+    await openCampaign('c');
+    expect(state.tabs.map((t) => t.id)).toEqual([a, `creature:${lyra.id}`, `creature:${ghast.id}`]);
+    // Closed: its neighbour is shown.
+    await showTab(`creature:${ghast.id}`);
+    await closeTab(`creature:${ghast.id}`);
+    expect(state.tabs.map((t) => t.id)).toEqual([a, `creature:${lyra.id}`]);
+    expect(state.creatureTab).toBe(`creature:${lyra.id}`);
   });
 });

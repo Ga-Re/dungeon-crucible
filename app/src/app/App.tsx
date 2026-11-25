@@ -9,12 +9,13 @@ import { mapCommands } from '../panels/MapView';
 import { MonitorMenu } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
 import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, focusPanel, removeLegacyLayouts } from './docking';
+import type { DocTab } from './store';
 import {
   clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, startCalibration, startWallCommand, redo, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
-import { closeCampaign, closeScene, importMapIntoCampaign, newSceneOnMap, putOnTv, refreshRoot, saveCampaign, setEditStart, startAutosave, switchScene } from './campaign';
+import { closeCampaign, closeScene, closeTab, importMapIntoCampaign, newCreature, newSceneOnMap, putOnTv, refreshRoot, saveCampaign, setEditStart, showTab, startAutosave } from './campaign';
 import { ResetSceneDialog } from './ResetSceneDialog';
 import { MapSettingsDialog } from './MapSettingsDialog';
 import { ExportDialog } from './ExportDialog';
@@ -23,7 +24,6 @@ import { StartScreen } from './StartScreen';
 import { isDesktop } from '../platform/bridge';
 import { openTable, refreshMonitors, startFrameLoop } from './tableOutput';
 import { importMapFile } from './importMap';
-import { SAMPLE_CREATURES } from '../sample/creatures';
 
 export function App() {
   const ws = useStore((s) => s.ws);
@@ -188,13 +188,7 @@ function Ribbon() {
         void importMapIntoCampaign().then((handled) => { if (!handled) fileRef.current?.click(); });
         return;
       case 'creature:new':
-      case 'creature:newPc': {
-        const tpl = structuredClone(SAMPLE_CREATURES[b.id === 'creature:newPc' ? 0 : 2]);
-        tpl.name = b.id === 'creature:newPc' ? 'New Character' : 'New Creature';
-        state.creatures.push(tpl);
-        state.selectedCreatureIdx = state.creatures.length - 1;
-        return emit();
-      }
+      case 'creature:newPc': return newCreature(b.id === 'creature:newPc' ? 'pc' : 'monster', t(b.id === 'creature:newPc' ? 'tool.newPc' : 'tool.newCreature'));
     }
   };
 
@@ -321,7 +315,9 @@ function StatusBar() {
 function DocTabs() {
   const { t } = useI18n();
   const tabs = useStore((s) => s.tabs);
-  const active = useStore((s) => s.activeTab);
+  // In the Creatures workspace the creature shown; elsewhere the scene or map behind the tabs.
+  const active = useStore((s) => (s.ws === 'creatures' ? s.creatureTab : s.ws === 'forge' || s.ws === 'play' ? s.activeTab : null));
+  const creatures = useStore((s) => s.creatures);
   const tv = useStore((s) => s.tvScenePath);
   const pending = useStore((s) => s.dirty || s.saving);
   const [menu, setMenu] = useState<{ id: string; at: DOMRect } | null>(null);
@@ -329,12 +325,15 @@ function DocTabs() {
   if (!tabs.length) return null;
   const close = (id: string, el: HTMLElement) => {
     if (id === tv) setConfirm({ id, at: el.closest('.doc-tab')!.getBoundingClientRect() });
-    else void closeScene(id);
+    else void closeTab(id);
   };
+  // A creature's tab carries its name as it is now (renamed in its stat block).
+  const nameOf = (tab: DocTab) => (tab.kind === 'creature' ? creatures.find((c) => `creature:${c.id}` === tab.id)?.name ?? tab.name : tab.name);
   return (
     <div className="doc-tabs" role="tablist" aria-label={t('tabs.label')}>
       {tabs.map((tab) => {
         const on = tab.id === active;
+        const name = nameOf(tab);
         return (
           <div
             key={tab.id}
@@ -345,24 +344,24 @@ function DocTabs() {
               setMenu({ id: tab.id, at: e.currentTarget.getBoundingClientRect() });
             }}
           >
-            <button role="tab" aria-selected={on} className="doc-tab-name" title={tab.name} onClick={() => void switchScene(tab.id)}>
-              <Icon name={tab.kind === 'map' ? 'map' : 'flag'} />
-              <span>{tab.name}</span>
+            <button role="tab" aria-selected={on} className="doc-tab-name" title={name} onClick={() => void showTab(tab.id)}>
+              <Icon name={tab.kind === 'map' ? 'map' : tab.kind === 'creature' ? 'token' : 'flag'} />
+              <span>{name}</span>
               {tab.id === tv && <span className="doc-tab-tv" title={t('tabs.onTv')} aria-label={t('tabs.onTv')}><Icon name="monitor" /></span>}
               {((on && pending) || tab.unsaved) && <span className="doc-tab-dot" aria-label={t('tabs.unsaved')} />}
             </button>
-            <button className="doc-tab-close" title={t('tabs.close')} aria-label={`${t('tabs.close')}: ${tab.name}`} onClick={(e) => close(tab.id, e.currentTarget)}><Icon name="close" /></button>
+            <button className="doc-tab-close" title={t('tabs.close')} aria-label={`${t('tabs.close')}: ${name}`} onClick={(e) => close(tab.id, e.currentTarget)}><Icon name="close" /></button>
           </div>
         );
       })}
       {menu && (
         <TabMenu at={menu.at} onClose={() => setMenu(null)}>
-          {menu.id.startsWith('map:') ? (
+          {menu.id.startsWith('creature:') ? null : menu.id.startsWith('map:') ? (
             <button onClick={() => { void newSceneOnMap(menu.id.slice(4)); setMenu(null); }}><Icon name="plus" /><span>{t('tabs.newScene')}</span></button>
           ) : (
             <button disabled={menu.id === tv} onClick={() => { void putOnTv(menu.id); setMenu(null); }}><Icon name="monitor" /><span>{t('tool.sceneToTv')}</span></button>
           )}
-          <button onClick={(e) => { const at = menu.at; setMenu(null); if (menu.id === tv) setConfirm({ id: menu.id, at }); else void closeScene(menu.id); e.stopPropagation(); }}><Icon name="close" /><span>{t('tabs.close')}</span></button>
+          <button onClick={(e) => { const at = menu.at; setMenu(null); if (menu.id === tv) setConfirm({ id: menu.id, at }); else void closeTab(menu.id); e.stopPropagation(); }}><Icon name="close" /><span>{t('tabs.close')}</span></button>
         </TabMenu>
       )}
       {confirm && (

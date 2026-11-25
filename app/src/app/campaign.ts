@@ -28,7 +28,7 @@ import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { activateSession, checkpoint, clearTabs, closeSessionTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
+import { activateSession, checkpoint, clearTabs, closeCreatureTab, closeSessionTab, markDirty, openCreatureTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
 import { applySceneAmbience, refreshAudioFiles, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
@@ -288,7 +288,11 @@ async function reopen(kept: OpenTabs): Promise<void> {
   for (const tab of kept.tabs) {
     if (isSceneOpen(tab.id)) continue;
     try {
-      if (tab.kind === 'map') await openMapTab(tab.id.slice('map:'.length));
+      if (tab.kind === 'creature') {
+        const c = state.creatures.find((x) => `creature:${x.id}` === tab.id);
+        if (c) state.tabs = [...state.tabs, { id: tab.id, kind: 'creature', name: c.name }];
+        else log('log.tabNotRestored', { name: tab.name });
+      } else if (tab.kind === 'map') await openMapTab(tab.id.slice('map:'.length));
       else if (state.scenes.includes(tab.id)) await loadScene(tab.id);
       else log('log.tabNotRestored', { name: tab.name });
     } catch {
@@ -301,7 +305,7 @@ async function reopen(kept: OpenTabs): Promise<void> {
   const order = new Map(kept.tabs.map((t, i) => [t.id, i]));
   state.tabs = [...state.tabs].sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
   state.ws = ws;
-  const shown = kept.active && isSceneOpen(kept.active) ? kept.active : state.tabs[0]?.id;
+  const shown = kept.active && isSceneOpen(kept.active) ? kept.active : state.tabs.find((x) => x.kind !== 'creature')?.id;
   if (shown && shown !== state.activeTab) activateSession(shown);
   else if (state.activeTab) {
     const tab = state.tabs.find((x) => x.id === state.activeTab);
@@ -532,6 +536,42 @@ async function applyTvAmbience(): Promise<void> {
   const doc = scene ? openSceneDoc(scene) : null;
   const live = scene === state.scenePath;
   await applySceneAmbience(doc ? (live && state.editStart ? startOf(doc).ambience : doc.ambience) : []);
+}
+
+/**
+ * Shows the tab `id` (E-30): a creature in the Creatures workspace; a scene or map where scenes
+ * and maps were last shown (Map Forge or Orchestrator) when another workspace is open.
+ */
+export async function showTab(id: string): Promise<void> {
+  const tab = state.tabs.find((x) => x.id === id);
+  if (!tab) return;
+  if (tab.kind === 'creature') {
+    openCreatureTab(id.slice('creature:'.length));
+    keepTabs();
+    return;
+  }
+  if (state.ws !== 'forge' && state.ws !== 'play') setWorkspace(tab.kind === 'map' ? 'forge' : state.sceneWs);
+  await switchScene(id);
+}
+
+/** A new library creature (a player character or a monster) from a template, with a new id; it opens as a tab. */
+export function newCreature(role: 'pc' | 'monster', name: string): void {
+  const tpl = structuredClone(SAMPLE_CREATURES.find((c) => c.role === role) ?? SAMPLE_CREATURES[0]);
+  const taken = new Set(state.creatures.map((c) => c.id));
+  tpl.id = newId(slugId(name, 'creature').slice(0, 40), (x) => taken.has(x));
+  tpl.name = name;
+  state.creatures.push(tpl);
+  markDirty();
+  openCreatureTab(tpl.id);
+}
+
+/** Closes tab `id`: a creature's (its neighbour shown if it was shown), else a scene's or map's. */
+export async function closeTab(id: string): Promise<void> {
+  if (!id.startsWith('creature:')) return closeScene(id);
+  await saveCampaign();
+  const next = closeCreatureTab(id);
+  if (next) await showTab(next.id);
+  keepTabs();
 }
 
 /** Closes the tab of scene `scenePath` (saved first); the one shown gives way to its neighbour. */

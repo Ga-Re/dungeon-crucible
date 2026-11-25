@@ -400,8 +400,13 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Öffnen der Kampagne von Anfang an schwarz; sein Maßstab kommt aus dem Raster der TV-Szene; Rückgängig bleibt in
   der Ebene, in der es aufgezeichnet wurde; ein Karten-Tab erscheint nie im Orchestrator; Pings erreichen den TV
   auch, solange Kartenänderungen warten; ein geschlossener Tab kommt beim Öffnen nicht zurück.
-- **DC-034b Kreaturen als Tabs** (E-30), **DC-034c Assets als Tabs**, **DC-034d Notizen und Handouts als Tabs** –
-  auf der Tab-Leiste aus DC-034.
+- ✓ **DC-034b Kreaturen als Tabs** (E-30): Ein Klick in der Kreaturen-Liste und „Neue Kreatur/Neuer Charakter“
+  öffnen die Kreatur als Tab (Figur-Symbol, Name folgt dem Werteblock) im Arbeitsbereich Kreaturen; die Szene oder
+  Karte dahinter und der TV bleiben. Ein Szenen-/Karten-Tab führt zurück in Kartenschmiede bzw. Orchestrator (wo
+  zuletzt); Schließen zeigt den Nachbarn; Kreatur-Tabs kommen je Kampagne wieder (gelöschte bleiben zu). Nebenbei
+  behoben: eine neue Kreatur bekam die id ihrer Vorlage (jetzt neu und zufällig) und einen festen englischen Namen.
+  Werteblock-Änderungen haben weiter kein Rückgängig.
+- **DC-034c Assets als Tabs**, **DC-034d Notizen und Handouts als Tabs** – auf der Tab-Leiste aus DC-034.
 - **DC-035 Papierkorb-Ansicht** mit Wiederherstellen (ohne Überschreiben) und „Papierkorb leeren“ von Hand; kein
   automatisches Löschen (E-21; T-122).
 - **DC-036 Konfliktkopien und Platzhalter** von Cloud-Sync erkennen (T-103a).

@@ -15,7 +15,7 @@ import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  setElementsLayer, setPlacementInteriorTrigger, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
+  openCreatureTab, setElementsLayer, setPlacementInteriorTrigger, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { importMapIntoCampaign, newSceneOnMap, switchScene } from '../app/campaign';
@@ -47,7 +47,7 @@ export function BrowserPanel() {
         <ul className="tree">
           {creatures.map((c, i) => (
             <li key={i}>
-              <button className={`tn ${i === selCreature ? 'sel' : ''}`} onClick={() => { state.selectedCreatureIdx = i; emit(); }}>
+              <button className={`tn ${i === selCreature ? 'sel' : ''}`} onClick={() => openCreatureTab(c.id)}>
                 <span className="swatch" style={{ background: c.token.ringColor, borderRadius: '50%' }} />
                 <span className="nm">{c.name}</span>
                 <span className="meta">{c.role === 'pc' ? `${t('creature.level')} ${c.classes?.[0]?.level ?? 1}` : `${t('creature.cr')} ${c.cr ?? '–'}`}</span>

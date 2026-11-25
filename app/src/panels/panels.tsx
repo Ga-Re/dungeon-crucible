@@ -3,6 +3,7 @@ import { cellsVisibleOnTable, pixelsPerInch, ppiCorrectionFromMeasurement } from
 import { FOG_BIOMES, type TableRotation } from '../core/scene';
 import { abilityModifier, ABILITIES, CONDITIONS, evaluateEncounter, proficiencyBonusForCr, proficiencyBonusForLevel, xpForCr, type ChallengeRating } from '../core/rules/rules2024';
 import { d20Test } from '../core/rules/dice';
+import { playerOfToken } from '../core/party';
 import { useI18n } from '../i18n/i18n';
 import { TableView, type FrameSource } from '../table/TableView';
 import { BIOMES } from '../render/pixi/fog-living';
@@ -11,10 +12,11 @@ import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, removeLight, removeToken, setAmbient, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, setGridType, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
+  resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
-import { switchScene } from '../app/campaign';
+import { importMapIntoCampaign, switchScene } from '../app/campaign';
+import { filterLibraryMaps, mapUsage, openLibraryMap, refreshLibraryMaps, trashLibraryMap, type MapUsage } from '../app/library';
 import { CREATURE_DRAG } from './MapView';
 import { BUILTIN_PREFIX, BUILTIN_SFX, masterLevel } from '../app/audio';
 import { importAudio, setMaster, setTrackVolume, stopAll, toggleAmbience, trackFileName, triggerSfx } from '../app/soundboard';
@@ -55,6 +57,7 @@ export function BrowserPanel() {
   }
   return (
     <div className="panel-body">
+      {ws === 'forge' && campaign && <LibraryMaps />}
       <ul className="tree">
         {campaign && (
           <li>
@@ -84,7 +87,7 @@ export function BrowserPanel() {
             ))}
           </ul>
         </li>
-        <li>
+        {ws !== 'forge' && <li>
           <div className="tn"><Icon name="users" /><span className="nm">Tokens</span><span className="meta">{scene.tokens.length}</span></div>
           <ul>
             {scene.tokens.map((k) => (
@@ -97,9 +100,10 @@ export function BrowserPanel() {
               </li>
             ))}
           </ul>
-        </li>
+        </li>}
       </ul>
       {selZone && <ZoneActions id={selZone} />}
+      {ws !== 'forge' && <>
       <div className="sec" style={{ marginTop: 12 }}>{t('browser.creatures')}</div>
       <ul className="tree">
         {creatures.map((c, i) => (
@@ -113,6 +117,67 @@ export function BrowserPanel() {
           </li>
         ))}
       </ul>
+      </>}
+    </div>
+  );
+}
+
+/** Map Forge: the maps of the global library, searchable; open one, or move it to the trash. */
+function LibraryMaps() {
+  const { t } = useI18n();
+  const maps = useStore((s) => s.libraryMaps);
+  const current = useStore((s) => s.mapResource);
+  const sceneVersion = useStore((s) => s.sceneVersion);
+  const [query, setQuery] = useState('');
+  const [confirm, setConfirm] = useState<{ resource: string; usage: MapUsage[] } | null>(null);
+  useEffect(() => {
+    void refreshLibraryMaps();
+  }, [sceneVersion]);
+  const shown = filterLibraryMaps(maps, query);
+  return (
+    <div className="library">
+      <div className="sec">{t('library.maps')}</div>
+      <div className="library-tools">
+        <input type="search" value={query} placeholder={t('library.search')} aria-label={t('library.search')} onChange={(e) => setQuery(e.target.value)} />
+        <button className="ab-btn" title={t('tool.importMap')} aria-label={t('tool.importMap')} onClick={() => void importMapIntoCampaign()}><Icon name="import" /></button>
+      </div>
+      {maps.length === 0 ? (
+        <p className="hint">{t('library.empty')}</p>
+      ) : shown.length === 0 ? (
+        <p className="hint">{t('library.noMatch')}</p>
+      ) : (
+        <ul className="tree">
+          {shown.map((m) => (
+            <li key={m.resource}>
+              <div className={`tn ${m.resource === current ? 'sel' : ''}`}>
+                <button className="library-open" title={m.resource} onClick={() => void openLibraryMap(m.resource)}>
+                  <Icon name={m.isVideo ? 'play' : 'map'} />
+                  <span className="nm">{m.name}</span>
+                  {m.tags.length > 0 && <span className="meta">{m.tags.join(', ')}</span>}
+                </button>
+                <button className="ab-btn" title={t('library.trash')} aria-label={`${t('library.trash')}: ${m.name}`} onClick={() => void mapUsage(m.resource).then((usage) => setConfirm({ resource: m.resource, usage }))}><Icon name="trash" /></button>
+              </div>
+              {confirm?.resource === m.resource && (
+                <div className="library-confirm" role="alert">
+                  {confirm.usage.length > 0 ? (
+                    <>
+                      <p>{t('library.usedBy', { n: confirm.usage.length })}</p>
+                      <ul>{confirm.usage.slice(0, 6).map((u, i) => <li key={i}>{u.campaign} · {u.scene}</li>)}</ul>
+                      <p className="hint">{t('library.usedHint')}</p>
+                    </>
+                  ) : (
+                    <p>{t('library.unused')}</p>
+                  )}
+                  <div className="library-buttons">
+                    <button className="btn sm danger" onClick={() => void trashLibraryMap(m.resource).then(() => setConfirm(null))}>{t('library.trashConfirm')}</button>
+                    <button className="btn sm" onClick={() => setConfirm(null)}>{t('start.cancel')}</button>
+                  </div>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -149,22 +214,13 @@ export function PropertiesPanel() {
       <div className="sec">{t('panel.map')}</div>
       <div className="row"><label htmlFor="p-name">{t('props.name')}</label><input id="p-name" value={map.name} onChange={(e) => { map.name = e.target.value; emit(); }} /></div>
       <div className="row"><label>{t('props.file')}</label><span className="mono hint">{file}</span></div>
-      <div className="row"><label>{t('props.grid')}</label>
-        <div className="seg">
-          {(['square', 'hex-pointy', 'hex-flat'] as const).map((g) => (
-            <button key={g} className={map.grid.type === g ? 'on' : ''} onClick={() => setGridType(g)}>
-              {t(g === 'square' ? 'tool.gridSquare' : g === 'hex-pointy' ? 'tool.gridHexPointy' : 'tool.gridHexFlat')}
-            </button>
-          ))}
-        </div>
-      </div>
       <div className="row"><label htmlFor="p-cell">{t('props.cellSize')}</label>
         <input id="p-cell" type="number" min={10} step={0.5} value={Number(map.grid.cellWidth.toFixed(2))} onChange={(e) => { const v = Number(e.target.value); if (v >= 10) { map.grid = { ...map.grid, cellWidth: v, cellHeight: v }; emit(); } }} />
       </div>
       <div className="row"><label htmlFor="p-ft">{t('props.feetPerCell')}</label>
         <input id="p-ft" type="number" min={1} value={map.grid.feetPerCell} onChange={(e) => { const v = Number(e.target.value); if (v > 0) { map.grid = { ...map.grid, feetPerCell: v }; emit(); } }} />
       </div>
-      <div className="row"><label /><span className="hint mono">{map.widthPx}×{map.heightPx} px · {tileCount(map.widthPx, map.heightPx)} GPU tiles</span></div>
+      {map.widthPx > 0 && <div className="row"><label /><span className="hint mono">{map.widthPx}×{map.heightPx} px · {tileCount(map.widthPx, map.heightPx)} GPU tiles</span></div>}
       {cal && <div className="row"><label /><span className="hint">{t('props.calibrated', { w: cal.w.toFixed(1), h: cal.h.toFixed(1), r: cal.r.toFixed(2) })}</span></div>}
       <div className="row"><label htmlFor="p-amb">{t('map.ambient')}</label>
         <select id="p-amb" value={ambient} onChange={(e) => setAmbient(e.target.value as 'dark' | 'lit')}>
@@ -289,6 +345,7 @@ export function InitiativePanel() {
   const turn = useStore((s) => s.turn);
   const sel = useStore((s) => s.selectedTokenId);
   const lock = useStore((s) => s.moveLock);
+  const players = useStore((s) => s.players);
   const [amount, setAmount] = useState(5);
   const [condFor, setCondFor] = useState<string | null>(null);
   const order = initiativeOrder();
@@ -306,7 +363,7 @@ export function InitiativePanel() {
         return (
           <div key={k.id} className={`ini ${i === turn ? 'cur' : ''} ${open ? 'sel' : ''} ${k.hp <= 0 ? 'down' : ''}`} onClick={() => selectToken(k.id)}>
             <div className="iv">{k.initiative}</div>
-            <div className="nm"><span>{k.name}</span><span className={`tag ${k.kind !== 'pc' ? 'm' : ''}`}>{k.kind === 'pc' ? t('init.pc') : t('init.monster')}</span>{k.kind === 'pc' && lock && <Icon name="lock" />}</div>
+            <div className="nm"><span>{k.name}</span>{playerOfToken(players, k) && <span className="player">{playerOfToken(players, k)!.name}</span>}<span className={`tag ${k.kind !== 'pc' ? 'm' : ''}`}>{k.kind === 'pc' ? t('init.pc') : t('init.monster')}</span>{k.kind === 'pc' && lock && <Icon name="lock" />}</div>
             <div className="ac"><Icon name="shield" /><b>{k.ac}</b></div>
             <div className="sub"><span className="hp">{k.hp}/{k.maxHp}</span><div className="hpbar"><i style={{ width: `${p * 100}%`, background: p > 0.5 ? 'var(--ok)' : p > 0.25 ? 'var(--warn)' : 'var(--crit)' }} /></div></div>
             <div className="extra" onClick={(e) => e.stopPropagation()}>

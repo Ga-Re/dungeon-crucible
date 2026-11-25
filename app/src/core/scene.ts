@@ -124,7 +124,36 @@ export interface MapInfo {
   /** The map's default fog look (sidecar); a scene may override it live (`Scene.fogEffect`). */
   biome: FogBiome;
   biomeStrength: number;
+  /** Catalog data of the map (sidecar), carried so saving never loses it. */
+  tags: string[];
+  /** Landscape/theme, free text (sidecar `biome`, not the fog biome). */
+  region: string;
+  mapType: MapType;
+  /** Not edited yet; kept as read. */
+  pois: MapPoi[];
+  assets: MapAssetPlacement[];
 }
+
+export type MapType = 'dungeon' | 'building' | 'region' | 'world' | 'arena';
+export interface MapPoi {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  icon: string;
+}
+export interface MapAssetPlacement {
+  id: string;
+  assetPath: string;
+  variant?: string;
+  x: number;
+  y: number;
+  rotation: number;
+  scale: number;
+}
+
+/** Catalog defaults of a map that has none yet. */
+export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [] };
 
 export interface Scene {
   map: MapInfo;

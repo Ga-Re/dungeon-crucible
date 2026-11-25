@@ -1,3 +1,4 @@
+import { builtinModules } from 'node:module';
 // Bundles the Electron main process and the two preload scripts into dist-electron/*.cjs.
 // Each entry is built on its own so every output is a single self-contained file:
 // sandboxed preloads may only require("electron"), never a shared chunk.
@@ -15,6 +16,7 @@ export async function buildElectron({ mode = 'production' } = {}) {
       root,
       mode,
       logLevel: 'warn',
+      ssr: { noExternal: true, target: 'node' },
       build: {
         ssr: resolve(root, `electron/${name}.ts`),
         outDir: 'dist-electron',
@@ -23,7 +25,8 @@ export async function buildElectron({ mode = 'production' } = {}) {
         minify: false,
         sourcemap: true,
         rollupOptions: {
-          external: ['electron', /^node:/],
+          // Libraries are bundled (the packaged app ships no node_modules); Node and Electron stay external.
+          external: ['electron', /^node:/, ...builtinModules],
           output: { format: 'cjs', entryFileNames: `${name}.cjs` },
         },
       },

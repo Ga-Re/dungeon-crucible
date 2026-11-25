@@ -278,3 +278,33 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .sfx .ic { width: 15px; height: 15px; }
 .meter { height: 6px; border-radius: 3px; background: var(--input); margin: 8px 0; overflow: hidden; }
 .meter div { height: 100%; width: 0; background: var(--accent); transition: width 0.08s; }
+
+/* Map view without a map (new, empty campaign) */
+.map-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; text-align: center; color: var(--fg-dim); pointer-events: none; }
+.map-empty > * { pointer-events: auto; }
+.map-empty > .ic { width: 40px; height: 40px; color: var(--fg-faint); }
+.map-empty b { font-family: var(--font-head); font-size: 20px; color: var(--fg); }
+.map-empty p { max-width: 380px; margin: 0 0 8px; line-height: 1.5; }
+.map-empty .btn { height: 32px; padding: 0 16px; }
+
+/* Library list in the Map Forge browser */
+.library { margin-bottom: 12px; }
+.library-tools { display: flex; gap: 4px; margin: 4px 0 6px; }
+.library-tools input { flex: 1; min-width: 0; height: 26px; }
+.library .tn { display: flex; align-items: center; gap: 2px; }
+.library-open { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; padding: 0; background: none; border: 0; color: inherit; text-align: left; }
+.library-open .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-confirm { margin: 4px 0 8px 22px; padding: 8px 10px; border: 1px solid rgba(226, 85, 76, 0.45); border-radius: 3px; background: rgba(226, 85, 76, 0.07); font-size: 12px; }
+.library-confirm p { margin: 0 0 6px; }
+.library-confirm ul { margin: 0 0 6px; padding-left: 16px; }
+.library-buttons { display: flex; gap: 6px; }
+/* "Edit start state" is on: the map shows the start, not the play state */
+.map-badge.start-state { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+/* Party panel (DC-096) */
+.party-list { list-style: none; margin: 0 0 8px; padding: 0; }
+.party-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.2fr) auto; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px solid var(--line-soft); }
+.party-list li.absent .party-name, .party-list li.absent select { color: var(--fg-faint); }
+.party-list input.party-name, .party-list select { min-width: 0; height: 24px; }
+.party-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+.ini .player { color: var(--fg-faint); font-size: 11px; font-weight: 400; }

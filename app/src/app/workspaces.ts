@@ -22,7 +22,7 @@ export interface RibbonTab {
 
 export type PanelId =
   | 'map' | 'browser' | 'properties' | 'fog' | 'initiative' | 'preview' | 'table'
-  | 'dice' | 'log' | 'encounter' | 'creature' | 'atlas' | 'vault' | 'sound';
+  | 'dice' | 'log' | 'encounter' | 'creature' | 'atlas' | 'vault' | 'sound' | 'party';
 
 export interface DefaultLayout {
   center: PanelId;
@@ -119,9 +119,6 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
           {
             label: 'group.grid',
             buttons: [
-              { id: 'grid:square', icon: 'grid', label: 'tool.gridSquare' },
-              { id: 'grid:hex-pointy', icon: 'hex', label: 'tool.gridHexPointy' },
-              { id: 'grid:hex-flat', icon: 'hexflat', label: 'tool.gridHexFlat' },
               { id: 'tool:calibrate', icon: 'calib', label: 'tool.calibrate', tool: 'calibrate' },
               { id: 'toggle:snap', icon: 'magnet', label: 'tool.snap' },
             ],
@@ -201,6 +198,14 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
         groups: [
           view,
           {
+            label: 'group.scene',
+            buttons: [
+              { id: 'toggle:editStart', icon: 'flag', label: 'tool.editStart' },
+              { id: 'scene:reset', icon: 'reset', label: 'tool.resetScene' },
+              { id: 'party:place', icon: 'users', label: 'tool.placeParty' },
+            ],
+          },
+          {
             label: 'group.combat',
             buttons: [
               { id: 'tool:ping', icon: 'ping', label: 'tool.ping', tool: 'ping' },
@@ -243,7 +248,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
     layout: {
       center: 'map',
       left: ['browser', 'fog'],
-      right: ['initiative', 'table'],
+      right: ['initiative', 'party', 'table'],
       bottom: ['sound', 'dice', 'log'],
       floating: [{ id: 'preview', width: 360, height: 260 }],
     },
@@ -267,4 +272,5 @@ export const PANEL_TITLES: Record<PanelId, MessageKey> = {
   atlas: 'panel.atlas',
   vault: 'panel.vault',
   sound: 'panel.sound',
+  party: 'panel.party',
 };

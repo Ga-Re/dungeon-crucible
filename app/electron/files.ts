@@ -145,3 +145,9 @@ export async function fileResponse(file: string, rangeHeader: string | null, ext
   }
   return new Response(stat.size === 0 ? null : body(), { status: 200, headers: { ...headers, 'Content-Length': String(stat.size) } });
 }
+
+/** A campaign name as a folder/file name: no path separators or characters some systems refuse. */
+export function folderName(name: string): string {
+  const clean = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').replace(/^[.\s]+/, '').trim();
+  return clean.slice(0, 80) || 'Campaign';
+}

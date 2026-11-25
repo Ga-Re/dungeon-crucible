@@ -3,15 +3,16 @@
  *
  * - DM window (`index.html`) with the `window.dc` API from `preload.ts`.
  * - Table window (`table.html`) that can only receive player frames (`preload-table.ts`).
- * - `app://dc/…` serves the built pages; `dc-asset://file/…` serves files of the open
- *   campaign folder only (maps, videos), with CORS and byte ranges.
+ * - `app://dc/…` serves the built pages; `dc-asset://file/…` serves files of the library in the
+ *   root folder only (maps, videos, audio – never campaign data), with CORS and byte ranges.
+ * - All other file access goes through `rootFolder.ts`, confined to the root folder.
  * - Floating panels live in frameless child windows the DM window opens itself (`floating.ts`).
  * - Closing the DM window quits the app, so nothing is left on the TV.
  */
 import { app, BrowserWindow, ipcMain, Menu, protocol, screen, session, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { ASSET_SCHEME, assetPathFrom } from '../src/platform/asset-url';
-import { Campaign } from './campaign';
+import { RootFolder } from './rootFolder';
 import { fileResponse, isInside } from './files';
 import { FloatingWindows } from './floating';
 import type { FloatBounds } from '../src/platform/desktop-api';
@@ -38,7 +39,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
 ]);
 
-const campaign = new Campaign();
+const rootFolder = new RootFolder();
 let mainWindow: BrowserWindow | null = null;
 
 function pageUrl(page: string): string {
@@ -139,14 +140,24 @@ function registerIpc(): void {
     return { x: b.x, y: b.y };
   });
 
-  handle('campaign:pick', (w) => campaign.pick(w));
-  handle('campaign:open', (_w, folder: string) => campaign.activate(folder));
-  handle('campaign:read', (_w, rel: string) => campaign.readText(rel));
-  handle('campaign:write', (_w, rel: string, content: string) => campaign.writeText(rel, content));
-  handle('campaign:list', (_w, dir: string) => campaign.listFiles(dir));
-  handle('campaign:absolute', (_w, rel: string) => campaign.absolutePath(rel));
-  handle('campaign:importMap', (w) => campaign.importMap(w));
-  handle('campaign:importAudio', (w, sfx: boolean) => campaign.importAudio(w, sfx === true));
+  const str = (v: unknown, name: string): string => {
+    if (typeof v !== 'string') throw new Error(`${name} must be text`);
+    return v;
+  };
+  handle('root:info', () => rootFolder.info());
+  handle('root:choose', (w, useSuggested: unknown) => rootFolder.choose(w, useSuggested === true));
+  handle('files:read', (_w, rel: unknown) => rootFolder.readText(str(rel, 'path')));
+  handle('files:write', (_w, rel: unknown, content: unknown) => rootFolder.writeText(str(rel, 'path'), str(content, 'content')));
+  handle('files:list', (_w, dir: unknown) => rootFolder.listFiles(str(dir, 'path')));
+  handle('files:absolute', (_w, rel: unknown) => rootFolder.absolutePath(str(rel, 'path')));
+  handle('files:trash', (_w, rel: unknown, withSidecar: unknown) => rootFolder.trash(str(rel, 'path'), withSidecar !== false));
+  handle('campaigns:list', () => rootFolder.listCampaigns());
+  handle('campaigns:create', (_w, name: unknown) => rootFolder.createCampaign(str(name, 'name')));
+  handle('campaigns:trash', (_w, slug: unknown) => rootFolder.trashCampaign(str(slug, 'slug')));
+  handle('library:import', (w, kind: unknown) => rootFolder.importToLibrary(w, kind === 'audio' ? 'audio' : 'map'));
+  handle('archive:export', (w, slug: unknown, name: unknown, files: unknown) =>
+    rootFolder.exportArchive(w, str(slug, 'slug'), str(name, 'name'), Array.isArray(files) ? files.filter((f): f is string => typeof f === 'string') : []));
+  handle('archive:import', (w) => rootFolder.importArchive(w));
 
   const displaysChanged = () => toMain('displays:changed');
   screen.on('display-added', displaysChanged);
@@ -165,7 +176,7 @@ function registerProtocols(): void {
 
   protocol.handle(ASSET_SCHEME, async (req) => {
     const requested = assetPathFrom(req.url);
-    const file = requested ? await campaign.allows(requested) : null;
+    const file = requested ? await rootFolder.allowsAsset(requested) : null;
     if (!file) return new Response('Forbidden', { status: 403 });
     return fileResponse(file, req.headers.get('range'), { 'Access-Control-Allow-Origin': '*' });
   });
@@ -189,7 +200,8 @@ if (!app.requestSingleInstanceLock()) {
     if (mainWindow?.isMinimized()) mainWindow.restore();
     mainWindow?.focus();
   });
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
+    await rootFolder.load();
     if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
     lockDown();
     registerProtocols();

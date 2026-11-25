@@ -54,7 +54,7 @@ export const PlayerFrameSchema = z.object({
     /** Seeds the ragged spread front, so DM window and TV spread alike. */
     seedKey: z.string(),
     grid: z.object({
-      type: z.enum(['square', 'hex-pointy', 'hex-flat']),
+      type: z.literal('square'),
       cellWidth: z.number().positive(),
       cellHeight: z.number().positive(),
       originX: z.number(),

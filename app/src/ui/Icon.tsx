@@ -15,8 +15,6 @@ const PATHS = {
   zone: 'M4 4h4M12 4h4M20 4v4M20 12v4M20 20h-4M12 20H8M4 20v-4M4 12V8',
   import: 'M12 3v12M7 10l5 5 5-5M4 21h16',
   grid: 'M3 3h18v18H3z M9 3v18M15 3v18M3 9h18M3 15h18',
-  hex: 'M12 2.5l8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5z',
-  hexflat: 'M2.5 12l4.75-8.2h9.5L21.5 12l-4.75 8.2h-9.5z',
   calib: 'M12 2v4M12 18v4M2 12h4M18 12h4 M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12z',
   magnet: 'M6 3v9a6 6 0 0 0 12 0V3h-4v9a2 2 0 0 1-4 0V3z M6 7h4M14 7h4',
   fit: 'M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5',
@@ -64,6 +62,11 @@ const PATHS = {
   close: 'M6 6l12 12M18 6L6 18',
   list: 'M8 6h13M8 12h13M8 18h13 M3.5 6h.01M3.5 12h.01M3.5 18h.01',
   poi: 'M12 22s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12z M12 7.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z',
+  home: 'M3 11l9-8 9 8 M5 9.5V21h14V9.5 M10 21v-6h4v6',
+  export: 'M12 15V3M7 8l5-5 5 5M4 21h16',
+  archive: 'M3 4h18v4H3z M5 8v12h14V8 M10 12h4',
+  flag: 'M5 21V4 M5 4h11l-2 4 2 4H5',
+  reset: 'M4 12a8 8 0 1 0 2.3-5.7 M4 4v5h5',
 } as const;
 
 export type IconName = keyof typeof PATHS;

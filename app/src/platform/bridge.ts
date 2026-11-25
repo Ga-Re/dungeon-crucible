@@ -6,9 +6,10 @@
 import type { PlayerFrame } from '../core/projection';
 import type { FloatingBackend } from '../dock/nativeWindows';
 import { assetUrlFor } from './asset-url';
-import type { CampaignInfo, DcApi, DcTableApi, ImportedFile, MonitorInfo, ScreenSetupInfo } from './desktop-api';
+import type { CampaignInfo, DcApi, DcTableApi, LibraryImport, MonitorInfo, ScreenSetupInfo } from './desktop-api';
+export type { CampaignError, CampaignListEntry, RootInfo } from './desktop-api';
 
-export type { CampaignInfo, ImportedFile, MonitorInfo };
+export type { CampaignInfo, LibraryImport, MonitorInfo };
 
 declare global {
   interface Window {
@@ -93,14 +94,20 @@ export async function onFrame(cb: (data: unknown) => void): Promise<() => void> 
 
 /* ---------- Campaign folders (desktop only) ---------- */
 
-export const pickCampaignFolder = () => dc().pickCampaignFolder();
-export const openCampaignFolder = (path: string) => dc().openCampaignFolder(path);
+export const rootInfo = () => dc().rootInfo();
+export const chooseRoot = (useSuggested: boolean) => dc().chooseRoot(useSuggested);
+/** Files by path relative to the root folder. */
 export const readText = (rel: string) => dc().readText(rel);
 export const writeText = (rel: string, content: string) => dc().writeText(rel, content);
 export const listFiles = (dir: string) => dc().listFiles(dir);
 export const absolutePath = (rel: string) => dc().absolutePath(rel);
-export const importMapFileNative = () => dc().importMapFile();
-export const importAudioFileNative = (sfx: boolean) => dc().importAudioFile(sfx);
+export const trashFile = (rel: string, withSidecar = true) => dc().trash(rel, withSidecar);
+export const listCampaignFolders = () => dc().listCampaigns();
+export const createCampaignFolder = (name: string) => dc().createCampaign(name);
+export const trashCampaignFolder = (slug: string) => dc().trashCampaign(slug);
+export const importToLibrary = (kind: 'map' | 'audio') => dc().importToLibrary(kind);
+export const exportCampaignArchive = (slug: string, name: string, libraryFiles: string[]) => dc().exportCampaignArchive(slug, name, libraryFiles);
+export const importCampaignArchive = () => dc().importCampaignArchive();
 
 /** URL the pages (DM and table) can load a campaign file from. */
 export async function assetUrl(absPath: string): Promise<string> {

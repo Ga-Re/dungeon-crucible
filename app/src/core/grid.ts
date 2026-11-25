@@ -8,15 +8,16 @@
  */
 import type { Point } from './geometry';
 
-export type GridType = 'square' | 'hex-pointy' | 'hex-flat';
+/** Square grids only (decision E-7: the hex grid was removed). */
+export type GridType = 'square';
 
 export interface GridConfig {
   type: GridType;
-  /** Cell width in map pixels (for hex: distance between neighbouring centres). */
+  /** Cell width in map pixels. */
   cellWidth: number;
   /** Cell height in map pixels. Equal to cellWidth for undistorted maps. */
   cellHeight: number;
-  /** Map-pixel position of a grid corner (square) or a cell centre (hex). */
+  /** Map-pixel position of a grid corner. */
   originX: number;
   originY: number;
   /** Grid rotation relative to the image, in degrees. */
@@ -164,47 +165,15 @@ function fromGridSpace(grid: GridConfig, p: Point): Point {
   };
 }
 
-/** Cell containing a map point. Hex grids use offset coordinates (odd rows/cols shifted). */
+/** Cell containing a map point. */
 export function cellAt(grid: GridConfig, p: Point): CellCoord {
   const g = toGridSpace(grid, p);
-  if (grid.type === 'square') {
-    return { col: Math.floor(g.x / grid.cellWidth), row: Math.floor(g.y / grid.cellHeight) };
-  }
-  // Brute-force nearest centre among candidates: robust and fast enough for input handling.
-  const approx = grid.type === 'hex-pointy'
-    ? { col: Math.round(g.x / grid.cellWidth), row: Math.round(g.y / (grid.cellHeight * 0.75)) }
-    : { col: Math.round(g.x / (grid.cellWidth * 0.75)), row: Math.round(g.y / grid.cellHeight) };
-  let best = approx;
-  let bestD = Infinity;
-  for (let dr = -1; dr <= 1; dr++) {
-    for (let dc = -1; dc <= 1; dc++) {
-      const c = { col: approx.col + dc, row: approx.row + dr };
-      const ctr = toGridSpace(grid, cellCenter(grid, c));
-      const d = Math.hypot(ctr.x - g.x, ctr.y - g.y);
-      if (d < bestD) {
-        bestD = d;
-        best = c;
-      }
-    }
-  }
-  return best;
+  return { col: Math.floor(g.x / grid.cellWidth), row: Math.floor(g.y / grid.cellHeight) };
 }
 
 /** Map-space centre of a cell. */
 export function cellCenter(grid: GridConfig, c: CellCoord): Point {
-  let gx: number;
-  let gy: number;
-  if (grid.type === 'square') {
-    gx = (c.col + 0.5) * grid.cellWidth;
-    gy = (c.row + 0.5) * grid.cellHeight;
-  } else if (grid.type === 'hex-pointy') {
-    gx = c.col * grid.cellWidth + (mod(c.row, 2) === 1 ? grid.cellWidth / 2 : 0);
-    gy = c.row * grid.cellHeight * 0.75;
-  } else {
-    gx = c.col * grid.cellWidth * 0.75;
-    gy = c.row * grid.cellHeight + (mod(c.col, 2) === 1 ? grid.cellHeight / 2 : 0);
-  }
-  return fromGridSpace(grid, { x: gx, y: gy });
+  return fromGridSpace(grid, { x: (c.col + 0.5) * grid.cellWidth, y: (c.row + 0.5) * grid.cellHeight });
 }
 
 /** Snaps a point to the nearest cell centre. */
@@ -219,26 +188,7 @@ export function snapToCell(grid: GridConfig, p: Point): Point {
 export function gridDistanceFeet(grid: GridConfig, a: Point, b: Point): number {
   const ca = cellAt(grid, a);
   const cb = cellAt(grid, b);
-  if (grid.type === 'square') {
-    return Math.max(Math.abs(ca.col - cb.col), Math.abs(ca.row - cb.row)) * grid.feetPerCell;
-  }
-  return hexDistance(grid.type, ca, cb) * grid.feetPerCell;
-}
-
-function hexDistance(type: GridType, a: CellCoord, b: CellCoord): number {
-  const toCube = (c: CellCoord) => {
-    if (type === 'hex-pointy') {
-      const x = c.col - (c.row - (c.row & 1)) / 2;
-      const z = c.row;
-      return { x, y: -x - z, z };
-    }
-    const x = c.col;
-    const z = c.row - (c.col - (c.col & 1)) / 2;
-    return { x, y: -x - z, z };
-  };
-  const p = toCube(a);
-  const q = toCube(b);
-  return Math.max(Math.abs(p.x - q.x), Math.abs(p.y - q.y), Math.abs(p.z - q.z));
+  return Math.max(Math.abs(ca.col - cb.col), Math.abs(ca.row - cb.row)) * grid.feetPerCell;
 }
 
 function clamp(v: number, lo: number, hi: number): number {

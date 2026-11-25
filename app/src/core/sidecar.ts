@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { CHALLENGE_RATINGS, CONDITIONS } from './rules/rules2024';
 import { fogEffectSchema, levelFogSchema } from './poly/types';
+import { idSchema } from './documents';
 
 export const SIDECAR_SUFFIX = '.dm.json';
 export const SCENE_SUFFIX = '.scene.json';
@@ -18,12 +19,14 @@ export function resourcePathForSidecar(sidecarPath: string): string | null {
   return sidecarPath.endsWith(SIDECAR_SUFFIX) ? sidecarPath.slice(0, -SIDECAR_SUFFIX.length) : null;
 }
 
-const id = z.string().min(1).max(64);
+/** Element ids: lowercase (they may name files; see `documents.ts`). */
+const id = idSchema;
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 const biome = z.enum(['nebel', 'schnee', 'wueste', 'asche', 'sumpf', 'kueste', 'arkan', 'dunkel']);
 
 export const GridSchema = z.object({
-  type: z.enum(['square', 'hex-pointy', 'hex-flat']),
+  /** Square only (E-7). Maps saved with the removed hex grid are read as square grids. */
+  type: z.preprocess((v) => (v === 'hex-pointy' || v === 'hex-flat' ? 'square' : v), z.literal('square')),
   cellWidth: z.number().positive(),
   cellHeight: z.number().positive(),
   originX: z.number(),
@@ -31,6 +34,18 @@ export const GridSchema = z.object({
   rotationDeg: z.number(),
   feetPerCell: z.number().positive(),
 });
+
+/** Map elements as built in the Map Forge (`open` of doors is scene state, kept only for old files). */
+export const mapWallSchema = z.object({ id, kind: z.enum(['wall', 'door', 'secret-door', 'window']), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(), open: z.boolean().optional() });
+export const mapAreaSchema = z.object({
+  id,
+  name: z.string(),
+  kind: z.enum(['room', 'area', 'poi', 'secret']),
+  rect: z.object({ x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }),
+  color,
+  biome: biome.optional(),
+});
+export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color });
 
 export const MapSidecarSchema = z.object({
   kind: z.literal('map'),
@@ -48,27 +63,27 @@ export const MapSidecarSchema = z.object({
   /** Strength of the biome's wind, particles and glow, 0…1 (Dungeon-Manager T-168). */
   fogStrength: z.number().min(0).max(1).default(1),
   grid: GridSchema,
-  walls: z.array(
-    z.object({ id, kind: z.enum(['wall', 'door', 'secret-door', 'window']), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(), open: z.boolean().optional() }),
-  ).default([]),
-  zones: z.array(
-    z.object({
-      id,
-      name: z.string(),
-      kind: z.enum(['room', 'area', 'poi', 'secret']),
-      rect: z.object({ x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }),
-      color,
-      biome: biome.optional(),
-    }),
-  ).default([]),
+  walls: z.array(mapWallSchema).default([]),
+  zones: z.array(mapAreaSchema).default([]),
   pois: z.array(z.object({ id, name: z.string(), x: z.number(), y: z.number(), icon: z.string().default('flag') })).default([]),
   /** Placed light sources; whether each is on is per scene. */
-  lights: z.array(z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color })).default([]),
+  lights: z.array(mapLightSchema).default([]),
+  /** What is revealed when a new scene starts on this map (painted in the Map Forge, E-26). */
+  startFog: levelFogSchema.optional(),
   /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */
   ambient: z.enum(['dark', 'lit']).default('dark'),
   assets: z.array(z.object({ id, assetPath: z.string(), variant: z.string().optional(), x: z.number(), y: z.number(), rotation: z.number().default(0), scale: z.number().positive().default(1) })).default([]),
 });
 export type MapSidecar = z.infer<typeof MapSidecarSchema>;
+
+/** Sidecar of an audio file in the library: what kind of sound it is. */
+export const AudioSidecarSchema = z.object({
+  kind: z.literal('audio'),
+  schemaVersion: z.literal(SCHEMA_VERSION),
+  category: z.enum(['ambience', 'sfx']).default('ambience'),
+  tags: z.array(z.string()).default([]),
+});
+export type AudioSidecar = z.infer<typeof AudioSidecarSchema>;
 
 export const AssetSidecarSchema = z.object({
   kind: z.literal('asset'),
@@ -93,9 +108,10 @@ export type AssetSidecar = z.infer<typeof AssetSidecarSchema>;
 
 const scores = z.object({ str: z.number().int().min(1).max(30), dex: z.number().int().min(1).max(30), con: z.number().int().min(1).max(30), int: z.number().int().min(1).max(30), wis: z.number().int().min(1).max(30), cha: z.number().int().min(1).max(30) });
 
-/** 2024-style stat block, entered by the user. */
-export const CreatureSchema = z.object({
+const creatureObject = z.object({
   kind: z.literal('creature'),
+  /** Fixed id that tokens and players refer to; a rename keeps it (DC-096). */
+  id,
   schemaVersion: z.literal(SCHEMA_VERSION),
   role: z.enum(['pc', 'npc', 'monster']),
   name: z.string().min(1),
@@ -129,7 +145,23 @@ export const CreatureSchema = z.object({
   legendaryActions: z.array(z.object({ name: z.string(), text: z.string() })).default([]),
   token: z.object({ image: z.string().optional(), ringColor: color, lightFt: z.number().int().min(0).default(0) }),
 });
-export type Creature = z.infer<typeof CreatureSchema>;
+
+/**
+ * 2024-style stat block, entered by the user. Files written before creatures had an id get the
+ * one their tokens already use: the name as a slug.
+ */
+export const CreatureSchema = z.preprocess((raw) => {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw) || 'id' in raw) return raw;
+  const name = (raw as { name?: unknown }).name;
+  return typeof name === 'string' ? { ...raw, id: creatureIdFromName(name) } : raw;
+}, creatureObject);
+export type Creature = z.infer<typeof creatureObject>;
+
+/** The id an old creature file without one gets: its name as a slug (as its tokens refer to it). */
+export function creatureIdFromName(name: string): string {
+  const s = name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+  return s || 'creature';
+}
 
 const tokenSchema = z.object({
   id,
@@ -171,14 +203,42 @@ export const SceneOverrideSchema = z.object({
   templates: z.array(z.object({ id, shape: z.enum(['cone', 'sphere', 'line', 'cube']), x: z.number(), y: z.number(), angle: z.number(), sizeFt: z.number().positive(), color })).default([]),
   combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
   ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
+  /** Changes of the map for this scene only, by element id: `{ hidden: true }` or changed fields (E-2). */
+  overrides: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
+  /**
+   * The scene's start state (E-3): what "reset scene" returns to. Edited in the Orchestrator with
+   * "edit start state" (E-17). Missing in older files: the play state counts as the start.
+   */
+  start: z.object({
+    fog: levelFogSchema,
+    tokens: z.array(tokenSchema).default([]),
+    doors: z.record(z.string(), z.boolean()).default({}),
+    lights: z.record(z.string(), z.boolean()).default({}),
+    discoveredZones: z.array(z.string()).default([]),
+    ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
+  }).optional(),
+  /** Walls, areas and lights that exist only in this scene (E-24). */
+  added: z.object({ walls: z.array(mapWallSchema).default([]), zones: z.array(mapAreaSchema).default([]), lights: z.array(mapLightSchema).default([]) }).default({ walls: [], zones: [], lights: [] }),
 });
 export type SceneOverride = z.infer<typeof SceneOverrideSchema>;
+
+/** A player of the campaign, linked to a character in the library (DC-096). */
+export const PlayerSchema = z.object({
+  id,
+  name: z.string(),
+  /** Id of a library creature; none while the player has no character yet. */
+  characterId: id.optional(),
+  /** At the table this session: only present players' characters are placed. */
+  present: z.boolean().default(true),
+});
+export type Player = z.infer<typeof PlayerSchema>;
 
 export const CampaignManifestSchema = z.object({
   kind: z.literal('campaign'),
   schemaVersion: z.literal(SCHEMA_VERSION),
   name: z.string().min(1),
   activeScene: z.string().nullable(),
+  players: z.array(PlayerSchema).default([]),
   table: z.object({
     diagonalInches: z.number().positive(),
     widthPx: z.number().int().positive(),

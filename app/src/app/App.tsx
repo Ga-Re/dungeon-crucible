@@ -2,42 +2,44 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { exploredShare } from '../core/fogModel';
 import { DockHost } from '../dock/DockHost';
 import { floatingBackend } from '../platform/bridge';
-import { useI18n, LOCALES, type Locale } from '../i18n/i18n';
+import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
 import { mapCommands } from '../panels/MapView';
 import { MonitorMenu } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
 import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, focusPanel, removeLegacyLayouts } from './docking';
 import {
-  clearTemplates, emit, fogAll, log, nextTurn, redo, removeLastUserWall, rotateTable, setFogMode, setGridType, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
+  clearTemplates, emit, fogAll, log, nextTurn, placeParty, redo, removeLastUserWall, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
-import { importMapIntoCampaign, openCampaignDialog, reopenLastCampaign, saveCampaign, startAutosave } from './campaign';
+import { closeCampaign, importMapIntoCampaign, refreshRoot, saveCampaign, setEditStart, startAutosave } from './campaign';
+import { ResetSceneDialog } from './ResetSceneDialog';
+import { ExportDialog } from './ExportDialog';
+import { AppearanceControls } from './Appearance';
+import { StartScreen } from './StartScreen';
+import { isDesktop } from '../platform/bridge';
 import { openTable, refreshMonitors, startFrameLoop } from './tableOutput';
 import { importMapFile } from './importMap';
 import { SAMPLE_CREATURES } from '../sample/creatures';
 
-type Skin = 'dark' | 'light' | 'parchment';
-function initialSkin(): Skin {
-  try {
-    const v = localStorage.getItem('dc.skin');
-    if (v === 'light' || v === 'parchment' || v === 'dark') return v;
-  } catch { /* ignore */ }
-  return 'dark';
-}
-
 export function App() {
   const ws = useStore((s) => s.ws);
+  const home = useStore((s) => s.home);
   useEffect(() => {
     startFrameLoop();
     startAutosave();
     unlockAudioOnGesture();
     setMasterVolume(state.soundboard.master);
     void refreshMonitors();
-    log('log.opened');
+    // Without the desktop app (plain browser) the sample campaign is what is open.
+    if (!isDesktop()) log('log.opened');
     emit();
-    void reopenLastCampaign();
+    // The desktop app starts on the start screen (recent campaigns, new, open, import).
+    if (isDesktop()) {
+      state.home = true;
+      void refreshRoot();
+    }
     removeLegacyLayouts();
     const flush = () => dock.flush();
     window.addEventListener('pagehide', flush);
@@ -48,7 +50,8 @@ export function App() {
       if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
       else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
       else if (k === 's') { e.preventDefault(); void saveCampaign(true); }
-      else if (k === 'o') { e.preventDefault(); void openCampaignDialog(); }
+      // Campaigns live in the root folder: Ctrl/⌘+O goes to the start screen.
+      else if (k === 'o' && isDesktop()) { e.preventDefault(); void closeCampaign(); }
     };
     window.addEventListener('keydown', keys);
     return () => {
@@ -57,6 +60,7 @@ export function App() {
       flush();
     };
   }, []);
+  if (home) return <StartScreen />;
   return (
     <div className="app">
       <AppBar />
@@ -70,8 +74,7 @@ export function App() {
 }
 
 function AppBar() {
-  const { t, locale, setLocale } = useI18n();
-  const [skin, setSkin] = useState<Skin>(initialSkin);
+  const { t } = useI18n();
   const tableOpen = useStore((s) => s.tableOpen);
   const blackout = useStore((s) => s.scene.table.blackout);
   const rotation = useStore((s) => s.scene.table.rotation);
@@ -83,17 +86,14 @@ function AppBar() {
   const saving = useStore((s) => s.saving);
   const canUndo = useStore((s) => s.canUndo);
   const canRedo = useStore((s) => s.canRedo);
-  useEffect(() => {
-    document.documentElement.dataset.skin = skin;
-    try { localStorage.setItem('dc.skin', skin); } catch { /* ignore */ }
-  }, [skin]);
+  const [exporting, setExporting] = useState(false);
   return (
     <header className="appbar">
       <div className="brand"><span className="mark"><Icon name="anvil" /></span>{t('app.name')}</div>
-      <button className={`ab-btn ${campaign ? '' : 'cta'}`} title={`${t('campaign.open')} (Ctrl/⌘+O)`} onClick={() => void openCampaignDialog()}>
-        <Icon name="folder" />{!campaign && <span>{t('campaign.openShort')}</span>}
-      </button>
+      {isDesktop() && <button className="ab-btn" title={`${t('start.home')} (Ctrl/⌘+O)`} aria-label={t('start.home')} onClick={() => void closeCampaign()}><Icon name="home" /></button>}
       <button className="ab-btn" title={`${t('app.save')} (Ctrl+S)`} disabled={!campaign} onClick={() => void saveCampaign(true)}><Icon name="save" /></button>
+      <button className="ab-btn" title={t('campaign.export')} aria-label={t('campaign.export')} disabled={!campaign} onClick={() => setExporting(true)}><Icon name="export" /></button>
+      {exporting && <ExportDialog onClose={() => setExporting(false)} />}
       <button className="ab-btn" title={`${t('app.undo')} (Ctrl+Z)`} disabled={!canUndo} onClick={undo}><Icon name="undo" /></button>
       <button className="ab-btn" title={`${t('app.redo')} (Ctrl+Shift+Z)`} disabled={!canRedo} onClick={redo}><Icon name="redo" /></button>
       <span className="doc-name">
@@ -108,14 +108,7 @@ function AppBar() {
           <span className="dot" />
           {tableOpen ? `${monitor?.name ?? t('table.monitor')} · ${rotation}°${blackout ? ` · ${t('tool.blackout')}` : ''}` : t('status.tableOff')}
         </button>
-        <select className="compact-select" aria-label={t('app.theme')} value={skin} onChange={(e) => setSkin(e.target.value as Skin)}>
-          <option value="dark">{t('app.theme')}: {t('theme.dark')}</option>
-          <option value="light">{t('app.theme')}: {t('theme.light')}</option>
-          <option value="parchment">{t('app.theme')}: {t('theme.parchment')}</option>
-        </select>
-        <select className="compact-select" aria-label={t('app.language')} value={locale} onChange={(e) => setLocale(e.target.value as Locale)}>
-          {LOCALES.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-        </select>
+        <AppearanceControls />
       </div>
       {menu && <MonitorMenu anchor={menu} onClose={() => setMenu(null)} />}
     </header>
@@ -126,7 +119,8 @@ function Ribbon() {
   const { t } = useI18n();
   const ws = useStore((s) => s.ws);
   const tool = useStore((s) => s.tool);
-  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, grid: s.scene.map.grid.type, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden }));
+  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart }));
+  const [resetting, setResetting] = useState(false);
   const [tab, setTab] = useState(0);
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState<DOMRect | null>(null);
@@ -142,10 +136,10 @@ function Ribbon() {
     if (b.id === 'toggle:viewAsPlayer') return flags.viewAsPlayer;
     if (b.id === 'toggle:moveLock') return flags.moveLock;
     if (b.id === 'toggle:blackout') return flags.blackout;
-    if (b.id.startsWith('grid:')) return b.id.slice(5) === flags.grid;
     if (b.id === 'fogmode:reveal') return flags.fogMode === 'reveal';
     if (b.id === 'fogmode:hide') return flags.fogMode === 'hide';
     if (b.id === 'fog:dmHide') return flags.dmFogHidden;
+    if (b.id === 'toggle:editStart') return flags.editStart;
     return false;
   };
 
@@ -156,9 +150,9 @@ function Ribbon() {
       case 'toggle:viewAsPlayer': return toggle('viewAsPlayer');
       case 'toggle:moveLock': return toggle('moveLock');
       case 'toggle:blackout': return toggleBlackout();
-      case 'grid:square': return setGridType('square');
-      case 'grid:hex-pointy': return setGridType('hex-pointy');
-      case 'grid:hex-flat': return setGridType('hex-flat');
+      case 'toggle:editStart': return void setEditStart(!flags.editStart);
+      case 'scene:reset': return setResetting(true);
+      case 'party:place': return placeParty();
       case 'fit': return mapCommands.fit();
       case 'fog:hideAll': return fogAll(false);
       case 'fog:dmHide': return toggleDmFog();
@@ -229,6 +223,7 @@ function Ribbon() {
       </div>
       <input ref={fileRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp,.mp4,.webm,image/png,image/jpeg,image/webp,video/mp4,video/webm" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importMapFile(f); e.target.value = ''; }} />
       {menu && <MonitorMenu anchor={menu} onClose={() => setMenu(null)} />}
+      {resetting && <ResetSceneDialog onClose={() => setResetting(false)} />}
     </section>
   );
 }
@@ -293,7 +288,7 @@ function StatusBar() {
     <footer className="statusbar">
       <span>{t(WORKSPACES[ws].name)}</span>
       <span className="sep" />
-      <span>{t(`tool.${grid.type === 'square' ? 'gridSquare' : grid.type === 'hex-pointy' ? 'gridHexPointy' : 'gridHexFlat'}`)} · {grid.feetPerCell} ft · <span className="mono">{grid.cellWidth.toFixed(1)} px</span></span>
+      <span>{t('props.grid')} {grid.feetPerCell} ft · <span className="mono">{grid.cellWidth.toFixed(1)} px</span></span>
       <span className="sep" />
       <span>{t('status.explored')} <span className="mono">{explored} %</span></span>
       {ws === 'play' && (<><span className="sep" /><span>{t('init.round', { n: round })}</span></>)}

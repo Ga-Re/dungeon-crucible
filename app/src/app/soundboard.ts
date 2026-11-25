@@ -6,7 +6,9 @@
 import {
   BUILTIN_AMBIENCE, BUILTIN_PREFIX, playAmbience, playSfx, playSfxFile, setAmbienceVolume, setMasterVolume, stopAmbience, type BuiltinSfx,
 } from './audio';
-import { absolutePath, assetUrl, importAudioFileNative, isDesktop, listFiles } from '../platform/bridge';
+import { absolutePath, assetUrl, importToLibrary, isDesktop, listFiles, readText, writeText } from '../platform/bridge';
+import { readDocument } from '../core/documents';
+import { AudioSidecarSchema, type AudioSidecar } from '../core/sidecar';
 import { emit, log, markDirty, state } from './store';
 
 export interface AmbienceEntry {
@@ -38,14 +40,25 @@ async function urlFor(id: string): Promise<string | undefined> {
   return assetUrl(await absolutePath(id));
 }
 
-/** Reads the campaign's `audio/` and `audio/sfx/` folders. */
+/** Audio files of the library, sorted into ambience and sound effects by their sidecar. */
 export async function refreshAudioFiles(): Promise<void> {
   if (!isDesktop() || !state.campaign) return;
-  const files = (await listFiles('audio')).filter((f) => AUDIO_FILE.test(f));
-  const sfx = (await listFiles('audio/sfx')).filter((f) => AUDIO_FILE.test(f));
+  const files = (await listFiles('library')).filter((f) => AUDIO_FILE.test(f));
+  const ambience: string[] = [];
+  const sfx: string[] = [];
+  for (const f of files) {
+    let category: 'ambience' | 'sfx' = 'ambience';
+    try {
+      const r = readDocument('audio', AudioSidecarSchema, await readText(`${f}.dm.json`));
+      if (r.ok) category = r.value.category;
+    } catch {
+      /* no sidecar: ambience */
+    }
+    (category === 'sfx' ? sfx : ambience).push(f);
+  }
   const sb = state.soundboard;
   const known = new Set(sb.ambience.map((a) => a.id));
-  for (const f of files) if (!known.has(f)) sb.ambience.push({ id: f, volume: 0.5, playing: false });
+  for (const f of ambience) if (!known.has(f)) sb.ambience.push({ id: f, volume: 0.5, playing: false });
   sb.sfxFiles = sfx;
   emit();
 }
@@ -96,14 +109,24 @@ export async function triggerSfx(id: string): Promise<void> {
   }
 }
 
+/** Puts an audio file into the library as ambience or sound effect. */
 export async function importAudio(sfx: boolean): Promise<void> {
   if (!isDesktop() || !state.campaign) {
     log('log.audioNeedsCampaign');
     emit();
     return;
   }
-  const f = await importAudioFileNative(sfx);
+  const f = await importToLibrary('audio');
   if (!f) return;
+  const sidecar: AudioSidecar = { kind: 'audio', schemaVersion: 1, category: sfx ? 'sfx' : 'ambience', tags: [] };
+  let existing: AudioSidecar | null = null;
+  try {
+    const r = readDocument('audio', AudioSidecarSchema, await readText(`${f.relPath}.dm.json`));
+    if (r.ok) existing = r.value;
+  } catch {
+    /* none yet */
+  }
+  if (!existing || existing.category !== sidecar.category) await writeText(`${f.relPath}.dm.json`, JSON.stringify({ ...(existing ?? {}), ...sidecar }, null, 2));
   log('log.audioImported', { file: f.relPath });
   await refreshAudioFiles();
 }

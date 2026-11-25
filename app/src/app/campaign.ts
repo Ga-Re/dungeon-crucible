@@ -23,12 +23,13 @@ import {
 } from '../platform/bridge';
 import { emptyScene } from '../core/emptyScene';
 import type { MessageKey } from '../i18n/en';
+import { closeAssetTab, openAssetEditor, refreshVault } from './vault';
 import { loadOpenTabs, saveOpenTabs, type OpenTabs } from './openTabs';
 import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { activateSession, checkpoint, clearTabs, closeSessionTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
+import { activateSession, checkpoint, clearTabs, subscribe, closeCreatureTab, closeSessionTab, markDirty, openCreatureTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
 import { applySceneAmbience, refreshAudioFiles, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
@@ -266,19 +267,7 @@ export async function trashCampaign(slug: string): Promise<void> {
  * Opens the tabs kept for this campaign on this device (E-30) again – scenes and maps that are
  * gone are left out – and shows the tab and puts the scene on the TV that were so before.
  */
-async function restoreTabs(slug: string): Promise<void> {
-  const kept = loadOpenTabs(storage(), recentKey(slug));
-  if (!kept) return;
-  restoring = true;
-  try {
-    await reopen(kept);
-  } finally {
-    restoring = false;
-  }
-  keepTabs();
-}
-
-/** While the kept tabs open again, the half-opened state is not kept. */
+/** While a campaign opens and its kept tabs open again, the half-opened state is not kept. */
 let restoring = false;
 
 async function reopen(kept: OpenTabs): Promise<void> {
@@ -288,7 +277,16 @@ async function reopen(kept: OpenTabs): Promise<void> {
   for (const tab of kept.tabs) {
     if (isSceneOpen(tab.id)) continue;
     try {
-      if (tab.kind === 'map') await openMapTab(tab.id.slice('map:'.length));
+      if (tab.kind === 'creature') {
+        const c = state.creatures.find((x) => `creature:${x.id}` === tab.id);
+        if (c) state.tabs = [...state.tabs, { id: tab.id, kind: 'creature', name: c.name }];
+        else log('log.tabNotRestored', { name: tab.name });
+      } else if (tab.kind === 'asset') {
+        if (!state.vault.items.length) await refreshVault();
+        const item = state.vault.items.find((x) => `asset:${x.relPath}` === tab.id);
+        if (item) state.tabs = [...state.tabs, { id: tab.id, kind: 'asset', name: item.asset.name }];
+        else log('log.tabNotRestored', { name: tab.name });
+      } else if (tab.kind === 'map') await openMapTab(tab.id.slice('map:'.length));
       else if (state.scenes.includes(tab.id)) await loadScene(tab.id);
       else log('log.tabNotRestored', { name: tab.name });
     } catch {
@@ -301,7 +299,7 @@ async function reopen(kept: OpenTabs): Promise<void> {
   const order = new Map(kept.tabs.map((t, i) => [t.id, i]));
   state.tabs = [...state.tabs].sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
   state.ws = ws;
-  const shown = kept.active && isSceneOpen(kept.active) ? kept.active : state.tabs[0]?.id;
+  const shown = kept.active && isSceneOpen(kept.active) ? kept.active : state.tabs.find((x) => x.kind === 'scene' || x.kind === 'map')?.id;
   if (shown && shown !== state.activeTab) activateSession(shown);
   else if (state.activeTab) {
     const tab = state.tabs.find((x) => x.id === state.activeTab);
@@ -397,6 +395,21 @@ async function saveCreatures(): Promise<void> {
 
 /** Loads campaign `info.slug`; false if its folder holds no (readable) campaign. */
 async function loadCampaign(info: CampaignInfo): Promise<boolean> {
+  // The tabs kept last time, read before anything opens (opening changes the tabs).
+  const kept = loadOpenTabs(storage(), recentKey(info.slug));
+  restoring = true;
+  let ok = false;
+  try {
+    ok = await openFiles(info, kept);
+    return ok;
+  } finally {
+    restoring = false;
+    // A campaign that failed to open keeps the tabs kept for it.
+    if (ok) keepTabs();
+  }
+}
+
+async function openFiles(info: CampaignInfo, kept: OpenTabs | null): Promise<boolean> {
   state.campaign = info;
   const manifest = await readDoc(campaignPath(CAMPAIGN_FILE), 'campaign', CampaignManifestSchema);
   if (!manifest) return false;
@@ -410,7 +423,7 @@ async function loadCampaign(info: CampaignInfo): Promise<boolean> {
   if (manifest.activeScene) await loadScene(manifest.activeScene, { ...tableFromManifest(manifest), blackout: true });
   else replaceScene(emptyScene({ ...state.scene.table, ...tableFromManifest(manifest) }), { resource: '', fileName: '', scenePath: null, sceneName: '' });
   await refreshSceneList();
-  await restoreTabs(info.slug);
+  if (kept) await reopen(kept);
   await applyTvAmbience();
   state.scene.table.blackout = true;
   state.dirty = false;
@@ -534,6 +547,54 @@ async function applyTvAmbience(): Promise<void> {
   await applySceneAmbience(doc ? (live && state.editStart ? startOf(doc).ambience : doc.ambience) : []);
 }
 
+/**
+ * Shows the tab `id` (E-30): a creature in the Creatures workspace; a scene or map where scenes
+ * and maps were last shown (Map Forge or Orchestrator) when another workspace is open.
+ */
+export async function showTab(id: string): Promise<void> {
+  const tab = state.tabs.find((x) => x.id === id);
+  if (!tab) return;
+  if (tab.kind === 'creature') {
+    openCreatureTab(id.slice('creature:'.length));
+    keepTabs();
+    return;
+  }
+  if (tab.kind === 'asset') {
+    if (!state.vault.items.length) await refreshVault();
+    openAssetEditor(id.slice('asset:'.length));
+    keepTabs();
+    return;
+  }
+  if (state.ws !== 'forge' && state.ws !== 'play') setWorkspace(tab.kind === 'map' ? 'forge' : state.sceneWs);
+  await switchScene(id);
+}
+
+/** A new library creature (a player character or a monster) from a template, with a new id; it opens as a tab. */
+export function newCreature(role: 'pc' | 'monster', name: string): void {
+  const tpl = structuredClone(SAMPLE_CREATURES.find((c) => c.role === role) ?? SAMPLE_CREATURES[0]);
+  const taken = new Set(state.creatures.map((c) => c.id));
+  tpl.id = newId(slugId(name, 'creature').slice(0, 40), (x) => taken.has(x));
+  tpl.name = name;
+  state.creatures.push(tpl);
+  markDirty();
+  openCreatureTab(tpl.id);
+}
+
+/** Closes tab `id`: a creature's (its neighbour shown if it was shown), else a scene's or map's. */
+export async function closeTab(id: string): Promise<void> {
+  if (id.startsWith('asset:')) {
+    // Its draft is dropped (the tab bar asks first when it has changes).
+    closeAssetTab(id.slice('asset:'.length));
+    keepTabs();
+    return;
+  }
+  if (!id.startsWith('creature:')) return closeScene(id);
+  await saveCampaign();
+  const next = closeCreatureTab(id);
+  if (next) await showTab(next.id);
+  keepTabs();
+}
+
 /** Closes the tab of scene `scenePath` (saved first); the one shown gives way to its neighbour. */
 export async function closeScene(scenePath: string): Promise<void> {
   // Saved first – also a tab in the background with changes not saved yet.
@@ -600,7 +661,15 @@ async function writeCampaign(unsaved: ReturnType<typeof unsavedSessions>): Promi
 }
 
 let timer: ReturnType<typeof setTimeout> | null = null;
+/** The tabs as last kept: kept again whenever they, the scene behind them or the TV's scene change. */
+let keptTabs: { tabs: unknown; active: string | null; tv: string | null } | null = null;
+
 export function startAutosave(): void {
+  subscribe(() => {
+    if (keptTabs && keptTabs.tabs === state.tabs && keptTabs.active === state.activeTab && keptTabs.tv === state.tvScenePath) return;
+    keptTabs = { tabs: state.tabs, active: state.activeTab, tv: state.tvScenePath };
+    keepTabs();
+  });
   onDirty(() => {
     if (!state.campaign) return;
     if (timer) clearTimeout(timer);

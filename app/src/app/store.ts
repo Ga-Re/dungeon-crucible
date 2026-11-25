@@ -149,8 +149,14 @@ export interface AppState {
   interiorAsks: { id: string; name: string }[];
   /** Open documents as tabs (E-30, DC-034), in order; the active one is what `scene` shows. */
   tabs: DocTab[];
-  /** The tab shown: a scene's path, or `map:<resource>` for a map open on its own. */
+  /** The scene or map behind the tabs: a scene's path, or `map:<resource>` for a map open on its own. */
   activeTab: string | null;
+  /** The creature tab shown in the Creatures workspace (E-30, DC-034b), if any. */
+  creatureTab: string | null;
+  /** The asset tab shown in the Asset Vault (its editor, DC-034c), if any. */
+  assetTab: string | null;
+  /** Where scene and map tabs are shown: the workspace last used for them. */
+  sceneWs: 'forge' | 'play';
   /** The scene on the TV (E-30): changed only by command; none: the TV is black. */
   tvScenePath: string | null;
   /** After switching tabs in the Orchestrator: "this scene on the TV?" waits for the DM's answer. */
@@ -238,11 +244,14 @@ function initial(): AppState {
     interiorAsks: [],
     tabs: [],
     activeTab: null,
+    creatureTab: null,
+    assetTab: null,
+    sceneWs: 'play',
     tvScenePath: null,
     tvAsk: null,
     tvMapPending: false,
     blackUntilRelease: false,
-    vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null },
+    vault: { items: [], filter: {}, selected: [], anchor: null, thumbPx: 120, newCollections: [], pack: null, editor: null, drafts: {} },
     soundboard: initialSoundboard(),
   };
   s.vision = updateVision(scene);
@@ -272,6 +281,12 @@ export function setFogMode(m: 'reveal' | 'hide'): void {
 export function emit(): void {
   version++;
   for (const l of listeners) l();
+}
+
+/** Calls `l` after every state change (outside React). */
+export function subscribe(l: () => void): () => void {
+  listeners.add(l);
+  return () => listeners.delete(l);
 }
 
 export function useStore<T>(select: (s: AppState) => T): T {
@@ -418,10 +433,48 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
 /** An open document: a scene of the campaign (by its path) or a library map on its own (`map:<resource>`). */
 export interface DocTab {
   id: string;
-  kind: 'scene' | 'map';
+  kind: 'scene' | 'map' | 'creature' | 'asset';
   name: string;
   /** Put away with changes not saved yet (the tab shown tells by `dirty`). */
   unsaved?: boolean;
+}
+
+export function creatureTabId(creatureId: string): string {
+  return `creature:${creatureId}`;
+}
+
+/**
+ * Opens a library creature as a tab (E-30, DC-034b), shown in the Creatures workspace. The scene
+ * or map open stays as it is behind it, the TV too.
+ */
+export function openCreatureTab(creatureId: string): void {
+  const i = state.creatures.findIndex((c) => c.id === creatureId);
+  if (i < 0) return;
+  const id = creatureTabId(creatureId);
+  if (!state.tabs.some((x) => x.id === id)) state.tabs = [...state.tabs, { id, kind: 'creature', name: state.creatures[i].name }];
+  state.selectedCreatureIdx = i;
+  state.creatureTab = id;
+  if (state.ws !== 'creatures') setWorkspace('creatures');
+  emit();
+}
+
+/** Closes a creature's tab; the one shown gives way to its neighbour (the caller shows that). */
+export function closeCreatureTab(id: string): DocTab | null {
+  const i = state.tabs.findIndex((x) => x.id === id);
+  if (i < 0) return null;
+  state.tabs = state.tabs.filter((x) => x.id !== id);
+  if (state.creatureTab !== id || state.ws !== 'creatures') {
+    if (state.creatureTab === id) state.creatureTab = null;
+    emit();
+    return null;
+  }
+  state.creatureTab = null;
+  emit();
+  // The nearest creature tab takes its place – only in the Creatures workspace (nothing else changes).
+  if (state.ws !== 'creatures') return null;
+  const creatures = state.tabs.filter((x) => x.kind === 'creature');
+  const before = state.tabs.slice(0, i).filter((x) => x.kind === 'creature').length;
+  return creatures[Math.min(before, creatures.length - 1)] ?? null;
 }
 
 export function mapTabId(resource: string): string {
@@ -569,7 +622,11 @@ export function closeSessionTab(tabId: string): void {
     emit();
     return;
   }
-  const next = state.tabs[Math.min(i, state.tabs.length - 1)];
+  // The nearest scene or map takes its place (a creature or asset tab shows no scene).
+  const isDoc = (x: DocTab) => x.kind === 'scene' || x.kind === 'map';
+  const docs = state.tabs.filter(isDoc);
+  const before = state.tabs.slice(0, i).filter(isDoc).length;
+  const next = docs[Math.min(before, docs.length - 1)];
   // Nothing of the closed document is kept: activating the next must not put it away again.
   state.activeTab = null;
   state.scenePath = null;
@@ -583,6 +640,11 @@ export function clearTabs(): void {
   openMaps.clear();
   state.tabs = [];
   state.activeTab = null;
+  state.creatureTab = null;
+  state.assetTab = null;
+  // Asset drafts belong to the campaign's tabs.
+  state.vault.editor = null;
+  state.vault.drafts = {};
   state.tvScenePath = null;
   state.tvAsk = null;
 }
@@ -740,10 +802,12 @@ export function showLayer(layer: ViewLayer): void {
 }
 
 export function setWorkspace(ws: WorkspaceId): void {
-  // A map on its own is edited in the Map Forge only (E-30): elsewhere a scene is shown – the TV's,
-  // else the last scene tab.
+  // The Map Forge or the Orchestrator was the last place for scenes and maps (tabs go back there).
+  if (ws === 'forge' || ws === 'play') state.sceneWs = ws;
+  // A map on its own is edited in the Map Forge only (E-30): the Orchestrator shows a scene – the
+  // TV's, else the last scene tab.
   const tab = state.tabs.find((x) => x.id === state.activeTab);
-  if (ws !== 'forge' && tab?.kind === 'map') {
+  if (ws === 'play' && tab?.kind === 'map') {
     const scene = state.tabs.find((x) => x.id === state.tvScenePath) ?? [...state.tabs].reverse().find((x) => x.kind === 'scene');
     state.ws = ws;
     state.areaCommand = null;

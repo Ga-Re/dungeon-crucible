@@ -13,7 +13,7 @@ import { Icon, type IconName } from '../ui/Icon';
 import { absolutePath, assetUrl } from '../platform/bridge';
 import { useStore } from '../app/store';
 import { thumbnailUrl } from '../app/thumbs';
-import { closeAssetEditor, saveAssetEditor, setEditorTool, updateEditorDraft, type EditorTool } from '../app/vault';
+import { backToCatalog, closeAssetEditor, saveAssetEditor, setEditorTool, updateEditorDraft, type EditorTool } from '../app/vault';
 
 type Pt = [number, number];
 type Cover = NonNullable<AssetSidecar['cover']>;
@@ -249,7 +249,7 @@ export function AssetEditorView() {
   return (
     <div className="asset-editor">
       <div className="vault-bar">
-        <button className="btn sm" onClick={closeAssetEditor}><Icon name="chev" />{t('editor.back')}</button>
+        <button className="btn sm" onClick={backToCatalog}><Icon name="chev" />{t('editor.back')}</button>
         <b className="asset-editor-name">{draft.name}</b>
         <span className="hint">{t(`editor.hint.${tool}` as MessageKey)}</span>
       </div>

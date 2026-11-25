@@ -287,6 +287,8 @@ export const en = {
   'tv.yes': 'On the TV',
   'tv.no': 'Not now',
   'tabs.newScene': 'New scene on this map',
+  'tabs.closeDraft': 'This asset has changes not saved with OK. Discard them?',
+  'tabs.discard': 'Discard',
   'panels.menu': 'Windows',
   'panels.workspace': 'This workspace',
   'panels.more': 'More panels',

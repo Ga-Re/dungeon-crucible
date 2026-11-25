@@ -5,7 +5,7 @@
 import type { StorageLike } from './recent';
 
 export interface OpenTabs {
-  tabs: { id: string; kind: 'scene' | 'map'; name: string }[];
+  tabs: { id: string; kind: 'scene' | 'map' | 'creature' | 'asset'; name: string }[];
   /** The tab shown. */
   active: string | null;
   /** The scene on the TV. */
@@ -17,7 +17,7 @@ const KEY = 'dc.openTabs:';
 function tab(x: unknown): x is OpenTabs['tabs'][number] {
   if (typeof x !== 'object' || x === null) return false;
   const t = x as Record<string, unknown>;
-  return typeof t['id'] === 'string' && t['id'] !== '' && (t['kind'] === 'scene' || t['kind'] === 'map') && typeof t['name'] === 'string';
+  return typeof t['id'] === 'string' && t['id'] !== '' && (t['kind'] === 'scene' || t['kind'] === 'map' || t['kind'] === 'creature' || t['kind'] === 'asset') && typeof t['name'] === 'string';
 }
 
 const text = (x: unknown): string | null => (typeof x === 'string' && x !== '' ? x : null);

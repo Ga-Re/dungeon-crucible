@@ -147,10 +147,10 @@ function DmMap() {
       const cell = sc.map.grid.cellWidth;
       // Drawn walls (E-33): a drawn map's picture, or drawn over the picture map; in a scene those of its active layers.
       const drawing = dmDrawing(sc.map, sc.masonryDoorsOpen, state.layer === 'map' ? undefined : sc.layersOn);
-      if (sc.map.drawn && drawing) map?.setDrawn(drawing);
+      if (sc.map.drawn && drawing) void map?.setDrawn(drawing, cell);
       else {
         void map?.set(sc.map.imageUrl, sc.map.isVideo);
-        map?.setOver(drawing);
+        void map?.setOver(drawing, cell);
       }
       // While calibrating, the grid is always shown: it is what is being adjusted.
       r.setGrid((state.showGrid || state.calibration) && sc.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: sc.map.grid.originX, offsetYPx: sc.map.grid.originY, alpha: 0.18 } : null);

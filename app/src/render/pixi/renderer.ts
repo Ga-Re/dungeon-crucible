@@ -49,7 +49,20 @@ import { softFogAlpha } from "./soft-mask";
 import { createVideoGate, cssTransform, sameAspect } from "./video-layer";
 
 /** An image the browser has loaded (or drawn), ready to become the map texture. */
-export type MapImage = HTMLImageElement | HTMLCanvasElement | ImageBitmap;
+export type MapImage = HTMLImageElement | HTMLCanvasElement | ImageBitmap | PaintedImage;
+
+/**
+ * Dungeon Crucible (E-33): a map picture that paints itself region by region (a drawn map) –
+ * however large, it never exists as one canvas: each GPU tile is painted on its own.
+ */
+export interface PaintedImage {
+  readonly width: number;
+  readonly height: number;
+  /** Paints the region left…left+width × top…top+height of the picture at 0, 0 of `context`. */
+  paint(context: CanvasRenderingContext2D, left: number, top: number, width: number, height: number): void;
+}
+
+const isPainted = (image: MapImage): image is PaintedImage => "paint" in image;
 
 export interface FogOptions {
   /** 1 for players (opaque, the default); less for the DM, who must see what lies beneath. */
@@ -152,6 +165,20 @@ export interface AssetShape {
   readonly alpha?: number | undefined;
 }
 
+/**
+ * Dungeon Crucible (E-33): a small picture over the drawn walls – a door, a crack, the DM's mark
+ * of a secret door – centred at x, y and turned by `rotation` (radians). Doors change often;
+ * as pictures of their own, opening one repaints nothing of the map.
+ */
+export interface Decal {
+  readonly image: HTMLCanvasElement;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly rotation: number;
+}
+
 /** Dungeon Crucible: one light's glow (map pixels), clipped to the area it lights. */
 export interface LightGlow {
   readonly x: number;
@@ -229,6 +256,8 @@ export interface Renderer {
    * `origin` – above the map, under the grid. `null` removes it.
    */
   setDrawing(image: MapImage | null, origin?: Origin): void;
+  /** Dungeon Crucible (E-33): doors and cracks of drawn walls, above them; replaces those set before. */
+  setDecals(decals: readonly Decal[]): void;
   /**
    * Shows a video map (ADR-0010): `video` must lie directly under the canvas in the same
    * positioned box; the renderer sizes, transforms and shows it, the caller owns it (loading,
@@ -312,6 +341,10 @@ export async function createRenderer(
   // Walls drawn over a picture map (E-33): right above the map (which goes in at index 0).
   const drawingLayer = new Container();
   world.addChild(drawingLayer);
+  // Their doors and cracks, each a sprite; a picture's texture is made once.
+  const decalLayer = new Container();
+  world.addChild(decalLayer);
+  const decalTextures = new Map<HTMLCanvasElement, Texture>();
   // Grid lines (T-106b): above the map (which goes in at index 0), below the fog (added last).
   const gridLayer = new Graphics();
   world.addChild(gridLayer);
@@ -1092,6 +1125,32 @@ export async function createRenderer(
       drawGrid();
       requestDraw();
     },
+    setDecals(decals) {
+      for (const child of decalLayer.removeChildren()) child.destroy();
+      const used = new Set<HTMLCanvasElement>();
+      for (const d of decals) {
+        used.add(d.image);
+        let texture = decalTextures.get(d.image);
+        if (!texture) {
+          texture = Texture.from(d.image, true);
+          decalTextures.set(d.image, texture);
+        }
+        const sprite = new Sprite(texture);
+        sprite.anchor.set(0.5);
+        sprite.position.set(d.x, d.y);
+        sprite.width = d.width;
+        sprite.height = d.height;
+        sprite.rotation = d.rotation;
+        decalLayer.addChild(sprite);
+      }
+      // Pictures no longer shown go with their textures.
+      for (const [image, texture] of decalTextures)
+        if (!used.has(image)) {
+          texture.destroy(true);
+          decalTextures.delete(image);
+        }
+      requestDraw();
+    },
     setDrawing(image, at = ZERO) {
       for (const child of drawingLayer.removeChildren()) child.destroy({ children: true, texture: true, textureSource: true });
       if (image) {
@@ -1208,6 +1267,9 @@ export async function createRenderer(
       world.removeChild(gridLayer);
       gridLayer.destroy({ context: true });
       for (const child of drawingLayer.removeChildren()) child.destroy({ children: true, texture: true, textureSource: true });
+      for (const child of decalLayer.removeChildren()) child.destroy();
+      for (const texture of decalTextures.values()) texture.destroy(true);
+      decalTextures.clear();
       drawTokens([]);
       drawAssets([]);
       for (const entry of assetTextures.values()) {
@@ -1655,7 +1717,8 @@ const TILE_PAD = 2;
  * edge into those pixels, so no seams appear. Nothing is scaled when cutting.
  */
 function mapSprites(image: MapImage, maxTextureSize: number): Container {
-  if (Math.max(image.width, image.height) <= maxTextureSize)
+  const painted = isPainted(image);
+  if (!painted && Math.max(image.width, image.height) <= maxTextureSize)
     return new Sprite(Texture.from(image, true));
   // Room for the pixels each tile carries from its neighbours.
   const tiles = mapTiles(
@@ -1676,17 +1739,19 @@ function mapSprites(image: MapImage, maxTextureSize: number): Container {
       const context = canvas.getContext("2d");
       if (!context)
         throw new Error("A map tile could not be drawn (no 2D canvas).");
-      context.drawImage(
-        image,
-        left,
-        top,
-        canvas.width,
-        canvas.height,
-        0,
-        0,
-        canvas.width,
-        canvas.height,
-      );
+      if (painted) image.paint(context, left, top, canvas.width, canvas.height);
+      else
+        context.drawImage(
+          image,
+          left,
+          top,
+          canvas.width,
+          canvas.height,
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        );
       const texture = new Texture({
         source: Texture.from(canvas, true).source,
         frame: new Rectangle(

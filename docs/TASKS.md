@@ -347,9 +347,15 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     über Bildkarten liegt die Zeichnung als eigene Ebene. TV: `map.drawn` im Frame (Version 4) nur mit Mauern aktiver
     Ebenen, sichtbaren Türen und eingeschalteten Rissen – eine unentdeckte Geheimtür wird nie gesendet (Test).
     Geprüft in der App (Kartenschmiede, Spiel, TV). Vorläufige flache Optik (`render/drawnMap.ts`).
-    Offen: Darstellung mit Texturen (Riss sichtbar), Tab „Bauen“ mit Zeichnen und Bearbeiten (Ausdehnung dabei neu
-    berechnen), „Neue gezeichnete Karte“ im Katalog (Vorschaubild, Anzeige „Kartendatei“), sehr große Karten über
-    die Canvas-Grenze (~16 384 px) hinaus, Messung.
+    Darstellung (`render/drawnMap.ts`, `render/build/textures.ts`, `core/build/handDrawn.ts`): Böden nach der nächsten
+    Mauer mit weichen Übergängen, Mauern mit Textur, zitterndem Umriss (ortsfest, flackert nicht), Schatten,
+    Lichtkante und Kontur, Ecksteine/Pfeiler an Knoten, Türen, Risse und die Geheimtür-Markierung des DM als eigene
+    kleine Bilder (ein Türklick malt die Karte nicht neu). Die Karte malt sich kachelweise (`PaintedImage`), also ohne
+    Canvas-Grenze; gemessen: 200 × 200 Felder, 400 Räume – Öffnen blockiert ≤ 0,7 s. Textur-Plätze (11) mit
+    erzeugten Mustern als Ersatz, bis die Higgsfield-Bilder da sind (DM lädt Credits auf; Free-Tarif: Rechte vor dem
+    Einchecken prüfen). Offen: Higgsfield-Texturen, Tab „Bauen“ mit Zeichnen und Bearbeiten (Ausdehnung dabei neu
+    berechnen; nur geänderte Kacheln neu malen), „Neue gezeichnete Karte“ im Katalog (Vorschaubild, Anzeige
+    „Kartendatei“), `npm run bench` (braucht das 4K-Testvideo und den TV).
   - **DC-107b Boden-Pinsel** mit sauberem Übergang an Mauern.
   - **DC-107c Eigene Mauern in Szenen** (Szene v8).
   - Danach (eigene Pakete): Wege/Flüsse/Brücken, Räume und Dächer, Detailstreuung, Wildnis-/Stadt-Modus.

@@ -1,98 +1,307 @@
 /**
- * Draws a map's drawn walls (E-33) into a canvas the renderer shows like a map image: with the
- * ground for a drawn map (it is its picture), without it over a picture map. Built the same way
- * for the DM window and the TV, each from its own drawing (`dmDrawing`, `playerDrawing`).
- * A first, flat look: textures and the hand-drawn look follow (DC-107a).
+ * Paints a map's drawn walls (E-33) as a map picture: floors after the nearest wall, walls with
+ * their texture, wavering outline, shadow and light edge, corner stones and pillars at joints and
+ * ends, doors and – where the DM switched it on – the crack of an unfound secret door. With the
+ * ground for a drawn map (it is its picture), without it over a picture map. The same for the DM
+ * window and the TV, each from its own drawing (`dmDrawing`, `playerDrawing`).
+ *
+ * It is a `PaintedImage`: the renderer has each GPU tile painted on its own, so a drawn map of
+ * any size never exists as one canvas. Everything is painted in map coordinates, so tiles meet.
  */
-import { doorSpan, masonryOutline, pointAt, type Masonry, type MasonryStyle } from '../core/build/masonry';
+import { floorField, jitterRing, type Jitter } from '../core/build/handDrawn';
+import { buildGraph, doorSpan, masonryOutline, pointAt, type Masonry, type MasonryStyle } from '../core/build/masonry';
 import type { DmDrawing, Drawing } from '../core/build/playerDrawing';
-import type { Polygon } from '../core/poly/types';
+import type { Decal, PaintedImage } from './pixi/renderer';
+import type { BuildTextures } from './build/textures';
 
-const STYLE_FILL: Record<MasonryStyle, string> = {
-  'dungeon-stone': '#5b5650',
-  'cave-rock': '#4a443c',
-  brick: '#6e4a3a',
-  wood: '#6b4f2e',
+/** How each style's outline wavers, by its thickness. */
+const WAVER: Record<MasonryStyle, { amplitude: number; scale: number }> = {
+  'dungeon-stone': { amplitude: 0.06, scale: 2.2 },
+  'cave-rock': { amplitude: 0.28, scale: 1.1 },
+  brick: { amplitude: 0.05, scale: 2.5 },
+  wood: { amplitude: 0.03, scale: 3 },
 };
-/** One ground for now; rock outside and floors after the nearest wall follow with the textures. */
-const GROUND = '#77705f';
 
-function trace(g: CanvasRenderingContext2D, polygons: readonly Polygon[], ox: number, oy: number): void {
-  g.beginPath();
-  for (const p of polygons)
-    for (const ring of [p.outer, ...p.holes]) {
-      ring.forEach(([x, y], i) => (i ? g.lineTo(x - ox, y - oy) : g.moveTo(x - ox, y - oy)));
-      g.closePath();
-    }
-}
+/** Map cells one texture tile covers: floors, wall surfaces. */
+const FLOOR_CELLS = 3;
+const WALL_CELLS = 2;
+/** Most floor samples: their nearest-wall search runs over all wall segments. */
+const MAX_FLOOR_SAMPLES = 250_000;
 
 const asMasonry = (w: Drawing['masonry'][number]): Masonry => ({ ...w, points: w.points.map((p) => ({ ...p })) });
 
-/** The span of a door on its wall, as two points. */
-function doorEnds(wall: Masonry, d: { at: number; width: number }) {
-  const span = doorSpan(wall, { id: '', wall: wall.id, at: d.at, width: d.width, secret: false, crack: false });
-  return [pointAt(wall.points, wall.closed, span.from), pointAt(wall.points, wall.closed, span.to)] as const;
+function styleSeed(style: MasonryStyle): number {
+  let h = 7;
+  for (const ch of style) h = (h * 31 + ch.charCodeAt(0)) | 0;
+  return h;
 }
 
-export function drawnMapImage(drawing: Drawing | DmDrawing, withGround: boolean): HTMLCanvasElement {
-  const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.ceil(drawing.width));
-  c.height = Math.max(1, Math.ceil(drawing.height));
-  const g = c.getContext('2d');
-  if (!g) throw new Error('No 2D canvas for the drawn map.');
+interface PreparedStyle {
+  style: MasonryStyle;
+  shape: Path2D;
+  thickness: number;
+  joints: { x: number; y: number; angle: number; kind: 'joint' | 'end' }[];
+}
+
+function surfacePattern(g: CanvasRenderingContext2D, source: HTMLCanvasElement, cell: number, cells: number, seed: number): CanvasPattern | null {
+  const pattern = g.createPattern(source, 'repeat');
+  if (!pattern) return null;
+  const k = (cell * cells) / source.width;
+  // Each style starts its pattern elsewhere, so neighbouring styles do not line up.
+  pattern.setTransform(new DOMMatrix().translate((seed & 255) * 3.1, ((seed >> 8) & 255) * 2.3).scale(k));
+  return pattern;
+}
+
+interface Geometry {
+  styles: PreparedStyle[];
+  field: ReturnType<typeof floorField> | null;
+  /** Per floor style: where it is nearest, softened once at sample size (drawn smoothly scaled up). */
+  floorMasks: Map<MasonryStyle, HTMLCanvasElement>;
+  /** Where each floor style is, in map px (with its soft edge): tiles elsewhere skip it. */
+  floorBoxes: Map<MasonryStyle, { x: number; y: number; w: number; h: number }>;
+  step: number;
+}
+
+/**
+ * What only the walls and where doors are decide – outlines, joints, floors – kept for the last
+ * drawings: opening or closing a door repaints, but computes none of it again.
+ */
+const geometries = new Map<string, Geometry>();
+const KEPT_GEOMETRIES = 4;
+
+function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: number, walls: Masonry[]): Geometry {
+  const key = JSON.stringify([drawing.origin, drawing.width, drawing.height, drawing.masonry, drawing.doors.map((d) => [d.wall, d.at, d.width]), withGround, cell]);
+  const hit = geometries.get(key);
+  if (hit) return hit;
   const { x: ox, y: oy } = drawing.origin;
-  if (withGround) {
-    g.fillStyle = GROUND;
-    g.fillRect(0, 0, c.width, c.height);
-  }
-  const walls = drawing.masonry.map(asMasonry);
-  const byId = new Map(walls.map((w) => [w.id, w]));
-  // Each style on its own, cut open where doors are shown; unfound secret doors were never sent.
-  const doorsOn = (id: string) => drawing.doors.filter((d) => d.wall === id).map((d, i) => ({ id: `d${i}`, wall: id, at: d.at, width: d.width, secret: false, crack: false }));
-  for (const style of new Set(walls.map((w) => w.style))) {
+  const width = Math.max(1, Math.ceil(drawing.width));
+  const height = Math.max(1, Math.ceil(drawing.height));
+
+  // Walls, one style at a time: united, cut open where doors are shown (unfound secret doors were never sent).
+  const shownDoors = (ws: Masonry[]) => ws.flatMap((w) => drawing.doors.filter((d) => d.wall === w.id).map((d, i) => ({ id: `d${i}`, wall: w.id, at: d.at, width: d.width, secret: false, crack: false })));
+  const styles: PreparedStyle[] = [...new Set(walls.map((w) => w.style))].map((style) => {
     const mine = walls.filter((w) => w.style === style);
-    const shape = masonryOutline(mine, mine.flatMap((w) => doorsOn(w.id)));
-    g.fillStyle = STYLE_FILL[style];
-    trace(g, shape, ox, oy);
-    g.fill('evenodd');
-    g.strokeStyle = 'rgba(0,0,0,.55)';
-    g.lineWidth = 2;
-    g.stroke();
+    const thickness = mine.reduce((s, w) => s + w.thickness, 0) / mine.length;
+    const jitter: Jitter = { step: Math.max(3, thickness / 3), amplitude: thickness * WAVER[style].amplitude, scale: thickness * WAVER[style].scale, seed: styleSeed(style) };
+    const shape = new Path2D();
+    for (const p of masonryOutline(mine, shownDoors(mine)))
+      for (const ring of [p.outer, ...p.holes]) {
+        jitterRing(ring, jitter).forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)));
+        shape.closePath();
+      }
+    const joints = buildGraph(mine).nodes.flatMap((n) => (n.kind === 'straight' ? [] : [{ x: n.x, y: n.y, angle: n.arms[0] ?? 0, kind: n.kind === 'end' ? ('end' as const) : ('joint' as const) }]));
+    return { style, shape, thickness, joints };
+  });
+
+  // Floors after the nearest wall: a small mask per style, softened at its own size.
+  const step = Math.max(cell / 2, Math.sqrt((width * height) / MAX_FLOOR_SAMPLES));
+  const field = withGround ? floorField(walls, { x: ox, y: oy, w: width, h: height }, step) : null;
+  const floorMasks = new Map<MasonryStyle, HTMLCanvasElement>();
+  if (field)
+    for (const style of new Set(field.styles)) {
+      const raw = document.createElement('canvas');
+      raw.width = field.cols;
+      raw.height = field.rows;
+      const r = raw.getContext('2d')!;
+      const img = r.createImageData(field.cols, field.rows);
+      field.styles.forEach((s, i) => {
+        if (s === style) img.data[i * 4 + 3] = 255;
+      });
+      r.putImageData(img, 0, 0);
+      const soft = document.createElement('canvas');
+      soft.width = field.cols;
+      soft.height = field.rows;
+      const g = soft.getContext('2d')!;
+      g.filter = 'blur(1px)';
+      g.drawImage(raw, 0, 0);
+      floorMasks.set(style, soft);
+    }
+  const floorBoxes = new Map<MasonryStyle, { x: number; y: number; w: number; h: number }>();
+  if (field) {
+    const box = new Map<MasonryStyle, [number, number, number, number]>();
+    field.styles.forEach((s, i) => {
+      const c = i % field.cols;
+      const r = Math.floor(i / field.cols);
+      const b = box.get(s);
+      if (!b) box.set(s, [c, r, c, r]);
+      else box.set(s, [Math.min(b[0], c), Math.min(b[1], r), Math.max(b[2], c), Math.max(b[3], r)]);
+    });
+    // Two samples of room for the softened edge.
+    for (const [s, [c0, r0, c1, r1]] of box) floorBoxes.set(s, { x: ox + (c0 - 2) * step, y: oy + (r0 - 2) * step, w: (c1 - c0 + 5) * step, h: (r1 - r0 + 5) * step });
   }
+  const geometry = { styles, field, floorMasks, floorBoxes, step };
+  geometries.set(key, geometry);
+  if (geometries.size > KEPT_GEOMETRIES) geometries.delete(geometries.keys().next().value!);
+  return geometry;
+}
+
+export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean, cell: number, tex: BuildTextures): PaintedImage {
+  const { x: ox, y: oy } = drawing.origin;
+  const width = Math.max(1, Math.ceil(drawing.width));
+  const height = Math.max(1, Math.ceil(drawing.height));
+  const { styles, field, floorMasks, floorBoxes } = geometryOf(drawing, withGround, cell, drawing.masonry.map(asMasonry));
+
+  const paintFloors = (g: CanvasRenderingContext2D, left: number, top: number, w: number, h: number) => {
+    if (!field) return;
+    // The first style covers everything, so where soft edges overlap nothing shows through;
+    // the others are blended over it – only where they are.
+    const [base, ...others] = [...floorMasks.keys()];
+    g.fillStyle = surfacePattern(g, tex.surface[`floor-${base}`], cell, FLOOR_CELLS, styleSeed(base)) ?? '#77705f';
+    g.fillRect(left, top, w, h);
+    let layer: CanvasRenderingContext2D | null = null;
+    for (const style of others) {
+      const box = floorBoxes.get(style)!;
+      const x0 = Math.max(left, box.x);
+      const y0 = Math.max(top, box.y);
+      const x1 = Math.min(left + w, box.x + box.w);
+      const y1 = Math.min(top + h, box.y + box.h);
+      if (x1 <= x0 || y1 <= y0) continue;
+      if (!layer) {
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        layer = c.getContext('2d')!;
+      }
+      const l = layer;
+      l.globalCompositeOperation = 'source-over';
+      l.setTransform(1, 0, 0, 1, -left, -top);
+      l.clearRect(x0, y0, x1 - x0, y1 - y0);
+      l.fillStyle = surfacePattern(l, tex.surface[`floor-${style}`], cell, FLOOR_CELLS, styleSeed(style)) ?? '#77705f';
+      l.fillRect(x0, y0, x1 - x0, y1 - y0);
+      // Keep it only where this style is nearest; scaled up smoothly, its softened edge blends.
+      l.globalCompositeOperation = 'destination-in';
+      l.imageSmoothingEnabled = true;
+      l.imageSmoothingQuality = 'high';
+      l.save();
+      l.beginPath();
+      l.rect(x0, y0, x1 - x0, y1 - y0);
+      l.clip();
+      l.drawImage(floorMasks.get(style)!, ox, oy, field.cols * field.step, field.rows * field.step);
+      l.restore();
+      g.drawImage(l.canvas, x0 - left, y0 - top, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
+    }
+  };
+
+  const paintWalls = (g: CanvasRenderingContext2D) => {
+    for (const s of styles) {
+      const t = s.thickness;
+      // A soft shadow towards the lower right (two offset fills: far cheaper than a blur), then
+      // the wall, its light edge and a sketched outline.
+      for (const [k, alpha] of [[0.32, 0.22], [0.16, 0.3]] as const) {
+        g.save();
+        g.translate(t * k, t * k * 1.3);
+        g.fillStyle = `rgba(0,0,0,${alpha})`;
+        g.fill(s.shape, 'nonzero');
+        g.restore();
+      }
+      g.fillStyle = surfacePattern(g, tex.surface[`wall-${s.style}`], cell, WALL_CELLS, styleSeed(s.style)) ?? '#5b5650';
+      g.fill(s.shape, 'nonzero');
+      g.save();
+      g.translate(-1, -1);
+      g.strokeStyle = 'rgba(255,245,225,.16)';
+      g.lineWidth = 1.5;
+      g.stroke(s.shape);
+      g.restore();
+      g.strokeStyle = 'rgba(18,14,10,.8)';
+      g.lineWidth = Math.max(1.5, t * 0.12);
+      g.stroke(s.shape);
+      // Corner stones and pillars for built walls; rock needs none.
+      if (s.style === 'cave-rock') continue;
+      for (const j of s.joints) {
+        const part = j.kind === 'end' ? tex.part['part-pillar'] : tex.part['part-cornerstone'];
+        const size = t * (j.kind === 'end' ? 1.35 : 1.25) * (s.style === 'wood' ? 0.85 : 1);
+        g.save();
+        g.translate(j.x, j.y);
+        g.rotate(j.angle);
+        g.drawImage(part, -size / 2, -size / 2, size, size);
+        g.restore();
+      }
+    }
+  };
+
+  return {
+    width,
+    height,
+    paint(g, left, top, w, h) {
+      g.save();
+      // From here on in map coordinates.
+      g.translate(-left - ox, -top - oy);
+      paintFloors(g, left + ox, top + oy, w, h);
+      paintWalls(g);
+      g.restore();
+    },
+  };
+}
+
+/* ---------- Doors and cracks: pictures of their own over the walls ---------- */
+
+const decalPictures = new Map<string, HTMLCanvasElement>();
+
+/** A small picture, made once per look. */
+function picture(key: string, w: number, h: number, draw: (g: CanvasRenderingContext2D) => void): HTMLCanvasElement {
+  const hit = decalPictures.get(key);
+  if (hit) return hit;
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.ceil(w));
+  c.height = Math.max(1, Math.ceil(h));
+  draw(c.getContext('2d')!);
+  decalPictures.set(key, c);
+  return c;
+}
+
+/** The DM's mark of a secret door: a dashed frame (never sent to the TV). */
+function secretMark(): HTMLCanvasElement {
+  return picture('secret', 64, 32, (g) => {
+    g.strokeStyle = '#a77bf3';
+    g.lineWidth = 3;
+    g.setLineDash([8, 5]);
+    g.strokeRect(2, 2, 60, 28);
+  });
+}
+
+/** A faint, jagged crack across a wall: visible, but only to those who look. */
+function crack(len: number, thickness: number): HTMLCanvasElement {
+  const w = Math.round(len);
+  const h = Math.round(thickness);
+  return picture(`crack:${w}:${h}`, w, h, (g) => {
+    const n = Math.max(4, Math.round(len / (thickness * 0.5)));
+    const zig = thickness * 0.18;
+    const pts = Array.from({ length: n + 1 }, (_, i) => [(w * i) / n, h / 2 + (i === 0 || i === n ? 0 : i % 2 ? zig : -zig)] as const);
+    for (const [color, lw, d] of [['rgba(255,240,220,.18)', 1, -0.8], ['rgba(10,8,6,.75)', 1.6, 0]] as const) {
+      g.strokeStyle = color;
+      g.lineWidth = lw;
+      g.beginPath();
+      pts.forEach(([x, y], i) => (i ? g.lineTo(x + d, y + d) : g.moveTo(x + d, y + d)));
+      g.stroke();
+    }
+  });
+}
+
+/** Doors (open ones stand at a right angle, hinged at one end), cracks and the DM's secret marks. */
+export function drawingDecals(drawing: Drawing | DmDrawing, tex: BuildTextures): Decal[] {
+  const byId = new Map(drawing.masonry.map((w) => [w.id, asMasonry(w)]));
+  const spanOf = (wall: Masonry, at: number, width: number) => {
+    const span = doorSpan(wall, { id: '', wall: wall.id, at, width, secret: false, crack: false });
+    const a = pointAt(wall.points, wall.closed, span.from);
+    const b = pointAt(wall.points, wall.closed, span.to);
+    return { a, b, len: Math.hypot(b.x - a.x, b.y - a.y), angle: Math.atan2(b.y - a.y, b.x - a.x) };
+  };
+  const out: Decal[] = [];
   for (const d of drawing.doors) {
     const wall = byId.get(d.wall);
     if (!wall) continue;
-    const [a, b] = doorEnds(wall, d);
-    const secret = 'secret' in d && d.secret;
-    g.strokeStyle = secret ? '#a77bf3' : '#c99a5b';
-    g.lineWidth = wall.thickness * (d.open ? 0.3 : 0.7);
-    g.setLineDash(secret ? [6, 4] : []);
-    g.beginPath();
-    if (d.open) {
-      // An open door stands at a right angle to its wall, hinged at one end.
-      const len = Math.hypot(b.x - a.x, b.y - a.y);
-      const nx = -(b.y - a.y) / len;
-      const ny = (b.x - a.x) / len;
-      g.moveTo(a.x - ox, a.y - oy);
-      g.lineTo(a.x - ox + nx * len, a.y - oy + ny * len);
-    } else {
-      g.moveTo(a.x - ox, a.y - oy);
-      g.lineTo(b.x - ox, b.y - oy);
-    }
-    g.stroke();
-    g.setLineDash([]);
+    const { a, b, len, angle } = spanOf(wall, d.at, d.width);
+    if (len <= 0) continue;
+    const leaf = wall.thickness * 0.55;
+    const turn = d.open ? angle + Math.PI / 2 : angle;
+    out.push({ image: tex.part['part-door'], x: a.x + (Math.cos(turn) * len) / 2, y: a.y + (Math.sin(turn) * len) / 2, width: len, height: leaf, rotation: turn });
+    if ('secret' in d && d.secret) out.push({ image: secretMark(), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, width: len, height: wall.thickness * 1.2, rotation: angle });
   }
-  // A faint crack where the DM lets players notice an unfound secret door.
   for (const k of drawing.cracks) {
     const wall = byId.get(k.wall);
     if (!wall) continue;
-    const [a, b] = doorEnds(wall, k);
-    g.strokeStyle = 'rgba(15,12,10,.7)';
-    g.lineWidth = 1.5;
-    g.beginPath();
-    g.moveTo(a.x - ox, a.y - oy);
-    g.lineTo(b.x - ox, b.y - oy);
-    g.stroke();
+    const { a, b, len, angle } = spanOf(wall, k.at, k.width);
+    if (len > 0) out.push({ image: crack(len, wall.thickness), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, width: len, height: wall.thickness, rotation: angle });
   }
-  return c;
+  return out;
 }

@@ -318,6 +318,12 @@ export interface Renderer {
   resize(size: Size): void;
   /** Resolves after the next draw has been submitted (for screenshots and tests). */
   drawn(): Promise<void>;
+  /**
+   * Dungeon Crucible (DC-105): a still of what is shown now – the canvas drawn afresh and, under
+   * it, the video map's current frame where it shows – in device pixels. Scene transitions lay it
+   * over the next scene; it holds only what this view already showed.
+   */
+  snapshot(): HTMLCanvasElement;
   destroy(): void;
 }
 
@@ -1330,6 +1336,34 @@ export async function createRenderer(
         waiting.push(resolve);
         requestDraw();
       });
+    },
+    snapshot() {
+      const out = document.createElement("canvas");
+      out.width = options.canvas.width;
+      out.height = options.canvas.height;
+      const g = out.getContext("2d");
+      if (!g) return out;
+      g.fillStyle = video ? "#000000" : background;
+      g.fillRect(0, 0, out.width, out.height);
+      const scale = out.width / Math.max(1, size.width);
+      // The video map lies under the canvas: its frame goes first, placed as its CSS places it.
+      if (video && camera && video.style.visibility === "visible") {
+        const angle = (camera.rotation * Math.PI) / 180;
+        const cos = Math.cos(angle) * camera.zoom;
+        const sin = Math.sin(angle) * camera.zoom;
+        g.setTransform(cos * scale, sin * scale, -sin * scale, cos * scale, (size.width / 2 - (cos * camera.centerX - sin * camera.centerY)) * scale, (size.height / 2 - (sin * camera.centerX + cos * camera.centerY)) * scale);
+        g.drawImage(video, 0, 0, videoSize.width, videoSize.height);
+        g.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      // Drawn now, read in the same task: WebGL keeps the picture until the browser shows it.
+      try {
+        applyCamera();
+        app.render();
+        g.drawImage(options.canvas, 0, 0);
+      } catch (error) {
+        console.error("The renderer could not take a still.", error);
+      }
+      return out;
     },
     destroy() {
       destroyed = true;

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DcApi } from '../platform/desktop-api';
 import { closeCampaign, closeScene, closeTab, newCampaign, newCreature, newSceneOnMap, openCampaign, pictureOf, putOnTv, saveCampaign, showTab, switchScene } from './campaign';
 import { showMapCatalog } from './library';
-import { activateSession, checkpoint, moveToken, openCreatureTab, setWorkspace, state } from './store';
+import { activateSession, checkpoint, moveToken, openCreatureTab, setNextTransition, setWorkspace, state } from './store';
 
 /** Scene tabs with the campaign's files (E-30, DC-034): saving, closing, opening again. Files kept in memory. */
 let files: Map<string, string>;
@@ -69,6 +69,42 @@ describe('scene tabs and the campaign files', () => {
     // "Scene on the TV" releases it.
     await putOnTv(b);
     expect(state.scene.table.blackout).toBe(false);
+  });
+
+  it('the TV changes scene with the new map\'s transition or the one chosen for this change (DC-105)', async () => {
+    await newCampaign('C', true);
+    const a = state.scenePath!;
+    await putOnTv(a);
+    // The first scene on the TV fades in.
+    expect(state.tvCut.play).toBe('in');
+    await newSceneOnMap('builtin:crypt');
+    const b = state.scenePath!;
+    await putOnTv(b);
+    expect(state.tvCut).toMatchObject({ play: 'fade', ms: 1000 });
+    setNextTransition('black');
+    await putOnTv(a);
+    expect(state.tvCut).toMatchObject({ play: 'black', ms: 1000 });
+    // Only for that change.
+    expect(state.nextTransition).toBeNull();
+    const n = state.tvCut.n;
+    await putOnTv(a);
+    expect(state.tvCut.n).toBe(n);
+  });
+
+  it('on a map that cuts, a fade chosen for the next change still plays (DC-105 review)', async () => {
+    await newCampaign('C', true);
+    const a = state.scenePath!;
+    await putOnTv(a);
+    await newSceneOnMap('builtin:crypt');
+    const b = state.scenePath!;
+    state.scene.map.transition = { kind: 'cut', seconds: 2 };
+    await putOnTv(b);
+    expect(state.tvCut).toMatchObject({ play: 'cut', ms: 0 });
+    await putOnTv(a);
+    // Back to B, the map that cuts, through black this once: the default length.
+    setNextTransition('black');
+    await putOnTv(b);
+    expect(state.tvCut).toMatchObject({ play: 'black', ms: 1000 });
   });
 
   it('closing the TV scene leaves the ambience of the next scene in its file', async () => {

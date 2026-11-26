@@ -204,6 +204,7 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     lights: elements.lights,
     sounds: elements.sounds,
     ...((fromView ? m.ambientSound : previous.ambientSound) ? { ambientSound: { ...(fromView ? m.ambientSound : previous.ambientSound)! } } : {}),
+    ...((fromView ? m.transition : previous.transition) ? { transition: { ...(fromView ? m.transition : previous.transition)! } } : {}),
     ambient: scene.ambient,
     ...(startFog ? { startFog: copyFog(startFog) } : {}),
     // Drawn walls are edited in the Map Forge only, like placed assets.
@@ -375,6 +376,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       ...(map.origin ? { origin: { ...map.origin } } : {}),
       ...(isDrawn(map.resource) ? { drawn: true } : {}),
       ...(map.ambientSound ? { ambientSound: { ...map.ambientSound } } : {}),
+      ...(map.transition ? { transition: { ...map.transition } } : {}),
     },
     walls: shownOn(walls),
     zones: shownOn(zones),

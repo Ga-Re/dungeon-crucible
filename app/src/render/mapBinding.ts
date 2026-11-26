@@ -84,24 +84,21 @@ export function bindMap(renderer: Renderer, host: HTMLElement, onError?: (e: unk
       // Another map is shown now: a drawn map coming back is painted anew, not only its changes.
       lastMap = null;
       const mine = ++token;
-      if (!url) {
-        dropVideo();
-        renderer.setMap(null);
-        return;
-      }
+      // The map before goes at once (fail-closed, DC-105): under the new scene's fog it would
+      // show what the old scene kept covered. Until the new one has loaded, the map is black.
+      dropVideo();
+      renderer.setMap(null);
+      if (!url) return;
       try {
         if (isVideo) {
           const v = await createMapVideo(url);
           if (mine !== token) return;
-          dropVideo();
-          renderer.setMap(null);
           host.insertBefore(v, host.firstChild);
           video = v;
           renderer.setVideo(v);
         } else {
           const img = await loadMapImage(url);
           if (mine !== token) return;
-          dropVideo();
           renderer.setMap(img);
         }
       } catch (e) {
@@ -114,8 +111,12 @@ export function bindMap(renderer: Renderer, host: HTMLElement, onError?: (e: unk
       const key = `d:${paintKey(drawing, cell)}`;
       showDecals(drawing);
       if (key === current) return;
-      // Only a drawn map on screen may be repainted in part.
-      if (!current?.startsWith('d:')) lastMap = null;
+      // Only a drawn map on screen may be repainted in part; a picture map before goes at once.
+      if (!current?.startsWith('d:')) {
+        lastMap = null;
+        dropVideo();
+        renderer.setMap(null);
+      }
       current = key;
       const mine = ++token;
       try {

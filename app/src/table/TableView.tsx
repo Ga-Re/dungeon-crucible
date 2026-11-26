@@ -3,12 +3,15 @@
  * and by the DM's preview panel, so the preview is exactly what the TV shows.
  *
  * Fail-closed: without a fresh, valid, non-blackout frame the whole view is hidden on black.
+ * Scene transitions (DC-105) lay only a still of what this view already showed, and black, over
+ * the new scene; a stale frame ends them at once.
  * With a frame, the opaque fog covers everything outside `fog.open`; memory fog and the living
  * fog only ever darken. Templates are clipped to the open area. This module must not import
  * DM-side state (src/app/store.ts and friends).
  */
 import { useEffect, useRef } from 'react';
 import { MAX_FRAME_AGE_MS, type PlayerFrame } from '../core/projection';
+import { transitionLook, type TransitionPlay } from '../core/transition';
 import type { Polygon } from '../core/poly/types';
 import { fogOptions, lookFromWire } from '../render/fogOptions';
 import { bindMap } from '../render/mapBinding';
@@ -24,12 +27,17 @@ export function TableView({ source }: { source: FrameSource }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
+  const cutRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const host = hostRef.current!;
     const canvas = canvasRef.current!;
     const overlay = overlayRef.current!;
+    const cutCanvas = cutRef.current!;
     let renderer: Renderer | null = null;
+    /** The last change of picture played, and the one playing (with the still of the picture before). */
+    let lastCut = -1;
+    let cut: { play: TransitionPlay; ms: number; start: number; still: HTMLCanvasElement | null } | null = null;
     let disposed = false;
     let raf = 0;
     let lastSeq = -1;
@@ -51,17 +59,75 @@ export function TableView({ source }: { source: FrameSource }) {
       lastSeq = -1;
     };
 
+    /** What this view shows now, as one still: the map with its fog, then templates and pings. */
+    const still = (r: Renderer): HTMLCanvasElement => {
+      const out = r.snapshot();
+      out.getContext('2d')?.drawImage(overlay, 0, 0, out.width, out.height);
+      return out;
+    };
+
+    /** The transition over everything: the still fading, black coming or going. Done: nothing. */
+    const drawCut = (now: number, s: { width: number; height: number }) => {
+      if (!cut) return;
+      const g = cutCanvas.getContext('2d');
+      const p = (now - cut.start) / cut.ms;
+      // Done: nothing over the view (after "out" the view is hidden on the black background).
+      if (!g || p >= 1) {
+        cut = null;
+        cutCanvas.style.visibility = 'hidden';
+        return;
+      }
+      const dpr = window.devicePixelRatio || 1;
+      if (cutCanvas.width !== Math.round(s.width * dpr) || cutCanvas.height !== Math.round(s.height * dpr)) {
+        cutCanvas.width = Math.round(s.width * dpr);
+        cutCanvas.height = Math.round(s.height * dpr);
+      }
+      const look = transitionLook(cut.play, p);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.globalAlpha = 1;
+      g.clearRect(0, 0, cutCanvas.width, cutCanvas.height);
+      if (cut.still && look.old > 0) {
+        g.globalAlpha = look.old;
+        g.drawImage(cut.still, 0, 0, cutCanvas.width, cutCanvas.height);
+      }
+      if (look.black > 0) {
+        g.globalAlpha = look.black;
+        g.fillStyle = '#000';
+        g.fillRect(0, 0, cutCanvas.width, cutCanvas.height);
+      }
+      g.globalAlpha = 1;
+      cutCanvas.style.visibility = 'visible';
+    };
+
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const r = renderer;
       const latest = source.current();
       const now = Date.now();
-      if (!r || !latest || now - latest.receivedAt > MAX_FRAME_AGE_MS || latest.frame.blackout) {
+      if (!r || !latest || now - latest.receivedAt > MAX_FRAME_AGE_MS) {
+        // No fresh frame: black at once, a transition included.
         blank();
+        cut = null;
+        cutCanvas.style.visibility = 'hidden';
+        lastCut = -1;
         return;
       }
       const f = latest.frame;
       const s = size();
+      // A new change of picture (E-38): the still of what is shown now, before the new frame is drawn.
+      const newCut = f.cut.n !== lastCut;
+      if (newCut) {
+        const first = lastCut === -1;
+        lastCut = f.cut.n;
+        const timed = !first && f.cut.play !== 'cut' && f.cut.ms > 0;
+        const shown = host.style.visibility === 'visible';
+        cut = timed ? { play: f.cut.play, ms: f.cut.ms, start: now, still: shown && f.cut.play !== 'in' ? still(r) : null } : null;
+      }
+      if (f.blackout) {
+        blank();
+        drawCut(now, s);
+        return;
+      }
       r.resize(s);
       // The frame is laid out for the TV's physical resolution; this view may be smaller.
       // CSS pixels per physical TV pixel; on the TV itself this is 1 / devicePixelRatio.
@@ -84,11 +150,13 @@ export function TableView({ source }: { source: FrameSource }) {
         r.setLighting(f.lighting.darkness > 0 || f.lighting.glows.length ? { ...f.lighting, softEdge: cell * 0.35 } : null);
         const look = lookFromWire(f.fog.look);
         r.setMemory(f.fog.clear, { opacity: f.fog.memoryOpacity, softEdge: look.softEdges ? cell * 0.25 : 0 });
-        r.setFog(f.fog.open, fogOptions({ look, cellSizePx: cell, seedKey: f.map.seedKey, effect: f.fog.effect, opacity: 1, quick: f.fog.quick }));
+        // Another scene's fog comes at once, never grown out of the fog before (DC-105).
+        r.setFog(f.fog.open, fogOptions({ look, cellSizePx: cell, seedKey: f.map.seedKey, effect: f.fog.effect, opacity: 1, quick: f.fog.quick, jump: newCut }));
       }
       r.setCamera(camera);
       drawOverlay(overlay, f, camera, s, now - latest.receivedAt);
       host.style.visibility = 'visible';
+      drawCut(now, s);
     };
     raf = requestAnimationFrame(tick);
 
@@ -106,6 +174,7 @@ export function TableView({ source }: { source: FrameSource }) {
         <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
         <canvas ref={overlayRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
       </div>
+      <canvas ref={cutRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', visibility: 'hidden' }} />
     </div>
   );
 }

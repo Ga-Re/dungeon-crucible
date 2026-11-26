@@ -10,13 +10,14 @@ import type { AssetDraw } from './placement';
 import { clearArea, openArea } from './fogModel';
 import { polygonSchema, type Polygon } from './poly/types';
 import type { Scene } from './scene';
+import type { TransitionPlay } from './transition';
 import { tokensVisibleToPlayers, type LitSource } from './vision';
 import { intersection } from 'polyclip-ts';
 import { asGeom, fromClip } from './poly/polygon-clip';
 import { drawingSchema, playerDrawing } from './build/playerDrawing';
 import { sceneMap } from './build/sceneDrawing';
 
-export const FRAME_VERSION = 4;
+export const FRAME_VERSION = 5;
 
 /** How dark unlit areas look on a dark map (darkvision sees them, dimmed). */
 export const DARKNESS = 0.45;
@@ -40,6 +41,11 @@ export type FogLookWire = z.infer<typeof fogLookSchema>;
 
 export const PlayerFrameSchema = z.object({
   version: z.literal(FRAME_VERSION),
+  /**
+   * The TV's last change of picture (DC-105, E-38): a counter, what to play and how long. Only
+   * this – the table draws the transition from the picture it already shows and black.
+   */
+  cut: z.object({ n: z.number().int().min(0), play: z.enum(['fade', 'black', 'cut', 'out', 'in']), ms: z.number().min(0).max(10_000) }).default({ n: 0, play: 'cut', ms: 0 }),
   seq: z.number().int().nonnegative(),
   issuedAt: z.number().finite(),
   blackout: z.boolean(),
@@ -130,6 +136,8 @@ export interface ProjectionOptions {
   assets?: readonly AssetDraw[];
   /** Their cover masks: figures inside one stay hidden until a character is in there too. */
   covers?: readonly Polygon[];
+  /** The TV's last change of picture (DC-105); none: no transition yet. */
+  cut?: { n: number; play: TransitionPlay; ms: number };
 }
 
 /** Light for the players: only inside what they see now, so a light in remembered or hidden areas gives nothing away. */
@@ -155,6 +163,7 @@ export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFram
   const copy = (ps: readonly Polygon[]) => ps.map((p) => ({ outer: p.outer.map(([x, y]) => [x, y] as [number, number]), holes: p.holes.map((h) => h.map(([x, y]) => [x, y] as [number, number])) }));
   return {
     version: FRAME_VERSION,
+    cut: o.cut ? { ...o.cut } : { n: 0, play: 'cut', ms: 0 },
     seq: o.seq,
     issuedAt: o.now,
     blackout: scene.table.blackout,

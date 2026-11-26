@@ -9,6 +9,7 @@ import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type Grid
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, SoundSource, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { isSoundRef } from '../core/sound';
+import { DEFAULT_TRANSITION, type Transition, type TransitionKind, type TransitionPlay } from '../core/transition';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
 import { masonrySightWalls, toggledMasonryDoor, withMasonry } from '../core/build/sight';
 import type { BuildCommand, BuildSelection } from './build';
@@ -97,6 +98,10 @@ export interface AppState {
   selectedSoundId: string | null;
   /** The map's sounds silenced by "stop all" or the Map sounds panel (not saved, DC-104c). */
   mapSoundsMuted: boolean;
+  /** The TV's last change of picture (DC-105, E-38): counter, what it plays, how long (ms). */
+  tvCut: { n: number; play: TransitionPlay; ms: number };
+  /** The transition of the next change of scene only, instead of the new map's (E-38); none: the map's. */
+  nextTransition: TransitionKind | null;
   turn: number;
   round: number;
   scene: Scene;
@@ -234,6 +239,8 @@ function initial(): AppState {
     selectedLightId: null,
     selectedSoundId: null,
     mapSoundsMuted: false,
+    tvCut: { n: 0, play: 'cut', ms: 0 },
+    nextTransition: null,
     turn: 0,
     round: 1,
     scene,
@@ -718,14 +725,55 @@ export function clearTabs(): void {
   state.vault.drafts = {};
   state.tvScenePath = null;
   state.tvAsk = null;
+  state.nextTransition = null;
 }
 
-/** Puts scene `scenePath` on the TV (an open tab), or none (black). */
-export function setTvScene(scenePath: string | null): void {
+/**
+ * Puts scene `scenePath` on the TV (an open tab), or none (black). The TV changes with the new
+ * map's transition, or the one chosen for this change (E-38); from black it fades in, to none out.
+ * `fromBlack`: the TV was black until now (released with this scene).
+ */
+export function setTvScene(scenePath: string | null, fromBlack = false): void {
   if (scenePath && !isSceneOpen(scenePath)) return;
+  const before = state.tvScenePath;
+  // Fading out to nothing goes as the map leaving says.
+  const leaving = tvTransition();
   state.tvScenePath = scenePath;
   state.tvAsk = null;
   snapshotTvMap();
+  if (scenePath !== before || fromBlack) {
+    if (!scenePath) cutTv('out', leaving);
+    else if (!before || fromBlack) cutTv('in');
+    else cutTv(state.nextTransition ?? tvTransition().kind);
+    state.nextTransition = null;
+  }
+  emit();
+}
+
+/** The TV, black until now, fades in on the scene it has (E-38) – its map stays as the TV has it (E-30). */
+export function fadeTvIn(): void {
+  cutTv('in');
+  emit();
+}
+
+/** The transition of the TV scene's map (E-38), or the default. */
+function tvTransition(): Transition {
+  return tvView()?.scene.map.transition ?? DEFAULT_TRANSITION;
+}
+
+/**
+ * The TV changes its picture: `play` (a cut: at once) for as long as `t` – the TV scene's map –
+ * says. A fade chosen for this change only also plays on a map that cuts, at the default length.
+ */
+function cutTv(play: TransitionPlay, t: Transition = tvTransition()): void {
+  const seconds = t.kind === 'cut' ? (play === 'fade' || play === 'black' ? DEFAULT_TRANSITION.seconds : 0) : t.seconds;
+  const ms = play === 'cut' ? 0 : Math.round(seconds * 1000);
+  state.tvCut = { n: state.tvCut.n + 1, play: ms === 0 ? 'cut' : play, ms };
+}
+
+/** The transition of the next change of scene only (E-38); null: the new map's. */
+export function setNextTransition(kind: TransitionKind | null): void {
+  state.nextTransition = kind;
   emit();
 }
 
@@ -2483,6 +2531,8 @@ export interface MapSettings {
   ambient: Scene['ambient'];
   /** The map's sound everywhere (E-37); none: silent. */
   ambientSound: { sound: string; volume: number } | null;
+  /** How the TV changes to a scene on this map (E-38). */
+  transition: Transition;
 }
 
 export function openMapSettings(open = true): void {
@@ -2492,7 +2542,7 @@ export function openMapSettings(open = true): void {
 
 export function currentMapSettings(): MapSettings {
   const m = state.scene.map;
-  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient, ambientSound: m.ambientSound ? { ...m.ambientSound } : null };
+  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient, ambientSound: m.ambientSound ? { ...m.ambientSound } : null, transition: { ...(m.transition ?? DEFAULT_TRANSITION) } };
 }
 
 /** Applies the dialog as one undoable step; only in the Map Forge (the map's data). */
@@ -2508,6 +2558,10 @@ export function applyMapSettings(s: MapSettings): boolean {
   m.biome = s.biome;
   if (s.ambientSound) m.ambientSound = { ...s.ambientSound };
   else delete m.ambientSound;
+  // Written only when it is not the default, so maps keep no field they do not need.
+  const plain = s.transition.kind === DEFAULT_TRANSITION.kind && s.transition.seconds === DEFAULT_TRANSITION.seconds;
+  if (plain && !m.transition) delete m.transition;
+  else m.transition = { ...s.transition };
   state.scene.ambient = s.ambient;
   recomputeVision();
   markDirty();
@@ -2649,6 +2703,8 @@ export function toggleBlackout(): void {
   state.scene.table.blackout = !state.scene.table.blackout;
   // Lifting the blackout releases the TV after the start (E-30).
   if (!state.scene.table.blackout) state.blackUntilRelease = false;
+  // The TV fades out to black and in again (E-38).
+  cutTv(state.scene.table.blackout ? 'out' : 'in');
   emit();
 }
 
@@ -2688,6 +2744,7 @@ export function produceFrame(now: number): PlayerFrame {
     // Houses as switched in the scene (E-29); the TV never sees through a roof.
     assets: assetShapes(drawnPlacements(allPlacements(tv.scene), state.assetInfo, tv.scene.interiorsOn, false), state.assetInfo, tv.scene.map.grid, { effectsOn: tv.scene.effectsOn, runs: tv.runs }),
     covers: assetExtras(tv.scene).covers,
+    cut: state.tvCut,
   });
   return state.frame;
 }

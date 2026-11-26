@@ -110,6 +110,8 @@ const soundRef = z.string().min(1);
  * quieter towards the edge when `fade`. Plays only in the Orchestrator, never on the TV.
  */
 export const mapSoundSchema = z.object({ id, sound: soundRef, x: z.number(), y: z.number(), radiusFt: z.number().positive(), volume: z.number().min(0).max(1), fade: z.boolean().default(true), layer: layerRef });
+/** How the TV changes to a scene on this map (DC-105, E-38): fade, through black or a hard cut, and how long. */
+export const transitionSchema = z.object({ kind: z.enum(['fade', 'black', 'cut']), seconds: z.number().min(0).max(10) });
 /** A map's sound everywhere (E-37): wind, a snowstorm. */
 export const ambientSoundSchema = z.object({ sound: soundRef, volume: z.number().min(0).max(1) });
 /** A scene's own sound everywhere instead of the map's (E-37), or `"none"`: silent. Missing: the map's. */
@@ -135,7 +137,7 @@ export const mapLayerSchema = z.object({
 export type MapLayer = z.infer<typeof mapLayerSchema>;
 
 /** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 9;
+export const MAP_VERSION = 10;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
 export const SCENE_VERSION = 11;
 
@@ -184,6 +186,8 @@ export const MapSidecarSchema = z.object({
   sounds: z.array(mapSoundSchema).default([]),
   /** The map's sound everywhere (E-37); none: silent. */
   ambientSound: ambientSoundSchema.optional(),
+  /** How the TV changes to a scene on this map (E-38, version 10); none: a one-second fade. */
+  transition: transitionSchema.optional(),
   /** What is revealed when a new scene starts on this map (painted in the Map Forge, E-26). */
   startFog: levelFogSchema.optional(),
   /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */

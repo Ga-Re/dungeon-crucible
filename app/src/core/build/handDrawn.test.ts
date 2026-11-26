@@ -85,3 +85,24 @@ describe('floorField against the exact search', () => {
       }
   });
 });
+
+describe('floorField with a reach (natural ground far from walls)', () => {
+  const wall = (id: string, pts: [number, number][], closed = false): Masonry => ({ id, points: pts.map(([x, y]) => ({ x, y })), closed, style: 'brick', thickness: 10, seed: 1 });
+
+  it("is ground beyond the reach, the wall's floor within it", () => {
+    const f = floorField([wall('a', [[0, 0], [0, 1000]])], { x: 0, y: 0, w: 1000, h: 100 }, 100, 250);
+    expect(f.styles.slice(0, 10)).toEqual(['brick', 'brick', 'ground', 'ground', 'ground', 'ground', 'ground', 'ground', 'ground', 'ground']);
+  });
+
+  it('keeps the floor inside a closed ring, however far from its walls', () => {
+    const hall = wall('h', [[0, 0], [1000, 0], [1000, 1000], [0, 1000]], true);
+    const f = floorField([hall], { x: -500, y: 0, w: 2000, h: 1000 }, 100, 150);
+    const at = (x: number, y: number) => f.styles[Math.floor(y / 100) * f.cols + Math.floor((x + 500) / 100)];
+    expect(at(550, 550)).toBe('brick');
+    expect(at(-450, 550)).toBe('ground');
+  });
+
+  it('is all ground without walls', () => {
+    expect(new Set(floorField([], { x: 0, y: 0, w: 200, h: 200 }, 100, 150).styles)).toEqual(new Set(['ground']));
+  });
+});

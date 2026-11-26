@@ -31,8 +31,11 @@ describe('changedRegion', () => {
     const restyled = { ...base, masonry: [base.masonry[0], wall('b', 2660, 'wood')] };
     const r = changedRegion(base, restyled, 70);
     expect(r).not.toBe('all');
-    // The floor near b changes with it, up to where a is nearer.
-    if (r && r !== 'all') expect(r.x).toBeLessThan(2660 - 1000);
+    // The floor near b changes with it – as far as a wall's floor reaches (3 cells), beyond lies the ground (E-34).
+    if (r && r !== 'all') {
+      expect(r.x).toBeLessThanOrEqual(2660 - 3 * 70);
+      expect(r.x).toBeGreaterThan(140 + 3 * 70);
+    }
   });
 
   it('covers the wall a door was added to', () => {

@@ -108,11 +108,17 @@ export function paintCliffs(g: CanvasRenderingContext2D, cliffs: readonly WiredC
       const seed = c.seed * 31 + k;
       const foot = ragged(offsetPolyline(e.points, e.closed, -depth), e.closed, depth * RAGGED[c.kind], cell * 0.6, seed);
       const face = band(e.points, foot, e.closed);
-      // The shadow the face casts on the lower ground.
-      const shadowFoot = offsetPolyline(e.points, e.closed, -depth * 1.7);
+      // The shadow the face casts on the lower ground: two soft steps with a ragged edge.
       g.save();
-      g.fillStyle = c.kind === 'chasm' ? 'rgba(0,0,0,.85)' : 'rgba(0,0,0,.22)';
-      g.fill(band(e.points, shadowFoot, e.closed), 'evenodd');
+      if (c.kind === 'chasm') {
+        g.fillStyle = 'rgba(0,0,0,.85)';
+        g.fill(band(e.points, offsetPolyline(e.points, e.closed, -depth * 1.7), e.closed), 'evenodd');
+      } else
+        for (const [reach, alpha] of [[1.65, 0.08], [1.3, 0.1]] as const) {
+          const edge = ragged(offsetPolyline(e.points, e.closed, -depth * reach), e.closed, depth * 0.25, cell * 0.8, seed + 3);
+          g.fillStyle = `rgba(0,0,0,${alpha})`;
+          g.fill(band(e.points, edge, e.closed), 'evenodd');
+        }
       g.restore();
       // The face.
       g.save();

@@ -7,7 +7,16 @@
 import { noise2 } from '../../core/build/handDrawn';
 import type { MasonryStyle } from '../../core/build/masonry';
 
-export type SurfaceSlot = `wall-${MasonryStyle}` | `floor-${MasonryStyle}` | 'cliff-rock' | 'cliff-earth' | 'cliff-scree';
+export type SurfaceSlot = `wall-${MasonryStyle}` | `floor-${MasonryStyle}` | 'cliff-rock' | 'cliff-earth' | 'cliff-scree' | GroundSlot;
+/** Natural ground far from walls, after the biome (E-34). */
+export type GroundSlot = 'ground-grass' | 'ground-snow' | 'ground-sand' | 'ground-ash' | 'ground-swamp';
+
+const GROUND_OF: Record<string, GroundSlot> = { schnee: 'ground-snow', wueste: 'ground-sand', kueste: 'ground-sand', asche: 'ground-ash', sumpf: 'ground-swamp' };
+
+/** The natural ground of a fog biome; grass and earth for the others. */
+export function groundSlot(biome: string): GroundSlot {
+  return GROUND_OF[biome] ?? 'ground-grass';
+}
 export type PartSlot = 'part-cornerstone' | 'part-pillar' | 'part-door' | 'growth-grass' | 'growth-bush' | 'growth-moss';
 
 export interface BuildTextures {
@@ -24,7 +33,7 @@ const PART = 256;
 const STYLES: MasonryStyle[] = ['dungeon-stone', 'cave-rock', 'brick', 'wood'];
 const PARTS: PartSlot[] = ['part-cornerstone', 'part-pillar', 'part-door', 'growth-grass', 'growth-bush', 'growth-moss'];
 /** Cliff faces (E-34). */
-const CLIFF_SURFACES: SurfaceSlot[] = ['cliff-rock', 'cliff-earth', 'cliff-scree'];
+const CLIFF_SURFACES: SurfaceSlot[] = ['cliff-rock', 'cliff-earth', 'cliff-scree', 'ground-grass', 'ground-snow', 'ground-sand', 'ground-ash', 'ground-swamp'];
 
 const files = import.meta.glob('./textures/*.{webp,png}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
@@ -87,6 +96,11 @@ const BASE: Record<SurfaceSlot, [number, number, number]> = {
   'cliff-rock': [96, 96, 98],
   'cliff-earth': [110, 82, 58],
   'cliff-scree': [118, 114, 108],
+  'ground-grass': [96, 108, 64],
+  'ground-snow': [226, 232, 238],
+  'ground-sand': [206, 180, 128],
+  'ground-ash': [62, 60, 58],
+  'ground-swamp': [70, 76, 52],
 };
 
 /** Noise that repeats every `period` cells. */

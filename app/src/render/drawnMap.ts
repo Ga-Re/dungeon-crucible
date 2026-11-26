@@ -8,12 +8,12 @@
  * It is a `PaintedImage`: the renderer has each GPU tile painted on its own, so a drawn map of
  * any size never exists as one canvas. Everything is painted in map coordinates, so tiles meet.
  */
-import { floorField, jitterRing, type Jitter } from '../core/build/handDrawn';
-import { floorStep } from '../core/build/dirty';
+import { floorField, jitterRing, type FloorStyle, type Jitter } from '../core/build/handDrawn';
+import { FLOOR_REACH_CELLS, floorStep } from '../core/build/dirty';
 import { buildGraph, doorSpan, masonryOutline, pointAt, type BuildDoor, type Masonry, type MasonryStyle } from '../core/build/masonry';
 import type { DmDrawing, Drawing } from '../core/build/playerDrawing';
 import type { Decal, PaintedImage } from './pixi/renderer';
-import type { BuildTextures } from './build/textures';
+import { groundSlot, type BuildTextures } from './build/textures';
 import { paintCliffs } from './cliffsPaint';
 
 /** How each style's outline wavers, by its thickness. */
@@ -30,7 +30,7 @@ const WALL_CELLS = 1;
 
 const asMasonry = (w: Drawing['masonry'][number]): Masonry => ({ ...w, points: w.points.map((p) => ({ ...p })) });
 
-function styleSeed(style: MasonryStyle): number {
+function styleSeed(style: string): number {
   let h = 7;
   for (const ch of style) h = (h * 31 + ch.charCodeAt(0)) | 0;
   return h;
@@ -56,9 +56,9 @@ interface Geometry {
   styles: PreparedStyle[];
   field: ReturnType<typeof floorField> | null;
   /** Per floor style: where it is nearest, softened once at sample size (drawn smoothly scaled up). */
-  floorMasks: Map<MasonryStyle, HTMLCanvasElement>;
+  floorMasks: Map<FloorStyle, HTMLCanvasElement>;
   /** Where each floor style is, in map px (with its soft edge): tiles elsewhere skip it. */
-  floorBoxes: Map<MasonryStyle, { x: number; y: number; w: number; h: number }>;
+  floorBoxes: Map<FloorStyle, { x: number; y: number; w: number; h: number }>;
   step: number;
 }
 
@@ -142,8 +142,8 @@ function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: num
 
   // Floors after the nearest wall: a small mask per style, softened at its own size.
   const step = floorStep({ width, height }, cell);
-  const field = withGround ? floorField(walls, { x: ox, y: oy, w: width, h: height }, step) : null;
-  const floorMasks = new Map<MasonryStyle, HTMLCanvasElement>();
+  const field = withGround ? floorField(walls, { x: ox, y: oy, w: width, h: height }, step, FLOOR_REACH_CELLS * cell) : null;
+  const floorMasks = new Map<FloorStyle, HTMLCanvasElement>();
   if (field)
     for (const style of new Set(field.styles)) {
       const raw = document.createElement('canvas');
@@ -163,9 +163,9 @@ function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: num
       g.drawImage(raw, 0, 0);
       floorMasks.set(style, soft);
     }
-  const floorBoxes = new Map<MasonryStyle, { x: number; y: number; w: number; h: number }>();
+  const floorBoxes = new Map<FloorStyle, { x: number; y: number; w: number; h: number }>();
   if (field) {
-    const box = new Map<MasonryStyle, [number, number, number, number]>();
+    const box = new Map<FloorStyle, [number, number, number, number]>();
     field.styles.forEach((s, i) => {
       const c = i % field.cols;
       const r = Math.floor(i / field.cols);
@@ -188,12 +188,15 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
   const height = Math.max(1, Math.ceil(drawing.height));
   const { styles, field, floorMasks, floorBoxes } = geometryOf(drawing, withGround, cell, drawing.masonry.map(asMasonry));
 
+  // Natural ground after the biome far from walls (E-34); a wall's floor near it.
+  const floorSource = (style: FloorStyle) => (style === 'ground' ? tex.surface[groundSlot(drawing.biome)] : tex.surface[`floor-${style}`]);
+
   const paintFloors = (g: CanvasRenderingContext2D, left: number, top: number, w: number, h: number) => {
     if (!field) return;
     // The first style covers everything, so where soft edges overlap nothing shows through;
     // the others are blended over it – only where they are.
     const [base, ...others] = [...floorMasks.keys()];
-    g.fillStyle = surfacePattern(g, tex.surface[`floor-${base}`], cell, FLOOR_CELLS, styleSeed(base)) ?? '#77705f';
+    g.fillStyle = surfacePattern(g, floorSource(base), cell, FLOOR_CELLS, styleSeed(base)) ?? '#77705f';
     g.fillRect(left, top, w, h);
     let layer: CanvasRenderingContext2D | null = null;
     for (const style of others) {
@@ -213,7 +216,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       l.globalCompositeOperation = 'source-over';
       l.setTransform(1, 0, 0, 1, -left, -top);
       l.clearRect(x0, y0, x1 - x0, y1 - y0);
-      l.fillStyle = surfacePattern(l, tex.surface[`floor-${style}`], cell, FLOOR_CELLS, styleSeed(style)) ?? '#77705f';
+      l.fillStyle = surfacePattern(l, floorSource(style), cell, FLOOR_CELLS, styleSeed(style)) ?? '#77705f';
       l.fillRect(x0, y0, x1 - x0, y1 - y0);
       // Keep it only where this style is nearest; scaled up smoothly, its softened edge blends.
       l.globalCompositeOperation = 'destination-in';

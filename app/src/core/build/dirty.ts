@@ -11,6 +11,9 @@ import type { Drawing } from './playerDrawing';
 
 type AnyDrawing = Pick<Drawing, 'origin' | 'width' | 'height' | 'masonry' | 'doors'> & Partial<Pick<Drawing, 'cliffs' | 'biome'>>;
 
+/** Farther than this many cells from every wall (and outside closed rings) lies natural ground (E-34). */
+export const FLOOR_REACH_CELLS = 3;
+
 /** Size of the floor samples (map px): at most 250 000 of them over the map, at least half a cell. Shared with `drawnMap`. */
 export function floorStep(d: Pick<Drawing, 'width' | 'height'>, cell: number): number {
   return Math.max(cell / 2, Math.sqrt((d.width * d.height) / 250_000));
@@ -59,8 +62,8 @@ export function changedRegion(prev: AnyDrawing, next: AnyDrawing, cell: number, 
   // Floors: wherever the nearest wall's style is another now (softened over two samples).
   const step = floorStep(next, cell);
   const area = { x: next.origin.x, y: next.origin.y, w: next.width, h: next.height };
-  const f0 = floorField(prev.masonry as Masonry[], area, step);
-  const f1 = floorField(next.masonry as Masonry[], area, step);
+  const f0 = floorField(prev.masonry as Masonry[], area, step, FLOOR_REACH_CELLS * cell);
+  const f1 = floorField(next.masonry as Masonry[], area, step, FLOOR_REACH_CELLS * cell);
   f1.styles.forEach((s, i) => {
     if (s === f0.styles[i]) return;
     const c = i % f1.cols;

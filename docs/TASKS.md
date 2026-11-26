@@ -276,8 +276,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   die Dunkelheit der Licht-Ebene gab ihre Maskentextur nie frei (Speicherleck je Lichtänderung) – behoben.
   Bekannt und nicht von uns lösbar: mit lebendigem Nebel warnt PixiJS weiter, wenn sich die Canvas-Größe ändert
   (sein `TexturePool` verwirft Filter-Texturen, die sein globaler Batch-Cache noch kennt; auch in 8.23).
-- **DC-106 Benchmark-Anleitung aktualisieren**: `app/README.md` beschreibt für `npm run bench` noch `maps/` im
-  Kampagnenordner; seit dem Wurzelordner liegen Karten in `library/`.
+- ✓ **DC-106 Benchmark-Anleitung aktualisieren**: `app/README.md` beschreibt für `npm run bench` noch `maps/` im
+  Kampagnenordner; seit dem Wurzelordner liegen Karten in `library/`. Erledigt: Das Testvideo kommt nach
+  `<Wurzelordner>/library/bench-4k.mp4` (die App liefert Medien nur aus der Bibliothek aus; der Wurzelordner wird
+  beim Start aus den Geräteeinstellungen geladen); Schritte, Skript-Meldung (`bench/make-video.sh`) und die
+  Kommentare in `src/bench/main.ts` und `src/platform/asset-url.ts` nachgezogen; Hinweis, dass das Video im
+  Kartenkatalog auftaucht. Ein Benchmark mit großer **gezeichneter** Karte (statt Video) gibt es noch nicht.
 
 ### 3.2 Laufender Branch `feature/start-screen-map-forge`
 
@@ -470,7 +474,7 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Spiel getrennt, Gegenebene schaltet mit), automatischer Auslöser beim Betreten eines Bereichs durch einen SC
   (aus beim Verlassen, wenn eingestellt), Protokolleintrag. Elemente inaktiver Ebenen fehlen in Sicht, Licht und
   TV-Projektion, werden aber nicht als ausgeblendet gespeichert; Assets werden nach Ebenenhöhe gezeichnet.
-- **DC-119 Lebendige Karten** (E-36) – Varianz und Generator, Teilpakete:
+- ✓ **DC-119 Lebendige Karten** (E-36) – Varianz und Generator, Teilpakete:
   - ✓ **DC-119a Böden**: Böden und Naturgrund wiederholen statt einer Textur einen komponierten Bogen aus 16×16
     Zellen: Flecken aus Varianten und Drehungen (`core/build/variance.ts`, deterministisch je Seed), phasengleich,
     sodass das Muster eines Fleckens in einem Stück weiterläuft – Kachelböden wechseln an Zellgrenzen in großen

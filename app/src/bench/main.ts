@@ -19,7 +19,7 @@ const WARM_UP_MS = 5_000;
 const MEASURE_MS = Number(import.meta.env.VITE_BENCH_SECONDS ?? '30') * 1000;
 const REFRESH_SAMPLE_MS = 2_000;
 const STABLE_MS = 1_500;
-/** Absolute path of the 4K video map inside the open campaign folder (served through the dc-asset protocol). */
+/** Absolute path of the 4K video map inside the root folder's library (served through the dc-asset protocol). */
 const VIDEO_PATH: string = import.meta.env.VITE_BENCH_VIDEO ?? '';
 const QUALITY = (import.meta.env.VITE_BENCH_QUALITY ?? 'medium') as 'off' | 'medium' | 'high';
 const TARGET_BACKING = { width: 3840, height: 2160 };

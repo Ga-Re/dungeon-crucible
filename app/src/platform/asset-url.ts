@@ -1,6 +1,6 @@
 /**
- * URLs for files inside the open campaign folder. The Electron main process answers
- * `dc-asset://file/<path>` only for files inside that folder (with CORS and range support,
+ * URLs for files of the library in the root folder. The Electron main process answers
+ * `dc-asset://file/<path>` only for files inside `<root folder>/library/` (with CORS and range support,
  * so maps work as WebGL textures and videos can loop). No imports: the table bundle uses it.
  */
 export const ASSET_SCHEME = 'dc-asset';

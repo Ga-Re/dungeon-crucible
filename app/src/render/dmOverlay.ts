@@ -101,11 +101,14 @@ function drawDifficult(g: CanvasRenderingContext2D, d: NonNullable<OverlayState[
 
 export interface BuildOverlay {
   draft: readonly Point[];
+  /** The draft is a closed outline (a room being dragged, E-45). */
+  draftClosed?: boolean;
   /** How many of the draft's first points get handles (clicked ones, not those of a stroke being drawn). */
   handles?: number;
   next: Point | null;
   thickness: number;
-  selected: { points: readonly Point[]; closed: boolean; thickness: number; point: number | null; door: { a: Point; b: Point } | null } | null;
+  /** The selection; `handles` where they are not its points (a room's corners, centre and rim). */
+  selected: { points: readonly Point[]; closed: boolean; thickness: number; point: number | null; door: { a: Point; b: Point } | null; handles?: readonly Point[] } | null;
 }
 
 function polyline(g: CanvasRenderingContext2D, points: readonly Point[], closed: boolean): void {
@@ -123,7 +126,7 @@ function drawBuild(g: CanvasRenderingContext2D, b: BuildOverlay, px: number): vo
     const pts = b.next ? [...b.draft, b.next] : b.draft;
     g.strokeStyle = 'rgba(232,176,75,.45)';
     g.lineWidth = b.thickness;
-    polyline(g, pts, false);
+    polyline(g, pts, !!b.draftClosed);
     g.stroke();
     if (b.next) {
       g.strokeStyle = 'rgba(232,176,75,.9)';
@@ -142,7 +145,7 @@ function drawBuild(g: CanvasRenderingContext2D, b: BuildOverlay, px: number): vo
     g.lineWidth = s.thickness + 8 * px;
     polyline(g, s.points, s.closed);
     g.stroke();
-    s.points.forEach((q, i) => drawEnd(g, q.x, q.y, px, i === s.point));
+    (s.handles ?? s.points).forEach((q, i) => drawEnd(g, q.x, q.y, px, i === s.point));
     if (s.door) {
       g.strokeStyle = '#3f9de2';
       g.lineWidth = s.thickness + 10 * px;

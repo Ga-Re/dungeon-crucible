@@ -10,6 +10,7 @@ import { MASONRY_STYLES } from '../core/build/masonry';
 import { CLIFF_FORMS, CLIFF_KINDS, type CliffForm, type CliffKind } from '../core/build/cliffs';
 import { WATER_KINDS, type WaterKind } from '../core/build/water';
 import { FLOOR_STYLES, type FloorPaint } from '../core/build/floors';
+import { ROOM_KINDS, type RoomKind } from '../core/build/rooms';
 import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
@@ -29,7 +30,7 @@ export function BuildCommandPanel() {
       endBuildCommand(true);
     }
   };
-  const title = t(c.kind === 'wall' ? 'build.cmd.wall' : c.kind === 'cliff' ? 'build.cmd.cliff' : c.kind === 'water' ? 'build.cmd.water' : c.kind === 'floor' ? 'build.cmd.floor' : c.kind === 'generate' ? 'build.cmd.generate' : 'build.cmd.door');
+  const title = t(c.kind === 'wall' ? 'build.cmd.wall' : c.kind === 'cliff' ? 'build.cmd.cliff' : c.kind === 'water' ? 'build.cmd.water' : c.kind === 'floor' ? 'build.cmd.floor' : c.kind === 'generate' ? 'build.cmd.generate' : c.kind === 'room' ? 'build.cmd.room' : 'build.cmd.door');
   return (
     <form
       className="command-panel"
@@ -45,7 +46,40 @@ export function BuildCommandPanel() {
         <button type="button" className="ab-btn" title={t('build.done')} aria-label={t('build.done')} onClick={() => endBuildCommand(true)}><Icon name="close" /></button>
       </div>
       <div className="cmd-body">
-        {c.kind === 'floor' ? (
+        {c.kind === 'room' ? (
+          <>
+            <label className="cmd-field">
+              <span>{t('build.room.kind')}</span>
+              <select value={c.roomKind} onChange={(e) => updateBuildCommand({ roomKind: e.target.value as RoomKind })}>
+                {ROOM_KINDS.map((k) => <option key={k} value={k}>{t(`build.room.kind.${k}` as MessageKey)}</option>)}
+              </select>
+            </label>
+            {c.roomKind === 'corridor' && (
+              <label className="cmd-field">
+                <span>{t('build.room.width')}</span>
+                <input type="number" min={1} step={1} value={c.corridorWidthFt} onChange={(e) => Number(e.target.value) > 0 && updateBuildCommand({ corridorWidthFt: Number(e.target.value) })} />
+              </label>
+            )}
+            <RoomFields style={c.style} floor={c.roomFloor} onChange={(p) => updateBuildCommand({ ...(p.style ? { style: p.style } : {}), ...(p.floor !== undefined ? { roomFloor: p.floor } : {}) })} />
+            <label className="cmd-field">
+              <span>{t('build.thickness')}</span>
+              <input type="number" min={0.25} max={20} step={0.25} value={c.thicknessFt} onChange={(e) => Number(e.target.value) > 0 && updateBuildCommand({ thicknessFt: Number(e.target.value) })} />
+            </label>
+            <label className="cmd-field">
+              <span>{t('build.snap')}</span>
+              <select value={c.snap} onChange={(e) => updateBuildCommand({ snap: e.target.value as BuildSnap })}>
+                {SNAPS.map((s) => <option key={s} value={s}>{t(`build.snap.${s}` as MessageKey)}</option>)}
+              </select>
+            </label>
+            <p className="hint">{t('hint.buildRoom')}</p>
+            {(c.roomKind === 'corridor' || c.roomKind === 'polygon') && (
+              <div className="cmd-line">
+                <span className="hint" role="status">{t('build.points', { n: c.points.length })}</span>
+                <button type="button" className="btn sm" disabled={c.points.length === 0} onClick={undoBuildPoint}><Icon name="undo" />{t('build.undoPoint')}</button>
+              </div>
+            )}
+          </>
+        ) : c.kind === 'floor' ? (
           <>
             <label className="cmd-field">
               <span>{t('build.floor')}</span>
@@ -226,6 +260,28 @@ export function WaterFields({ kind, widthFt, onChange }: { kind: WaterKind; widt
           <input type="number" min={1} step={1} value={widthFt} onChange={(e) => Number(e.target.value) > 0 && onChange({ widthFt: Number(e.target.value) })} />
         </label>
       )}
+    </>
+  );
+}
+
+/** A room's wall style and floor (E-45), in the command panel and in the Properties panel. */
+export function RoomFields({ style, floor, onChange }: { style: (typeof MASONRY_STYLES)[number]; floor: FloorPaint | ''; onChange: (patch: { style?: (typeof MASONRY_STYLES)[number]; floor?: FloorPaint | '' }) => void }) {
+  const { t } = useI18n();
+  return (
+    <>
+      <label className="cmd-field">
+        <span>{t('build.style')}</span>
+        <select value={style} onChange={(e) => onChange({ style: e.target.value as (typeof MASONRY_STYLES)[number] })}>
+          {MASONRY_STYLES.map((s) => <option key={s} value={s}>{t(`build.style.${s}` as MessageKey)}</option>)}
+        </select>
+      </label>
+      <label className="cmd-field">
+        <span>{t('build.room.floor')}</span>
+        <select value={floor} onChange={(e) => onChange({ floor: e.target.value as FloorPaint | '' })}>
+          <option value="">{t('build.room.noFloor')}</option>
+          {FLOOR_STYLES.map((f) => <option key={f} value={f}>{t(`build.floor.${f}` as MessageKey)}</option>)}
+        </select>
+      </label>
     </>
   );
 }

@@ -61,7 +61,7 @@ export type ToolId =
   | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
   | 'cone' | 'sphere' | 'line' | 'cube' | 'light'
   /** The Map Forge's "Build" tab (E-33): edit, draw walls, place doors. */
-  | 'build-edit' | 'build-wall' | 'build-door' | 'build-cliff' | 'build-water' | 'build-floor' | 'build-generate' | 'stair';
+  | 'build-edit' | 'build-wall' | 'build-door' | 'build-cliff' | 'build-water' | 'build-floor' | 'build-generate' | 'build-room' | 'stair';
 
 export interface LogEntry {
   at: number;
@@ -432,7 +432,7 @@ function restore(snap: string): void {
   state.selectedWallIds = state.selectedWallIds.filter((id) => walls.has(id));
   // Likewise a drawn wall or door (E-33).
   const b = state.buildSelection;
-  if (b && !(b.door ? [...state.scene.map.masonryDoors, ...state.scene.own.masonryDoors].some((d) => d.id === b.door) : (b.onMap || state.layer === 'map' ? state.scene.map : state.scene.own)[b.kind === 'wall' ? 'masonry' : b.kind === 'cliff' ? 'cliffs' : 'waters'].some((w) => w.id === b.wall))) state.buildSelection = null;
+  if (b && !(b.kind === 'room' ? state.scene.map.rooms?.some((r) => r.id === b.wall) : b.door ? [...state.scene.map.masonryDoors, ...state.scene.own.masonryDoors].some((d) => d.id === b.door) : (b.onMap || state.layer === 'map' ? state.scene.map : state.scene.own)[b.kind === 'wall' ? 'masonry' : b.kind === 'cliff' ? 'cliffs' : 'waters'].some((w) => w.id === b.wall))) state.buildSelection = null;
   if (state.selectedAssetId && !editableAssets().some((a) => a.id === state.selectedAssetId)) state.selectedAssetId = null;
   // Stairs (E-44): a selection or a question that this step took away goes too.
   if (state.selectedStairId && !state.scene.map.stairs?.some((s) => s.id === state.selectedStairId)) state.selectedStairId = null;
@@ -477,7 +477,7 @@ export function clearHistory(): void {
 export function freshId(prefix: string): string {
   const sc = state.scene;
   const drawn = [sc.map, sc.own].flatMap((d) => [...d.masonry, ...d.masonryDoors, ...d.cliffs, ...d.waters, ...d.floors]);
-  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.sounds, ...sc.hidden.sounds, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.ownAssets, ...sc.hidden.assets, ...drawn].map((x) => x.id));
+  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.sounds, ...sc.hidden.sounds, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.ownAssets, ...sc.hidden.assets, ...drawn, ...(sc.map.rooms ?? [])].map((x) => x.id));
   return newId(slugId(prefix, 'el').slice(0, 40), (id) => taken.has(id));
 }
 
@@ -1018,7 +1018,7 @@ export function setTool(tool: ToolId): void {
   // One command at a time: another tool ends "create area" and "draw walls".
   if (tool !== 'area') state.areaCommand = null;
   if (tool !== 'wall') state.wallCommand = null;
-  if (!['build-wall', 'build-door', 'build-cliff', 'build-water', 'build-floor', 'build-generate'].includes(tool)) {
+  if (!['build-wall', 'build-door', 'build-cliff', 'build-water', 'build-floor', 'build-generate', 'build-room'].includes(tool)) {
     // A generator preview on the map goes back before the command is dropped (DC-119d).
     if (state.buildCommand?.kind === 'generate') buildHooks.cancelPreview?.();
     state.buildCommand = null;
@@ -1162,7 +1162,8 @@ function stairAskStands(a: { tokenId: string; to: string }): boolean {
 }
 
 export function toggleDoor(id: string): void {
-  const drawn = toggledMasonryDoor([...state.scene.map.masonryDoors, ...state.scene.own.masonryDoors], state.scene.masonryDoorsOpen, id);
+  // Doors on drawn walls and between rooms (E-45), as the scene shows them.
+  const drawn = toggledMasonryDoor(sceneMap(state.scene).masonryDoors, state.scene.masonryDoorsOpen, id);
   if (drawn) {
     // A door on a drawn wall (E-33): scene state.
     checkpoint();
@@ -1585,6 +1586,8 @@ export function deleteLayer(id: string): void {
   sc.map.layers = sc.map.layers.filter((l) => l.id !== id);
   for (const l of sc.map.layers) if (l.counter === id) delete l.counter;
   for (const el of [...sc.walls, ...sc.zones, ...sc.lights, ...sc.sounds, ...sc.map.assets]) if (el.layer === id) delete el.layer;
+  // Rooms are replaced, never changed in place: the drawing derived from them is cached by their list (E-45).
+  if (sc.map.rooms?.some((r) => r.layer === id)) sc.map.rooms = sc.map.rooms.map(({ layer, ...r }) => (layer === id ? r : { ...r, ...(layer ? { layer } : {}) }));
   if (state.currentLayer === id) state.currentLayer = BASE_LAYER;
   recomputeVision();
   emit();
@@ -2270,7 +2273,7 @@ export function discoverZone(id: string): void {
   for (const w of masonryDoors(state.scene)) {
     if (w.kind !== 'secret-door' || w.open) continue;
     const touches = [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }].some((p) => distanceToArea(z.shape, p) <= 1);
-    if (touches) state.scene.masonryDoorsOpen = toggledMasonryDoor([...state.scene.map.masonryDoors, ...state.scene.own.masonryDoors], state.scene.masonryDoorsOpen, w.id) ?? state.scene.masonryDoorsOpen;
+    if (touches) state.scene.masonryDoorsOpen = toggledMasonryDoor(sceneMap(state.scene).masonryDoors, state.scene.masonryDoorsOpen, w.id) ?? state.scene.masonryDoorsOpen;
   }
   recomputeVision();
   for (const part of z.shape) state.scene.fog = revealIn(state.scene.fog, part, [], true);
@@ -2576,6 +2579,7 @@ export function deleteStorey(id: string): void {
     masonry, masonryDoors: doc.masonryDoors.filter((d) => walls.has(d.wall)), cliffs: keep(doc.cliffs), waters: keep(doc.waters), floors: keep(doc.floors),
     // Stairs to or from it lead nowhere now (E-44).
     stairs: doc.stairs.filter((x) => x.from !== id && x.to !== id),
+    rooms: keep(doc.rooms),
   };
   state.storey = '';
   refreshView();

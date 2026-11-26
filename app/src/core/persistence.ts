@@ -227,6 +227,8 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     variants: (fromView ? (m.variants ?? []) : previous.variants).map((v) => ({ ...v })),
     // Stairs are edited in the Map Forge only (E-44).
     stairs: (fromView ? (m.stairs ?? []) : previous.stairs).map((x) => ({ ...x })),
+    // Rooms too (E-45).
+    rooms: (fromView ? (m.rooms ?? []) : previous.rooms).map((x) => structuredClone(x)),
     // Storeys too; in the Map Forge each keeps the start fog painted on it (E-40).
     storeys: (fromView ? (m.storeys ?? []) : previous.storeys).map((st) => {
       const painted = fromView && layer === 'map' ? viewFog(st.id) : undefined;
@@ -275,7 +277,8 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
   // Every drawn door's state is kept – also of doors on other storeys, put aside in the view (E-40).
   const offDrawn = scene.map.offStorey;
   const drawnDoors = new Set([...scene.map.masonryDoors, ...scene.own.masonryDoors, ...(offDrawn?.masonryDoors ?? []), ...(offDrawn?.own.masonryDoors ?? [])].map((d) => d.id));
-  const masonryDoors = Object.fromEntries(Object.entries(scene.masonryDoorsOpen).filter(([k]) => drawnDoors.has(k.replace(/:found$/, ''))));
+  // Doors between rooms are derived (E-45): their state is kept while their room is there.
+  const masonryDoors = Object.fromEntries(Object.entries(scene.masonryDoorsOpen).filter(([k]) => drawnDoors.has(k.replace(/:found$/, '')) || ofRoom(k, scene.map.rooms)));
   return {
     kind: 'scene',
     schemaVersion: SCENE_VERSION,
@@ -425,7 +428,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   // And doors on drawn walls by their id, found secret ones by `<id>:found` (E-33).
   // The states of all drawn doors, on every storey (E-40).
   const drawnDoors = new Set([...map.masonryDoors, ...(drawingAll?.masonryDoors ?? [])].map((d) => d.id));
-  const masonryDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => drawnDoors.has(id.replace(/:found$/, ''))));
+  const masonryDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => drawnDoors.has(id.replace(/:found$/, '')) || ofRoom(id, map.rooms)));
   return {
     map: {
       id: slugify(map.name),
@@ -446,6 +449,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       ...mapDrawn.here,
       ...(map.storeys.length ? { storeys: structuredClone(map.storeys) } : {}),
       ...(map.stairs.length ? { stairs: map.stairs.map((x) => ({ ...x })) } : {}),
+      ...(map.rooms.length ? { rooms: structuredClone(map.rooms) } : {}),
       ...(here ? { storey: here } : {}),
       offStorey: { ...mapDrawn.off, own: ownDrawn?.off ?? { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [] } },
       waterAnimated: map.waterAnimated,
@@ -603,4 +607,10 @@ export function manifestFromState(name: string, activeScene: string | null, tabl
 /** Every placed asset of a view – the map's (shown) and the scene's own (DC-110) – in drawing order by layer height (E-28). */
 export function allPlacements(scene: Pick<Scene, 'map' | 'ownAssets'>): MapAssetPlacement[] {
   return drawOrder([...scene.map.assets, ...scene.ownAssets], scene.map.layers);
+}
+
+/** Whether a door state belongs to a door between rooms (E-45) whose first room is still there. */
+function ofRoom(key: string, rooms: readonly { id: string }[] | undefined): boolean {
+  const [head, id] = key.split('~');
+  return head === 'room' && !!rooms?.some((r) => r.id === id);
 }

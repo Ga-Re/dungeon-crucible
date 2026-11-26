@@ -16,9 +16,10 @@ import { isInside } from '../core/poly/fog';
 import type { Point } from '../core/geometry';
 import { buildHooks, checkpoint, editableInForge, emit, freshId, log, markDirty, recomputeVision, state } from './store';
 import type { OwnDrawing } from '../core/build/sceneDrawing';
+import { deriveRoomsByLayer, insertRoomPoint, movedRoom, movedRoomHandle, roomHandles, roomPolygon, withoutRoomPoint, type Room, type RoomKind } from '../core/build/rooms';
 
 export interface BuildCommand {
-  kind: 'wall' | 'door' | 'cliff' | 'water' | 'floor' | 'generate';
+  kind: 'wall' | 'door' | 'cliff' | 'water' | 'floor' | 'generate' | 'room';
   style: MasonryStyle;
   /** Wall thickness in feet. */
   thicknessFt: number;
@@ -48,6 +49,10 @@ export interface BuildCommand {
   genStyle: GenStyle;
   genDensity: number;
   genSeed: number;
+  /** Parametric rooms (E-45): which shape, its floor (none: the ground stays), a corridor's width in feet. */
+  roomKind: RoomKind;
+  roomFloor: FloorPaint | '';
+  corridorWidthFt: number;
   /** The dragged region (map px); none yet: drag one first. */
   region: { x: number; y: number; w: number; h: number } | null;
   /** The line being drawn: its points so far. */
@@ -55,8 +60,8 @@ export interface BuildCommand {
 }
 
 export interface BuildSelection {
-  /** A drawn wall, a cliff or water. */
-  kind: 'wall' | 'cliff' | 'water';
+  /** A drawn wall, a cliff, water or a parametric room (E-45). */
+  kind: 'wall' | 'cliff' | 'water' | 'room';
   /** Its id. */
   wall: string;
   /** A point of it, if one was picked. */
@@ -73,7 +78,7 @@ type Options = Omit<BuildCommand, 'kind' | 'points' | 'region' | 'genSeed'>;
 const MARGIN_CELLS = 2;
 
 /** Options kept between commands, per window. */
-let last: Options = { style: 'dungeon-stone', thicknessFt: 1, snap: 'grid', secret: false, window: false, fortified: false, cliffKind: 'rock', form: 'edge', steep: true, widthFt: 10, steps: 3, inside: 'low', growth: true, waterKind: 'river', riverWidthFt: 10, floorStyle: 'carpet', brushCells: 2, genStyle: 'dungeon', genDensity: 0.6 };
+let last: Options = { style: 'dungeon-stone', thicknessFt: 1, snap: 'grid', secret: false, window: false, fortified: false, cliffKind: 'rock', form: 'edge', steep: true, widthFt: 10, steps: 3, inside: 'low', growth: true, waterKind: 'river', riverWidthFt: 10, floorStyle: 'carpet', brushCells: 2, genStyle: 'dungeon', genDensity: 0.6, roomKind: 'rect', roomFloor: 'dungeon-stone', corridorWidthFt: 10 };
 
 const pxPerFt = () => state.scene.map.grid.cellWidth / state.scene.map.grid.feetPerCell;
 const newSeed = () => Math.floor(Math.random() * 1_000_000);
@@ -93,13 +98,15 @@ export function editableWaters(): Water[] {
 
 /** Starts drawing walls or cliffs, or placing doors (one command at a time). */
 export function startBuildCommand(kind: BuildCommand['kind']): void {
+  // Rooms belong to the map (E-45): a scene draws walls of its own instead.
+  if (kind === 'room' && state.layer !== 'map') return;
   // A stale snapshot from an interrupted preview must never restore over another map.
   if (kind === 'generate') genBefore = null;
   state.buildCommand = { kind, ...last, genSeed: newSeed(), region: null, points: [] };
   state.wallCommand = null;
   state.areaCommand = null;
   state.placing = null;
-  state.tool = kind === 'wall' ? 'build-wall' : kind === 'cliff' ? 'build-cliff' : kind === 'water' ? 'build-water' : kind === 'floor' ? 'build-floor' : kind === 'generate' ? 'build-generate' : 'build-door';
+  state.tool = kind === 'wall' ? 'build-wall' : kind === 'cliff' ? 'build-cliff' : kind === 'water' ? 'build-water' : kind === 'floor' ? 'build-floor' : kind === 'generate' ? 'build-generate' : kind === 'room' ? 'build-room' : 'build-door';
   emit();
 }
 
@@ -306,8 +313,16 @@ export function undoBuildPoint(): void {
  */
 export function finishBuildWall(closed = false): void {
   const c = state.buildCommand;
-  if (!c || c.points.length < 2) {
+  // A room drawn by its points: a polygon needs three of them, a corridor two.
+  const tooFew = c?.kind === 'room' && c.roomKind === 'polygon' ? 3 : 2;
+  if (!c || c.points.length < tooFew || (c.kind === 'room' && (c.roomKind === 'rect' || c.roomKind === 'circle'))) {
     if (c) state.buildCommand = { ...c, points: [] };
+    emit();
+    return;
+  }
+  if (c.kind === 'room') {
+    addRoom(c.roomKind, c.points.map((q) => ({ x: q.x, y: q.y })));
+    state.buildCommand = { ...c, points: [] };
     emit();
     return;
   }
@@ -391,7 +406,8 @@ export function placeBuildDoor(p: Point, free: boolean, tolPx: number): boolean 
  */
 export function buildHit(p: Point, tolPx: number): BuildSelection | null {
   const own = hitIn(editableMasonry(), target().masonryDoors, editableCliffs(), editableWaters(), p, tolPx);
-  if (own || state.layer === 'map') return own;
+  if (own) return own;
+  if (state.layer === 'map') return roomHit(p, tolPx);
   const off = new Set(state.scene.drawnHidden);
   const m = state.scene.map;
   const mapHit = hitIn(m.masonry.filter((w) => !off.has(w.id)), m.masonryDoors.filter((d) => !off.has(d.id)), m.cliffs.filter((c) => !off.has(c.id)), m.waters.filter((w) => !off.has(w.id)), p, tolPx);
@@ -433,11 +449,11 @@ export function selectBuild(sel: BuildSelection | null): void {
 }
 
 /** The lines of a kind and the edit applied to them (doors only go with walls). */
-function lines(kind: BuildSelection['kind']): Line[] {
+function lines(kind: Exclude<BuildSelection['kind'], 'room'>): Line[] {
   return kind === 'wall' ? target().masonry : kind === 'cliff' ? target().cliffs : target().waters;
 }
 
-function applyTo(kind: BuildSelection['kind'], edit: Edit<Line>, final = true): void {
+function applyTo(kind: Exclude<BuildSelection['kind'], 'room'>, edit: Edit<Line>, final = true): void {
   // The lists not edited stay as they are – the map's in the Map Forge, the scene's own in a scene.
   const m = target();
   if (kind === 'wall') apply({ masonry: edit.masonry as Masonry[], doors: edit.doors }, m.cliffs, final);
@@ -445,10 +461,10 @@ function applyTo(kind: BuildSelection['kind'], edit: Edit<Line>, final = true): 
   else apply({ masonry: m.masonry, doors: m.masonryDoors }, m.cliffs, final, edit.masonry as Water[]);
 }
 
-const doorsOf = (kind: BuildSelection['kind']) => (kind === 'wall' ? target().masonryDoors : []);
+const doorsOf = (kind: Exclude<BuildSelection['kind'], 'room'>) => (kind === 'wall' ? target().masonryDoors : []);
 
 /** A click on the line of the selected wall or cliff: a new point there (one step), returned for dragging. */
-export function insertBuildPoint(sel: Pick<BuildSelection, 'kind' | 'wall'>, p: Point): number {
+export function insertBuildPoint(sel: { kind: Exclude<BuildSelection['kind'], 'room'>; wall: string }, p: Point): number {
   checkpoint();
   const out = insertPoint(lines(sel.kind), sel.wall, p);
   applyTo(sel.kind, { masonry: out.masonry, doors: doorsOf(sel.kind) });
@@ -462,6 +478,12 @@ export function insertBuildPoint(sel: Pick<BuildSelection, 'kind' | 'wall'>, p: 
  * dropped on (or to its own other end: the ring closes). The caller sets the checkpoint.
  */
 export function moveBuildPoint(sel: Pick<BuildSelection, 'kind' | 'wall'>, index: number, to: Point, done: boolean, tolPx: number): void {
+  if (sel.kind === 'room') {
+    const r = editableRooms().find((x) => x.id === sel.wall);
+    if (r) setRooms(rooms().map((x) => (x.id === r.id ? movedRoomHandle(r, index, to) : x)), done);
+    emit();
+    return;
+  }
   let edit = movePoint(lines(sel.kind), doorsOf(sel.kind), sel.wall, index, to);
   if (done) {
     const w = edit.masonry.find((x) => x.id === sel.wall);
@@ -515,6 +537,15 @@ export function deleteBuildSelection(): boolean {
     emit();
     return true;
   }
+  if (sel.kind === 'room') {
+    // A point of a polygon or corridor while it keeps its shape; else the whole room.
+    const r = rooms().find((x) => x.id === sel.wall);
+    const less = r && sel.point !== null ? withoutRoomPoint(r, sel.point) : null;
+    setRooms(less ? rooms().map((x) => (x.id === less.id ? less : x)) : rooms().filter((x) => x.id !== sel.wall));
+    state.buildSelection = less ? { ...sel, point: null } : null;
+    emit();
+    return true;
+  }
   const all = lines(sel.kind);
   const doors = doorsOf(sel.kind);
   if (sel.door) apply({ masonry: target().masonry, doors: doors.filter((d) => d.id !== sel.door) });
@@ -528,7 +559,7 @@ export function deleteBuildSelection(): boolean {
 /** "Split here": the selected wall or cliff at its selected point (one step). */
 export function splitBuildWall(): void {
   const sel = state.buildSelection;
-  if (!sel || sel.point === null) return;
+  if (!sel || sel.point === null || sel.kind === 'room') return;
   // A lake or the sea stays a ring: it cannot be split open (and leaves no empty undo step).
   if (sel.kind === 'water' && lines('water').find((w) => w.id === sel.wall)?.closed) return;
   checkpoint();
@@ -658,7 +689,8 @@ function apply(edit: Edit, cliffs: Cliff[] = target().cliffs, final = true, wate
   const m = state.scene.map;
   if (m.drawn && t === m) {
     const floorEdges = m.floors.map((f) => ({ points: f.shape.flatMap((p) => p.outer.map(([x, y]) => ({ x, y }))), width: 1 }));
-    const b = drawnBounds(m.masonry, m.grid.cellWidth, MARGIN_CELLS, [...m.cliffs, ...m.waters, ...floorEdges]);
+    const roomEdges = (m.rooms ?? []).map((r) => ({ points: roomPolygon(r).map(([x, y]) => ({ x, y })), width: r.thickness }));
+    const b = drawnBounds(m.masonry, m.grid.cellWidth, MARGIN_CELLS, [...m.cliffs, ...m.waters, ...floorEdges, ...roomEdges]);
     m.origin = { x: b.x, y: b.y };
     m.widthPx = b.w;
     m.heightPx = b.h;
@@ -681,4 +713,161 @@ function onCurrentLayer(): { layer?: string; storey?: string } {
   if (state.layer !== 'map') return storey;
   const layer = state.currentLayer;
   return { ...(layer && state.scene.map.layers.some((l) => l.id === layer) ? { layer } : {}), ...storey };
+}
+
+/* ---------- Parametric rooms (DC-026, E-45) ---------- */
+
+const rooms = (): Room[] => state.scene.map.rooms ?? [];
+
+/** The rooms of the storey worked on that can be edited (Map Forge only; layers neither hidden nor locked). */
+export function editableRooms(): Room[] {
+  if (state.layer !== 'map') return [];
+  const here = state.scene.map.storey ?? '';
+  return rooms().filter((r) => (r.storey ?? '') === here && editableInForge(r));
+}
+
+/** The map's rooms replaced (always a new list: the drawing derived from them is cached by it). */
+function setRooms(next: Room[], final = true): void {
+  state.scene.map.rooms = next;
+  const m = state.scene.map;
+  apply({ masonry: m.masonry, doors: m.masonryDoors }, m.cliffs, final);
+}
+
+/** A new room of the command's settings (one step), selected. */
+function addRoom(kind: RoomKind, points: Point[]): void {
+  const c = state.buildCommand;
+  if (!c || state.layer !== 'map') return;
+  checkpoint();
+  const room: Room = {
+    id: freshId('room'),
+    kind,
+    points,
+    ...(kind === 'corridor' ? { width: Math.max(1, c.corridorWidthFt * pxPerFt()) } : {}),
+    style: c.style,
+    thickness: Math.max(1, c.thicknessFt * pxPerFt()),
+    ...(c.roomFloor ? { floor: c.roomFloor } : {}),
+    seed: newSeed(),
+    ...onCurrentLayer(),
+  };
+  setRooms([...rooms(), room]);
+  state.buildSelection = { kind: 'room', wall: room.id, point: null, door: null };
+  log('log.roomAdded');
+}
+
+/** A rectangle or round room dragged from `a` to `b` (snapped like points; a mere click adds none). */
+export function addRoomDrag(a: Point, b: Point, free: boolean, tolPx: number): boolean {
+  const c = state.buildCommand;
+  if (!c || c.kind !== 'room' || (c.roomKind !== 'rect' && c.roomKind !== 'circle')) return false;
+  const p = buildTarget(a, free, tolPx);
+  const q = buildTarget(b, free, tolPx);
+  const half = state.scene.map.grid.cellWidth / 2;
+  if (c.roomKind === 'rect' ? Math.abs(q.x - p.x) < half || Math.abs(q.y - p.y) < half : Math.hypot(q.x - p.x, q.y - p.y) < half) return false;
+  addRoom(c.roomKind, [p, q]);
+  emit();
+  return true;
+}
+
+/** The outline a rectangle or round room dragged from `a` to `b` would get (for the preview). */
+export function roomDraft(a: Point, b: Point, free: boolean, tolPx: number): Point[] {
+  const c = state.buildCommand;
+  if (!c || c.kind !== 'room') return [];
+  const kind = c.roomKind === 'circle' ? 'circle' : 'rect';
+  const ring = roomPolygon({ id: '', kind, points: [buildTarget(a, free, tolPx), buildTarget(b, free, tolPx)], style: c.style, thickness: 1, seed: 0 });
+  return ring.map(([x, y]) => ({ x, y }));
+}
+
+/** A room at `p`: one of its handles (selected rooms first), else its wall or its inside. */
+function roomHit(p: Point, tolPx: number): BuildSelection | null {
+  const list = editableRooms();
+  const sel = state.buildSelection?.kind === 'room' ? state.buildSelection.wall : null;
+  const order = [...list.filter((r) => r.id === sel), ...[...list].reverse().filter((r) => r.id !== sel)];
+  for (const r of order) {
+    const i = roomHandles(r).findIndex((h) => Math.hypot(h.x - p.x, h.y - p.y) <= tolPx);
+    if (i >= 0) return { kind: 'room', wall: r.id, point: i, door: null };
+  }
+  for (const r of order) {
+    const ring = roomPolygon(r);
+    const near = ring.some((a, i) => {
+      const b = ring[(i + 1) % ring.length];
+      return segDist(p, a, b) <= r.thickness / 2 + tolPx;
+    });
+    if (near || isInside([{ outer: ring, holes: [] }], [p.x, p.y])) return { kind: 'room', wall: r.id, point: null, door: null };
+  }
+  return null;
+}
+
+function segDist(p: Point, a: [number, number], b: [number, number]): number {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const l = dx * dx + dy * dy;
+  const t = l ? Math.max(0, Math.min(1, ((p.x - a[0]) * dx + (p.y - a[1]) * dy) / l)) : 0;
+  return Math.hypot(p.x - (a[0] + dx * t), p.y - (a[1] + dy * t));
+}
+
+/** The handles shown on the selected room and its outline. */
+export function roomShape(id: string): { handles: Point[]; outline: Point[]; thickness: number } | null {
+  const r = rooms().find((x) => x.id === id);
+  return r ? { handles: roomHandles(r), outline: roomPolygon(r).map(([x, y]) => ({ x, y })), thickness: r.thickness } : null;
+}
+
+/** A press on the selected polygon's outline or corridor's path: a new point there (one step), for dragging. */
+export function insertRoomPointAt(id: string, p: Point, tolPx: number): number | null {
+  const r = editableRooms().find((x) => x.id === id);
+  const out = r ? insertRoomPoint(r, p, tolPx) : null;
+  if (!out) return null;
+  checkpoint();
+  setRooms(rooms().map((x) => (x.id === id ? out.room : x)));
+  state.buildSelection = { kind: 'room', wall: id, point: out.index, door: null };
+  emit();
+  return out.index;
+}
+
+/**
+ * Moves a room live while dragging: `start` as it was, moved by how far its first handle goes
+ * (snapped like points). The caller sets the checkpoint.
+ */
+export function moveRoomTo(start: Room, by: Point, free: boolean, done: boolean, tolPx: number): void {
+  const h = roomHandles(start)[0];
+  const to = buildTarget({ x: h.x + by.x, y: h.y + by.y }, free, tolPx);
+  setRooms(rooms().map((x) => (x.id === start.id ? movedRoom(start, to.x - h.x, to.y - h.y) : x)), done);
+  emit();
+}
+
+/** Changes a room (one step): its walls, floor or a corridor's width. */
+export function updateRoom(id: string, patch: Partial<Pick<Room, 'style' | 'thickness' | 'floor' | 'width' | 'seed'>>): void {
+  if (!rooms().some((x) => x.id === id)) return;
+  checkpoint();
+  setRooms(rooms().map((x) => {
+    if (x.id !== id) return x;
+    const next = { ...x, ...patch };
+    if ('floor' in patch && !patch.floor) delete next.floor;
+    return next;
+  }));
+  emit();
+}
+
+export function rerollRoom(id: string): void {
+  updateRoom(id, { seed: newSeed() });
+}
+
+/**
+ * "Turn into walls": the rooms of the storey worked on become the walls, doors and floors they
+ * show, drawn by hand from then on (one step).
+ */
+export function roomsToWalls(): void {
+  const here = state.scene.map.storey ?? '';
+  const mine = rooms().filter((r) => (r.storey ?? '') === here);
+  if (state.layer !== 'map' || !mine.length) return;
+  checkpoint();
+  const m = state.scene.map;
+  const d = deriveRoomsByLayer(mine, m, m.grid.cellWidth);
+  // Derived ids (rooms' walls, pieces of cut walls) are names, not ids: fresh ones, the doors following their walls.
+  const ids = new Map(d.masonry.filter((w) => w.id.includes('~')).map((w) => [w.id, freshId('masonry')]));
+  const masonry = d.masonry.map((w) => (ids.has(w.id) ? { ...w, id: ids.get(w.id)! } : w));
+  const doors = d.masonryDoors.map((x) => ({ ...x, ...(x.id.includes('~') ? { id: freshId('door') } : {}), wall: ids.get(x.wall) ?? x.wall }));
+  const floors = [...d.floors.map((f) => ({ ...f, id: freshId('floor') })), ...m.floors];
+  m.rooms = rooms().filter((r) => (r.storey ?? '') !== here);
+  apply({ masonry, doors }, m.cliffs, true, m.waters, floors);
+  state.buildSelection = null;
+  log('log.roomsToWalls', { n: mine.length });
+  emit();
 }

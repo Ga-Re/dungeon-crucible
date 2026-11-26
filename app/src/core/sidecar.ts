@@ -10,6 +10,7 @@ import { MASONRY_STYLES } from './build/masonry';
 import { CLIFF_FORMS, CLIFF_KINDS } from './build/cliffs';
 import { WATER_KINDS } from './build/water';
 import { FLOOR_STYLES } from './build/floors';
+import { ROOM_KINDS } from './build/rooms';
 
 export const SIDECAR_SUFFIX = '.dm.json';
 export const SCENE_SUFFIX = '.scene.json';
@@ -164,6 +165,23 @@ export const stairSchema = z.object({
 });
 export type Stair = z.infer<typeof stairSchema>;
 
+/**
+ * A parametric room (DC-026, E-45): its shape stays editable; walls, doors between touching rooms
+ * and its floor are derived from it (`core/build/rooms.ts`).
+ */
+export const roomSchema = z.object({
+  id,
+  kind: z.enum(ROOM_KINDS),
+  points: z.array(z.object({ x: z.number(), y: z.number() })).min(2),
+  width: z.number().positive().optional(),
+  style: z.enum(MASONRY_STYLES),
+  thickness: z.number().positive(),
+  floor: z.enum(FLOOR_STYLES).optional(),
+  seed: z.number().int(),
+  layer: layerRef,
+  storey: storeyRef,
+});
+
 /** How the TV changes to a scene on this map (DC-105, E-38): fade, through black or a hard cut, and how long. */
 export const transitionSchema = z.object({ kind: z.enum(['fade', 'black', 'cut']), seconds: z.number().min(0).max(10) });
 /** A map's sound everywhere (E-37): wind, a snowstorm. */
@@ -191,7 +209,7 @@ export const mapLayerSchema = z.object({
 export type MapLayer = z.infer<typeof mapLayerSchema>;
 
 /** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 12;
+export const MAP_VERSION = 13;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
 export const SCENE_VERSION = 12;
 
@@ -250,6 +268,8 @@ export const MapSidecarSchema = z.object({
   storeys: z.array(mapStoreySchema).default([]),
   /** Stairs between storeys (E-44, version 12). */
   stairs: z.array(stairSchema).default([]),
+  /** Parametric rooms (E-45, version 13). */
+  rooms: z.array(roomSchema).default([]),
   /** What is revealed when a new scene starts on this map (painted in the Map Forge, E-26). */
   startFog: levelFogSchema.optional(),
   /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */

@@ -64,6 +64,12 @@ const buildTools: RibbonTab = {
   ],
 };
 
+/** The Map Forge's "Build" tab: rooms too (E-45) – they belong to the map, a scene has none of its own. */
+const forgeBuildTools: RibbonTab = {
+  ...buildTools,
+  groups: buildTools.groups.map((g, i) => (i === 0 ? { ...g, buttons: [...g.buttons.slice(0, 2), { id: 'build:room', icon: 'floorplan', label: 'tool.buildRoom' }, ...g.buttons.slice(2)] } : g)),
+};
+
 const view: RibbonGroup = {
   label: 'group.view',
   buttons: [
@@ -169,7 +175,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
           { label: 'group.check', buttons: [{ id: 'leak:check', icon: 'eye', label: 'tool.leakCheck' }] },
         ],
       },
-      buildTools,
+      forgeBuildTools,
       fogTools,
     ],
     layout: { center: 'map', left: ['browser', 'assets'], right: ['properties', 'fog'], bottom: ['log'] },

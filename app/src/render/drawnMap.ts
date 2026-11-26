@@ -40,8 +40,26 @@ function styleSeed(style: string): number {
 interface PreparedStyle {
   style: MasonryStyle;
   shape: Path2D;
+  /** The outline's rings (with their waver), for the side faces of the 2.5D look. */
+  rings: [number, number][][];
   thickness: number;
   joints: { x: number; y: number; angle: number; kind: 'joint' | 'end' }[];
+  /** How high it stands (map px, E-35). */
+  height: number;
+  /** The lines of its fortified walls: battlements on them, towers at their joints. */
+  fortified: { points: { x: number; y: number }[]; closed: boolean }[];
+  /** The lowest point on the map: groups further down are painted later (over those behind). */
+  bottom: number;
+  /** Middles of the doors and windows in it: no tower stands in a gate. */
+  openings: { x: number; y: number }[];
+}
+
+/** How high a wall stands by its style, in cells; a fortified wall is higher (E-35). */
+const STYLE_HEIGHT: Record<MasonryStyle, number> = { 'dungeon-stone': 0.45, 'cave-rock': 0.35, brick: 0.45, wood: 0.3 };
+const FORTIFIED_HEIGHT = 1.6;
+
+function heightOf(w: Masonry, cell: number): number {
+  return w.height ?? STYLE_HEIGHT[w.style] * cell * (w.fortified ? FORTIFIED_HEIGHT : 1);
 }
 
 function surfacePattern(g: CanvasRenderingContext2D, source: HTMLCanvasElement, cell: number, cells: number, seed: number): CanvasPattern | null {
@@ -71,19 +89,22 @@ const geometries = new Map<string, Geometry>();
 const KEPT_GEOMETRIES = 4;
 
 /** United, wavering outlines and joints per group of touching walls (map px). */
-const groupOutlines = new Map<string, { shape: Path2D; joints: PreparedStyle['joints'] }>();
+const groupOutlines = new Map<string, { shape: Path2D; rings: [number, number][][]; joints: PreparedStyle['joints'] }>();
 
-function outlineOf(style: MasonryStyle, group: Masonry[], doors: BuildDoor[]): { shape: Path2D; joints: PreparedStyle['joints'] } {
+function outlineOf(style: MasonryStyle, group: Masonry[], doors: BuildDoor[]): { shape: Path2D; rings: [number, number][][]; joints: PreparedStyle['joints'] } {
   const thickness = group.reduce((s, w) => s + w.thickness, 0) / group.length;
   const jitter: Jitter = { step: Math.max(3, thickness / 3), amplitude: thickness * WAVER[style].amplitude, scale: thickness * WAVER[style].scale, seed: styleSeed(style) };
   const shape = new Path2D();
+  const rings: [number, number][][] = [];
   for (const p of masonryOutline(group, doors))
     for (const ring of [p.outer, ...p.holes]) {
-      jitterRing(ring, jitter).forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)));
+      const wavy = jitterRing(ring, jitter);
+      rings.push(wavy);
+      wavy.forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)));
       shape.closePath();
     }
   const joints = buildGraph(group).nodes.flatMap((n) => (n.kind === 'straight' ? [] : [{ x: n.x, y: n.y, angle: n.arms[0] ?? 0, kind: n.kind === 'end' ? ('end' as const) : ('joint' as const) }]));
-  return { shape, joints };
+  return { shape, rings, joints };
 }
 
 /** Walls whose areas (with their thickness) overlap, gathered into groups. */
@@ -119,11 +140,9 @@ function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: num
   const shownDoors = (ws: Masonry[]) => ws.flatMap((w) => drawing.doors.filter((d) => d.wall === w.id).map((d, i) => ({ id: `d${i}`, wall: w.id, at: d.at, width: d.width, secret: false, crack: false })));
   // Walls that touch are united together; groups that did not change are taken as they were.
   const used = new Set<string>();
-  const styles: PreparedStyle[] = [...new Set(walls.map((w) => w.style))].map((style) => {
-    const mine = walls.filter((w) => w.style === style);
-    const shape = new Path2D();
-    const joints: PreparedStyle['joints'] = [];
-    for (const group of touchingGroups(mine)) {
+  // Each group of touching walls of a style stands at its own height (E-35).
+  const styles: PreparedStyle[] = [...new Set(walls.map((w) => w.style))].flatMap((style) =>
+    touchingGroups(walls.filter((w) => w.style === style)).map((group) => {
       const doors = shownDoors(group);
       const key = JSON.stringify([style, group, doors]);
       used.add(key);
@@ -132,12 +151,17 @@ function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: num
         built = outlineOf(style, group, doors);
         groupOutlines.set(key, built);
       }
-      shape.addPath(built.shape);
-      joints.push(...built.joints);
-    }
-    const thickness = mine.reduce((s, w) => s + w.thickness, 0) / mine.length;
-    return { style, shape, thickness, joints };
-  });
+      const thickness = group.reduce((s, w) => s + w.thickness, 0) / group.length;
+      const height = Math.max(...group.map((w) => heightOf(w, cell)));
+      const fortified = group.filter((w) => w.fortified).map((w) => ({ points: w.points, closed: w.closed }));
+      const bottom = Math.max(...group.flatMap((w) => w.points.map((p) => p.y)));
+      const openings = doors.map((d) => {
+        const wall = group.find((w) => w.id === d.wall)!;
+        return pointAt(wall.points, wall.closed, d.at);
+      });
+      return { style, shape: built.shape, rings: built.rings, thickness, joints: built.joints, height, fortified, bottom, openings };
+    }),
+  ).sort((a, b) => a.bottom - b.bottom);
   // Groups no drawing uses any more go.
   if (groupOutlines.size > used.size * 2 + 64) for (const k of groupOutlines.keys()) if (!used.has(k)) groupOutlines.delete(k);
 
@@ -233,26 +257,53 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
     }
   };
 
+  // The light (E-35): where it falls towards; walls cast their shadows that way.
+  const la = ((drawing.lightAngle ?? 45) * Math.PI) / 180;
+  const light = { x: Math.cos(la), y: Math.sin(la) };
+  // The side faces seen in the 2.5D look face down the map: lit when the light comes from below.
+  const sideLit = Math.max(0, -light.y);
+
   const paintWalls = (g: CanvasRenderingContext2D) => {
+    // Shadows first, all of them: no shadow lies on a wall painted before it.
     for (const s of styles) {
-      const t = s.thickness;
-      // A soft shadow towards the lower right (two offset fills: far cheaper than a blur), then
-      // the wall, its light edge and a sketched outline.
-      for (const [k, alpha] of [[0.32, 0.22], [0.16, 0.3]] as const) {
+      for (const [k, alpha] of [[1, 0.14], [0.55, 0.2]] as const) {
         g.save();
-        g.translate(t * k, t * k * 1.3);
+        g.translate(light.x * (s.height * k + s.thickness * 0.3), light.y * (s.height * k + s.thickness * 0.3));
         g.fillStyle = `rgba(0,0,0,${alpha})`;
         g.fill(s.shape, 'nonzero');
         g.restore();
       }
-      g.fillStyle = surfacePattern(g, tex.surface[`wall-${s.style}`], cell, WALL_CELLS, styleSeed(s.style)) ?? '#5b5650';
-      g.fill(s.shape, 'nonzero');
-      // Darker than any floor, so a wall reads as a wall also on a floor of the same stone.
-      g.fillStyle = 'rgba(20,16,12,.38)';
-      g.fill(s.shape, 'nonzero');
+    }
+    for (const s of styles) {
+      const t = s.thickness;
+      const up = s.height;
+      const pattern = surfacePattern(g, tex.surface[`wall-${s.style}`], cell, WALL_CELLS, styleSeed(s.style)) ?? '#5b5650';
+      // The side face: each outline edge swept up to the top.
+      const side = new Path2D();
+      for (const ring of s.rings)
+        ring.forEach(([x, y], i) => {
+          const [nx, ny] = ring[(i + 1) % ring.length];
+          side.moveTo(x, y);
+          side.lineTo(nx, ny);
+          side.lineTo(nx, ny - up);
+          side.lineTo(x, y - up);
+          side.closePath();
+        });
+      g.fillStyle = pattern;
+      g.fill(side, 'nonzero');
+      g.fillStyle = `rgba(14,11,8,${0.58 - sideLit * 0.3})`;
+      g.fill(side, 'nonzero');
+      // The top, raised by the wall's height.
       g.save();
-      g.translate(-1, -1);
-      g.strokeStyle = 'rgba(255,245,225,.28)';
+      g.translate(0, -up);
+      g.fillStyle = pattern;
+      g.fill(s.shape, 'nonzero');
+      g.fillStyle = 'rgba(20,16,12,.24)';
+      g.fill(s.shape, 'nonzero');
+      // A light edge on the side the light comes from, then the outline.
+      g.save();
+      g.translate(-light.x * 1.2, -light.y * 1.2);
+      g.strokeStyle = 'rgba(255,245,225,.32)';
       g.lineWidth = 1.5;
       g.stroke(s.shape);
       g.restore();
@@ -260,16 +311,21 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       g.lineWidth = Math.max(1.5, t * 0.12);
       g.stroke(s.shape);
       // Corner stones and pillars for built walls; rock needs none.
-      if (s.style === 'cave-rock') continue;
-      for (const j of s.joints) {
-        const part = j.kind === 'end' ? tex.part['part-pillar'] : tex.part['part-cornerstone'];
-        const size = t * (j.kind === 'end' ? 1.35 : 1.25) * (s.style === 'wood' ? 0.85 : 1);
-        g.save();
-        g.translate(j.x, j.y);
-        g.rotate(j.angle);
-        g.drawImage(part, -size / 2, -size / 2, size, size);
-        g.restore();
-      }
+      if (s.style !== 'cave-rock')
+        for (const j of s.joints) {
+          const part = j.kind === 'end' ? tex.part['part-pillar'] : tex.part['part-cornerstone'];
+          const size = t * (j.kind === 'end' ? 1.35 : 1.25) * (s.style === 'wood' ? 0.85 : 1);
+          g.save();
+          g.translate(j.x, j.y);
+          g.rotate(j.angle);
+          g.drawImage(part, -size / 2, -size / 2, size, size);
+          g.restore();
+        }
+      // Battlements along fortified walls.
+      for (const f of s.fortified) paintBattlements(g, f.points, f.closed, t, pattern, s.openings, cell);
+      g.restore();
+      // Towers where fortified walls meet or end, and along long stretches.
+      if (s.fortified.length) for (const at of towerPlaces(s.fortified, s.joints, cell, s.openings)) paintTower(g, at, t * 1.6, up * 1.35, pattern, sideLit);
     }
   };
 
@@ -284,7 +340,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       // Water lies in the ground (E-35); cliffs over it, waterfalls where rivers fall over them.
       paintWater(g, drawing.waters, cell, tex);
       // Cliffs and slopes lie on the ground, under the walls (E-34).
-      paintCliffs(g, drawing.cliffs, drawing.biome, cell, tex);
+      paintCliffs(g, drawing.cliffs, drawing.biome, cell, tex, drawing.lightAngle ?? 45);
       paintWaterfalls(g, drawing.waters, drawing.cliffs, cell);
       paintWalls(g);
       g.restore();
@@ -306,6 +362,21 @@ function picture(key: string, w: number, h: number, draw: (g: CanvasRenderingCon
   draw(c.getContext('2d')!);
   decalPictures.set(key, c);
   return c;
+}
+
+/** A window from above: a dark frame, light glass, a mullion in the middle (E-35). */
+function windowPicture(): HTMLCanvasElement {
+  return picture('window', 96, 32, (g) => {
+    g.fillStyle = '#2b2219';
+    g.fillRect(0, 0, 96, 32);
+    const glass = g.createLinearGradient(0, 6, 0, 26);
+    glass.addColorStop(0, 'rgba(206,230,242,.95)');
+    glass.addColorStop(1, 'rgba(140,182,206,.95)');
+    g.fillStyle = glass;
+    g.fillRect(6, 9, 84, 14);
+    g.fillStyle = '#2b2219';
+    g.fillRect(45, 6, 6, 20);
+  });
 }
 
 /** The DM's mark of a secret door: a dashed frame (never sent to the TV). */
@@ -351,6 +422,11 @@ export function drawingDecals(drawing: Drawing | DmDrawing, tex: BuildTextures):
     if (!wall) continue;
     const { a, b, len, angle } = spanOf(wall, d.at, d.width);
     if (len <= 0) continue;
+    if ('window' in d && d.window) {
+      // A window: a frame with light glass, across the wall's whole thickness.
+      out.push({ image: windowPicture(), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, width: len, height: wall.thickness * 1.05, rotation: angle });
+      continue;
+    }
     const leaf = wall.thickness * 0.55;
     const turn = d.open ? angle + Math.PI / 2 : angle;
     out.push({ image: tex.part['part-door'], x: a.x + (Math.cos(turn) * len) / 2, y: a.y + (Math.sin(turn) * len) / 2, width: len, height: leaf, rotation: turn });
@@ -400,4 +476,99 @@ export function drawingPreview(drawing: Drawing | DmDrawing, cell: number, tex: 
     g.restore();
   }
   return c;
+}
+
+/* ---------- Fortified walls (E-35) ---------- */
+
+/** Merlons along a wall's top: small blocks with gaps (the caller has raised the context). */
+function paintBattlements(g: CanvasRenderingContext2D, points: readonly { x: number; y: number }[], closed: boolean, t: number, pattern: CanvasPattern | string, openings: readonly { x: number; y: number }[], cell: number): void {
+  const size = t * 0.55;
+  const gap = t * 1.15;
+  const pts = closed ? [...points, points[0]] : points;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    for (let s = gap / 2; s < len; s += gap) {
+      const x = a.x + ((b.x - a.x) * s) / len;
+      const y = a.y + ((b.y - a.y) * s) / len;
+      // None over a gate or window.
+      if (openings.some((q) => Math.hypot(q.x - x, q.y - y) < cell * 0.8)) continue;
+      g.save();
+      g.translate(x, y);
+      g.rotate(angle);
+      g.fillStyle = pattern;
+      g.fillRect(-size / 2, -size / 2, size, size);
+      g.fillStyle = 'rgba(255,245,225,.18)';
+      g.fillRect(-size / 2, -size / 2, size, size);
+      g.strokeStyle = 'rgba(18,14,10,.85)';
+      g.lineWidth = 1.2;
+      g.strokeRect(-size / 2, -size / 2, size, size);
+      g.restore();
+    }
+  }
+}
+
+/** Where towers stand: at the joints and ends of fortified walls, and every six cells along them. */
+function towerPlaces(lines: readonly { points: readonly { x: number; y: number }[]; closed: boolean }[], joints: PreparedStyle['joints'], cell: number, openings: readonly { x: number; y: number }[] = []): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  // Not next to another tower, and never in a gate or window.
+  const near = (p: { x: number; y: number }) => out.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < cell * 2) || openings.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < cell * 1.5);
+  const onFortified = (p: { x: number; y: number }) => lines.some((l) => l.points.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 1));
+  for (const j of joints) if (onFortified(j) && !near(j)) out.push({ x: j.x, y: j.y });
+  for (const l of lines) {
+    const pts = l.closed ? [...l.points, l.points[0]] : l.points;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      const n = Math.floor(len / (cell * 6));
+      for (let k = 1; k <= n; k++) {
+        const p = { x: a.x + ((b.x - a.x) * k) / (n + 1), y: a.y + ((b.y - a.y) * k) / (n + 1) };
+        if (!near(p)) out.push(p);
+      }
+    }
+  }
+  return out;
+}
+
+/** A round tower: its side as a band up to its top, the top with a ring of merlons. */
+function paintTower(g: CanvasRenderingContext2D, at: { x: number; y: number }, r: number, up: number, pattern: CanvasPattern | string, sideLit: number): void {
+  g.save();
+  g.translate(at.x, at.y);
+  // The side: the base circle swept up.
+  const side = new Path2D();
+  side.arc(0, 0, r, 0, Math.PI);
+  side.lineTo(-r, -up);
+  side.arc(0, -up, r, Math.PI, 0, true);
+  side.closePath();
+  g.fillStyle = pattern;
+  g.fill(side);
+  g.fillStyle = `rgba(14,11,8,${0.55 - sideLit * 0.3})`;
+  g.fill(side);
+  g.strokeStyle = 'rgba(18,14,10,.85)';
+  g.lineWidth = 1.5;
+  g.stroke(side);
+  // The top.
+  g.beginPath();
+  g.arc(0, -up, r, 0, Math.PI * 2);
+  g.fillStyle = pattern;
+  g.fill();
+  g.fillStyle = 'rgba(20,16,12,.18)';
+  g.fill();
+  g.stroke();
+  // Merlons round its rim.
+  const n = Math.max(6, Math.round((r * Math.PI * 2) / (r * 0.7)));
+  for (let k = 0; k < n; k += 2) {
+    const a = (k / n) * Math.PI * 2;
+    g.save();
+    g.translate(Math.cos(a) * r * 0.82, -up + Math.sin(a) * r * 0.82);
+    g.rotate(a);
+    g.fillStyle = pattern;
+    g.fillRect(-r * 0.16, -r * 0.2, r * 0.32, r * 0.4);
+    g.strokeRect(-r * 0.16, -r * 0.2, r * 0.32, r * 0.4);
+    g.restore();
+  }
+  g.restore();
 }

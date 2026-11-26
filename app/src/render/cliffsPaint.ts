@@ -99,13 +99,32 @@ function growthPicture(tex: BuildTextures, slot: PartSlot, biome: string): HTMLC
 
 const GROWTH: PartSlot[] = ['growth-grass', 'growth-bush', 'growth-moss'];
 
-export function paintCliffs(g: CanvasRenderingContext2D, cliffs: readonly WiredCliff[], mapBiome: string, cell: number, tex: BuildTextures): void {
+/** The mean direction a face looks to (its lower side, right of the edge's direction), normalised. */
+function faceNormal(points: readonly Point[], closed: boolean): Point {
+  let x = 0;
+  let y = 0;
+  const pts = closed ? [...points, points[0]] : points;
+  for (let i = 1; i < pts.length; i++) {
+    x += -(pts[i].y - pts[i - 1].y);
+    y += pts[i].x - pts[i - 1].x;
+  }
+  const len = Math.hypot(x, y) || 1;
+  return { x: x / len, y: y / len };
+}
+
+export function paintCliffs(g: CanvasRenderingContext2D, cliffs: readonly WiredCliff[], mapBiome: string, cell: number, tex: BuildTextures, lightAngle = 45): void {
+  const la = (lightAngle * Math.PI) / 180;
+  const light = { x: Math.cos(la), y: Math.sin(la) };
   for (const c of cliffs) {
     const biome = c.biome ?? mapBiome;
     const depth = FACE[c.kind] * cell;
     const edges = cliffEdges({ ...c, layer: undefined } as Cliff);
     edges.forEach((e, k) => {
       const seed = c.seed * 31 + k;
+      // The light (E-35): a face turned to it is lit, one turned away lies in shade and casts a long shadow.
+      const n = e.closed ? null : faceNormal(e.points, e.closed);
+      const facing = n ? -(n.x * light.x + n.y * light.y) : 0;
+      const reachShadow = n ? Math.min(1.5, Math.max(0.35, 1 - facing * 0.7)) : 1;
       const foot = ragged(offsetPolyline(e.points, e.closed, -depth), e.closed, depth * RAGGED[c.kind], cell * 0.6, seed);
       const face = band(e.points, foot, e.closed);
       // The shadow the face casts on the lower ground: two soft steps with a ragged edge.
@@ -115,7 +134,7 @@ export function paintCliffs(g: CanvasRenderingContext2D, cliffs: readonly WiredC
         g.fill(band(e.points, offsetPolyline(e.points, e.closed, -depth * 1.7), e.closed), 'evenodd');
       } else
         for (const [reach, alpha] of [[1.65, 0.08], [1.3, 0.1]] as const) {
-          const edge = ragged(offsetPolyline(e.points, e.closed, -depth * reach), e.closed, depth * 0.25, cell * 0.8, seed + 3);
+          const edge = ragged(offsetPolyline(e.points, e.closed, -depth * (1 + (reach - 1) * reachShadow)), e.closed, depth * 0.25, cell * 0.8, seed + 3);
           g.fillStyle = `rgba(0,0,0,${alpha})`;
           g.fill(band(e.points, edge, e.closed), 'evenodd');
         }
@@ -135,6 +154,9 @@ export function paintCliffs(g: CanvasRenderingContext2D, cliffs: readonly WiredC
       if (c.kind !== 'chasm') {
         g.fillStyle = c.kind === 'scree' ? 'rgba(0,0,0,.12)' : 'rgba(0,0,0,.28)';
         g.fill(band(offsetPolyline(e.points, e.closed, -depth * 0.45), foot, e.closed), 'evenodd');
+        // Lit or in shade after the light.
+        g.fillStyle = facing > 0 ? `rgba(255,244,222,${(0.14 * facing).toFixed(3)})` : `rgba(0,0,0,${(0.22 * -facing).toFixed(3)})`;
+        g.fill(face, 'evenodd');
         const tint = TINT[biome];
         if (tint) {
           g.fillStyle = tint.replace(/,[.\d]+\)$/, ',.22)');

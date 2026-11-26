@@ -18,6 +18,7 @@ import { FADE_MAX_SECONDS, FADE_STEP_SECONDS, FOG_EDGE, FOG_MOTION, FOG_QUALITIE
 import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import { SceneSound, SoundProperties, useSoundName } from './SoundPanels';
+import { StoreyList } from './StoreyList';
 import { TRANSITION_KINDS, type TransitionKind } from '../core/transition';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
@@ -71,6 +72,7 @@ export function BrowserPanel() {
   if (ws === 'atlas') return <div className="panel-body hint">{t('soon.atlas')}</div>;
   return (
     <div className="panel-body">
+      {(ws === 'forge' || ws === 'play') && <StoreyList />}
       {(ws === 'forge' || ws === 'play') && <LayerList />}
       <ul className="tree">
         {campaign && (

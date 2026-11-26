@@ -185,6 +185,8 @@ export interface AppState {
   leakCheck: { figure: Point | null; darkvisionFt: number } | null;
   /** "Adjust picture" (DC-022): open with its preview, or not. */
   lookCommand: LookCommand | null;
+  /** The storey the DM works on (E-40); "": the map itself. Not saved; the TV's is the scene's. */
+  storey: string;
   /** The placing mode's options as last used (kept for the next time, this session). */
   placeOptions: Omit<PlaceOptions, 'variant'> & { snap: boolean };
   /** Houses a player character came into whose interior waits for the DM's yes (E-29; not saved). */
@@ -301,6 +303,7 @@ function initial(): AppState {
     placing: null,
     leakCheck: null,
     lookCommand: null,
+    storey: '',
     placeOptions: { randomRotation: false, rotationStep: 90, rotation: 0, randomScale: false, scaleSpread: 0.1, snap: true },
     tabs: [],
     activeTab: null,
@@ -409,7 +412,7 @@ function restore(snap: string): void {
   // The scene file too: it holds what the view does not show (orphaned changes, the other state).
   if (ov) state.sceneDoc = ov;
   const keepTable = state.scene.table;
-  state.scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, keepTable, state.layer);
+  state.scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, keepTable, state.layer, state.storey);
   state.scene.table = keepTable;
   if (ov) {
     state.round = ov.combat.round;
@@ -668,6 +671,8 @@ export function activateSession(tabId: string): boolean {
   state.canUndo = history.canUndo;
   state.canRedo = history.canRedo;
   const table = { ...state.scene.table, centerX: s.center.x, centerY: s.center.y };
+  // Another tab: the DM works on its map itself first (E-40).
+  state.storey = '';
   if (mapDoc) {
     state.scene = sceneFromDocuments(mapDoc, s.sceneDoc, s.imageUrl, table, state.layer);
     state.scene.table = table;
@@ -894,7 +899,7 @@ export function refreshView(): void {
   if (!state.mapDoc) return;
   viewVersion++;
   const table = state.scene.table;
-  state.scene = sceneFromDocuments(state.mapDoc, state.sceneDoc, state.scene.map.imageUrl, table, state.layer);
+  state.scene = sceneFromDocuments(state.mapDoc, state.sceneDoc, state.scene.map.imageUrl, table, state.layer, state.storey);
   state.scene.table = table;
   if (state.sceneDoc && state.layer === 'scene') {
     state.round = state.sceneDoc.combat.round;
@@ -917,7 +922,7 @@ export function showLayer(layer: ViewLayer): void {
   viewVersion++;
   if (!state.mapDoc) return;
   const table = state.scene.table;
-  state.scene = sceneFromDocuments(state.mapDoc, state.sceneDoc, state.scene.map.imageUrl, table, layer);
+  state.scene = sceneFromDocuments(state.mapDoc, state.sceneDoc, state.scene.map.imageUrl, table, layer, state.storey);
   state.scene.table = table;
   state.selectedTokenId = null;
   state.selectedZoneId = null;
@@ -1387,8 +1392,15 @@ export function finishAreaCommand(): boolean {
 /* ---------- Layers in the Map Forge (E-28, DC-101) ---------- */
 
 /** New elements of the Map Forge go on the current layer (none: the base layer). */
-function onCurrentLayer(): { layer?: string } {
-  return state.layer === 'map' && state.currentLayer !== BASE_LAYER && state.scene.map.layers.some((l) => l.id === state.currentLayer) ? { layer: state.currentLayer } : {};
+function onCurrentLayer(): { layer?: string; storey?: string } {
+  const layer = state.layer === 'map' && state.currentLayer !== BASE_LAYER && state.scene.map.layers.some((l) => l.id === state.currentLayer) ? { layer: state.currentLayer } : {};
+  // New elements go on the storey the DM works on (E-40).
+  return { ...layer, ...onCurrentStorey() };
+}
+
+/** The storey new elements and figures go on (E-40). */
+function onCurrentStorey(): { storey?: string } {
+  return state.scene.map.storey ? { storey: state.scene.map.storey } : {};
 }
 
 /** Whether an element can be seen and changed in the Map Forge: its layer is neither hidden in the editor nor locked. */
@@ -2419,6 +2431,63 @@ export function selectLight(id: string | null): void {
   emit();
 }
 
+/* ---------- Storeys (DC-020, E-40) ---------- */
+
+/** Works on storey `id` ("": the map itself) – in the Map Forge and in scenes alike. Nothing is changed. */
+export function setWorkingStorey(id: string): void {
+  if (!state.mapDoc || (state.storey === id && (state.scene.map.storey ?? '') === id)) return;
+  commitView();
+  state.storey = id;
+  refreshView();
+  emit();
+}
+
+/** A new storey above the highest (`up`) or below the lowest, worked on at once (Map Forge, one undoable step). */
+export function addStorey(name: string, up: boolean): void {
+  if (state.layer !== 'map') return;
+  checkpoint();
+  const storeys = state.scene.map.storeys ?? [];
+  const levels = storeys.map((s) => s.level);
+  const level = up ? Math.max(0, ...levels) + 1 : Math.min(0, ...levels) - 1;
+  const id = newId('storey', (x) => storeys.some((s) => s.id === x));
+  state.scene.map.storeys = [...storeys, { id, name: name.trim() || (up ? `+${level}` : `${level}`), level, footprint: [] }];
+  commitView();
+  state.storey = id;
+  refreshView();
+  markDirty();
+  emit();
+}
+
+export function renameStorey(id: string, name: string): void {
+  const s = state.scene.map.storeys?.find((x) => x.id === id);
+  if (state.layer !== 'map' || !s || !name.trim() || s.name === name.trim()) return;
+  checkpoint();
+  s.name = name.trim();
+  markDirty();
+  emit();
+}
+
+/** Removes a storey and everything on it (Map Forge, one undoable step); the DM works on the map itself then. */
+export function deleteStorey(id: string): void {
+  if (state.layer !== 'map' || !state.scene.map.storeys?.some((x) => x.id === id)) return;
+  checkpoint();
+  commitView();
+  const doc = state.mapDoc!;
+  const keep = <T extends { storey?: string }>(xs: T[]) => xs.filter((x) => x.storey !== id);
+  const masonry = keep(doc.masonry);
+  const walls = new Set(masonry.map((w) => w.id));
+  state.mapDoc = {
+    ...doc,
+    storeys: doc.storeys.filter((x) => x.id !== id),
+    walls: keep(doc.walls), zones: keep(doc.zones), lights: keep(doc.lights), sounds: keep(doc.sounds), assets: keep(doc.assets),
+    masonry, masonryDoors: doc.masonryDoors.filter((d) => walls.has(d.wall)), cliffs: keep(doc.cliffs), waters: keep(doc.waters), floors: keep(doc.floors),
+  };
+  state.storey = '';
+  refreshView();
+  markDirty();
+  emit();
+}
+
 /* ---------- Map variants (DC-023, E-41) ---------- */
 
 /** Library pictures by path → their URL (null: cannot be shown); looked up once. */
@@ -2789,7 +2858,7 @@ export function placeParty(): void {
     return;
   }
   checkpoint();
-  state.scene.tokens.push(...added);
+  state.scene.tokens.push(...added.map((t) => ({ ...t, ...onCurrentStorey() })));
   log('log.partyPlaced', { count: added.length });
   recomputeVision();
   emit();
@@ -2808,7 +2877,7 @@ export function addCreatureToken(index: number, at?: Point): void {
   checkpoint();
   const same = state.scene.tokens.filter((t) => t.creatureId === c.id).length;
   const id = freshId(c.id);
-  state.scene.tokens.push(tokenFromCreature(c, id, snapPoint(at ?? tableCentre()), same));
+  state.scene.tokens.push({ ...tokenFromCreature(c, id, snapPoint(at ?? tableCentre()), same), ...onCurrentStorey() });
   state.selectedTokenId = id;
   log('log.tokenAdded', { name: c.name });
   recomputeVision();
@@ -2943,9 +3012,11 @@ function tvView(): TvView | null {
   if (state.tvScenePath && state.tvScenePath !== state.scenePath) return backgroundView(state.tvScenePath);
   const own = { turn: state.turn, resource: state.mapResource, runs: state.effectRuns };
   const pending = state.tvMapPending && tvMap;
-  if (!state.mapDoc || (state.layer === 'scene' && !pending)) return { scene: state.scene, visible: state.visible, lights: state.lights, ...own };
+  // The DM may work on another storey than the TV shows (E-40): then the TV's is built apart.
+  const otherStorey = (state.scene.map.storey ?? '') !== (state.scene.tvStorey ?? '');
+  if (!state.mapDoc || (state.layer === 'scene' && !pending && !otherStorey)) return { scene: state.scene, visible: state.visible, lights: state.lights, ...own };
   // The scene as shown (its state changes go to the TV at once), on the map the TV has.
-  const stamp = pending ? `p${version}` : `v${viewVersion}`;
+  const stamp = pending || otherStorey ? `p${version}` : `v${viewVersion}`;
   if (!tvCache || tvCache.version !== stamp) {
     // Editing the map or the start state: the TV shows the play state, with the map as the TV
     // has it (its changes wait for the DM, E-30) and the scene's changes as they are being edited.
@@ -2955,7 +3026,7 @@ function tvView(): TvView | null {
       const fromView = sceneOverrideFromScene(state.scene, state.sceneName, ov.mapSidecar, { round: state.round, turn: state.turn }, map, layerOf(ov));
       ov = { ...ov, overrides: fromView.overrides, added: fromView.added };
     }
-    const scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, state.scene.table, 'scene');
+    const scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, state.scene.table, 'scene', ov?.tvStorey ?? '');
     const extras = assetExtras(scene);
     const seen = withAssetDoors(scene);
     const vision = updateVision(seen, extras);
@@ -2973,7 +3044,7 @@ function backgroundView(scenePath: string): TvView | null {
   const map = tvMap ?? openMaps.get(s.mapFile) ?? s.mapDoc;
   if (!map) return null;
   if (!backgroundTv || backgroundTv.session !== s || backgroundTv.info !== state.assetInfo || backgroundTv.map !== map) {
-    const scene = sceneFromDocuments(map, s.sceneDoc, s.imageUrl, state.scene.table, 'scene');
+    const scene = sceneFromDocuments(map, s.sceneDoc, s.imageUrl, state.scene.table, 'scene', s.sceneDoc?.tvStorey ?? '');
     const extras = assetExtras(scene);
     const seen = withAssetDoors(scene);
     const vision = updateVision(seen, extras);

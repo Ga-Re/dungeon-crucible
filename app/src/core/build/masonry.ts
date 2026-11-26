@@ -23,6 +23,8 @@ export interface Masonry {
   /** Fixes its look: stone offsets, jitter, textures (nothing flickers when it is edited). */
   seed: number;
   layer?: string;
+  /** The storey it is on (E-40); none: the map itself. */
+  storey?: string;
   /** How high it stands in the 2.5D look (map px); none: after its style (E-35). */
   height?: number;
   /** How decayed it looks, 0–1 (DC-119b). */

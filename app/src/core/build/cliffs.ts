@@ -34,6 +34,8 @@ export interface Cliff {
   growth: boolean;
   seed: number;
   layer?: string;
+  /** The storey it is on (E-40); none: the map itself. */
+  storey?: string;
 }
 
 /** One edge of a cliff: its upper side is left of its direction. */

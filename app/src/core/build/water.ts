@@ -21,6 +21,8 @@ export interface Water {
   width: number;
   seed: number;
   layer?: string;
+  /** The storey it is on (E-40); none: the map itself. */
+  storey?: string;
 }
 
 /** A river's banks: its line moved half its width to its left and to its right. */

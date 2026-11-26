@@ -61,6 +61,8 @@ export function startOf(ov: SceneOverride): SceneStart {
     ...copyAmbientSound(ov.ambientSound),
     soundLevels: { ...ov.soundLevels },
     ...(ov.variant ? { variant: ov.variant } : {}),
+    storeyFog: copyStoreyFog(ov.storeyFog),
+    ...(ov.tvStorey ? { tvStorey: ov.tvStorey } : {}),
     hidden: [...ov.hidden],
     assets: ov.assets.map((a) => ({ ...a })),
     effects: { ...ov.effects },
@@ -102,6 +104,8 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
       ...copyAmbientSound(fromView.ambientSound),
       soundLevels: fromView.soundLevels,
       ...(fromView.variant ? { variant: fromView.variant } : {}),
+      storeyFog: copyStoreyFog(fromView.storeyFog),
+      ...(fromView.tvStorey ? { tvStorey: fromView.tvStorey } : {}),
       hidden: fromView.hidden,
       assets: fromView.assets,
       effects: fromView.effects,
@@ -119,10 +123,12 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
  */
 export function resetToStart(ov: SceneOverride): SceneOverride {
   const start = startOf(ov);
-  const { fogEffect: _fe, ambientSound: _as, variant: _v, ...rest } = ov;
+  const { fogEffect: _fe, ambientSound: _as, variant: _v, tvStorey: _ts, ...rest } = ov;
   return {
     ...rest,
     ...(start.variant ? { variant: start.variant } : {}),
+    storeyFog: copyStoreyFog(start.storeyFog),
+    ...(start.tvStorey ? { tvStorey: start.tvStorey } : {}),
     ...copyAmbientSound(start.ambientSound),
     soundLevels: { ...start.soundLevels },
     fog: copyFog(start.fog),
@@ -151,7 +157,8 @@ export function elementsFromScene(view: Pick<Scene, 'walls' | 'zones' | 'lights'
   const zones = parts.flatMap((p) => p.zones);
   const lights = parts.flatMap((p) => p.lights);
   const sounds = parts.flatMap((p) => p.sounds);
-  const onLayer = (el: { layer?: string }) => (el.layer ? { layer: el.layer } : {});
+  // An element's layer (E-28) and storey (E-40), when it has them.
+  const onLayer = (el: { layer?: string; storey?: string }) => ({ ...(el.layer ? { layer: el.layer } : {}), ...(el.storey ? { storey: el.storey } : {}) });
   return {
     walls: walls.map((w) => ({ id: w.id, kind: w.kind, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, ...onLayer(w) })),
     zones: zones.map((z) => ({ id: z.id, name: z.name, shape: copyShape(z.shape), secret: z.secret, color: z.color, ...(z.biome ? { biome: z.biome } : {}), ...onLayer(z) })),
@@ -183,7 +190,11 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
   const m = scene.map;
   const fromView = layer === 'map' || !previous;
   const elements = fromView ? elementsFromScene(scene) : elementsFromSidecar(previous);
-  const startFog = fromView ? (layer === 'map' ? copyFog(scene.fog) : previous?.startFog) : previous.startFog;
+  // The view may show a storey (E-40): the map's own start fog is then kept with the others.
+  const here = m.storey ?? '';
+  const viewFog = (id: string): LevelFog | undefined => (id === here ? scene.fog : scene.storeyFogs?.[id]);
+  const startFog = fromView ? (layer === 'map' ? viewFog('') : previous?.startFog) : previous.startFog;
+  const off = m.offStorey;
   return {
     kind: 'map',
     schemaVersion: MAP_VERSION,
@@ -202,7 +213,8 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     zones: elements.zones,
     pois: m.pois.map((p) => ({ ...p })),
     // Placed assets and layers are edited in the Map Forge only; a scene's view may leave some out.
-    assets: (fromView ? m.assets : previous.assets).map((a) => ({ ...a })),
+    // In the Map Forge, the assets of other storeys are put aside with the inactive ones (E-40).
+    assets: (fromView ? (layer === 'map' ? [...m.assets, ...scene.inactive.assets] : m.assets) : previous.assets).map((a) => ({ ...a })),
     layers: (fromView ? m.layers : previous.layers).map((l) => ({ ...l, ...(l.trigger ? { trigger: { ...l.trigger } } : {}) })),
     lights: elements.lights,
     sounds: elements.sounds,
@@ -213,13 +225,21 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     ...((fromView ? m.look : previous.look) ? { look: structuredClone((fromView ? m.look : previous.look)!) } : {}),
     // Variants are edited in the Map Forge only, like the drawing.
     variants: (fromView ? (m.variants ?? []) : previous.variants).map((v) => ({ ...v })),
+    // Storeys too; in the Map Forge each keeps the start fog painted on it (E-40).
+    storeys: (fromView ? (m.storeys ?? []) : previous.storeys).map((st) => {
+      const painted = fromView && layer === 'map' ? viewFog(st.id) : undefined;
+      const { startFog: before, ...rest } = structuredClone(st);
+      const sf = painted ?? before;
+      return { ...rest, ...(sf ? { startFog: copyFog(sf) } : {}) };
+    }),
     ...(startFog ? { startFog: copyFog(startFog) } : {}),
     // Drawn walls are edited in the Map Forge only, like placed assets.
-    masonry: (fromView ? m.masonry : previous.masonry).map(copyMasonry),
-    masonryDoors: (fromView ? m.masonryDoors : previous.masonryDoors).map((d) => ({ ...d })),
-    cliffs: (fromView ? m.cliffs : previous.cliffs).map(copyCliff),
-    waters: (fromView ? m.waters : previous.waters).map(copyWater),
-    floors: (fromView ? m.floors : previous.floors).map(copyFloor),
+    // With those of other storeys, put aside in the view (E-40).
+    masonry: (fromView ? [...m.masonry, ...(off?.masonry ?? [])] : previous.masonry).map(copyMasonry),
+    masonryDoors: (fromView ? [...m.masonryDoors, ...(off?.masonryDoors ?? [])] : previous.masonryDoors).map((d) => ({ ...d })),
+    cliffs: (fromView ? [...m.cliffs, ...(off?.cliffs ?? [])] : previous.cliffs).map(copyCliff),
+    waters: (fromView ? [...m.waters, ...(off?.waters ?? [])] : previous.waters).map(copyWater),
+    floors: (fromView ? [...m.floors, ...(off?.floors ?? [])] : previous.floors).map(copyFloor),
     waterAnimated: fromView ? m.waterAnimated : previous.waterAnimated,
     lightAngle: fromView ? m.lightAngle : previous.lightAngle,
     autoShore: fromView ? m.autoShore : previous.autoShore,
@@ -257,18 +277,21 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     schemaVersion: SCENE_VERSION,
     name,
     mapSidecar,
-    fog: copyFog(scene.fog),
+    // The map itself keeps `fog`; each storey its own (E-40).
+    fog: copyFog(scene.map.storey ? (scene.storeyFogs?.[''] ?? EMPTY_LEVEL_FOG) : scene.fog),
+    storeyFog: Object.fromEntries([...Object.entries(scene.storeyFogs ?? {}).filter(([k]) => k !== ''), ...(scene.map.storey ? [[scene.map.storey, scene.fog] as const] : [])].map(([k, v]) => [k, copyFog(v)])),
+    ...(scene.tvStorey ? { tvStorey: scene.tvStorey } : {}),
     ...(scene.fogEffect ? { fogEffect: { ...scene.fogEffect } } : {}),
     doors: { ...Object.fromEntries(all('walls').filter((w) => w.kind === 'door' || w.kind === 'secret-door').map((w) => [w.id, !!w.open])), ...assetDoors, ...masonryDoors },
     lights: { ...Object.fromEntries(all('lights').map((l) => [l.id, l.on])), ...scene.assetLightsOn },
     discoveredZones: all('zones').filter((z) => z.secret && z.discovered).map((z) => z.id),
-    hidden: [...hiddenIds(scene.hidden), ...orphanedHidden],
+    hidden: [...hiddenIds(scene.hidden), ...(scene.offStoreyHidden ?? []), ...orphanedHidden],
     assets: own.map((a) => ({ ...a })),
     effects: { ...scene.effectsOn },
     layers: { ...scene.layersOn },
     interiors,
-    drawing: copySceneDrawing({ ...scene.own, hidden: scene.drawnHidden }),
-    tokens: scene.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
+    drawing: copySceneDrawing({ ...joinOwn(scene.own, scene.map.offStorey?.own), hidden: scene.drawnHidden }),
+    tokens: [...scene.tokens, ...(scene.offStoreyTokens ?? [])].map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: scene.templates.map((t) => ({ ...t })),
     combat: { ...combat },
     ambience: [],
@@ -278,6 +301,17 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     overrides: layer.overrides,
     added: layer.added,
   };
+}
+
+/** A scene's own drawing with the part on other storeys put back (E-40). */
+function joinOwn(own: Scene['own'], off: { masonry: Masonry[]; masonryDoors: Scene['own']['masonryDoors']; cliffs: Cliff[]; waters: Water[]; floors: FloorPatch[] } | undefined): Scene['own'] {
+  if (!off) return own;
+  return { masonry: [...own.masonry, ...off.masonry], masonryDoors: [...own.masonryDoors, ...off.masonryDoors], cliffs: [...own.cliffs, ...off.cliffs], waters: [...own.waters, ...off.waters], floors: [...own.floors, ...off.floors] };
+}
+
+/** Fog of the storeys (E-40), copied. */
+function copyStoreyFog(f: Record<string, LevelFog> | undefined): Record<string, LevelFog> {
+  return Object.fromEntries(Object.entries(f ?? {}).map(([k, v]) => [k, copyFog(v)]));
 }
 
 /** A scene's own sound everywhere (E-37) as a field to spread: none when the map's counts. */
@@ -320,8 +354,13 @@ export function lockedAreas(zones: readonly Zone[]): Polygon[] {
  * on it (`layer` "scene": the map with the scene's changes and the scene's state). Without a scene
  * file a scene starts with the map's start fog.
  */
-export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | null, imageUrl: string | null, table?: Partial<Scene['table']>, layer: ViewLayer = 'scene'): Scene {
+export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | null, imageUrl: string | null, table?: Partial<Scene['table']>, layer: ViewLayer = 'scene', storey = ''): Scene {
   const onMap = layer === 'map';
+  // The storey this view shows (E-40): elements on others are put aside, kept for saving.
+  const storeyIds = new Set(map.storeys.map((s) => s.id));
+  const here = storeyIds.has(storey) ? storey : '';
+  const storeyOf = (x: { storey?: string }) => (x.storey && storeyIds.has(x.storey) ? x.storey : '');
+  const onHere = (x: { storey?: string }) => storeyOf(x) === here;
   // The start state shows the scene's start instead of its play state.
   const st = layer === 'start' && override ? startOf(override) : null;
   // The start's own sound everywhere, not the play state's (E-37).
@@ -332,7 +371,15 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const elements = onMap ? elementsFromSidecar(map) : resolveElements(elementsFromSidecar(map), layerOf(override)).elements;
   const zones: Zone[] = elements.zones.map((z) => ({ ...z, shape: copyShape(z.shape), discovered: !z.secret || (!onMap && discovered.has(z.id)) }));
   const startFog = map.startFog ? copyFog(map.startFog) : EMPTY_LEVEL_FOG;
-  const fog: LevelFog = onMap || !state ? startFog : copyFog(state.fog);
+  const groundFog: LevelFog = onMap || !state ? startFog : copyFog(state.fog);
+  // A storey's fog: the scene's, else what a new scene reveals there (its start fog).
+  const storeyFog = (id: string): LevelFog => {
+    const own = onMap ? undefined : state?.storeyFog?.[id];
+    const start = map.storeys.find((s) => s.id === id)?.startFog;
+    return own ? copyFog(own) : start ? copyFog(start) : EMPTY_LEVEL_FOG;
+  };
+  const fog: LevelFog = here ? storeyFog(here) : groundFog;
+  const storeyFogs: Record<string, LevelFog> = Object.fromEntries([...(here ? [['', groundFog] as const] : []), ...map.storeys.filter((s) => s.id !== here).map((s) => [s.id, storeyFog(s.id)] as const)]);
   const doors = onMap ? {} : (state?.doors ?? {});
   const lightsOn = onMap ? {} : (state?.lights ?? {});
   const hide = new Set(onMap ? [] : (state?.hidden ?? []));
@@ -341,19 +388,35 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const levels = onMap ? {} : (state?.soundLevels ?? {});
   const sounds = elements.sounds.map((x) => (levels[x.id] === undefined ? { ...x } : { ...x, level: levels[x.id] }));
   const shown = <T extends { id: string }>(xs: T[]) => xs.filter((x) => !hide.has(x.id));
-  const hiddenOf = <T extends { id: string }>(xs: T[]) => xs.filter((x) => hide.has(x.id));
-  // Elements on layers this scene has off (E-28): apart from the shown ones, unless hidden anyway.
+  // Hidden on this storey; hidden ones on others are put aside with them, their ids kept (E-40).
+  const hiddenOf = <T extends { id: string; storey?: string }>(xs: T[]) => xs.filter((x) => hide.has(x.id) && onHere(x));
+  // Elements on layers this scene has off (E-28) or on another storey (E-40): apart from the shown ones.
   const active = onMap ? null : activeLayers(map.layers, state?.layers ?? {});
-  const on = <T extends { layer?: string }>(x: T) => !active || active.has(elementLayer(x));
-  const shownOn = <T extends { id: string; layer?: string }>(xs: T[]) => shown(xs).filter(on);
-  const inactiveOf = <T extends { id: string; layer?: string }>(xs: T[]) => shown(xs).filter((x) => !on(x));
+  const on = <T extends { layer?: string; storey?: string }>(x: T) => onHere(x) && (!active || active.has(elementLayer(x)));
+  const shownOn = <T extends { id: string; layer?: string; storey?: string }>(xs: T[]) => shown(xs).filter(on);
+  const inactiveOf = <T extends { id: string; layer?: string; storey?: string }>(xs: T[]) => xs.filter((x) => (!hide.has(x.id) && !on(x)) || (hide.has(x.id) && !onHere(x)));
+  const offHidden = [...elements.walls, ...elements.zones, ...elements.lights, ...elements.sounds, ...map.assets, ...(state?.assets ?? [])].filter((x) => hide.has(x.id) && !onHere(x)).map((x) => x.id);
   const ownAssets = onMap ? [] : (state?.assets ?? []).map((a) => ({ ...a }));
   // Asset lights are stored with the map lights, by `<placement>:light`.
   const assetLightsOn = Object.fromEntries(Object.entries(lightsOn).filter(([id]) => id.endsWith(':light')));
   // Likewise doors of assets with the map doors, by `<placement>:door` and `<placement>:in<n>` (E-29).
   const assetDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => /:(door|in\d+)$/.test(id)));
   // The scene's own drawing (DC-107c): none in the Map Forge.
-  const drawing = onMap || !state ? null : copySceneDrawing(state.drawing);
+  const drawingAll = onMap || !state ? null : copySceneDrawing(state.drawing);
+  // Drawn elements of this storey; those of others put aside (E-40). Doors go with their wall.
+  const split = <T extends { storey?: string }>(xs: T[]): [T[], T[]] => [xs.filter(onHere), xs.filter((x) => !onHere(x))];
+  const splitDrawing = (d: Pick<SceneDrawing, 'masonry' | 'masonryDoors' | 'cliffs' | 'waters' | 'floors'>) => {
+    const [masonry, offMasonry] = split(d.masonry);
+    const walls = new Set(masonry.map((w) => w.id));
+    return {
+      here: { masonry, masonryDoors: d.masonryDoors.filter((x) => walls.has(x.wall)), cliffs: split(d.cliffs)[0], waters: split(d.waters)[0], floors: split(d.floors)[0] },
+      off: { masonry: offMasonry, masonryDoors: d.masonryDoors.filter((x) => !walls.has(x.wall)), cliffs: split(d.cliffs)[1], waters: split(d.waters)[1], floors: split(d.floors)[1] },
+    };
+  };
+  const mapDrawn = splitDrawing({ masonry: map.masonry.map(copyMasonry), masonryDoors: map.masonryDoors.map((d) => ({ ...d })), cliffs: map.cliffs.map(copyCliff), waters: map.waters.map(copyWater), floors: map.floors.map(copyFloor) });
+  const ownDrawn = drawingAll ? splitDrawing(drawingAll) : null;
+  const drawing = drawingAll && ownDrawn ? { ...drawingAll, ...ownDrawn.here } : null;
+  const [tokensHere, tokensOff] = split((state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })));
   // And doors on drawn walls by their id, found secret ones by `<id>:found` (E-33).
   const drawnDoors = new Set([...map.masonryDoors, ...(drawing?.masonryDoors ?? [])].map((d) => d.id));
   const masonryDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => drawnDoors.has(id.replace(/:found$/, ''))));
@@ -374,11 +437,10 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       pois: map.pois.map((p) => ({ ...p })),
       assets: shownOn(map.assets.map((a) => ({ ...a, ...(a.variant === undefined ? {} : { variant: a.variant }) }))),
       layers: map.layers.map((l) => ({ ...l, ...(l.trigger ? { trigger: { ...l.trigger } } : {}) })),
-      masonry: map.masonry.map(copyMasonry),
-      masonryDoors: map.masonryDoors.map((d) => ({ ...d })),
-      cliffs: map.cliffs.map(copyCliff),
-      waters: map.waters.map(copyWater),
-      floors: map.floors.map(copyFloor),
+      ...mapDrawn.here,
+      ...(map.storeys.length ? { storeys: structuredClone(map.storeys) } : {}),
+      ...(here ? { storey: here } : {}),
+      offStorey: { ...mapDrawn.off, own: ownDrawn?.off ?? { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [] } },
       waterAnimated: map.waterAnimated,
       lightAngle: map.lightAngle,
       autoShore: map.autoShore,
@@ -408,7 +470,11 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     ...(variant ? { variant: variant.id } : {}),
     ...(onMap || state?.ambientSound === undefined ? {} : { ambientOverride: copyAmbientSound(state.ambientSound).ambientSound }),
     ambient: variant?.ambient ?? map.ambient,
-    tokens: onMap ? [] : (state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),
+    tokens: onMap ? [] : tokensHere,
+    offStoreyTokens: onMap ? [] : tokensOff,
+    offStoreyHidden: offHidden,
+    storeyFogs,
+    ...(!onMap && state?.tvStorey && storeyIds.has(state.tvStorey) ? { tvStorey: state.tvStorey } : {}),
     templates: onMap ? [] : (state?.templates ?? []).map((t) => ({ ...t })),
     pings: [],
     fog,

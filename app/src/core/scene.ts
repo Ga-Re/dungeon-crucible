@@ -3,7 +3,7 @@ import type { Point, Segment } from './geometry';
 import type { GridConfig, DisplaySpec } from './grid';
 import type { FogEffect, LevelFog, Polygon } from './poly/types';
 import type { Condition } from './rules/rules2024';
-import type { InteriorTrigger, MapLayer, MapLook, MapVariant } from './sidecar';
+import type { InteriorTrigger, MapLayer, MapLook, MapStorey, MapVariant } from './sidecar';
 import type { Transition } from './transition';
 import type { BuildDoor, Masonry } from './build/masonry';
 import type { Cliff } from './build/cliffs';
@@ -21,6 +21,8 @@ export interface Wall extends Segment {
   open?: boolean;
   /** Its layer (E-28); none: the base layer. */
   layer?: string;
+  /** The storey it is on (E-40); none: the map itself. */
+  storey?: string;
 }
 
 
@@ -36,12 +38,16 @@ export interface Zone {
   /** Secret areas stay locked in the fog until discovered. */
   discovered?: boolean;
   layer?: string;
+  /** The storey it is on (E-40); none: the map itself. */
+  storey?: string;
 }
 
 export type TokenKind = 'pc' | 'npc' | 'monster';
 
 export interface Token {
   id: string;
+  /** The storey it stands on (E-40); none: the map itself. */
+  storey?: string;
   name: string;
   label: string;
   kind: TokenKind;
@@ -81,6 +87,8 @@ export interface SoundSource {
   level?: number;
   fade: boolean;
   layer?: string;
+  /** The storey it is on (E-40); none: the map itself. */
+  storey?: string;
 }
 
 /** A placed light source (brazier, lantern, magical light). Dim light reaches `dimFt`. */
@@ -95,6 +103,8 @@ export interface LightSource {
   /** How much an asset's light flickers (0–1, DC-110); placed lights do not. */
   flicker?: number;
   layer?: string;
+  /** The storey it is on (E-40); none: the map itself. */
+  storey?: string;
 }
 
 /** Ambient light of a map: dark (dungeon, night) or lit (daylight, well-lit hall). */
@@ -193,6 +203,12 @@ export interface MapInfo {
   look?: MapLook;
   /** Other pictures of the map (E-41). */
   variants?: MapVariant[];
+  /** Storeys above or below the map itself (E-40). */
+  storeys?: MapStorey[];
+  /** The storey this view shows (E-40); none: the map itself. */
+  storey?: string;
+  /** Drawn elements on other storeys – the map's and the scene's own – kept for saving (E-40). */
+  offStorey?: OffStoreyDrawing;
 }
 
 export type MapType = 'dungeon' | 'building' | 'region' | 'world' | 'arena';
@@ -212,6 +228,8 @@ export interface MapAssetPlacement {
   rotation: number;
   scale: number;
   layer?: string;
+  /** The storey it is on (E-40); none: the map itself. */
+  storey?: string;
   /** A house's own interior trigger (E-29); none: the asset's. */
   interiorTrigger?: InteriorTrigger;
 }
@@ -231,6 +249,16 @@ export interface HiddenElements {
 
 export function noHidden(): HiddenElements {
   return { walls: [], zones: [], lights: [], sounds: [], assets: [] };
+}
+
+/** Drawn elements of other storeys (E-40): the map's, and the scene's own under `own`. */
+export interface OffStoreyDrawing {
+  masonry: Masonry[];
+  masonryDoors: BuildDoor[];
+  cliffs: Cliff[];
+  waters: Water[];
+  floors: FloorPatch[];
+  own: { masonry: Masonry[]; masonryDoors: BuildDoor[]; cliffs: Cliff[]; waters: Water[]; floors: FloorPatch[] };
 }
 
 export interface Scene {
@@ -267,6 +295,14 @@ export interface Scene {
   sounds: SoundSource[];
   /** The map's variant this scene shows (E-41); none: the map's own picture. */
   variant?: string;
+  /** Figures on other storeys (E-40), kept for saving. */
+  offStoreyTokens?: Token[];
+  /** Ids of hidden elements on other storeys (E-40), kept for saving. */
+  offStoreyHidden?: string[];
+  /** Fog of the other storeys by id, the map itself under "" (E-40). */
+  storeyFogs?: Record<string, LevelFog>;
+  /** The storey the TV shows (E-40); none: the map itself. */
+  tvStorey?: string;
   /** This scene's sound everywhere instead of the map's, or "none" (E-37); missing: the map's. */
   ambientOverride?: { sound: string; volume: number } | 'none';
   ambient: AmbientLight;

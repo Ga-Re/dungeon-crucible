@@ -529,8 +529,9 @@ export async function refreshSceneList(): Promise<void> {
 async function showDocs(map: MapSidecar, ov: SceneOverride, resource: string, opts: { scenePath: string; table?: Partial<Scene['table']> }): Promise<void> {
   const url = await urlForResource(resource);
   const table = opts.table ?? tvSettings();
-  // A scene opens in its play state.
+  // A scene opens in its play state, on its map itself (E-40).
   state.editStart = false;
+  state.storey = '';
   const scene = sceneFromDocuments(map, ov, url, table, layerFor(state.ws));
   scene.table = { ...state.scene.table, ...table, centerX: scene.table.centerX, centerY: scene.table.centerY, blackout: state.scene.table.blackout };
   replaceScene(scene, { resource, fileName: resource, scenePath: opts.scenePath, sceneName: ov.name, round: ov.combat.round, turn: ov.combat.turn, docs: { map, scene: ov } });
@@ -854,7 +855,7 @@ async function mapOf(resource: string, sidecar: MapSidecar | null): Promise<{ ma
     url,
     map: {
       kind: 'map', schemaVersion: MAP_VERSION, name, resource, isVideo, widthPx: w, heightPx: h,
-      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], sounds: [], variants: [], ambient: 'dark', masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [],
+      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], sounds: [], variants: [], storeys: [], ambient: 'dark', masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [],
     },
   };
 }

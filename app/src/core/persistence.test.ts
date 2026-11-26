@@ -83,6 +83,26 @@ describe('persistence', () => {
     expect(sceneFromDocuments(map, resetToStart(ov), null).ambientOverride).toEqual({ sound: 'builtin:storm', volume: 0.8 });
   });
 
+  it('a source\'s volume in a scene is state: start and play apart, not an override; reset brings the start\'s back (DC-104c)', () => {
+    const forge = createSampleScene();
+    forge.sounds = [{ id: 'sound-fire', sound: 'builtin:fire', x: 10, y: 10, radiusFt: 20, volume: 0.7, fade: true }];
+    const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(forge, 'builtin:crypt'))));
+    const path = mapSidecarPath('builtin:crypt');
+    const view = sceneFromDocuments(map, null, null);
+    view.sounds[0].level = 0.3;
+    const start = sceneOverrideFromScene(view, 'S', path, { round: 1, turn: 0 }, map);
+    expect(start.overrides).toEqual({});
+    expect(start.soundLevels).toEqual({ 'sound-fire': 0.3 });
+    let ov = SceneOverrideSchema.parse(JSON.parse(JSON.stringify(commitStart(sceneOverrideFromScene(sceneFromDocuments(map, null, null), 'S', path, { round: 1, turn: 0 }, map), start, []))));
+    const play = sceneFromDocuments(map, ov, null);
+    play.sounds[0].level = 0.9;
+    ov = SceneOverrideSchema.parse(JSON.parse(JSON.stringify({ ...sceneOverrideFromScene(play, 'S', path, { round: 1, turn: 0 }, map), start: ov.start })));
+    expect(sceneFromDocuments(map, ov, null).sounds[0]).toMatchObject({ volume: 0.7, level: 0.9 });
+    expect(sceneFromDocuments(map, ov, null, undefined, 'start').sounds[0].level).toBe(0.3);
+    expect(sceneFromDocuments(map, resetToStart(ov), null).sounds[0].level).toBe(0.3);
+    expect(map.sounds[0].volume).toBe(0.7);
+  });
+
   it('keeps secret zones locked on a fresh scene', () => {
     const scene = createSampleScene();
     const map = mapSidecarFromScene(scene, 'builtin:crypt');

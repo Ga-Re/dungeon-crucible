@@ -38,7 +38,7 @@ export interface SceneLayer {
 export const EMPTY_LAYER: SceneLayer = { overrides: {}, added: { walls: [], zones: [], lights: [], sounds: [] } };
 
 /** Fields that are scene state, not part of an element. */
-const STATE_FIELDS = new Set(['open', 'on', 'discovered']);
+const STATE_FIELDS = new Set(['open', 'on', 'discovered', 'level']);
 
 const KINDS = [
   ['walls', mapWallSchema],

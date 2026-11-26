@@ -52,8 +52,17 @@ describe('sound sources in a scene (DC-104c)', () => {
     expect(soundAt({ x: 1400, y: 1400 })).toBe(id);
     undo();
     expect(playing()).toBe(true);
-    updateSound(id, { volume: 0.3 });
-    expect(state.scene.sounds.find((x) => x.id === id)!.volume).toBe(0.3);
+    // The volume in a scene is state: the map's stays.
+    const { setSoundLevel, setMapSoundsMuted, soundView } = await import('./store');
+    setSoundLevel(id, 0.3);
+    expect(state.scene.sounds.find((x) => x.id === id)).toMatchObject({ volume: 0.8, level: 0.3 });
+    undo();
+    expect(state.scene.sounds.find((x) => x.id === id)!.level).toBeUndefined();
+    // Heard: this scene (no TV scene in the sample); silenced by the mute switch.
+    expect(soundView()).toBe(state.scene);
+    setMapSoundsMuted(true);
+    expect(state.mapSoundsMuted).toBe(true);
+    setMapSoundsMuted(false);
     setSceneAmbientSound('none');
     expect(state.scene.ambientOverride).toBe('none');
     setSceneAmbientSound({ sound: 'builtin:storm', volume: 0.7 });

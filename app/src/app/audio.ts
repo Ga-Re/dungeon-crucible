@@ -164,7 +164,7 @@ export function playAmbience(id: string, volume: number, url?: string): void {
  * Starts (or keeps) the loop `key` playing `sound` (`builtin:<key>` or a file at `url`) and fades
  * it to `volume`. Keys keep the soundboard's tracks and the map's apart, even for the same sound.
  */
-export function playLoop(key: string, sound: string, volume: number, url?: string, muffle = 0): void {
+export function playLoop(key: string, sound: string, volume: number, url?: string, muffle = 0, onError?: () => void): void {
   const { ctx: c, master: m } = audio();
   const existing = tracks.get(key);
   if (existing) {
@@ -184,9 +184,11 @@ export function playLoop(key: string, sound: string, volume: number, url?: strin
   const builtin = sound.startsWith(BUILTIN_PREFIX) ? sound.slice(BUILTIN_PREFIX.length) : null;
   const file = builtin ? builtinFile(builtin) : url;
   let stop: () => void = () => undefined;
-  // A built-in sound whose file cannot be played is synthesised instead, where the app can.
+  // A built-in sound whose file cannot be played is synthesised instead, where the app can;
+  // anything else stays silent and is reported (`onError`).
   const synthesise = () => {
     if (builtin && SYNTHESISED.has(builtin)) stop = startBuiltin(builtin, c, filter);
+    else onError?.();
   };
   if (file) {
     const el = new Audio();

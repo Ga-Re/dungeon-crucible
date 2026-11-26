@@ -422,6 +422,8 @@ export const SceneOverrideSchema = z.object({
   combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
   ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
   ambientSound: sceneAmbientSound,
+  /** Sound source id → its volume in this scene (DC-104c); not listed: the map's. */
+  soundLevels: z.record(z.string(), z.number().min(0).max(1)).default({}),
   /** Changes of the map for this scene only, by element id: the fields that differ (E-2). Hiding is state: `hidden`. */
   overrides: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
   /**
@@ -436,6 +438,7 @@ export const SceneOverrideSchema = z.object({
     discoveredZones: z.array(z.string()).default([]),
     ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
     ambientSound: sceneAmbientSound,
+    soundLevels: z.record(z.string(), z.number().min(0).max(1)).default({}),
     /** Map elements hidden from the start (prepared, e.g. a buried corridor). */
     hidden: z.array(z.string()).default([]),
     /** Assets placed for the start (prepared, e.g. a campfire). */

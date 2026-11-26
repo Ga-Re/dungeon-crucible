@@ -59,6 +59,7 @@ export function startOf(ov: SceneOverride): SceneStart {
     discoveredZones: [...ov.discoveredZones],
     ambience: ov.ambience.map((a) => ({ ...a })),
     ...copyAmbientSound(ov.ambientSound),
+    soundLevels: { ...ov.soundLevels },
     hidden: [...ov.hidden],
     assets: ov.assets.map((a) => ({ ...a })),
     effects: { ...ov.effects },
@@ -98,6 +99,7 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
       discoveredZones: fromView.discoveredZones,
       ambience: ambience.map((a) => ({ ...a })),
       ...copyAmbientSound(fromView.ambientSound),
+      soundLevels: fromView.soundLevels,
       hidden: fromView.hidden,
       assets: fromView.assets,
       effects: fromView.effects,
@@ -119,6 +121,7 @@ export function resetToStart(ov: SceneOverride): SceneOverride {
   return {
     ...rest,
     ...copyAmbientSound(start.ambientSound),
+    soundLevels: { ...start.soundLevels },
     fog: copyFog(start.fog),
     tokens: start.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
     doors: { ...start.doors },
@@ -231,7 +234,7 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
   // The scene's own assets, shown, hidden or on an inactive layer – never the map's.
   const mapAssets = new Set(map.assets.map((a) => a.id));
   const own = [...scene.ownAssets, ...off.filter((a) => !mapAssets.has(a.id))];
-  const all = <K extends 'walls' | 'zones' | 'lights'>(k: K) => [...scene[k], ...scene.hidden[k], ...scene.inactive[k]] as Scene[K];
+  const all = <K extends 'walls' | 'zones' | 'lights' | 'sounds'>(k: K) => [...scene[k], ...scene.hidden[k], ...scene.inactive[k]] as Scene[K];
   const orphanedHidden = (previous?.hidden ?? []).filter((id) => !known.has(id));
   // Door and interior states of placements that are gone are left out (E-29).
   const placements = new Set([...map.assets.map((a) => a.id), ...own.map((a) => a.id)]);
@@ -262,6 +265,7 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     combat: { ...combat },
     ambience: [],
     ...copyAmbientSound(scene.ambientOverride),
+    soundLevels: Object.fromEntries(all('sounds').filter((x) => x.level !== undefined).map((x) => [x.id, x.level!])),
     overrides: layer.overrides,
     added: layer.added,
   };
@@ -312,7 +316,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   // The start state shows the scene's start instead of its play state.
   const st = layer === 'start' && override ? startOf(override) : null;
   // The start's own sound everywhere, not the play state's (E-37).
-  const state = st ? { ...override!, ...st, ambientSound: st.ambientSound, templates: [], fogEffect: undefined } : override;
+  const state = st ? { ...override!, ...st, ambientSound: st.ambientSound, soundLevels: st.soundLevels ?? {}, templates: [], fogEffect: undefined } : override;
   const discovered = new Set(state?.discoveredZones ?? []);
   const elements = onMap ? elementsFromSidecar(map) : resolveElements(elementsFromSidecar(map), layerOf(override)).elements;
   const zones: Zone[] = elements.zones.map((z) => ({ ...z, shape: copyShape(z.shape), discovered: !z.secret || (!onMap && discovered.has(z.id)) }));
@@ -323,7 +327,8 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const hide = new Set(onMap ? [] : (state?.hidden ?? []));
   const walls = elements.walls.map((w) => ({ ...w, open: w.kind === 'door' || w.kind === 'secret-door' ? (doors[w.id] ?? false) : undefined }));
   const lights = elements.lights.map((l) => ({ ...l, on: lightsOn[l.id] ?? true }));
-  const sounds = elements.sounds.map((x) => ({ ...x }));
+  const levels = onMap ? {} : (state?.soundLevels ?? {});
+  const sounds = elements.sounds.map((x) => (levels[x.id] === undefined ? { ...x } : { ...x, level: levels[x.id] }));
   const shown = <T extends { id: string }>(xs: T[]) => xs.filter((x) => !hide.has(x.id));
   const hiddenOf = <T extends { id: string }>(xs: T[]) => xs.filter((x) => hide.has(x.id));
   // Elements on layers this scene has off (E-28): apart from the shown ones, unless hidden anyway.
@@ -467,7 +472,7 @@ export function resetElement(view: Scene, base: MapElements, id: string): Scene 
       const b = (base[kind] as { id: string }[]).find((e) => e.id === id);
       if (x.id !== id || !b) return x;
       const state: Record<string, unknown> = {};
-      for (const k of ['open', 'on', 'discovered']) if (k in x) state[k] = (x as Record<string, unknown>)[k];
+      for (const k of ['open', 'on', 'discovered', 'level']) if (k in x) state[k] = (x as Record<string, unknown>)[k];
       return { ...structuredClone(b), ...state } as unknown as T;
     });
   return {

@@ -31,7 +31,8 @@ export function AssetPicker() {
   useEffect(() => {
     void refreshVault();
   }, [root]);
-  const placeable = useMemo(() => items.filter((i) => PLACEABLE.includes(i.asset.assetKind)), [items]);
+  // One-shot sound effects are played from the soundboard, not looped on the map.
+  const placeable = useMemo(() => items.filter((i) => PLACEABLE.includes(i.asset.assetKind) && !(i.asset.assetKind === 'sound' && i.asset.subkind === 'sfx')), [items]);
   // Each object once (E-31): found by any of its variants, placed as its main variant.
   const entries = useMemo(() => catalogEntries(placeable, objects), [placeable, objects]);
   const shown = useMemo(() => {

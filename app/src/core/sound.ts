@@ -32,8 +32,10 @@ export function sourceLevel(source: SoundSource, at: readonly Point[], ftPx: num
   if (!at.length || reach <= 0) return 0;
   const d = Math.min(...at.map((p) => Math.hypot(p.x - source.x, p.y - source.y)));
   if (d >= reach) return 0;
+  // In a scene its own volume (DC-104c), else the map's.
+  const volume = source.level ?? source.volume;
   // Squared: the level falls away faster near the edge, where a sound fades into the background.
-  return source.fade ? source.volume * (1 - d / reach) ** 2 : source.volume;
+  return source.fade ? volume * (1 - d / reach) ** 2 : volume;
 }
 
 /** How much quieter a sound gets through each wall between (at most three count). */
@@ -45,27 +47,37 @@ function damps(w: Wall): boolean {
   return w.kind === 'wall' || ((w.kind === 'door' || w.kind === 'secret-door') && !w.open);
 }
 
-/** Whether segments a–b and c–d cross (touching at an end counts). */
-function crosses(ax: number, ay: number, bx: number, by: number, w: Wall): boolean {
+/**
+ * Where along a–b (0…1) the wall crosses it, or null (touching at an end counts; a wall lying
+ * along the line does not).
+ */
+function crossing(ax: number, ay: number, bx: number, by: number, w: Wall): number | null {
   const side = (px: number, py: number, qx: number, qy: number, rx: number, ry: number) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
   const d1 = side(w.x1, w.y1, w.x2, w.y2, ax, ay);
   const d2 = side(w.x1, w.y1, w.x2, w.y2, bx, by);
   const d3 = side(ax, ay, bx, by, w.x1, w.y1);
   const d4 = side(ax, ay, bx, by, w.x2, w.y2);
-  return d1 * d2 <= 0 && d3 * d4 <= 0 && !(d1 === 0 && d2 === 0);
+  if (d1 * d2 > 0 || d3 * d4 > 0 || d1 === d2) return null;
+  return d1 / (d1 - d2);
 }
 
-/** Damping walls between `a` and `b`, at most `MAX_WALLS`. */
+/**
+ * Damping walls between `a` and `b`, at most `MAX_WALLS`. Pieces of one wall meeting where the
+ * line passes (a joint) count once: crossings at the same place are one wall.
+ */
 function wallsBetween(a: Point, b: Point, walls: readonly Wall[]): number {
-  let n = 0;
+  const at = new Set<number>();
   const [x0, x1] = a.x < b.x ? [a.x, b.x] : [b.x, a.x];
   const [y0, y1] = a.y < b.y ? [a.y, b.y] : [b.y, a.y];
   for (const w of walls) {
     // Cheap box test first: maps can have thousands of wall pieces.
     if (Math.max(w.x1, w.x2) < x0 || Math.min(w.x1, w.x2) > x1 || Math.max(w.y1, w.y2) < y0 || Math.min(w.y1, w.y2) > y1) continue;
-    if (damps(w) && crosses(a.x, a.y, b.x, b.y, w) && ++n >= MAX_WALLS) break;
+    if (!damps(w)) continue;
+    const t = crossing(a.x, a.y, b.x, b.y, w);
+    if (t !== null) at.add(Math.round(t * 1e4));
+    if (at.size >= MAX_WALLS) break;
   }
-  return n;
+  return at.size;
 }
 
 /** How muffled a sound through `n` walls is: 0 clear … 1 as dull as it gets. */

@@ -94,11 +94,13 @@ export function setMaster(v: number): void {
   emit();
 }
 
+/** Stops the soundboard's ambience and silences the map's sounds too (DC-104c). */
 export function stopAll(): void {
   for (const a of state.soundboard.ambience) {
     if (a.playing) stopAmbience(a.id);
     a.playing = false;
   }
+  state.mapSoundsMuted = true;
   markDirty();
   emit();
 }

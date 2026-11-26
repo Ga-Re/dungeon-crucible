@@ -74,7 +74,10 @@ export interface SoundSource {
   x: number;
   y: number;
   radiusFt: number;
+  /** As built in the Map Forge. */
   volume: number;
+  /** Its volume in this scene (state, like a light being on, DC-104c); none: `volume`. */
+  level?: number;
   fade: boolean;
   layer?: string;
 }

@@ -95,6 +95,8 @@ export interface AppState {
   selectedLightId: string | null;
   /** The selected sound source (E-37). */
   selectedSoundId: string | null;
+  /** The map's sounds silenced by "stop all" or the Map sounds panel (not saved, DC-104c). */
+  mapSoundsMuted: boolean;
   turn: number;
   round: number;
   scene: Scene;
@@ -231,6 +233,7 @@ function initial(): AppState {
     areaCommand: null,
     selectedLightId: null,
     selectedSoundId: null,
+    mapSoundsMuted: false,
     turn: 0,
     round: 1,
     scene,
@@ -1164,6 +1167,7 @@ export function selectWall(id: string | null, toggle = false): void {
   if (state.layer !== 'map') return;
   const sel = state.selectedWallIds;
   if (id !== null) state.selectedAssetId = null;
+  if (id !== null) state.selectedSoundId = null;
   if (id === null) state.selectedWallIds = toggle ? sel : [];
   else if (toggle) state.selectedWallIds = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id];
   else state.selectedWallIds = [id];
@@ -1800,6 +1804,7 @@ export function selectPlacedAsset(id: string | null): void {
   if (id && !editableAssets().some((a) => a.id === id)) return;
   state.selectedAssetId = id;
   if (id) {
+    state.selectedSoundId = null;
     state.selectedWallIds = [];
     state.selectedZoneId = null;
   }
@@ -2305,6 +2310,7 @@ export function toggleCondition(id: string, c: Condition): void {
 
 export function selectToken(id: string | null): void {
   state.selectedTokenId = id;
+  if (id) state.selectedSoundId = null;
   emit();
 }
 
@@ -2354,6 +2360,7 @@ export function removeLight(id: string): void {
 
 export function selectLight(id: string | null): void {
   state.selectedLightId = id;
+  if (id) state.selectedSoundId = null;
   emit();
 }
 
@@ -2391,6 +2398,36 @@ export function setSoundPlaying(id: string, on: boolean): void {
 }
 
 /**
+ * A source's volume in this scene (DC-104c): state like a light being on – for the start while
+ * preparing, else for the play state; "reset scene" brings the start's back. One undoable step.
+ */
+export function setSoundLevel(id: string, level: number): void {
+  const x = state.layer === 'map' ? undefined : state.scene.sounds.find((q) => q.id === id);
+  if (!x) return;
+  checkpoint();
+  x.level = Math.max(0, Math.min(1, level));
+  markDirty();
+  emit();
+}
+
+/** "Stop all" and the Map sounds panel: the map's sounds silent until switched on again (this session). */
+export function setMapSoundsMuted(muted: boolean): void {
+  state.mapSoundsMuted = muted;
+  emit();
+}
+
+/**
+ * The scene whose map sounds play (E-37, DM 2026-11-26): the TV's – also while another tab is
+ * prepared or the Map Forge is open, as the soundboard does (E-30); without one, the scene open
+ * in the Orchestrator. Null: none.
+ */
+export function soundView(): Scene | null {
+  const tv = tvView();
+  if (tv) return tv.scene;
+  return state.ws === 'play' && state.layer !== 'map' && state.mapDoc ? state.scene : null;
+}
+
+/**
  * The scene's sound everywhere (DC-104c): its own, `"none"` for silence, or null for the map's.
  * One undoable step; in a scene only (the Map Forge sets the map's in Map settings).
  */
@@ -2406,6 +2443,7 @@ export function setSceneAmbientSound(v: { sound: string; volume: number } | 'non
 export function selectSound(id: string | null): void {
   state.selectedSoundId = id;
   if (id) {
+    state.selectedTokenId = null;
     state.selectedLightId = null;
     state.selectedAssetId = null;
     state.selectedWallIds = [];
@@ -2574,6 +2612,7 @@ export function selectZone(id: string | null): void {
   state.selectedZoneId = id;
   // One kind of selection at a time in the Properties panel.
   if (id) {
+    state.selectedSoundId = null;
     state.selectedWallIds = [];
     state.selectedAssetId = null;
   }

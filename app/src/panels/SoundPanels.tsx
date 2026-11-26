@@ -9,7 +9,7 @@ import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
 import { previewSound } from '../app/mapSound';
-import { removeSound, selectSound, setSceneAmbientSound, setSoundPlaying, updateSound, useStore } from '../app/store';
+import { removeSound, selectSound, setMapSoundsMuted, setSceneAmbientSound, setSoundLevel, setSoundPlaying, updateSound, useStore } from '../app/store';
 import type { SoundSource } from '../core/scene';
 import { refreshVault } from '../app/vault';
 import { LayerRow } from './panels';
@@ -60,11 +60,15 @@ export function SoundProperties({ id }: { id: string }) {
   const inScene = useStore((st) => st.layer !== 'map');
   const s = shown ?? off;
   // The volume slider changes the source once it is let go: one undoable step, not one per pixel.
+  // In a scene the volume is the scene's own (state, DC-104c); in the Map Forge the map's.
+  const volume = s ? (inScene ? (s.level ?? s.volume) : s.volume) : 0;
   const [vol, setVol] = useState(0);
-  useEffect(() => setVol(Math.round((s?.volume ?? 0) * 100)), [s?.volume]);
+  useEffect(() => setVol(Math.round(volume * 100)), [volume]);
   if (!s) return null;
   const commitVolume = () => {
-    if (vol !== Math.round(s.volume * 100)) updateSound(s.id, { volume: vol / 100 });
+    if (vol === Math.round(volume * 100)) return;
+    if (inScene) setSoundLevel(s.id, vol / 100);
+    else updateSound(s.id, { volume: vol / 100 });
   };
   return (
     <>
@@ -138,9 +142,13 @@ export function MapSoundPanel() {
   const inScene = useStore((st) => st.layer !== 'map' && !!st.mapDoc);
   const shown = useStore((st) => st.scene.sounds);
   const off = useStore((st) => st.scene.hidden.sounds);
+  const muted = useStore((st) => st.mapSoundsMuted);
+  const elsewhere = useStore((st) => !!st.tvScenePath && st.tvScenePath !== st.scenePath);
   if (!inScene) return <div className="panel-body"><p className="hint">{t('sound.noScene')}</p></div>;
   return (
     <div className="panel-body map-sounds">
+      <label className="cmd-check"><input type="checkbox" checked={muted} onChange={(e) => setMapSoundsMuted(e.target.checked)} />{t('sound.muteAll')}</label>
+      {elsewhere && <p className="hint">{t('sound.tvPlays')}</p>}
       <SceneSound />
       <div className="sec">{t('sound.sources')}</div>
       {shown.length + off.length === 0 && <p className="hint">{t('sound.noSources')}</p>}
@@ -154,10 +162,12 @@ function SourceRow({ source, on }: { source: SoundSource; on: boolean }) {
   const { t } = useI18n();
   const name = useSoundName()(source.sound);
   const selected = useStore((st) => st.selectedSoundId === source.id);
-  const [vol, setVol] = useState(Math.round(source.volume * 100));
-  useEffect(() => setVol(Math.round(source.volume * 100)), [source.volume]);
+  // The source's volume in this scene (state, DC-104c).
+  const volume = source.level ?? source.volume;
+  const [vol, setVol] = useState(Math.round(volume * 100));
+  useEffect(() => setVol(Math.round(volume * 100)), [volume]);
   const commit = () => {
-    if (vol !== Math.round(source.volume * 100)) updateSound(source.id, { volume: vol / 100 });
+    if (vol !== Math.round(volume * 100)) setSoundLevel(source.id, vol / 100);
   };
   return (
     <div className={`amb ${selected ? 'sel' : ''}`}>

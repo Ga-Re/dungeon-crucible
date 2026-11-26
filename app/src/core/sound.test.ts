@@ -96,6 +96,15 @@ describe('walls between (E-37, DC-104b)', () => {
     expect(sourceHearing(s, at, FT, [wall('d', 20, 'door', false)]).gain).toBeCloseTo(WALL_DAMP);
   });
 
+  it('two pieces of one wall meeting where the line passes count once', () => {
+    const pieces = [{ id: 'a', kind: 'wall' as const, x1: 20, y1: -100, x2: 20, y2: 0 }, { id: 'b', kind: 'wall' as const, x1: 20, y1: 0, x2: 20, y2: 100 }];
+    expect(sourceHearing(s, at, FT, pieces).gain).toBeCloseTo(WALL_DAMP);
+  });
+
+  it('a scene\'s own volume counts instead of the map\'s', () => {
+    expect(sourceHearing({ ...s, level: 0.25 }, at, FT, []).gain).toBeCloseTo(0.25);
+  });
+
   it('a wall beside the line does not count', () => {
     expect(sourceHearing(s, at, FT, [{ id: 'w', kind: 'wall', x1: 20, y1: 10, x2: 20, y2: 100 }]).gain).toBe(1);
   });

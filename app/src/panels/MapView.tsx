@@ -486,20 +486,21 @@ function DmMap() {
           return;
         }
         // Sound sources (E-37): the selected one's radius handle, then any source – select and drag.
-        const tol = HANDLE_PX / view.current.zoom;
         const selSound = state.scene.sounds.find((x) => x.id === state.selectedSoundId && editableHere(x));
         if (selSound) {
           const r = selSound.radiusFt * (cell / state.scene.map.grid.feetPerCell);
-          if (Math.hypot(p.x - (selSound.x + r), p.y - selSound.y) < Math.max(tol, (SOUND_HANDLE_PX / view.current.zoom) * 0.8)) {
+          if (Math.hypot(p.x - (selSound.x + r), p.y - selSound.y) < SOUND_HANDLE_PX / view.current.zoom) {
             drag.current = { kind: 'sound-radius', id: selSound.id, moved: false };
             return;
           }
         }
-        const sound = soundAt(p);
+        // In a scene a light or an asset under the pointer is switched first (a torch with its sound).
+        const sound = state.ws === 'play' && (lightAt(p) || anyAssetAt(p)) ? null : soundAt(p);
         if (sound) {
-          const x = state.scene.sounds.find((q) => q.id === sound)!;
           selectSound(sound);
-          drag.current = { kind: 'sound-move', id: sound, ox: x.x - p.x, oy: x.y - p.y, moved: false };
+          // A switched-off source is only selected; a playing one can be dragged.
+          const x = state.scene.sounds.find((q) => q.id === sound);
+          if (x) drag.current = { kind: 'sound-move', id: sound, ox: x.x - p.x, oy: x.y - p.y, moved: false };
           return;
         }
         const light = lightAt(p);

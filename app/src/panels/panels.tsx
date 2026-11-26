@@ -368,6 +368,9 @@ function OwnBuildProperties({ sel }: { sel: BuildSelection }) {
           value={{ cliffKind: cliff.kind, form: cliff.form, steep: cliff.steep, widthFt: Math.round(cliff.width * ftPerPx), steps: cliff.steps, inside: cliff.inside, growth: cliff.growth }}
           onChange={(p) => updateCliff(cliff.id, { ...(p.cliffKind ? { kind: p.cliffKind } : {}), ...(p.form ? { form: p.form } : {}), ...(p.steep !== undefined ? { steep: p.steep } : {}), ...(p.widthFt ? { width: p.widthFt / ftPerPx } : {}), ...(p.steps ? { steps: p.steps } : {}), ...(p.inside ? { inside: p.inside } : {}), ...(p.growth !== undefined ? { growth: p.growth } : {}) })}
         />
+        <div className="row"><label htmlFor="bc-decay">{t('build.decay')}</label>
+          <input id="bc-decay" type="range" min={0} max={100} value={Math.round((cliff.decay ?? 0) * 100)} onChange={(e) => updateCliff(cliff.id, { decay: Number(e.target.value) / 100 || undefined })} />
+        </div>
         <div className="cmd-line">
           <button className="btn sm" onClick={() => flipCliff(cliff.id)}><Icon name="redo" />{t('build.cliff.flip')}</button>
           <button className="btn sm" onClick={() => rerollCliff(cliff.id)}><Icon name="reset" />{t('build.reroll')}</button>
@@ -418,6 +421,9 @@ function OwnBuildProperties({ sel }: { sel: BuildSelection }) {
       <NumberRow id="bw-thick" label={t('build.thickness')} value={ft(wall.thickness)} step={0.25} min={0.25} onCommit={(v) => v > 0 && updateMasonry(wall.id, { thickness: v / ftPerPx })} />
       <NumberRow id="bw-height" label={t('build.height')} value={ft(wall.height ?? defaultWallHeight(wall, grid.cellWidth))} step={0.5} min={0.5} onCommit={(v) => v > 0 && updateMasonry(wall.id, { height: v / ftPerPx })} />
       <label className="cmd-check"><input type="checkbox" checked={!!wall.fortified} onChange={(e) => updateMasonry(wall.id, { fortified: e.target.checked })} />{t('build.fortified')}</label>
+      <div className="row"><label htmlFor="bw-decay">{t('build.decay')}</label>
+        <input id="bw-decay" type="range" min={0} max={100} value={Math.round((wall.decay ?? 0) * 100)} onChange={(e) => updateMasonry(wall.id, { decay: Number(e.target.value) / 100 || undefined })} />
+      </div>
       <div className="cmd-line">
         <button className="btn sm" onClick={() => rerollMasonry(wall.id)}><Icon name="reset" />{t('build.reroll')}</button>
         {sel.point !== null && <button className="btn sm" onClick={splitBuildWall}><Icon name="line" />{t('build.split')}</button>}

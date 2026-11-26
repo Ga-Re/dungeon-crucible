@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Masonry } from './masonry';
-import { blockedCells, periodicNoise, variantBlobs, wearPaths } from './variance';
+import { blockedCells, lineStrips, periodicNoise, variantBlobs, wearPaths } from './variance';
 
 const wall = (points: { x: number; y: number }[], extra: Partial<Masonry> = {}): Masonry => ({ id: 'w', points, closed: false, style: 'dungeon-stone', thickness: 14, seed: 1, ...extra });
 
@@ -96,5 +96,36 @@ describe('blocked cells and worn paths (DC-119a)', () => {
     expect(wearPaths([], doors, area, 35)).toEqual(a);
     // Three doors in the open: pairs (0,1) and (1,2), not the long diagonal as well.
     expect(a.length).toBe(2);
+  });
+});
+
+describe('line strips (DC-119b)', () => {
+  it('walks a polyline at the given spacing with the running distance and the tangent angle', () => {
+    const s = lineStrips([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], false, 20);
+    expect(s.length).toBe(11);
+    expect(s[0]).toMatchObject({ x: 0, y: 0, u: 0 });
+    expect(s[0].angle).toBeCloseTo(0);
+    expect(s[10].u).toBeCloseTo(200);
+    expect(s[10].angle).toBeCloseTo(Math.PI / 2);
+    // u grows by the spacing.
+    for (let i = 1; i < s.length; i++) expect(s[i].u - s[i - 1].u).toBeCloseTo(20);
+    // The corner lies on the line.
+    const corner = s.find((p) => Math.abs(p.u - 100) < 1)!;
+    expect(corner.x).toBeCloseTo(100);
+    expect(corner.y).toBeCloseTo(0);
+  });
+
+  it('a closed ring walks all the way round and ends where it began', () => {
+    const ring = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }];
+    const s = lineStrips(ring, true, 50);
+    expect(s[0].u).toBe(0);
+    expect(s[s.length - 1].u).toBeCloseTo(400);
+    expect(s[s.length - 1].x).toBeCloseTo(0);
+    expect(s[s.length - 1].y).toBeCloseTo(0);
+  });
+
+  it('too few points give nothing', () => {
+    expect(lineStrips([{ x: 1, y: 2 }], false, 10)).toEqual([]);
+    expect(lineStrips([], true, 10)).toEqual([]);
   });
 });

@@ -452,6 +452,7 @@ export const de: Partial<Record<MessageKey, string>> = {
   'build.opening.secret': 'Geheimtür',
   'build.opening.window': 'Fenster',
   'build.windowAbout': 'Klicke auf eine gezeichnete Mauer, um dort ein Fenster zu setzen. Fenster verdecken weder Sicht noch Licht: Licht von innen scheint hinaus.',
+  'build.decay': 'Verfall',
   'build.fortified': 'Wehrmauer (Türme und Zinnen)',
   'build.height': 'Höhe (ft)',
   'build.light': 'Licht fällt nach',

@@ -7,6 +7,7 @@
  */
 import { cliffEdges, offsetPolyline, type Cliff, type CliffKind } from '../core/build/cliffs';
 import { noise2 } from '../core/build/handDrawn';
+import { hashNoise, lineStrips } from '../core/build/variance';
 import type { Point } from '../core/geometry';
 import type { BuildTextures, PartSlot } from './build/textures';
 
@@ -143,13 +144,56 @@ export function paintCliffs(g: CanvasRenderingContext2D, cliffs: readonly WiredC
       g.save();
       if (c.kind === 'chasm') {
         g.fillStyle = 'rgba(8,8,10,.95)';
+        g.fill(face, 'evenodd');
       } else {
         const src = tex.surface[`cliff-${c.kind}`];
         const pattern = g.createPattern(src, 'repeat');
         pattern?.setTransform(new DOMMatrix().translate((seed & 255) * 2.7, ((seed >> 8) & 255) * 1.9).scale((cell * 1.5) / src.width));
         g.fillStyle = pattern ?? '#5e5a55';
+        g.fill(face, 'evenodd');
+        // The texture follows the edge's line (DC-119b): layers bend with it; a variant per cliff.
+        const variants = tex.variants[`cliff-${c.kind}`] ?? [src];
+        const vsrc = variants[Math.floor(hashNoise(c.seed, k, 9) * variants.length)];
+        const perPx = vsrc.width / (cell * 1.5);
+        const step = cell * 0.5;
+        const w = step * 1.7;
+        const sw = w * perPx;
+        g.save();
+        g.clip(face, 'evenodd');
+        for (const p of lineStrips(e.points, e.closed, step)) {
+          let sx = ((p.u + seed * 53) * perPx) % vsrc.width;
+          if (sx < 0) sx += vsrc.width;
+          g.save();
+          g.translate(p.x, p.y);
+          g.rotate(p.angle);
+          const h = depth * 2.6;
+          if (sx + sw <= vsrc.width) g.drawImage(vsrc, sx, 0, sw, vsrc.height, -w / 2, -h / 2, w, h);
+          else {
+            const first = (vsrc.width - sx) / perPx;
+            g.drawImage(vsrc, sx, 0, vsrc.width - sx, vsrc.height, -w / 2, -h / 2, first, h);
+            g.drawImage(vsrc, 0, 0, sw - (vsrc.width - sx), vsrc.height, -w / 2 + first, -h / 2, w - first, h);
+          }
+          g.restore();
+        }
+        g.restore();
       }
-      g.fill(face, 'evenodd');
+      // Fallen stones below a decayed face (DC-119b).
+      if (c.decay && c.kind !== 'chasm') {
+        g.save();
+        g.strokeStyle = 'rgba(20,16,12,.5)';
+        g.lineWidth = 1;
+        const len = foot.length;
+        for (let i = 0, n = Math.ceil((len / 3) * c.decay); i < n; i++) {
+          const at = foot[Math.floor(hashNoise(i, 31, seed) * (len - 1))];
+          const r = cell * (0.035 + hashNoise(i, 32, seed) * 0.05);
+          g.fillStyle = hashNoise(i, 33, seed) > 0.5 ? '#8a8276' : '#79716a';
+          g.beginPath();
+          g.ellipse(at.x + (hashNoise(i, 34, seed) - 0.5) * cell * 0.8, at.y + (hashNoise(i, 35, seed) - 0.5) * cell * 0.8, r, r * 0.8, hashNoise(i, 36, seed) * 3, 0, Math.PI * 2);
+          g.fill();
+          g.stroke();
+        }
+        g.restore();
+      }
       // Darker towards the foot: a second band over the lower half.
       if (c.kind !== 'chasm') {
         g.fillStyle = c.kind === 'scree' ? 'rgba(0,0,0,.12)' : 'rgba(0,0,0,.28)';

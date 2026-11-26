@@ -50,10 +50,11 @@ export interface VariantBlobs {
  * Patches of variants over a sheet of `cells`×`cells` cells: each cell gets a variant and a
  * rotation, constant within a patch (so a variant's pattern runs on in one piece) and wrapping
  * with the sheet. `rotations` is how many quarter turns the material allows (1, 2 or 4 – wood
- * keeps its planks' direction, stone turns freely); `blobStep` is roughly how wide a patch is.
+ * keeps its planks' direction, stone turns freely); `blobStep` is roughly how wide a patch is,
+ * and `baseBias` favours the untouched base (variants then read as occasional patches).
  */
-export function variantBlobs(opts: { cells: number; variants: number; rotations: number; seed: number; blobStep?: number }): VariantBlobs {
-  const { cells, variants, rotations, seed, blobStep = 4 } = opts;
+export function variantBlobs(opts: { cells: number; variants: number; rotations: number; seed: number; blobStep?: number; baseBias?: number }): VariantBlobs {
+  const { cells, variants, rotations, seed, blobStep = 4, baseBias = 0 } = opts;
   const options = Math.max(1, variants * rotations);
   const period = Math.max(1, Math.round(cells / blobStep));
   const at = (x: number, y: number): BlobCell => {
@@ -62,7 +63,8 @@ export function variantBlobs(opts: { cells: number; variants: number; rotations:
     let best = 0;
     let score = -Infinity;
     for (let o = 0; o < options; o++) {
-      const s = periodicNoise(u, v, period, seed + o * 101);
+      // A bias keeps the plain base in front: variants appear as occasional patches.
+      const s = periodicNoise(u, v, period, seed + o * 101) + (o === 0 ? baseBias : 0);
       if (s > score) {
         score = s;
         best = o;
@@ -229,4 +231,48 @@ export function wearPaths(masonry: readonly Masonry[], doors: readonly Point[], 
     if (path) paths.push(path);
   }
   return paths;
+}
+
+/* ---------------------------------------------------------------- line strips */
+
+export interface Strip {
+  x: number;
+  y: number;
+  /** Direction of the line here (radians). */
+  angle: number;
+  /** Distance walked from the start (map px). */
+  u: number;
+}
+
+/**
+ * Walks a polyline in steps of `spacing` map px (DC-119b): where each strip of a texture laid
+ * along the line sits, with the running distance `u` – so courses of stone bend with the line
+ * instead of running straight through. A closed ring walks all the way round.
+ */
+export function lineStrips(points: readonly Point[], closed: boolean, spacing: number): Strip[] {
+  const pts = closed && points.length > 1 ? [...points, points[0]] : [...points];
+  if (pts.length < 2) return [];
+  const out: Strip[] = [];
+  let u = 0;
+  let into = 0;
+  for (let k = 1; k < pts.length; k++) {
+    const a = pts[k - 1];
+    const b = pts[k];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (!len) continue;
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    for (let d = into; d <= len; d += spacing) {
+      out.push({ x: a.x + ((b.x - a.x) * d) / len, y: a.y + ((b.y - a.y) * d) / len, angle, u: u + d });
+      into = d + spacing - len;
+    }
+    u += len;
+    if (into > len) into -= len;
+  }
+  const last = out[out.length - 1];
+  if (!last || u - last.u > spacing / 2) {
+    const a = pts[pts.length - 2];
+    const b = pts[pts.length - 1];
+    out.push({ x: b.x, y: b.y, angle: Math.atan2(b.y - a.y, b.x - a.x), u });
+  }
+  return out;
 }

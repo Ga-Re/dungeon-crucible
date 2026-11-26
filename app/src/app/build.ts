@@ -431,7 +431,7 @@ export function splitBuildWall(): void {
   emit();
 }
 
-export function updateMasonry(id: string, patch: Partial<Pick<Masonry, 'style' | 'thickness' | 'seed' | 'height' | 'fortified'>>): void {
+export function updateMasonry(id: string, patch: Partial<Pick<Masonry, 'style' | 'thickness' | 'seed' | 'height' | 'fortified' | 'decay'>>): void {
   checkpoint();
   apply({ masonry: target().masonry.map((w) => (w.id === id ? { ...w, ...patch } : w)), doors: target().masonryDoors });
   emit();
@@ -451,7 +451,7 @@ export function updateBuildDoor(id: string, patch: Partial<Pick<BuildDoor, 'widt
 }
 
 /** Changes a cliff (one step); scree never blocks sight, a ring's form follows its being closed. */
-export function updateCliff(id: string, patch: Partial<Pick<Cliff, 'kind' | 'form' | 'steep' | 'width' | 'steps' | 'inside' | 'growth' | 'seed'>>): void {
+export function updateCliff(id: string, patch: Partial<Pick<Cliff, 'kind' | 'form' | 'steep' | 'width' | 'steps' | 'inside' | 'growth' | 'seed' | 'decay'>>): void {
   checkpoint();
   const m = target();
   const cliffs = m.cliffs.map((c) => {

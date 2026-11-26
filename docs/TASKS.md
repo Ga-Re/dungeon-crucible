@@ -482,8 +482,13 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     mit Higgsfield erzeugt (~242 Credits, Herkunft im Textur-README); Mauern/Klippen/Wasser nutzen sie ab
     DC-119b/c. Offen aus der Ansicht: Dielen-Varianten unterscheiden sich im Maßstab (wirkt wie gewollter
     Bodenwechsel – beobachten); Rand-Trim an Mauern kommt mit DC-119b.
-  - **DC-119b Mauern und Klippen**: Textur folgt der Spline (Steinreihen biegen sich mit), Kantenrauheit je Seed,
-    Verfallsgrad je Element (Karte v7, optionales Feld mit Migration).
+  - ✓ **DC-119b Mauern und Klippen**: Die Textur folgt der Linie – Scheiben des Bildes, je zur Laufrichtung
+    gedreht, das Quellfenster wandert mit der Strecke (`lineStrips`, pur mit Tests); Mauerkronen und Klippenwände
+    biegen sich mit, Varianten je Mauer/Klippe aus DC-119a. Kantenrauheit je Mauergruppe (Seed der Gruppe statt
+    nur des Stils): keine zwei geraden Mauern wackeln gleich. **Verfallsgrad je Element** (Mauer und Klippe,
+    Regler „Verfall“ in den Eigenschaften): Risse und fehlende Steine auf der Krone, Geröll am Fuß; Karte v7 und
+    Szene v9 (optionales Feld `decay`, Leer-Migrationen), in der TV-Projektion mitgegeben (nur Optik). Dazu eine
+    dunkle Fundamentlinie am Mauerfuß (der Rand-Trim aus DC-119a in schlichter Form).
   - **DC-119c Wasser**: organische Uferlinie, Strömungsrichtung in Textur und Animation, Flachzonen mit sichtbarem
     Grund und Tiefenvarianz.
   - **DC-119d Flächen-Generator**: Bereich aufziehen und füllen (Stil, Dichte, Seed, Würfel-Knopf) im Bauen-Tab;

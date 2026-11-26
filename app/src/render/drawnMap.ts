@@ -9,7 +9,7 @@
  * any size never exists as one canvas. Everything is painted in map coordinates, so tiles meet.
  */
 import { floorField, jitterRing, noise2, type FloorStyle, type Jitter } from '../core/build/handDrawn';
-import { wearPaths } from '../core/build/variance';
+import { hashNoise, lineStrips, wearPaths } from '../core/build/variance';
 import { FLOOR_REACH_CELLS, floorStep } from '../core/build/dirty';
 import { buildGraph, doorSpan, masonryOutline, pointAt, type BuildDoor, type Masonry, type MasonryStyle } from '../core/build/masonry';
 import type { DmDrawing, Drawing } from '../core/build/playerDrawing';
@@ -58,6 +58,8 @@ interface PreparedStyle {
   bottom: number;
   /** Middles of the doors and windows in it: no tower stands in a gate. */
   openings: { x: number; y: number }[];
+  /** The group's walls: their spines carry the texture along the line (DC-119b). */
+  walls: Masonry[];
 }
 
 /** How high a wall stands by its style, in cells; a fortified wall is higher (E-35). */
@@ -119,7 +121,8 @@ const groupOutlines = new Map<string, { shape: Path2D; rings: [number, number][]
 
 function outlineOf(style: MasonryStyle, group: Masonry[], doors: BuildDoor[]): { shape: Path2D; rings: [number, number][][]; joints: PreparedStyle['joints'] } {
   const thickness = group.reduce((s, w) => s + w.thickness, 0) / group.length;
-  const jitter: Jitter = { step: Math.max(3, thickness / 3), amplitude: thickness * WAVER[style].amplitude, scale: thickness * WAVER[style].scale, seed: styleSeed(style) };
+  // The waver differs per group (DC-119b): two straight walls never ripple alike.
+  const jitter: Jitter = { step: Math.max(3, thickness / 3), amplitude: thickness * WAVER[style].amplitude, scale: thickness * WAVER[style].scale, seed: styleSeed(style) + group.reduce((a, w) => a + w.seed, 0) };
   const shape = new Path2D();
   const rings: [number, number][][] = [];
   for (const p of masonryOutline(group, doors))
@@ -185,7 +188,7 @@ function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: num
         const wall = group.find((w) => w.id === d.wall)!;
         return pointAt(wall.points, wall.closed, d.at);
       });
-      return { style, shape: built.shape, rings: built.rings, thickness, joints: built.joints, height, fortified, bottom, openings };
+      return { style, shape: built.shape, rings: built.rings, thickness, joints: built.joints, height, fortified, bottom, openings, walls: group };
     }),
   ).sort((a, b) => a.bottom - b.bottom);
   // Groups no drawing uses any more go.
@@ -395,6 +398,107 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
   // The side faces seen in the 2.5D look face down the map: lit when the light comes from below.
   const sideLit = Math.max(0, -light.y);
 
+  /**
+   * Lays a texture along a line (DC-119b): slices of the picture, each turned to the line's
+   * direction, their source window moving with the walked distance – courses of stone bend with
+   * the wall instead of running straight through the map.
+   */
+  const paintAlong = (g: CanvasRenderingContext2D, src: HTMLCanvasElement, points: readonly Point[], closed: boolean, across: number, seed: number) => {
+    const step = Math.max(6, cell * 0.45);
+    const perPx = src.width / (cell * WALL_CELLS);
+    const sh = Math.min(src.height, Math.max(8, across * perPx));
+    const sy = Math.floor(hashNoise(seed, 3, 17) * (src.height - sh));
+    const w = step * 1.7;
+    const sw = w * perPx;
+    for (const p of lineStrips(points, closed, step)) {
+      let sx = ((p.u + seed * 53) * perPx) % src.width;
+      if (sx < 0) sx += src.width;
+      g.save();
+      g.translate(p.x, p.y);
+      g.rotate(p.angle);
+      if (sx + sw <= src.width) g.drawImage(src, sx, sy, sw, sh, -w / 2, -across / 2, w, across);
+      else {
+        const first = (src.width - sx) / perPx;
+        g.drawImage(src, sx, sy, src.width - sx, sh, -w / 2, -across / 2, first, across);
+        g.drawImage(src, 0, sy, sw - (src.width - sx), sh, -w / 2 + first, -across / 2, w - first, across);
+      }
+      g.restore();
+    }
+  };
+
+  const lengthOf = (points: readonly Point[], closed: boolean): number => {
+    const pts = closed ? [...points, points[0]] : points;
+    let len = 0;
+    for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    return len;
+  };
+
+  /** Cracks and missing stones on a decayed wall's top (DC-119b). */
+  const paintWallDecay = (g: CanvasRenderingContext2D, w: Masonry) => {
+    const decay = w.decay ?? 0;
+    const len = lengthOf(w.points, w.closed);
+    g.save();
+    g.lineCap = 'round';
+    g.strokeStyle = 'rgba(10,8,6,.5)';
+    g.lineWidth = 1.2;
+    for (let i = 0, n = Math.ceil((len / cell) * decay * 0.8); i < n; i++) {
+      const at = pointAt(w.points, w.closed, hashNoise(i, 11, w.seed) * len);
+      let a = hashNoise(i, 12, w.seed) * Math.PI * 2;
+      g.beginPath();
+      g.moveTo(at.x, at.y);
+      let x = at.x;
+      let y = at.y;
+      for (let k = 0; k < 4; k++) {
+        a += (hashNoise(i * 7 + k, 13, w.seed) - 0.5) * 1.6;
+        x += Math.cos(a) * w.thickness * 0.5;
+        y += Math.sin(a) * w.thickness * 0.5;
+        g.lineTo(x, y);
+      }
+      g.stroke();
+    }
+    // Bites out of the edge: dark gaps where stones are gone.
+    g.fillStyle = 'rgba(12,10,8,.55)';
+    for (let i = 0, n = Math.ceil((len / cell) * decay * 0.7); i < n; i++) {
+      const at = pointAt(w.points, w.closed, hashNoise(i, 14, w.seed) * len);
+      const side = hashNoise(i, 15, w.seed) > 0.5 ? 1 : -1;
+      const next = pointAt(w.points, w.closed, Math.min(len, hashNoise(i, 14, w.seed) * len + 1));
+      const nx = -(next.y - at.y);
+      const ny = next.x - at.x;
+      const nl = Math.hypot(nx, ny) || 1;
+      const r = w.thickness * (0.14 + hashNoise(i, 16, w.seed) * 0.16);
+      g.beginPath();
+      g.arc(at.x + (nx / nl) * side * (w.thickness / 2), at.y + (ny / nl) * side * (w.thickness / 2), r, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+  };
+
+  /** Fallen stones on the ground beside a decayed wall (DC-119b). */
+  const paintWallScree = (g: CanvasRenderingContext2D, w: Masonry) => {
+    const decay = w.decay ?? 0;
+    const len = lengthOf(w.points, w.closed);
+    g.save();
+    g.strokeStyle = 'rgba(20,16,12,.5)';
+    g.lineWidth = 1;
+    for (let i = 0, n = Math.ceil((len / cell) * decay * 1.6); i < n; i++) {
+      const u = hashNoise(i, 21, w.seed) * len;
+      const at = pointAt(w.points, w.closed, u);
+      const next = pointAt(w.points, w.closed, Math.min(len, u + 1));
+      const nx = -(next.y - at.y);
+      const ny = next.x - at.x;
+      const nl = Math.hypot(nx, ny) || 1;
+      const side = hashNoise(i, 22, w.seed) > 0.5 ? 1 : -1;
+      const d = w.thickness * (0.8 + hashNoise(i, 23, w.seed) * 1.4);
+      const r = cell * (0.035 + hashNoise(i, 24, w.seed) * 0.05);
+      g.fillStyle = hashNoise(i, 25, w.seed) > 0.5 ? '#8a8276' : '#79716a';
+      g.beginPath();
+      g.ellipse(at.x + (nx / nl) * side * d, at.y + (ny / nl) * side * d, r, r * 0.8, hashNoise(i, 26, w.seed) * 3, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+    }
+    g.restore();
+  };
+
   const paintWalls = (g: CanvasRenderingContext2D) => {
     // Shadows first, all of them: no shadow lies on a wall painted before it.
     for (const s of styles) {
@@ -410,6 +514,12 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       const t = s.thickness;
       const up = s.height;
       const pattern = surfacePattern(g, tex.surface[`wall-${s.style}`], cell, WALL_CELLS, styleSeed(s.style)) ?? '#5b5650';
+      // Fallen stones lie on the ground, under the wall's body.
+      for (const w of s.walls) if (w.decay) paintWallScree(g, w);
+      // The foot: a dark line grounds the wall on the floor (DC-119b).
+      g.strokeStyle = 'rgba(0,0,0,.2)';
+      g.lineWidth = Math.max(2, t * 0.22);
+      g.stroke(s.shape);
       // The side face: each outline edge swept up to the top.
       const side = new Path2D();
       for (const ring of s.rings)
@@ -430,6 +540,12 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       g.translate(0, -up);
       g.fillStyle = pattern;
       g.fill(s.shape, 'nonzero');
+      // The texture follows each wall's line (DC-119b): courses bend with it; variants per wall.
+      const variants = tex.variants[`wall-${s.style}`] ?? [tex.surface[`wall-${s.style}`]];
+      g.save();
+      g.clip(s.shape, 'nonzero');
+      for (const w of s.walls) paintAlong(g, variants[Math.floor(hashNoise(w.seed, 1, 7) * variants.length)], w.points, w.closed, Math.max(w.thickness * 1.9, t), w.seed);
+      g.restore();
       g.fillStyle = 'rgba(20,16,12,.24)';
       g.fill(s.shape, 'nonzero');
       // A light edge on the side the light comes from, then the outline.
@@ -453,6 +569,8 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
           g.drawImage(part, -size / 2, -size / 2, size, size);
           g.restore();
         }
+      // What has fallen into decay (DC-119b): cracks and missing stones on the top.
+      for (const w of s.walls) if (w.decay) paintWallDecay(g, w);
       // Battlements along fortified walls.
       for (const f of s.fortified) paintBattlements(g, f.points, f.closed, t, pattern, s.openings, cell);
       g.restore();

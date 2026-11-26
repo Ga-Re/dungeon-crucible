@@ -25,6 +25,8 @@ export interface Masonry {
   layer?: string;
   /** How high it stands in the 2.5D look (map px); none: after its style (E-35). */
   height?: number;
+  /** How decayed it looks, 0–1 (DC-119b). */
+  decay?: number;
   /** A fortified wall: towers at its corners and battlements on top (E-35). */
   fortified?: boolean;
 }

@@ -452,6 +452,7 @@ export const en = {
   'build.opening.secret': 'Secret door',
   'build.opening.window': 'Window',
   'build.windowAbout': 'Click a drawn wall to put a window there. Windows block neither sight nor light: light inside shines out.',
+  'build.decay': 'Decay',
   'build.fortified': 'Fortified wall (towers and battlements)',
   'build.height': 'Height (ft)',
   'build.light': 'Light falls to',

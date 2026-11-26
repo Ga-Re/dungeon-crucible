@@ -70,7 +70,7 @@ function compose(slot: SurfaceSlot, tex: BuildTextures, cell: number, seed: numb
   const variants = tex.variants[slot] ?? [tex.surface[slot]];
   const kind = kindOf(slot);
   // Dressed floors switch in larger patches – a room keeps mostly one flooring.
-  const blobs = variantBlobs({ cells: SHEET_CELLS, variants: variants.length, rotations: kind.rotations, seed, blobStep: kind.dressed ? 8 : 4 });
+  const blobs = variantBlobs({ cells: SHEET_CELLS, variants: variants.length, rotations: kind.rotations, seed, blobStep: kind.dressed ? 8 : 4, baseBias: kind.dressed ? 0.8 : 0 });
   // Variants are evened towards the base picture's brightness, so patches differ in pattern, not in tone.
   const base = meanLuma(variants[0]);
   const even = (variant: number): string => {

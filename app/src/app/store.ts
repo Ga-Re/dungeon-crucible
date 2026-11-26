@@ -887,7 +887,8 @@ export function setTool(tool: ToolId): void {
   if (tool !== 'area') state.areaCommand = null;
   if (tool !== 'wall') state.wallCommand = null;
   if (tool !== 'build-wall' && tool !== 'build-door' && tool !== 'build-cliff') state.buildCommand = null;
-  if (!tool.startsWith('build-')) state.buildSelection = null;
+  // Another tool – also from drawing to editing – starts without a selection: the first click selects, it never adds a point.
+  if (tool !== state.tool) state.buildSelection = null;
   if (tool !== 'calibrate') dropCalibration();
   state.tool = tool;
   emit();

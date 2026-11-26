@@ -164,6 +164,8 @@ export function endBuildCommand(keepDrawn: boolean): void {
   if (keepDrawn && c.points.length >= 2) finishBuildWall(false);
   state.buildCommand = null;
   state.tool = 'build-edit';
+  // Editing starts without a selection: the first click selects, it never adds a point.
+  state.buildSelection = null;
   emit();
 }
 
@@ -187,7 +189,8 @@ export function placeBuildDoor(p: Point, free: boolean, tolPx: number): boolean 
 /** What a click at `p` picks in the "Edit" tool: a point, a door, a wall, a cliff – in that order. */
 export function buildHit(p: Point, tolPx: number): BuildSelection | null {
   const walls = editableMasonry();
-  const cliffs = editableCliffs();
+  // A cliff is hit on its face too, not only on its upper edge: what is seen is what is clicked.
+  const cliffs = editableCliffs().map((c) => ({ ...c, thickness: state.scene.map.grid.cellWidth * 1.2 }));
   const v = hitVertex(walls, p, tolPx);
   if (v) return { kind: 'wall', wall: v.wall, point: v.index, door: null };
   const cv = hitVertex(cliffs, p, tolPx);

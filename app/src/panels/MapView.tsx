@@ -33,6 +33,7 @@ import { fogOptions } from '../render/fogOptions';
 import { DARKNESS } from '../core/projection';
 import { dmDrawing } from '../core/build/playerDrawing';
 import { doorSpan, pointAt } from '../core/build/masonry';
+import { activeLayers, elementLayer } from '../core/layers';
 import { addBuildPoint, buildHit, buildTarget, deleteBuildSelection, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, slideBuildDoor, undoBuildPoint } from '../app/build';
 import { BuildCommandPanel } from './BuildCommandPanel';
 import { bindMap } from '../render/mapBinding';
@@ -338,6 +339,7 @@ function DmMap() {
       draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
       fogDraft,
       build: buildOverlayOf(),
+      difficult: difficultOf(),
       areaDraft: areaDraftOf(d),
       assets: [
         ...allPlacements(state.scene).filter((a) => state.ws !== 'forge' || shownInForge(a)).map((a) => placementLook(a, false)),
@@ -365,6 +367,16 @@ function DmMap() {
     const drafted = state.wallCommand?.walls.map((w, i) => ({ ...w, id: `draft-${i}` })) ?? [];
     const others = [...state.scene.walls, ...drafted].filter((w) => !skip?.has(w.id));
     return nearestEnd(others, p, HANDLE_PX / view.current.zoom) ?? snapCorner(p);
+  };
+
+  /** Scree slopes on the shown layers (E-34): difficult terrain, marked for the DM. */
+  const difficultOf = (): OverlayState['difficult'] => {
+    // In the Map Forge every layer, in a scene those it has on.
+    const active = state.layer === 'map' ? null : activeLayers(state.scene.map.layers, state.scene.layersOn);
+    const scree = state.scene.map.cliffs.filter((c) => c.kind === 'scree' && (!active || active.has(elementLayer(c))));
+    if (!scree.length) return null;
+    const depth = state.scene.map.grid.cellWidth;
+    return { lines: scree.map((c) => ({ points: c.points, closed: c.closed, depth })), label: t('build.cliff.difficult') };
   };
 
   /** "Build" (E-33): the wall being drawn with its next point (snapped as it will be), the selection. */

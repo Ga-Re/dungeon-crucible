@@ -423,6 +423,7 @@ export const de: Partial<Record<MessageKey, string>> = {
   'build.cliff.screeAbout': 'Schwieriges Gelände: kostet zusätzliche Bewegung, sobald es Bewegungskosten gibt (DC-026); verdeckt keine Sicht.',
   'build.props.cliff': 'Klippe',
   'log.cliffAdded': 'Klippe gezeichnet',
+  'build.cliff.difficult': 'schwieriges Gelände',
   'build.ring': 'Geschlossener Ring',
   'log.masonryAdded': 'Mauer gezeichnet',
   'log.doorAdded': 'Tür gesetzt',

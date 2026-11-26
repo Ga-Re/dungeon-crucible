@@ -45,6 +45,29 @@ export interface OverlayState {
   fogDraft: { polygon: Polygon | null; path: Point[]; mode: 'reveal' | 'hide' } | null;
   /** The "Build" tab (E-33): the wall being drawn (and where its next point would go), the drawn wall or door selected. */
   build?: BuildOverlay | null;
+  /** Scree slopes (E-34): difficult terrain, marked for the DM only, with this label. */
+  difficult?: { lines: readonly { points: readonly Point[]; closed: boolean; depth: number }[]; label: string } | null;
+}
+
+/** Difficult terrain: a dashed orange line along the slope's foot and its label at the middle. */
+function drawDifficult(g: CanvasRenderingContext2D, d: NonNullable<OverlayState['difficult']>, px: number): void {
+  g.save();
+  g.strokeStyle = 'rgba(232,150,60,.9)';
+  g.fillStyle = 'rgba(232,150,60,.95)';
+  g.lineWidth = 2 * px;
+  g.setLineDash([7 * px, 5 * px]);
+  g.font = `${11 * px}px system-ui, sans-serif`;
+  g.textAlign = 'center';
+  for (const l of d.lines) {
+    polyline(g, l.points, l.closed);
+    g.stroke();
+    // The middle of the middle segment.
+    const i = Math.floor((l.points.length - 1) / 2);
+    const a = l.points[i];
+    const b = l.points[Math.min(l.points.length - 1, i + 1)];
+    g.fillText(d.label, (a.x + b.x) / 2, (a.y + b.y) / 2 + l.depth * 0.6);
+  }
+  g.restore();
 }
 
 export interface BuildOverlay {
@@ -195,6 +218,7 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
   }
 
   if (o.build) drawBuild(g, o.build, px);
+  if (o.difficult) drawDifficult(g, o.difficult, px);
 
   for (const a of o.assets) drawPlacement(g, a, px);
   if (o.covers.length) {

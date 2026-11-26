@@ -376,17 +376,19 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     Offen: `npm run bench` (braucht das 4K-Testvideo und den TV) – DM.
   - **DC-107b Boden-Pinsel** mit sauberem Übergang an Mauern.
   - **DC-107c Eigene Mauern in Szenen** (Szene v8).
-  - **DC-107d Klippen und Abhänge** (E-34, DM-Wunsch 2026-11-26): Klippen, Abhänge, Gruben, Plateaus, Schluchten,
+  - ✓ **DC-107d Klippen und Abhänge** (E-34, DM-Wunsch 2026-11-26): Klippen, Abhänge, Gruben, Plateaus, Schluchten,
     Geröllhalden, Terrassen und Abgründe zeichnen; Einweg-Sicht und Bewegungsblock wie die Klippen aus DC-014;
     Aussehen nach Biom, Bewuchs an der Oberkante. Reihenfolge der Pakete b–d wählt der DM.
-    ◐ Stand 2026-11-26: Kern (`core/build/cliffs.ts`: Kanten mit Oberseite links, Schlucht, Terrassen, Ring als Grube
+    Stand 2026-11-26: Kern (`core/build/cliffs.ts`: Kanten mit Oberseite links, Schlucht, Terrassen, Ring als Grube
     oder Plateau, Einweg-Sichtlinien), Karte Version 6 um `cliffs` erweitert (leer als Vorgabe), TV-Freigabe (aktive
     Ebenen, Biom; Biom eines Bereichs, aber nie eines unentdeckten geheimen), Darstellung (`render/cliffsPaint.ts`:
     Wand der Klippe, Schatten, Lippe, Geröll, Abgrund, Schnee, Bewuchs nach Biom), natürlicher Boden nach Biom fern von
     Mauern, Werkzeug „Klippe“ im Tab „Bauen“ mit Befehls-Panel und Eigenschaften (Art, Form, steil, Breite, Stufen,
     innen, Bewuchs, Richtung umdrehen, neu würfeln, teilen, löschen). 14 Texturen mit Higgsfield erzeugt.
-    Geprüft in der App: alle Formen und Arten, Schnee-Biom, Zeichnen im Tab. Offen: Markierung „schwieriges Gelände“
-    der Geröllhalde für den DM im DM-Fenster; Auswahl einer Klippe in der App selbst angesehen.
+    Geröllhalde: im DM-Fenster als „schwieriges Gelände“ markiert (gestrichelt, nur DM). Eine Klippe wird auch auf
+    ihrer Wand getroffen, nicht nur an der Oberkante; nach einem Werkzeugwechsel ist nichts ausgewählt, der erste
+    Klick wählt aus (fügt nie einen Punkt ein). Geprüft in der App: alle Formen und Arten, Schnee-Biom, Zeichnen,
+    Auswählen und Eigenschaften im Tab „Bauen“, Markierung. ✓ bis auf die Abnahme durch den DM.
   - Danach (eigene Pakete): Wege/Flüsse/Brücken, Räume und Dächer, Detailstreuung, Wildnis-/Stadt-Modus.
 - **DC-015 Assets und Ebenen** – Props siehe DC-041, Stockwerke DC-020, Zeichenebenen DC-101 (E-18).
 

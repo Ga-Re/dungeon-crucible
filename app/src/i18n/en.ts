@@ -423,6 +423,7 @@ export const en = {
   'build.cliff.screeAbout': 'Difficult terrain: costs extra movement once movement costs exist (DC-026); blocks no sight.',
   'build.props.cliff': 'Cliff',
   'log.cliffAdded': 'Cliff drawn',
+  'build.cliff.difficult': 'difficult terrain',
   'build.ring': 'Closed ring',
   'log.masonryAdded': 'Wall drawn',
   'log.doorAdded': 'Door placed',

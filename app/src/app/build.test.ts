@@ -146,6 +146,8 @@ describe('cliffs in the build tab (E-34)', () => {
     endBuildCommand(false);
     const id = state.scene.map.cliffs[0].id;
     expect(buildHit({ x: 281, y: 7001 }, 8)).toEqual({ kind: 'cliff', wall: id, point: 1, door: null });
+    // On its face (below the upper edge), not only on the edge itself.
+    expect(buildHit({ x: 140, y: 7030 }, 8)).toEqual({ kind: 'cliff', wall: id, point: null, door: null });
     selectBuild({ kind: 'cliff', wall: id, point: 1, door: null });
     deleteBuildSelection();
     expect(state.scene.map.cliffs[0].points).toHaveLength(2);

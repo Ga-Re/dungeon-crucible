@@ -28,7 +28,8 @@ import { hasMap } from '../core/emptyScene';
 import { importMapIntoCampaign, putOnTv } from '../app/campaign';
 import { Icon } from '../ui/Icon';
 import type { MessageKey } from '../i18n/en';
-import { drawDmOverlay, rotateHandleAt, type BuildOverlay, type OverlayState } from '../render/dmOverlay';
+import { drawDmOverlay, rotateHandleAt, SOUND_HANDLE_PX, type BuildOverlay, type OverlayState } from '../render/dmOverlay';
+import { isSoundRef } from '../core/sound';
 import { fogOptions } from '../render/fogOptions';
 import { DARKNESS } from '../core/projection';
 import { dmDrawing } from '../core/build/playerDrawing';
@@ -42,7 +43,7 @@ import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/r
 import { TableView, type FrameSource } from '../table/TableView';
 import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
-  addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
+  addCreatureToken, addLight, lightAt, removeSound, selectSound, soundAt, updateSound, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
   editableHere, shownInForge, activateAsset, placeHere, previewPlacing, stopPlacing, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, masonryDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
@@ -73,6 +74,9 @@ type Drag =
   | { kind: 'wall-ends'; ends: WallEnd[]; to: Point; moved: boolean }
   | { kind: 'asset-move'; id: string; ox: number; oy: number; moved: boolean; activate?: boolean }
   | { kind: 'asset-turn'; id: string; pivot: Point; from: number; start: number; moved: boolean }
+  /** A sound source (E-37): moved, or its radius dragged at the handle on its edge. */
+  | { kind: 'sound-move'; id: string; ox: number; oy: number; moved: boolean }
+  | { kind: 'sound-radius'; id: string; moved: boolean }
   | { kind: 'calib-box'; a: Point }
   | { kind: 'calib-move'; last: Point }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
@@ -177,7 +181,7 @@ function DmMap() {
       const inner = placements.flatMap((a) => state.assetInfo[a.assetPath]?.interior?.asset ?? []);
       // The placing mode's preview (DC-116): see-through, above the rest – in this window only.
       const pl = state.placing;
-      const ghost = pl?.at ? [{ id: '__placing', assetPath: pl.next.path, x: pl.at.x, y: pl.at.y, rotation: pl.at.rotation, scale: pl.next.scale, alpha: 0.55 }] : [];
+      const ghost = pl?.at && !isSoundRef(pl.next.path) ? [{ id: '__placing', assetPath: pl.next.path, x: pl.at.x, y: pl.at.y, rotation: pl.at.rotation, scale: pl.next.scale, alpha: 0.55 }] : [];
       requestAssetUrls([...new Set([...placements.map((a) => a.assetPath), ...inner, ...ghost.map((g) => g.assetPath)])]);
       // In a scene, effects follow its state (switched off, played once); the Map Forge shows all.
       r.setAssets(assetShapes([...drawn, ...ghost], state.assetInfo, sc.map.grid, inScene ? { effectsOn: sc.effectsOn, runs: state.effectRuns } : undefined));
@@ -300,6 +304,7 @@ function DmMap() {
         else if (state.selectedTokenId) removeToken(state.selectedTokenId);
         else if (state.selectedWallIds.length) deleteSelectedWalls();
         else if (state.selectedAssetId) deletePlacedAsset(state.selectedAssetId);
+        else if (state.selectedSoundId) removeSound(state.selectedSoundId);
       }
       // A selected placed asset (Map Forge): R / Shift+R turn by 15°, + / − scale, V next variant.
       const sel = state.selectedAssetId;
@@ -336,6 +341,8 @@ function DmMap() {
       selectedTokenId: state.selectedTokenId,
       selectedZoneId: state.selectedZoneId,
       selectedLightId: state.selectedLightId,
+      selectedSoundId: state.selectedSoundId,
+      soundGhost: state.placing?.at && isSoundRef(state.placing.next.path) ? state.placing.at : null,
       measure: d?.kind === 'measure' ? { a: d.a, b: d.b, ft: gridDistanceFeet(state.scene.map.grid, d.a, d.b) } : null,
       selectedWallIds: state.selectedWallIds,
       wallDraft: wallDraftOf(),
@@ -478,6 +485,24 @@ function DmMap() {
           drag.current = { kind: 'token', id: tk.id, ox: tk.x - p.x, oy: tk.y - p.y, start: { x: tk.x, y: tk.y }, moved: false };
           return;
         }
+        // Sound sources (E-37): the selected one's radius handle, then any source – select and drag.
+        const selSound = state.scene.sounds.find((x) => x.id === state.selectedSoundId && editableHere(x));
+        if (selSound) {
+          const r = selSound.radiusFt * (cell / state.scene.map.grid.feetPerCell);
+          if (Math.hypot(p.x - (selSound.x + r), p.y - selSound.y) < SOUND_HANDLE_PX / view.current.zoom) {
+            drag.current = { kind: 'sound-radius', id: selSound.id, moved: false };
+            return;
+          }
+        }
+        // In a scene a light or an asset under the pointer is switched first (a torch with its sound).
+        const sound = state.ws === 'play' && (lightAt(p) || anyAssetAt(p)) ? null : soundAt(p);
+        if (sound) {
+          selectSound(sound);
+          // A switched-off source is only selected; a playing one can be dragged.
+          const x = state.scene.sounds.find((q) => q.id === sound);
+          if (x) drag.current = { kind: 'sound-move', id: sound, ox: x.x - p.x, oy: x.y - p.y, moved: false };
+          return;
+        }
         const light = lightAt(p);
         if (light) {
           if (state.ws === 'play') toggleLight(light);
@@ -493,6 +518,7 @@ function DmMap() {
         }
         selectToken(null);
         selectLight(null);
+        selectSound(null);
         // In a scene: a click on an asset switches its light or effect; the scene's own assets are
         // also selected and can be dragged (a click without moving still switches, DC-110).
         if (state.layer !== 'map') {
@@ -667,6 +693,15 @@ function DmMap() {
       if (!d.moved) checkpoint();
       d.moved = true;
       moveAssetTo(d.id, { x: p.x + d.ox, y: p.y + d.oy }, false);
+    } else if (d.kind === 'sound-move') {
+      if (!d.moved) checkpoint();
+      d.moved = true;
+      updateSound(d.id, { x: p.x + d.ox, y: p.y + d.oy }, false);
+    } else if (d.kind === 'sound-radius') {
+      if (!d.moved) checkpoint();
+      d.moved = true;
+      const x = state.scene.sounds.find((q) => q.id === d.id);
+      if (x) updateSound(d.id, { radiusFt: soundRadiusFt(Math.hypot(p.x - x.x, p.y - x.y), e.altKey) }, false);
     } else if (d.kind === 'asset-turn') {
       if (!d.moved) checkpoint();
       d.moved = true;
@@ -735,6 +770,11 @@ function DmMap() {
       const q = toWorld(e);
       if (d.moved) moveAssetTo(d.id, { x: q.x + d.ox, y: q.y + d.oy }, true);
       else if (d.activate) activateAsset(d.id);
+    } else if (d.kind === 'sound-move') {
+      // Let go: on the middle of its cell, as placed (Alt: exactly where it is).
+      const q = toWorld(e);
+      const at = { x: q.x + d.ox, y: q.y + d.oy };
+      if (d.moved) updateSound(d.id, state.snap && !e.altKey ? snapPoint(at) : at, false);
     } else if (d.kind === 'asset-turn') {
       const q = toWorld(e);
       if (d.moved) turnPlacedAssetTo(d.id, d.start + angleOf(d.pivot, q) - d.from, true);
@@ -857,7 +897,7 @@ function placeDropped(data: string, at: Point): void {
 /** The scene without what lies on layers hidden in the editor (Map Forge, E-28). */
 function shownLayers(sc: Scene): Scene {
   if (!sc.map.layers.some((l) => l.editorHidden)) return sc;
-  return { ...sc, walls: sc.walls.filter(shownInForge), zones: sc.zones.filter(shownInForge), lights: sc.lights.filter(shownInForge) };
+  return { ...sc, walls: sc.walls.filter(shownInForge), zones: sc.zones.filter(shownInForge), lights: sc.lights.filter(shownInForge), sounds: sc.sounds.filter(shownInForge) };
 }
 
 /** A placement as the overlay shows it. */
@@ -883,13 +923,21 @@ function placementAt(p: Point): string | null {
 function elementAt(p: Point, tol: number): string | null {
   const sc = state.scene;
   const r = sc.map.grid.cellWidth * 0.45;
-  const light = [...sc.lights, ...sc.hidden.lights].find((l) => Math.hypot(l.x - p.x, l.y - p.y) < r);
+  const light = [...sc.lights, ...sc.hidden.lights, ...sc.sounds, ...sc.hidden.sounds].find((l) => Math.hypot(l.x - p.x, l.y - p.y) < r);
   if (light) return light.id;
   const wall = wallAt([...sc.walls, ...sc.hidden.walls], p, tol);
   if (wall) return wall;
   const asset = placementAt(p);
   if (asset) return asset;
   return [...sc.zones, ...sc.hidden.zones].reverse().find((z) => areaContains(z.shape, p))?.id ?? null;
+}
+
+/** A dragged radius in feet: whole 5 ft steps (Alt: whole feet), at least one step. */
+function soundRadiusFt(px: number, free: boolean): number {
+  const g = state.scene.map.grid;
+  const ft = px / (g.cellWidth / g.feetPerCell);
+  const step = free ? 1 : 5;
+  return Math.max(step, Math.round(ft / step) * step);
 }
 
 /** Screen pixels within which a corner of the area is grabbed. */

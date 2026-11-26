@@ -1,17 +1,34 @@
 /**
- * Audio engine for the soundboard: ambience loops (built-in synthesised ones and the campaign's
- * own files) and sound effects, mixed through one master gain. Tracks fade in and out, so scene
+ * Audio engine for the soundboard and the map's sounds (E-37): loops (built-in synthesised ones
+ * and library files, each under its own key) and sound effects, mixed through one master gain. Tracks fade in and out, so scene
  * changes crossfade. Audio starts only after a user gesture (browser/WebView autoplay policy);
  * the engine resumes on the first click.
  */
 
-export const BUILTIN_PREFIX = 'builtin:';
+import { BUILTIN_SOUND, BUILTIN_SOUNDS } from '../core/sound';
+
+/** The built-in sounds' files, shipped with the app (`../audio/sounds/`, see its README). */
+const builtinFiles = import.meta.glob('../audio/sounds/*.ogg', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+
+function builtinFile(key: string): string | undefined {
+  return builtinFiles[`../audio/sounds/${key}.ogg`];
+}
+
+/** The built-in sounds the app can also synthesise: the fallback when their file cannot be played. */
+const SYNTHESISED = new Set(['wind', 'drip', 'fire', 'rain', 'choir']);
+
+export const BUILTIN_PREFIX = BUILTIN_SOUND;
 const FADE_S = 1.2;
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let masterVolume = 0.8;
-const tracks = new Map<string, { gain: GainNode; stop: () => void }>();
+const tracks = new Map<string, { gain: GainNode; filter: BiquadFilterNode; stop: () => void }>();
+
+/** The low-pass cut-off for a muffling of 0 (clear) … 1 (behind walls, DC-104b). */
+function cutoff(muffle: number): number {
+  return 20000 * (500 / 20000) ** Math.max(0, Math.min(1, muffle));
+}
 
 function audio(): { ctx: AudioContext; master: GainNode } {
   if (!ctx) {
@@ -48,14 +65,8 @@ function noise(c: AudioContext): AudioBufferSourceNode {
   return s;
 }
 
-/** Built-in ambience, synthesised so the soundboard works without any files. */
-export const BUILTIN_AMBIENCE: { id: string; key: 'wind' | 'drip' | 'fire' | 'rain' | 'choir' }[] = [
-  { id: `${BUILTIN_PREFIX}wind`, key: 'wind' },
-  { id: `${BUILTIN_PREFIX}drip`, key: 'drip' },
-  { id: `${BUILTIN_PREFIX}fire`, key: 'fire' },
-  { id: `${BUILTIN_PREFIX}rain`, key: 'rain' },
-  { id: `${BUILTIN_PREFIX}choir`, key: 'choir' },
-];
+/** Built-in ambience: shipped loops, the first five also synthesised as a fallback. */
+export const BUILTIN_AMBIENCE = BUILTIN_SOUNDS.map((key) => ({ id: `${BUILTIN_PREFIX}${key}`, key }));
 
 function startBuiltin(key: string, c: AudioContext, out: AudioNode): () => void {
   switch (key) {
@@ -142,53 +153,93 @@ function startBuiltin(key: string, c: AudioContext, out: AudioNode): () => void 
 }
 
 /**
- * Starts (or keeps) an ambience track. `url` is needed for file tracks (asset URL); built-in
- * tracks are identified by their id alone.
+ * Starts (or keeps) an ambience track of the soundboard. `url` is needed for file tracks (asset
+ * URL); built-in tracks are identified by their id alone.
  */
 export function playAmbience(id: string, volume: number, url?: string): void {
+  playLoop(id, id, volume, url);
+}
+
+/**
+ * Starts (or keeps) the loop `key` playing `sound` (`builtin:<key>` or a file at `url`) and fades
+ * it to `volume`. Keys keep the soundboard's tracks and the map's apart, even for the same sound.
+ */
+export function playLoop(key: string, sound: string, volume: number, url?: string, muffle = 0, onError?: () => void): void {
   const { ctx: c, master: m } = audio();
-  const existing = tracks.get(id);
+  const existing = tracks.get(key);
   if (existing) {
     existing.gain.gain.setTargetAtTime(volume, c.currentTime, 0.1);
+    existing.filter.frequency.setTargetAtTime(cutoff(muffle), c.currentTime, 0.1);
     return;
   }
   const gain = c.createGain();
   gain.gain.value = 0;
   gain.connect(m);
+  // Muffling (walls between): a low-pass before the volume; wide open while clear.
+  const filter = c.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = cutoff(muffle);
+  filter.connect(gain);
   gain.gain.setTargetAtTime(volume, c.currentTime, FADE_S / 3);
-  let stop: () => void;
-  if (id.startsWith(BUILTIN_PREFIX)) {
-    stop = startBuiltin(id.slice(BUILTIN_PREFIX.length), c, gain);
-  } else {
+  const builtin = sound.startsWith(BUILTIN_PREFIX) ? sound.slice(BUILTIN_PREFIX.length) : null;
+  const file = builtin ? builtinFile(builtin) : url;
+  let stop: () => void = () => undefined;
+  // A built-in sound whose file cannot be played is synthesised instead, where the app can;
+  // anything else stays silent and is reported (`onError`).
+  const synthesise = () => {
+    if (builtin && SYNTHESISED.has(builtin)) stop = startBuiltin(builtin, c, filter);
+    else onError?.();
+  };
+  if (file) {
     const el = new Audio();
-    if (url && !url.startsWith('blob:')) el.crossOrigin = 'anonymous';
-    el.src = url ?? '';
+    if (!file.startsWith('blob:')) el.crossOrigin = 'anonymous';
+    el.src = file;
     el.loop = true;
-    const node = c.createMediaElementSource(el);
-    node.connect(gain);
-    void el.play().catch(() => undefined);
-    stop = () => {
+    c.createMediaElementSource(el).connect(filter);
+    const release = () => {
       el.pause();
       el.removeAttribute('src');
       el.load();
     };
-  }
-  tracks.set(id, { gain, stop });
+    stop = release;
+    const fail = () => {
+      if (stop !== release || tracks.get(key)?.gain !== gain) return;
+      release();
+      synthesise();
+    };
+    el.addEventListener('error', fail, { once: true });
+    // Only a file that cannot be decoded falls back; a play() stopped early or held back by autoplay does not.
+    void el.play().catch((e: unknown) => (e as Error | undefined)?.name === 'NotSupportedError' && fail());
+  } else synthesise();
+  tracks.set(key, { gain, filter, stop: () => stop() });
 }
 
 export function setAmbienceVolume(id: string, volume: number): void {
-  const t = tracks.get(id);
-  if (t && ctx) t.gain.gain.setTargetAtTime(volume, ctx.currentTime, 0.05);
+  setLoopVolume(id, volume);
+}
+
+/** Fades the loop `key` to `volume`; with `muffle`, also how dull it sounds (0 clear … 1). */
+export function setLoopVolume(key: string, volume: number, muffle?: number): void {
+  const t = tracks.get(key);
+  if (!t || !ctx) return;
+  t.gain.gain.setTargetAtTime(volume, ctx.currentTime, 0.05);
+  if (muffle !== undefined) t.filter.frequency.setTargetAtTime(cutoff(muffle), ctx.currentTime, 0.1);
 }
 
 /** Fades a track out and stops it. */
 export function stopAmbience(id: string): void {
-  const t = tracks.get(id);
+  stopLoop(id);
+}
+
+/** Fades the loop `key` out and stops it. */
+export function stopLoop(key: string): void {
+  const t = tracks.get(key);
   if (!t || !ctx) return;
-  tracks.delete(id);
+  tracks.delete(key);
   t.gain.gain.setTargetAtTime(0, ctx.currentTime, FADE_S / 3);
   setTimeout(() => {
     t.stop();
+    t.filter.disconnect();
     t.gain.disconnect();
   }, FADE_S * 1000 + 200);
 }

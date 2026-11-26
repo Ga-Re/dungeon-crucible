@@ -9,6 +9,7 @@ import { rectPolygon } from './fogModel';
 const map: MapSidecar = {
   kind: 'map', schemaVersion: MAP_VERSION, name: 'Hall', layers: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [], resource: 'hall.png', isVideo: false, widthPx: 1000, heightPx: 1000,
   tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
+  sounds: [],
   walls: [
     { id: 'w1', kind: 'wall', x1: 0, y1: 0, x2: 100, y2: 0 },
     { id: 'd1', kind: 'door', x1: 100, y1: 0, x2: 200, y2: 0 },
@@ -58,7 +59,7 @@ describe('hidden elements in a view', () => {
   });
 
   it('the start view uses the start list; the Map Forge hides nothing', () => {
-    const doc = sceneDoc({ hidden: ['w1'], start: { fog: { revealed: [], remembered: [] }, tokens: [], doors: {}, lights: {}, discoveredZones: [], ambience: [], hidden: ['d1'], assets: [], effects: {}, layers: {}, interiors: {}, drawing: { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], hidden: [] } } });
+    const doc = sceneDoc({ hidden: ['w1'], start: { fog: { revealed: [], remembered: [] }, tokens: [], doors: {}, lights: {}, discoveredZones: [], ambience: [], soundLevels: {}, hidden: ['d1'], assets: [], effects: {}, layers: {}, interiors: {}, drawing: { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], hidden: [] } } });
     expect(sceneFromDocuments(map, doc, null, undefined, 'start').hidden.walls.map((w) => w.id)).toEqual(['d1']);
     expect(sceneFromDocuments(map, doc, null, undefined, 'map').hidden.walls).toEqual([]);
   });
@@ -91,7 +92,7 @@ describe('start and reset', () => {
 
 describe('changes per element', () => {
   it('lists hidden, changed and scene-own elements', () => {
-    const doc = sceneDoc({ hidden: ['d1'], overrides: { l1: { dimFt: 30 } }, added: { walls: [{ id: 'rubble', kind: 'wall', x1: 0, y1: 500, x2: 50, y2: 500 }], zones: [], lights: [] } });
+    const doc = sceneDoc({ hidden: ['d1'], overrides: { l1: { dimFt: 30 } }, added: { walls: [{ id: 'rubble', kind: 'wall', x1: 0, y1: 500, x2: 50, y2: 500 }], zones: [], lights: [], sounds: [] } });
     const s = sceneFromDocuments(map, doc, null);
     expect(sceneChanges(elementsFromSidecar(map), s)).toEqual([
       { id: 'd1', kind: 'walls', status: 'hidden' },
@@ -115,7 +116,7 @@ describe('orphaned changes', () => {
   const doc = sceneDoc({
     overrides: { gone: { dimFt: 5 }, l1: { dimFt: 30 } },
     hidden: ['w1', 'lost'],
-    start: { fog: { revealed: [], remembered: [] }, tokens: [], doors: {}, lights: {}, discoveredZones: [], ambience: [], hidden: ['lost2'], assets: [], effects: {}, layers: {}, interiors: {}, drawing: { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], hidden: [] } },
+    start: { fog: { revealed: [], remembered: [] }, tokens: [], doors: {}, lights: {}, discoveredZones: [], ambience: [], soundLevels: {}, hidden: ['lost2'], assets: [], effects: {}, layers: {}, interiors: {}, drawing: { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], hidden: [] } },
   });
 
   it('are reported: overrides and hidden ids whose element the map has no more', () => {

@@ -10,6 +10,7 @@ import { absolutePath, assetUrl, importToLibrary, isDesktop, listFiles, readText
 import { ASSET_VERSION, AssetSidecarSchema, type AssetSidecar } from '../core/sidecar';
 import { assetDefaults, parseAssetSidecar } from '../core/assets';
 import { emit, log, markDirty, state } from './store';
+import { AUDIO_FILE } from '../core/sound';
 
 export interface AmbienceEntry {
   /** `builtin:<key>` or a path relative to the campaign folder. */
@@ -28,14 +29,14 @@ export function initialSoundboard(): SoundboardState {
   return { ambience: BUILTIN_AMBIENCE.map((b) => ({ id: b.id, volume: 0.5, playing: false })), sfxFiles: [], master: 0.8 };
 }
 
-const AUDIO_FILE = /\.(mp3|ogg|oga|opus|wav|m4a|aac|flac)$/i;
 
 /** Name shown for a track: the file name without extension, or the built-in's translation key. */
 export function trackFileName(id: string): string {
   return id.split('/').pop()!.replace(/\.[^.]+$/, '');
 }
 
-async function urlFor(id: string): Promise<string | undefined> {
+/** The URL a sound plays from: none for a built-in one, else its file's asset URL. */
+export async function soundUrl(id: string): Promise<string | undefined> {
   if (id.startsWith(BUILTIN_PREFIX)) return undefined;
   return assetUrl(await absolutePath(id));
 }
@@ -71,7 +72,7 @@ export async function toggleAmbience(id: string): Promise<void> {
     stopAmbience(id);
     a.playing = false;
   } else {
-    playAmbience(id, a.volume, await urlFor(id));
+    playAmbience(id, a.volume, await soundUrl(id));
     a.playing = true;
   }
   markDirty();
@@ -93,11 +94,13 @@ export function setMaster(v: number): void {
   emit();
 }
 
+/** Stops the soundboard's ambience and silences the map's sounds too (DC-104c). */
 export function stopAll(): void {
   for (const a of state.soundboard.ambience) {
     if (a.playing) stopAmbience(a.id);
     a.playing = false;
   }
+  state.mapSoundsMuted = true;
   markDirty();
   emit();
 }
@@ -105,7 +108,7 @@ export function stopAll(): void {
 export async function triggerSfx(id: string): Promise<void> {
   if (id.startsWith(BUILTIN_PREFIX)) playSfx(id.slice(BUILTIN_PREFIX.length) as BuiltinSfx);
   else {
-    const url = await urlFor(id);
+    const url = await soundUrl(id);
     if (url) playSfxFile(url);
   }
 }
@@ -157,7 +160,7 @@ export async function applySceneAmbience(list: readonly { path: string; volume: 
     } else {
       a.volume = v;
       try {
-        playAmbience(a.id, v, await urlFor(a.id));
+        playAmbience(a.id, v, await soundUrl(a.id));
         a.playing = true;
       } catch {
         a.playing = false;

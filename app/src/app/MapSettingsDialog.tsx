@@ -1,6 +1,6 @@
 /**
- * "Map settings" (DC-011): the open map's name, type, landscape, tags, default fog and ambient
- * light. Edits a draft; OK applies it as one undoable step.
+ * "Map settings" (DC-011): the open map's name, type, landscape, tags, default fog, ambient
+ * light and its sound everywhere (E-37). Edits a draft; OK applies it as one undoable step.
  */
 import { MAP_TYPES } from '../core/mapCatalog';
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
@@ -9,6 +9,7 @@ import { FOG_BIOMES, type MapType } from '../core/scene';
 import { useI18n } from '../i18n/i18n';
 import type { MessageKey } from '../i18n/en';
 import { applyMapSettings, currentMapSettings, useStore } from './store';
+import { SoundSelect } from '../panels/SoundPanels';
 import './start.css';
 
 
@@ -109,6 +110,17 @@ export function MapSettingsDialog({ onClose }: { onClose: () => void }) {
               <option value="dark">{t('ambient.dark')}</option>
               <option value="lit">{t('ambient.lit')}</option>
             </select>
+          </label>
+        </div>
+        <div className="ms-row">
+          <label className="start-field">
+            <span>{t('mapSettings.sound')}</span>
+            <SoundSelect none value={draft.ambientSound?.sound ?? ''} onChange={(sound) => set('ambientSound', sound ? { sound, volume: draft.ambientSound?.volume ?? 0.5 } : null)} />
+          </label>
+          <label className="start-field">
+            <span>{t('mapSettings.soundVolume')}</span>
+            <input type="range" min={0} max={100} disabled={!draft.ambientSound} value={Math.round((draft.ambientSound?.volume ?? 0.5) * 100)}
+              onChange={(e) => draft.ambientSound && set('ambientSound', { ...draft.ambientSound, volume: Number(e.target.value) / 100 })} />
           </label>
         </div>
         <div className="start-buttons">

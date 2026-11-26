@@ -17,6 +17,7 @@ import {
 import { stopAll } from './soundboard';
 import { startBuildCommand } from './build';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
+import { startMapSound } from './mapSound';
 import { closeCampaign, closeTab, importMapIntoCampaign, newCreature, newSceneOnMap, putOnTv, refreshRoot, saveCampaign, setEditStart, showTab, startAutosave } from './campaign';
 import { ResetSceneDialog } from './ResetSceneDialog';
 import { MapSettingsDialog } from './MapSettingsDialog';
@@ -36,6 +37,7 @@ export function App() {
     startFrameLoop();
     startAutosave();
     unlockAudioOnGesture();
+    startMapSound();
     setMasterVolume(state.soundboard.master);
     void refreshMonitors();
     // Without the desktop app (plain browser) the sample campaign is what is open.
@@ -186,6 +188,7 @@ function Ribbon() {
       case 'fogmode:hide': return setFogMode('hide');
       case 'panel:fog': return focusPanel('fog');
       case 'panel:sound': return focusPanel('sound');
+      case 'panel:mapSound': return focusPanel('mapSound');
       case 'audio:stop': return stopAll();
       case 'fog:revealAll': return fogAll(true);
       case 'walls:draw': return startWallCommand();

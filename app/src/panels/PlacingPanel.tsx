@@ -8,6 +8,7 @@ import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
 import { setPlacing, stopPlacing, useStore } from '../app/store';
+import { isSoundRef } from '../core/sound';
 
 const STEPS: { id: 'free' | 15 | 90; label: MessageKey }[] = [
   { id: 'free', label: 'placing.free' },
@@ -22,6 +23,8 @@ export function PlacingPanel() {
   const items = useStore((s) => s.vault.items);
   if (!p) return null;
   const nameOf = (path: string) => items.find((i) => i.relPath === path)?.asset.name ?? path;
+  // A sound source (E-37) has no turn, size or variant: where it goes is all there is.
+  const sound = isSoundRef(p.path);
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.stopPropagation();
@@ -35,7 +38,7 @@ export function PlacingPanel() {
         <button type="button" className="ab-btn" title={t('placing.stop')} aria-label={t('placing.stop')} onClick={stopPlacing}><Icon name="close" /></button>
       </div>
       <div className="cmd-body">
-        {p.variants.length > 1 && (
+        {!sound && p.variants.length > 1 && (
           <label className="cmd-field">
             <span>{t('vault.variant')}</span>
             <select value={p.variant} onChange={(e) => setPlacing({ variant: e.target.value })}>
@@ -45,7 +48,8 @@ export function PlacingPanel() {
           </label>
         )}
         {/* Random among one: the others are insides of houses (never placed at random). */}
-        {p.variant === 'random' && p.random.length < 2 && p.variants.length > 1 && <p className="hint">{t('placing.oneChoice')}</p>}
+        {!sound && p.variant === 'random' && p.random.length < 2 && p.variants.length > 1 && <p className="hint">{t('placing.oneChoice')}</p>}
+        {!sound && <>
         <label className="cmd-check">
           <input type="checkbox" checked={o.randomRotation} onChange={(e) => setPlacing({ randomRotation: e.target.checked })} />
           {t('placing.randomRotation')}
@@ -72,11 +76,12 @@ export function PlacingPanel() {
             <input type="number" min={1} max={50} step={1} value={Math.round(o.scaleSpread * 100)} onChange={(e) => setPlacing({ scaleSpread: Math.min(0.5, Math.max(0.01, Number(e.target.value) / 100)) })} />
           </label>
         )}
+        </>}
         <label className="cmd-check">
           <input type="checkbox" checked={o.snap} onChange={(e) => setPlacing({ snap: e.target.checked })} />
           {t('placing.snap')}
         </label>
-        <p className="hint">{t('placing.hint')}</p>
+        <p className="hint">{t(sound ? 'sound.placingHint' : 'placing.hint')}</p>
       </div>
       <div className="cmd-buttons">
         <button type="button" className="btn" onClick={stopPlacing}>{t('placing.done')}</button>

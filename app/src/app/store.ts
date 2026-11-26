@@ -7,7 +7,8 @@ import { useSyncExternalStore } from 'react';
 import type { Point } from '../core/geometry';
 import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
-import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
+import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, SoundSource, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
+import { isSoundRef } from '../core/sound';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
 import { masonrySightWalls, toggledMasonryDoor, withMasonry } from '../core/build/sight';
 import type { BuildCommand, BuildSelection } from './build';
@@ -92,6 +93,10 @@ export interface AppState {
   /** "Create area" while it runs (Map Forge, DC-013). */
   areaCommand: AreaCommand | null;
   selectedLightId: string | null;
+  /** The selected sound source (E-37). */
+  selectedSoundId: string | null;
+  /** The map's sounds silenced by "stop all" or the Map sounds panel (not saved, DC-104c). */
+  mapSoundsMuted: boolean;
   turn: number;
   round: number;
   scene: Scene;
@@ -227,6 +232,8 @@ function initial(): AppState {
     selectedZoneId: null,
     areaCommand: null,
     selectedLightId: null,
+    selectedSoundId: null,
+    mapSoundsMuted: false,
     turn: 0,
     round: 1,
     scene,
@@ -437,11 +444,11 @@ export function clearHistory(): void {
 }
 
 /** Replaces the whole scene (open campaign, switch scene, import map). */
-/** A new element id that no wall, area, light, template or token of the scene has (lowercase, random). */
+/** A new element id that no wall, area, light, sound source, template or token of the scene has (lowercase, random). */
 export function freshId(prefix: string): string {
   const sc = state.scene;
   const drawn = [sc.map, sc.own].flatMap((d) => [...d.masonry, ...d.masonryDoors, ...d.cliffs, ...d.waters, ...d.floors]);
-  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.ownAssets, ...sc.hidden.assets, ...drawn].map((x) => x.id));
+  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.sounds, ...sc.hidden.sounds, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.ownAssets, ...sc.hidden.assets, ...drawn].map((x) => x.id));
   return newId(slugId(prefix, 'el').slice(0, 40), (id) => taken.has(id));
 }
 
@@ -655,6 +662,7 @@ export function activateSession(tabId: string): boolean {
   state.selectedTokenId = null;
   state.selectedZoneId = null;
   state.selectedLightId = null;
+  state.selectedSoundId = null;
   state.selectedAssetId = null;
   clearWallEditing();
   recomputeVision();
@@ -840,6 +848,7 @@ export function refreshView(): void {
   state.selectedTokenId = null;
   state.selectedZoneId = null;
   state.selectedLightId = null;
+  state.selectedSoundId = null;
   clearWallEditing();
   recomputeVision();
 }
@@ -858,6 +867,7 @@ export function showLayer(layer: ViewLayer): void {
   state.selectedTokenId = null;
   state.selectedZoneId = null;
   state.selectedLightId = null;
+  state.selectedSoundId = null;
   clearWallEditing();
   recomputeVision();
   layerInside = charactersInTriggers();
@@ -1157,6 +1167,7 @@ export function selectWall(id: string | null, toggle = false): void {
   if (state.layer !== 'map') return;
   const sel = state.selectedWallIds;
   if (id !== null) state.selectedAssetId = null;
+  if (id !== null) state.selectedSoundId = null;
   if (id === null) state.selectedWallIds = toggle ? sel : [];
   else if (toggle) state.selectedWallIds = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id];
   else state.selectedWallIds = [id];
@@ -1416,20 +1427,20 @@ export function deleteLayer(id: string): void {
   const sc = state.scene;
   sc.map.layers = sc.map.layers.filter((l) => l.id !== id);
   for (const l of sc.map.layers) if (l.counter === id) delete l.counter;
-  for (const el of [...sc.walls, ...sc.zones, ...sc.lights, ...sc.map.assets]) if (el.layer === id) delete el.layer;
+  for (const el of [...sc.walls, ...sc.zones, ...sc.lights, ...sc.sounds, ...sc.map.assets]) if (el.layer === id) delete el.layer;
   if (state.currentLayer === id) state.currentLayer = BASE_LAYER;
   recomputeVision();
   emit();
 }
 
-/** Moves map elements (walls, areas, lights, placed assets) onto a layer (one undoable step). */
+/** Moves map elements (walls, areas, lights, sound sources, placed assets) onto a layer (one undoable step). */
 export function setElementsLayer(ids: readonly string[], layerId: string): void {
   if (state.layer !== 'map') return;
   const want = new Set(ids);
   const sc = state.scene;
   const target = layerId !== BASE_LAYER && sc.map.layers.some((l) => l.id === layerId) ? layerId : null;
   checkpoint();
-  for (const el of [...sc.walls, ...sc.zones, ...sc.lights, ...sc.map.assets]) {
+  for (const el of [...sc.walls, ...sc.zones, ...sc.lights, ...sc.sounds, ...sc.map.assets]) {
     if (!want.has(el.id)) continue;
     if (target) el.layer = target;
     else delete el.layer;
@@ -1693,6 +1704,8 @@ function setEditableAssets(list: MapAssetPlacement[]): void {
  * given, as one undoable step: on the map in the Map Forge, else in the scene.
  */
 export function placeAsset(assetPath: string, p: Point, how: { rotation?: number; scale?: number; snap?: boolean } = {}): string | null {
+  // A sound is placed as a sound source (E-37).
+  if (isSoundRef(assetPath)) return addSound(how.snap ?? state.snap ? snapPoint(p) : p, assetPath);
   checkpoint();
   const id = freshId('asset');
   const scale = how.scale ?? 1;
@@ -1791,6 +1804,7 @@ export function selectPlacedAsset(id: string | null): void {
   if (id && !editableAssets().some((a) => a.id === id)) return;
   state.selectedAssetId = id;
   if (id) {
+    state.selectedSoundId = null;
     state.selectedWallIds = [];
     state.selectedZoneId = null;
   }
@@ -1965,8 +1979,8 @@ export function toggleHidden(id: string): void {
   if (state.layer === 'map') return;
   const sc = state.scene;
   const h = sc.hidden;
-  const hide = [...sc.walls, ...sc.zones, ...sc.lights, ...sc.map.assets, ...sc.ownAssets].some((x) => x.id === id);
-  if (!hide && ![...h.walls, ...h.zones, ...h.lights, ...h.assets].some((x) => x.id === id)) return;
+  const hide = [...sc.walls, ...sc.zones, ...sc.lights, ...sc.sounds, ...sc.map.assets, ...sc.ownAssets].some((x) => x.id === id);
+  if (!hide && ![...h.walls, ...h.zones, ...h.lights, ...h.sounds, ...h.assets].some((x) => x.id === id)) return;
   checkpoint();
   // Moves the element (whichever kind it is) from one list to the other.
   const split = <T extends { id: string }>(from: T[], to: T[]): [T[], T[]] => [from.filter((x) => x.id !== id), [...to, ...from.filter((x) => x.id === id)]];
@@ -1974,16 +1988,19 @@ export function toggleHidden(id: string): void {
     [sc.walls, h.walls] = split(sc.walls, h.walls);
     [sc.zones, h.zones] = split(sc.zones, h.zones);
     [sc.lights, h.lights] = split(sc.lights, h.lights);
+    [sc.sounds, h.sounds] = split(sc.sounds, h.sounds);
     [sc.map.assets, h.assets] = split(sc.map.assets, h.assets);
     [sc.ownAssets, h.assets] = split(sc.ownAssets, h.assets);
     if (state.selectedAssetId === id) state.selectedAssetId = null;
     state.selectedWallIds = state.selectedWallIds.filter((x) => x !== id);
     if (state.selectedZoneId === id) state.selectedZoneId = null;
     if (state.selectedLightId === id) state.selectedLightId = null;
+    if (state.selectedSoundId === id) state.selectedSoundId = null;
   } else {
     [h.walls, sc.walls] = split(h.walls, sc.walls);
     [h.zones, sc.zones] = split(h.zones, sc.zones);
     [h.lights, sc.lights] = split(h.lights, sc.lights);
+    [h.sounds, sc.sounds] = split(h.sounds, sc.sounds);
     // A placed asset goes back where it belongs: the map's, or the scene's own.
     const mapIds = new Set(state.mapDoc?.assets.map((a) => a.id) ?? []);
     const back = h.assets.filter((a) => a.id === id);
@@ -2293,6 +2310,7 @@ export function toggleCondition(id: string, c: Condition): void {
 
 export function selectToken(id: string | null): void {
   state.selectedTokenId = id;
+  if (id) state.selectedSoundId = null;
   emit();
 }
 
@@ -2342,6 +2360,116 @@ export function removeLight(id: string): void {
 
 export function selectLight(id: string | null): void {
   state.selectedLightId = id;
+  if (id) state.selectedSoundId = null;
+  emit();
+}
+
+/* ---------- Sound sources (E-37, DC-104) ---------- */
+
+/** Places a sound source (a library audio file or `builtin:<key>`) and selects it; returns its id. */
+export function addSound(p: Point, sound: string): string {
+  checkpoint();
+  const id = freshId('sound');
+  state.scene.sounds.push({ id, sound, x: p.x, y: p.y, radiusFt: 30, volume: 0.8, fade: true, ...onCurrentLayer() });
+  selectSound(id);
+  rememberRecentAsset(sound);
+  log('log.soundPlaced');
+  emit();
+  return id;
+}
+
+/** The sound source under `p` (one that can be edited here; in a scene also a switched-off one), if any. */
+export function soundAt(p: Point): string | null {
+  const r = state.scene.map.grid.cellWidth * 0.45;
+  const sc = state.scene;
+  const all = state.layer === 'map' ? sc.sounds : [...sc.hidden.sounds, ...sc.sounds];
+  return [...all].reverse().find((x) => editableHere(x) && Math.hypot(x.x - p.x, x.y - p.y) < r)?.id ?? null;
+}
+
+/**
+ * Switches a sound source on or off in the scene (DC-104c): off is hidden, as other map elements
+ * are (DC-103) – for the start while preparing, else for the play state. It stays selected.
+ */
+export function setSoundPlaying(id: string, on: boolean): void {
+  if (state.layer === 'map' || state.scene.sounds.some((x) => x.id === id) === on) return;
+  toggleHidden(id);
+  state.selectedTokenId = null;
+  selectSound(id);
+}
+
+/**
+ * A source's volume in this scene (DC-104c): state like a light being on – for the start while
+ * preparing, else for the play state; "reset scene" brings the start's back. One undoable step.
+ */
+export function setSoundLevel(id: string, level: number): void {
+  const x = state.layer === 'map' ? undefined : state.scene.sounds.find((q) => q.id === id);
+  if (!x) return;
+  checkpoint();
+  x.level = Math.max(0, Math.min(1, level));
+  markDirty();
+  emit();
+}
+
+/** "Stop all" and the Map sounds panel: the map's sounds silent until switched on again (this session). */
+export function setMapSoundsMuted(muted: boolean): void {
+  state.mapSoundsMuted = muted;
+  emit();
+}
+
+/**
+ * The scene whose map sounds play (E-37, DM 2026-11-26): the TV's – also while another tab is
+ * prepared or the Map Forge is open, as the soundboard does (E-30); without one, the scene open
+ * in the Orchestrator. Null: none.
+ */
+export function soundView(): Scene | null {
+  const tv = tvView();
+  if (tv) return tv.scene;
+  return state.ws === 'play' && state.layer !== 'map' && state.mapDoc ? state.scene : null;
+}
+
+/**
+ * The scene's sound everywhere (DC-104c): its own, `"none"` for silence, or null for the map's.
+ * One undoable step; in a scene only (the Map Forge sets the map's in Map settings).
+ */
+export function setSceneAmbientSound(v: { sound: string; volume: number } | 'none' | null): void {
+  if (state.layer === 'map') return;
+  checkpoint();
+  if (v === null) delete state.scene.ambientOverride;
+  else state.scene.ambientOverride = v === 'none' ? 'none' : { ...v };
+  markDirty();
+  emit();
+}
+
+export function selectSound(id: string | null): void {
+  state.selectedSoundId = id;
+  if (id) {
+    state.selectedTokenId = null;
+    state.selectedLightId = null;
+    state.selectedAssetId = null;
+    state.selectedWallIds = [];
+    state.selectedZoneId = null;
+  }
+  emit();
+}
+
+/**
+ * Changes a sound source. `step`: a new undoable step (a field set in the panel); without, the
+ * change joins the step already taken (dragging it or its radius).
+ */
+export function updateSound(id: string, patch: Partial<Omit<SoundSource, 'id'>>, step = true): void {
+  const x = state.scene.sounds.find((s) => s.id === id);
+  if (!x) return;
+  if (step) checkpoint();
+  Object.assign(x, patch);
+  markDirty();
+  emit();
+}
+
+export function removeSound(id: string): void {
+  if (!state.scene.sounds.some((x) => x.id === id)) return;
+  checkpoint();
+  state.scene.sounds = state.scene.sounds.filter((x) => x.id !== id);
+  if (state.selectedSoundId === id) state.selectedSoundId = null;
   emit();
 }
 
@@ -2353,6 +2481,8 @@ export interface MapSettings {
   tags: string[];
   biome: FogBiome;
   ambient: Scene['ambient'];
+  /** The map's sound everywhere (E-37); none: silent. */
+  ambientSound: { sound: string; volume: number } | null;
 }
 
 export function openMapSettings(open = true): void {
@@ -2362,7 +2492,7 @@ export function openMapSettings(open = true): void {
 
 export function currentMapSettings(): MapSettings {
   const m = state.scene.map;
-  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient };
+  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient, ambientSound: m.ambientSound ? { ...m.ambientSound } : null };
 }
 
 /** Applies the dialog as one undoable step; only in the Map Forge (the map's data). */
@@ -2376,6 +2506,8 @@ export function applyMapSettings(s: MapSettings): boolean {
   m.region = s.region.trim();
   m.tags = [...s.tags];
   m.biome = s.biome;
+  if (s.ambientSound) m.ambientSound = { ...s.ambientSound };
+  else delete m.ambientSound;
   state.scene.ambient = s.ambient;
   recomputeVision();
   markDirty();
@@ -2480,6 +2612,7 @@ export function selectZone(id: string | null): void {
   state.selectedZoneId = id;
   // One kind of selection at a time in the Properties panel.
   if (id) {
+    state.selectedSoundId = null;
     state.selectedWallIds = [];
     state.selectedAssetId = null;
   }

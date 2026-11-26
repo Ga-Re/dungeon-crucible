@@ -20,8 +20,8 @@ export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' |
 /** Current version of each document kind. */
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
-  map: 8,
-  scene: 10,
+  map: 9,
+  scene: 11,
   creature: 1,
   asset: 3,
   object: 1,
@@ -47,6 +47,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     6: (doc) => doc,
     // Version 8 adds solid rock beside closed walls (DC-119f): nothing to change.
     7: (doc) => doc,
+    // Version 9 adds sound sources and the map's sound (E-37): none yet.
+    8: (doc) => doc,
   },
   // The same for the scene's own areas and its overrides of map areas.
   scene: {
@@ -79,6 +81,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     8: (doc) => doc,
     // Version 10 adds solid rock beside closed walls (DC-119f): nothing to change.
     9: (doc) => doc,
+    // Version 11 adds the scene's own sound sources (E-37): none yet.
+    10: (doc) => doc,
   },
   creature: {},
   // The first asset format (variants with props, never used by files) → E-27 (DC-040).

@@ -24,6 +24,7 @@ export function emptyScene(table: Scene['table'] = DEFAULT_TABLE): Scene {
     templates: [],
     pings: [],
     lights: [],
+    sounds: [],
     ambient: 'dark',
     fog: EMPTY_LEVEL_FOG,
     fogEffect: null,

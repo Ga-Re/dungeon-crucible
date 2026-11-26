@@ -64,6 +64,24 @@ export interface Token {
   creatureId?: string;
 }
 
+/**
+ * A sound source on the map (E-37): `sound` is a library audio file or `builtin:<key>`; heard
+ * within `radiusFt` of the nearest player character, quieter towards the edge when `fade`.
+ */
+export interface SoundSource {
+  id: string;
+  sound: string;
+  x: number;
+  y: number;
+  radiusFt: number;
+  /** As built in the Map Forge. */
+  volume: number;
+  /** Its volume in this scene (state, like a light being on, DC-104c); none: `volume`. */
+  level?: number;
+  fade: boolean;
+  layer?: string;
+}
+
 /** A placed light source (brazier, lantern, magical light). Dim light reaches `dimFt`. */
 export interface LightSource {
   id: string;
@@ -166,6 +184,8 @@ export interface MapInfo {
   origin?: Point;
   /** A drawn map (E-33): no picture, its drawn walls are its picture. */
   drawn?: boolean;
+  /** The map's sound everywhere (E-37); none: silent. */
+  ambientSound?: { sound: string; volume: number };
 }
 
 export type MapType = 'dungeon' | 'building' | 'region' | 'world' | 'arena';
@@ -197,12 +217,13 @@ export interface HiddenElements {
   walls: Wall[];
   zones: Zone[];
   lights: LightSource[];
+  sounds: SoundSource[];
   /** Placed assets of the map (DC-041). */
   assets: MapAssetPlacement[];
 }
 
 export function noHidden(): HiddenElements {
-  return { walls: [], zones: [], lights: [], assets: [] };
+  return { walls: [], zones: [], lights: [], sounds: [], assets: [] };
 }
 
 export interface Scene {
@@ -235,6 +256,10 @@ export interface Scene {
   templates: AreaTemplate[];
   pings: Ping[];
   lights: LightSource[];
+  /** Sound sources (E-37): heard in the Orchestrator only, never sent to the TV. */
+  sounds: SoundSource[];
+  /** This scene's sound everywhere instead of the map's, or "none" (E-37); missing: the map's. */
+  ambientOverride?: { sound: string; volume: number } | 'none';
   ambient: AmbientLight;
   /** Polygon fog in map pixels (Dungeon-Manager's model): revealed and remembered. */
   fog: LevelFog;

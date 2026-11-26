@@ -393,6 +393,12 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     Karten-Elemente werden in der Szene ausgewählt und mit Entf/„In dieser Szene ausblenden“ ausgeblendet,
     „Wieder zeigen“ im Kartenbereich. Geprüft in der App (Barrikade nur in der Szene, auf dem TV, Karte
     unverändert).
+  - Review (2026-11-26) behoben: Bearbeiten in einer Szene kopierte Karten-Elemente in die Szene (blockierend);
+    zurück auf eine unveränderte gezeichnete Karte blieb das Bild der vorigen Karte stehen (blockierend); Tür →
+    Fenster malte nicht neu; Türbilder und bewegtes Wasser außerhalb der Kartenfläche lagen nicht unter dem Nebel
+    (jetzt auf die Fläche begrenzt); leerer Rückgängig-Schritt beim Teilen eines Sees; Geröll-Markierung nach der
+    Szene; ausgeblendete Ids geprüft; `freshId` kennt alle gezeichneten Listen. Neue Tests dafür (auch auf
+    Frame-Ebene). Offen: Serialisieren je Frame bei sehr großen Karten (`npm run bench`, DM).
   - ✓ **DC-107d Klippen und Abhänge** (E-34, DM-Wunsch 2026-11-26): Klippen, Abhänge, Gruben, Plateaus, Schluchten,
     Geröllhalden, Terrassen und Abgründe zeichnen; Einweg-Sicht und Bewegungsblock wie die Klippen aus DC-014;
     Aussehen nach Biom, Bewuchs an der Oberkante. Reihenfolge der Pakete b–d wählt der DM.

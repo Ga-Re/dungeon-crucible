@@ -81,6 +81,8 @@ export function bindMap(renderer: Renderer, host: HTMLElement, onError?: (e: unk
       const key = url ? `${isVideo ? 'v' : 'i'}:${url}` : null;
       if (key === current) return;
       current = key;
+      // Another map is shown now: a drawn map coming back is painted anew, not only its changes.
+      lastMap = null;
       const mine = ++token;
       if (!url) {
         dropVideo();
@@ -112,6 +114,8 @@ export function bindMap(renderer: Renderer, host: HTMLElement, onError?: (e: unk
       const key = `d:${paintKey(drawing, cell)}`;
       showDecals(drawing);
       if (key === current) return;
+      // Only a drawn map on screen may be repainted in part.
+      if (!current?.startsWith('d:')) lastMap = null;
       current = key;
       const mine = ++token;
       try {
@@ -149,6 +153,8 @@ export function bindMap(renderer: Renderer, host: HTMLElement, onError?: (e: unk
     },
     dispose() {
       token++;
+      lastMap = null;
+      lastOver = null;
       dropVideo();
     },
   };

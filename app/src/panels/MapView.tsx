@@ -378,7 +378,7 @@ function DmMap() {
   const difficultOf = (): OverlayState['difficult'] => {
     // In the Map Forge every layer, in a scene those it has on.
     const active = state.layer === 'map' ? null : activeLayers(state.scene.map.layers, state.scene.layersOn);
-    const scree = state.scene.map.cliffs.filter((c) => c.kind === 'scree' && (!active || active.has(elementLayer(c))));
+    const scree = sceneMap(state.scene).cliffs.filter((c) => c.kind === 'scree' && (!active || active.has(elementLayer(c))));
     if (!scree.length) return null;
     const depth = state.scene.map.grid.cellWidth;
     return { lines: scree.map((c) => ({ points: c.points, closed: c.closed, depth })), label: t('build.cliff.difficult') };

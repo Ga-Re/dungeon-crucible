@@ -36,7 +36,7 @@ function union(a: Bounds | null, b: Bounds): Bounds {
 
 export function changedRegion(prev: AnyDrawing, next: AnyDrawing, cell: number, prevCell = cell): Bounds | 'all' | null {
   if (cell !== prevCell || prev.biome !== next.biome || prev.lightAngle !== next.lightAngle || prev.autoShore !== next.autoShore || prev.autoGrowth !== next.autoGrowth || prev.width !== next.width || prev.height !== next.height || prev.origin.x !== next.origin.x || prev.origin.y !== next.origin.y) return 'all';
-  const doorsKey = (d: AnyDrawing, id: string) => JSON.stringify(d.doors.filter((x) => x.wall === id).map((x) => [x.at, x.width]));
+  const doorsKey = (d: AnyDrawing, id: string) => JSON.stringify(d.doors.filter((x) => x.wall === id).map((x) => [x.at, x.width, x.window ?? false]));
   const before = new Map(prev.masonry.map((w) => [w.id, w]));
   const after = new Map(next.masonry.map((w) => [w.id, w]));
   let region: Bounds | null = null;

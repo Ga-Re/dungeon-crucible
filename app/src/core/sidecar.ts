@@ -361,7 +361,7 @@ const sceneDrawingSchema = z.object({
   cliffs: z.array(cliffSchema).default([]),
   waters: z.array(waterSchema).default([]),
   floors: z.array(floorPatchSchema).default([]),
-  hidden: z.array(z.string()).default([]),
+  hidden: z.array(id).default([]),
 });
 export type SceneDrawing = z.infer<typeof sceneDrawingSchema>;
 const EMPTY_SCENE_DRAWING = { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], hidden: [] };

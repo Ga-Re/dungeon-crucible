@@ -329,7 +329,8 @@ function lines(kind: BuildSelection['kind']): Line[] {
 }
 
 function applyTo(kind: BuildSelection['kind'], edit: Edit<Line>, final = true): void {
-  const m = state.scene.map;
+  // The lists not edited stay as they are – the map's in the Map Forge, the scene's own in a scene.
+  const m = target();
   if (kind === 'wall') apply({ masonry: edit.masonry as Masonry[], doors: edit.doors }, m.cliffs, final);
   else if (kind === 'cliff') apply({ masonry: m.masonry, doors: m.masonryDoors }, edit.masonry as Cliff[], final);
   else apply({ masonry: m.masonry, doors: m.masonryDoors }, m.cliffs, final, edit.masonry as Water[]);
@@ -419,10 +420,10 @@ export function deleteBuildSelection(): boolean {
 export function splitBuildWall(): void {
   const sel = state.buildSelection;
   if (!sel || sel.point === null) return;
+  // A lake or the sea stays a ring: it cannot be split open (and leaves no empty undo step).
+  if (sel.kind === 'water' && lines('water').find((w) => w.id === sel.wall)?.closed) return;
   checkpoint();
   let edit = splitAt(lines(sel.kind), doorsOf(sel.kind), sel.wall, sel.point, freshId(sel.kind === 'wall' ? 'masonry' : sel.kind));
-  // A lake or the sea stays a ring: it cannot be split open.
-  if (sel.kind === 'water' && lines('water').find((w) => w.id === sel.wall)?.closed) return;
   // A ring opened is an edge again.
   if (sel.kind === 'cliff') edit = { ...edit, masonry: edit.masonry.map((x) => (!x.closed && (x as Cliff).form === 'ring' ? { ...(x as Cliff), form: 'edge' } : x)) };
   applyTo(sel.kind, edit);

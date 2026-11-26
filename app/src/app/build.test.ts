@@ -349,3 +349,33 @@ describe('drawing in a scene (DC-107c)', () => {
     expect(state.scene.drawnHidden).toEqual([mapWall]);
   });
 });
+
+describe('editing a scene\'s own drawing leaves the other lists alone (review #1)', () => {
+  it('edits own walls, cliffs and water without copying the map into the scene', () => {
+    setWorkspace('forge');
+    state.scene.map.masonry = [];
+    state.scene.map.masonryDoors = [];
+    state.scene.map.cliffs = [{ id: 'map-cliff', points: [{ x: 0, y: 19000 }, { x: 280, y: 19000 }], closed: false, kind: 'rock', form: 'edge', steep: true, width: 70, steps: 3, inside: 'low', growth: true, seed: 1 }];
+    state.scene.map.waters = [];
+    commitView();
+    setWorkspace('play');
+    state.scene.own = { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [] };
+    for (const kind of ['wall', 'cliff', 'water'] as const) {
+      startBuildCommand(kind);
+      // Options are kept between commands: a river, whatever was drawn before.
+      if (kind === 'water') updateBuildCommand({ waterKind: 'river' });
+      addBuildPoint({ x: 0, y: 19300 + (kind === 'cliff' ? 300 : kind === 'water' ? 600 : 0) }, 8);
+      addBuildPoint({ x: 420, y: 19300 + (kind === 'cliff' ? 300 : kind === 'water' ? 600 : 0) }, 8);
+      finishBuildWall();
+      endBuildCommand(false);
+    }
+    const own = state.scene.own;
+    insertBuildPoint({ kind: 'wall', wall: own.masonry[0].id }, { x: 200, y: 19300 });
+    insertBuildPoint({ kind: 'cliff', wall: own.cliffs[0].id }, { x: 200, y: 19600 });
+    insertBuildPoint({ kind: 'water', wall: own.waters[0].id }, { x: 200, y: 19900 });
+    expect(state.scene.own.cliffs.map((c) => c.id)).toEqual([own.cliffs[0].id]);
+    expect(state.scene.own.masonry).toHaveLength(1);
+    expect(state.scene.own.waters).toHaveLength(1);
+    expect(state.scene.own.cliffs.some((c) => c.id === 'map-cliff')).toBe(false);
+  });
+});

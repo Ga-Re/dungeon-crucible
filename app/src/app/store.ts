@@ -425,7 +425,8 @@ export function clearHistory(): void {
 /** A new element id that no wall, area, light, template or token of the scene has (lowercase, random). */
 export function freshId(prefix: string): string {
   const sc = state.scene;
-  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.ownAssets, ...sc.hidden.assets, ...sc.map.masonry, ...sc.map.masonryDoors].map((x) => x.id));
+  const drawn = [sc.map, sc.own].flatMap((d) => [...d.masonry, ...d.masonryDoors, ...d.cliffs, ...d.waters, ...d.floors]);
+  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.ownAssets, ...sc.hidden.assets, ...drawn].map((x) => x.id));
   return newId(slugId(prefix, 'el').slice(0, 40), (id) => taken.has(id));
 }
 

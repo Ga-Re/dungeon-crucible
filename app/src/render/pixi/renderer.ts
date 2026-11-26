@@ -366,6 +366,20 @@ export async function createRenderer(
   // Moving water (E-35): over the drawing, under grid, assets, tokens and fog.
   const waterHost = new Container();
   world.addChild(waterHost);
+  // Decals and moving water stay inside the map's area, which the fog covers: nothing drawn past
+  // its edge shows uncovered (a scene's own drawing does not grow the area).
+  const decalMask = new Graphics();
+  const waterMask = new Graphics();
+  world.addChild(decalMask, waterMask);
+  decalLayer.mask = decalMask;
+  waterHost.mask = waterMask;
+  const clipToArea = () => {
+    for (const m of [decalMask, waterMask]) {
+      m.clear();
+      // No map yet: an empty mask shows nothing.
+      m.rect(origin.x, origin.y, mapSize?.width ?? 0, mapSize?.height ?? 0).fill({ color: 0xffffff });
+    }
+  };
   let water: WaterHandle | null = null;
   let waterKey: string | null = null;
   const waterStart = now();
@@ -725,6 +739,7 @@ export async function createRenderer(
     gridInput = shiftGrid(rawGrid, origin);
     for (const layer of [fogHost, memoryLayer, lightLayer, gridLayer]) layer.position.set(origin.x, origin.y);
     map?.position.set(origin.x, origin.y);
+    clipToArea();
   };
   let fog: Container | null = null;
   // The last fog asked for: rebuilt when the map changes, as soft edges follow the map's size.
@@ -1246,6 +1261,7 @@ export async function createRenderer(
         origin = ZERO;
         toMapSpace();
       } else if (!map) mapSize = null;
+      clipToArea();
       dropFade();
       shownFog = null;
       fogBuiltFrom = null;

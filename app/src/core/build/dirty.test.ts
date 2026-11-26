@@ -62,3 +62,11 @@ describe('changedRegion with cliffs (E-34)', () => {
     expect(changedRegion(base, { ...base, lightAngle: 200 }, 70)).toBe('all');
   });
 });
+
+describe('changedRegion: a door turned into a window (review #3)', () => {
+  it('repaints the wall', () => {
+    const withDoor = { ...base, doors: [{ wall: 'a', at: 350, width: 70, open: false }] };
+    const withWindow = { ...base, doors: [{ wall: 'a', at: 350, width: 70, open: false, window: true }] };
+    expect(changedRegion(withDoor, withWindow, 70)).not.toBeNull();
+  });
+});

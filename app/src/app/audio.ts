@@ -23,7 +23,12 @@ const FADE_S = 1.2;
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let masterVolume = 0.8;
-const tracks = new Map<string, { gain: GainNode; stop: () => void }>();
+const tracks = new Map<string, { gain: GainNode; filter: BiquadFilterNode; stop: () => void }>();
+
+/** The low-pass cut-off for a muffling of 0 (clear) … 1 (behind walls, DC-104b). */
+function cutoff(muffle: number): number {
+  return 20000 * (500 / 20000) ** Math.max(0, Math.min(1, muffle));
+}
 
 function audio(): { ctx: AudioContext; master: GainNode } {
   if (!ctx) {
@@ -159,30 +164,36 @@ export function playAmbience(id: string, volume: number, url?: string): void {
  * Starts (or keeps) the loop `key` playing `sound` (`builtin:<key>` or a file at `url`) and fades
  * it to `volume`. Keys keep the soundboard's tracks and the map's apart, even for the same sound.
  */
-export function playLoop(key: string, sound: string, volume: number, url?: string): void {
+export function playLoop(key: string, sound: string, volume: number, url?: string, muffle = 0): void {
   const { ctx: c, master: m } = audio();
   const existing = tracks.get(key);
   if (existing) {
     existing.gain.gain.setTargetAtTime(volume, c.currentTime, 0.1);
+    existing.filter.frequency.setTargetAtTime(cutoff(muffle), c.currentTime, 0.1);
     return;
   }
   const gain = c.createGain();
   gain.gain.value = 0;
   gain.connect(m);
+  // Muffling (walls between): a low-pass before the volume; wide open while clear.
+  const filter = c.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = cutoff(muffle);
+  filter.connect(gain);
   gain.gain.setTargetAtTime(volume, c.currentTime, FADE_S / 3);
   const builtin = sound.startsWith(BUILTIN_PREFIX) ? sound.slice(BUILTIN_PREFIX.length) : null;
   const file = builtin ? builtinFile(builtin) : url;
   let stop: () => void = () => undefined;
   // A built-in sound whose file cannot be played is synthesised instead, where the app can.
   const synthesise = () => {
-    if (builtin && SYNTHESISED.has(builtin)) stop = startBuiltin(builtin, c, gain);
+    if (builtin && SYNTHESISED.has(builtin)) stop = startBuiltin(builtin, c, filter);
   };
   if (file) {
     const el = new Audio();
     if (!file.startsWith('blob:')) el.crossOrigin = 'anonymous';
     el.src = file;
     el.loop = true;
-    c.createMediaElementSource(el).connect(gain);
+    c.createMediaElementSource(el).connect(filter);
     const release = () => {
       el.pause();
       el.removeAttribute('src');
@@ -198,16 +209,19 @@ export function playLoop(key: string, sound: string, volume: number, url?: strin
     // Only a file that cannot be decoded falls back; a play() stopped early or held back by autoplay does not.
     void el.play().catch((e: unknown) => (e as Error | undefined)?.name === 'NotSupportedError' && fail());
   } else synthesise();
-  tracks.set(key, { gain, stop: () => stop() });
+  tracks.set(key, { gain, filter, stop: () => stop() });
 }
 
 export function setAmbienceVolume(id: string, volume: number): void {
   setLoopVolume(id, volume);
 }
 
-export function setLoopVolume(key: string, volume: number): void {
+/** Fades the loop `key` to `volume`; with `muffle`, also how dull it sounds (0 clear … 1). */
+export function setLoopVolume(key: string, volume: number, muffle?: number): void {
   const t = tracks.get(key);
-  if (t && ctx) t.gain.gain.setTargetAtTime(volume, ctx.currentTime, 0.05);
+  if (!t || !ctx) return;
+  t.gain.gain.setTargetAtTime(volume, ctx.currentTime, 0.05);
+  if (muffle !== undefined) t.filter.frequency.setTargetAtTime(cutoff(muffle), ctx.currentTime, 0.1);
 }
 
 /** Fades a track out and stops it. */
@@ -223,6 +237,7 @@ export function stopLoop(key: string): void {
   t.gain.gain.setTargetAtTime(0, ctx.currentTime, FADE_S / 3);
   setTimeout(() => {
     t.stop();
+    t.filter.disconnect();
     t.gain.disconnect();
   }, FADE_S * 1000 + 200);
 }

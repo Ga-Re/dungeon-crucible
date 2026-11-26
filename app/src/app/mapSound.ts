@@ -1,19 +1,19 @@
 /**
  * The map's sounds (E-37, DC-104): its sound everywhere and its sound sources, played while a
  * scene is open in the Orchestrator – never in the Map Forge, never on the TV. Follows the store:
- * each change of the scene (a player character moves, a source is hidden) sets the levels anew;
- * a source out of reach stops and starts again when someone comes near.
+ * each change of the scene (a player character moves, a door opens, a source is hidden) sets the
+ * levels and muffling anew; a source out of reach stops and starts again when someone comes near.
  */
 import { mapSoundMix } from '../core/sound';
 import { playLoop, setLoopVolume, stopLoop } from './audio';
 import { soundUrl } from './soundboard';
-import { state, subscribe } from './store';
+import { sightWalls, state, subscribe } from './store';
 
 /** Below this a source counts as silent and is stopped. */
 const SILENT = 0.001;
 /** Playing loops by key → their sound; the newest level of each. */
 const playing = new Map<string, string>();
-const levels = new Map<string, number>();
+const levels = new Map<string, { gain: number; muffle: number }>();
 let started = false;
 
 function heardNow(): boolean {
@@ -21,7 +21,8 @@ function heardNow(): boolean {
 }
 
 function update(): void {
-  const mix = heardNow() ? mapSoundMix(state.scene) : [];
+  // The walls sight uses (drawn ones and doors of assets included) damp the sources behind them.
+  const mix = heardNow() ? mapSoundMix(state.scene, sightWalls(state.scene)) : [];
   const want = new Map(mix.filter((e) => e.gain > SILENT).map((e) => [`map:${e.key}`, e]));
   for (const [key, sound] of playing) {
     if (want.get(key)?.sound === sound) continue;
@@ -30,9 +31,9 @@ function update(): void {
     stopLoop(key);
   }
   for (const [key, e] of want) {
-    levels.set(key, e.gain);
+    levels.set(key, { gain: e.gain, muffle: e.muffle });
     if (playing.has(key)) {
-      setLoopVolume(key, e.gain);
+      setLoopVolume(key, e.gain, e.muffle);
       continue;
     }
     playing.set(key, e.sound);
@@ -40,7 +41,8 @@ function update(): void {
       .catch(() => undefined)
       .then((url) => {
         // Stopped or changed while its file was looked up: nothing to start.
-        if (playing.get(key) === e.sound) playLoop(key, e.sound, levels.get(key) ?? e.gain, url);
+        const now = levels.get(key) ?? e;
+        if (playing.get(key) === e.sound) playLoop(key, e.sound, now.gain, url, now.muffle);
       });
   }
 }

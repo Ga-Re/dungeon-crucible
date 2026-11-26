@@ -316,7 +316,13 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     `app/src/audio/sounds/README.md`) – Höhlenwind, Tropfen, Fackeln, Regen, Chor, Wasserfall, Bach, Lagerfeuer,
     Wald, Sturm, Brandung, Taverne. Sie ersetzen die synthetischen fünf (die bleiben als Rückfall, wenn eine Datei
     nicht abspielbar ist) und gelten auch im Soundboard.
-  - **DC-104b Dämpfung durch Wände**: Wand zwischen Figur und Quelle → leiser und dumpfer (Tiefpass).
+  - ✓ **DC-104b Dämpfung durch Wände**: Wand zwischen Figur und Quelle → leiser und dumpfer (Tiefpass). Erledigt:
+    Es zählen die Wände, die auch die Sicht nutzt (gezeichnete Mauern, Asset-Türen eingeschlossen): Wände und
+    geschlossene Türen dämpfen je Wand auf 40 % (höchstens drei zählen), offene Türen, Fenster und Klippen nicht.
+    Dumpfer über einen Tiefpass je Loop (eine Wand ~1,5 kHz, zwei oder mehr 500 Hz, sanft übergeblendet). Es zählt
+    die Spielerfigur, die die Quelle am lautesten hört – der freie Weg schlägt den näheren durch die Wand. Rein in
+    `core/sound.ts` (Tests); in der App geprüft (Wasserfall hinter der Wand neben Thorin: 1512 Hz, offene Quellen
+    20 kHz).
   - **DC-104c Szenen-Steuerung**: Quelle an/aus (Ausblenden, Ebenen), Lautstärke je Szene, globalen Sound
     überschreiben oder stumm, szeneneigene Quellen; Start und Spiel getrennt; Szene v11.
 - **DC-105 Szenenübergang** (T-135): Übergang beim Szenenwechsel auf dem TV (z. B. Ausblenden über Schwarz, Dauer),

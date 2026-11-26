@@ -7,8 +7,8 @@
 import { noise2 } from '../../core/build/handDrawn';
 import type { MasonryStyle } from '../../core/build/masonry';
 
-export type SurfaceSlot = `wall-${MasonryStyle}` | `floor-${MasonryStyle}`;
-export type PartSlot = 'part-cornerstone' | 'part-pillar' | 'part-door';
+export type SurfaceSlot = `wall-${MasonryStyle}` | `floor-${MasonryStyle}` | 'cliff-rock' | 'cliff-earth' | 'cliff-scree';
+export type PartSlot = 'part-cornerstone' | 'part-pillar' | 'part-door' | 'growth-grass' | 'growth-bush' | 'growth-moss';
 
 export interface BuildTextures {
   /** Seamless, to be repeated (`createPattern`). */
@@ -22,7 +22,9 @@ export const TILE = 512;
 const PART = 256;
 
 const STYLES: MasonryStyle[] = ['dungeon-stone', 'cave-rock', 'brick', 'wood'];
-const PARTS: PartSlot[] = ['part-cornerstone', 'part-pillar', 'part-door'];
+const PARTS: PartSlot[] = ['part-cornerstone', 'part-pillar', 'part-door', 'growth-grass', 'growth-bush', 'growth-moss'];
+/** Cliff faces (E-34). */
+const CLIFF_SURFACES: SurfaceSlot[] = ['cliff-rock', 'cliff-earth', 'cliff-scree'];
 
 const files = import.meta.glob('./textures/*.{webp,png}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
@@ -82,6 +84,9 @@ const BASE: Record<SurfaceSlot, [number, number, number]> = {
   'floor-cave-rock': [96, 88, 76],
   'floor-brick': [124, 108, 92],
   'floor-wood': [132, 98, 62],
+  'cliff-rock': [96, 96, 98],
+  'cliff-earth': [110, 82, 58],
+  'cliff-scree': [118, 114, 108],
 };
 
 /** Noise that repeats every `period` cells. */
@@ -165,6 +170,15 @@ function generatedPart(slot: PartSlot): HTMLCanvasElement {
       g.lineTo(PART - 4, 4 + ((PART - 8) * k) / 4);
     }
     g.stroke();
+  } else if (slot.startsWith('growth-')) {
+    // A rough green blob: leaves around the middle.
+    for (let k = 0; k < 14; k++) {
+      const a = (k / 14) * Math.PI * 2;
+      g.fillStyle = slot === 'growth-moss' ? 'rgba(86,118,62,.85)' : 'rgba(74,112,52,.9)';
+      g.beginPath();
+      g.ellipse(h + Math.cos(a) * h * 0.45, h + Math.sin(a) * h * 0.45, h * 0.32, h * 0.16, a, 0, Math.PI * 2);
+      g.fill();
+    }
   } else if (slot === 'part-pillar') {
     g.fillStyle = '#6a655d';
     g.beginPath();
@@ -184,7 +198,7 @@ let loading: Promise<BuildTextures> | null = null;
 /** The textures, loaded once; a slot without a picture gets its generated pattern. */
 export function buildTextures(): Promise<BuildTextures> {
   loading ??= (async () => {
-    const surfaceSlots = STYLES.flatMap((s) => [`wall-${s}`, `floor-${s}`] as SurfaceSlot[]);
+    const surfaceSlots = [...STYLES.flatMap((s) => [`wall-${s}`, `floor-${s}`] as SurfaceSlot[]), ...CLIFF_SURFACES];
     const surface = {} as Record<SurfaceSlot, HTMLCanvasElement>;
     const part = {} as Record<PartSlot, HTMLCanvasElement>;
     await Promise.all([

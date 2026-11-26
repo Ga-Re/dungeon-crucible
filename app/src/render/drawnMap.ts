@@ -14,6 +14,7 @@ import { buildGraph, doorSpan, masonryOutline, pointAt, type BuildDoor, type Mas
 import type { DmDrawing, Drawing } from '../core/build/playerDrawing';
 import type { Decal, PaintedImage } from './pixi/renderer';
 import type { BuildTextures } from './build/textures';
+import { paintCliffs } from './cliffsPaint';
 
 /** How each style's outline wavers, by its thickness. */
 const WAVER: Record<MasonryStyle, { amplitude: number; scale: number }> = {
@@ -276,6 +277,8 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       // From here on in map coordinates.
       g.translate(-left - ox, -top - oy);
       paintFloors(g, left + ox, top + oy, w, h);
+      // Cliffs and slopes lie on the ground, under the walls (E-34).
+      paintCliffs(g, drawing.cliffs, drawing.biome, cell, tex);
       paintWalls(g);
       g.restore();
     },
@@ -365,6 +368,7 @@ function scaled<D extends Drawing | DmDrawing>(d: D, k: number): D {
     masonry: d.masonry.map((w) => ({ ...w, thickness: w.thickness * k, points: w.points.map((p) => ({ x: p.x * k, y: p.y * k })) })),
     doors: d.doors.map((x) => ({ ...x, at: x.at * k, width: x.width * k })),
     cracks: d.cracks.map((x) => ({ ...x, at: x.at * k, width: x.width * k })),
+    cliffs: d.cliffs.map((c) => ({ ...c, width: c.width * k, points: c.points.map((p) => ({ x: p.x * k, y: p.y * k })) })),
   };
 }
 

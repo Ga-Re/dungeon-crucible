@@ -471,9 +471,17 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   (aus beim Verlassen, wenn eingestellt), Protokolleintrag. Elemente inaktiver Ebenen fehlen in Sicht, Licht und
   TV-Projektion, werden aber nicht als ausgeblendet gespeichert; Assets werden nach Ebenenhöhe gezeichnet.
 - **DC-119 Lebendige Karten** (E-36) – Varianz und Generator, Teilpakete:
-  - **DC-119a Böden**: Variantenkacheln je Feld (deterministisch, gedreht/gespiegelt) mit Regel-Kacheln für Ränder
-    und Übergänge, Großflächen-Rauschen, abgewetzte Wege zwischen Türen; Higgsfield-Durchlauf für alle Materialien
-    (Varianten, Randkacheln, Übergänge; Guthaben und Kosten vorher nennen).
+  - ✓ **DC-119a Böden**: Böden und Naturgrund wiederholen statt einer Textur einen komponierten Bogen aus 16×16
+    Zellen: Flecken aus Varianten und Drehungen (`core/build/variance.ts`, deterministisch je Seed), phasengleich,
+    sodass das Muster eines Fleckens in einem Stück weiterläuft – Kachelböden wechseln an Zellgrenzen in großen
+    Flecken (die Fuge verdeckt den Wechsel, Dielen behalten ihre Richtung), Naturböden in weichen runden Flecken;
+    Varianten werden auf die Helligkeit der Grundtextur eingeebnet; darüber großflächiges, mit dem Bogen nahtlos
+    periodisches Hell/Dunkel und ein leiser Schatten je Kachel. Abgewetzte Wege zwischen Türen (A* um Mauern,
+    durch Türöffnungen; im Geometrie-Cache), als weicher, leicht schlängelnder Pfad gemalt; aus mit dem
+    Automatik-Schalter der Karte. 69 Varianten-Texturen (je 3 für alle Böden, Gründe, Mauern, Klippen, Wasser)
+    mit Higgsfield erzeugt (~242 Credits, Herkunft im Textur-README); Mauern/Klippen/Wasser nutzen sie ab
+    DC-119b/c. Offen aus der Ansicht: Dielen-Varianten unterscheiden sich im Maßstab (wirkt wie gewollter
+    Bodenwechsel – beobachten); Rand-Trim an Mauern kommt mit DC-119b.
   - **DC-119b Mauern und Klippen**: Textur folgt der Spline (Steinreihen biegen sich mit), Kantenrauheit je Seed,
     Verfallsgrad je Element (Karte v7, optionales Feld mit Migration).
   - **DC-119c Wasser**: organische Uferlinie, Strömungsrichtung in Textur und Animation, Flachzonen mit sichtbarem

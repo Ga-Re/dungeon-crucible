@@ -8,13 +8,17 @@
  * It is a `PaintedImage`: the renderer has each GPU tile painted on its own, so a drawn map of
  * any size never exists as one canvas. Everything is painted in map coordinates, so tiles meet.
  */
-import { floorField, jitterRing, type FloorStyle, type Jitter } from '../core/build/handDrawn';
+import { floorField, jitterRing, noise2, type FloorStyle, type Jitter } from '../core/build/handDrawn';
+import { wearPaths } from '../core/build/variance';
 import { FLOOR_REACH_CELLS, floorStep } from '../core/build/dirty';
 import { buildGraph, doorSpan, masonryOutline, pointAt, type BuildDoor, type Masonry, type MasonryStyle } from '../core/build/masonry';
 import type { DmDrawing, Drawing } from '../core/build/playerDrawing';
 import type { Decal, PaintedImage } from './pixi/renderer';
-import { floorSlot, groundSlot, type BuildTextures } from './build/textures';
+import { floorSlot, groundSlot, type BuildTextures, type SurfaceSlot } from './build/textures';
+import { surfaceSheet } from './build/variantSheet';
 import { paintCliffs } from './cliffsPaint';
+import { smoothLine } from '../core/build/water';
+import type { Point } from '../core/geometry';
 import { paintWater, paintWaterfalls } from './waterPaint';
 import { paintShore, paintWallFeet, paintWornDoors } from './detailsPaint';
 
@@ -27,7 +31,6 @@ const WAVER: Record<MasonryStyle, { amplitude: number; scale: number }> = {
 };
 
 /** Map cells one texture tile covers: floors, wall surfaces. */
-const FLOOR_CELLS = 3;
 /** How far a painted floor's edge fades out, in cells (DC-107b). */
 const FLOOR_FEATHER = 0.22;
 const WALL_CELLS = 1;
@@ -79,6 +82,17 @@ function surfacePattern(g: CanvasRenderingContext2D, source: HTMLCanvasElement, 
   return pattern;
 }
 
+/**
+ * Fill for floors and natural ground (DC-119a): the composed variant sheet, repeating only
+ * every SHEET_CELLS cells and aligned to the map's cells; `shift` moves it by whole cells, so
+ * two patches of the same material do not line up.
+ */
+function sheetPattern(g: CanvasRenderingContext2D, slot: SurfaceSlot, tex: BuildTextures, cell: number, seed: number, shift: number): CanvasPattern | null {
+  const pattern = g.createPattern(surfaceSheet(slot, tex, cell, seed), 'repeat');
+  pattern?.setTransform(new DOMMatrix().translate((shift & 15) * cell, ((shift >> 4) & 15) * cell));
+  return pattern;
+}
+
 interface Geometry {
   styles: PreparedStyle[];
   field: ReturnType<typeof floorField> | null;
@@ -89,6 +103,8 @@ interface Geometry {
   step: number;
   /** Near walls (map px): painted floors end sharp there, under the wall (DC-107b). */
   wallZone: Path2D;
+  /** The worn ways between doors (DC-119a), map px. */
+  wear: Point[][];
 }
 
 /**
@@ -218,17 +234,56 @@ function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: num
       ring.forEach(([x, y], i) => (i ? wallZone.lineTo(x, y) : wallZone.moveTo(x, y)));
       wallZone.closePath();
     }
-  const geometry = { styles, field, floorMasks, floorBoxes, step, wallZone };
+  // The worn ways between the doors' midpoints (DC-119a); windows wear nothing.
+  const wallsById = new Map(walls.map((w) => [w.id, w]));
+  const doorMids = drawing.doors.flatMap((d) => {
+    const wall = wallsById.get(d.wall);
+    if (!wall || ('window' in d && d.window)) return [];
+    const span = doorSpan(wall, { id: '', wall: wall.id, at: d.at, width: d.width, secret: false, crack: false });
+    const a = pointAt(wall.points, wall.closed, span.from);
+    const b = pointAt(wall.points, wall.closed, span.to);
+    return [{ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }];
+  });
+  const wear = wearPaths(walls, doorMids, { x: ox, y: oy, w: width, h: height }, cell);
+  const geometry = { styles, field, floorMasks, floorBoxes, step, wallZone, wear };
   geometries.set(key, geometry);
   if (geometries.size > KEPT_GEOMETRIES) geometries.delete(geometries.keys().next().value!);
   return geometry;
+}
+
+/** The worn ways between doors (DC-119a): a soft, darker trail ground into the floor. */
+function paintWearPaths(g: CanvasRenderingContext2D, wear: Point[][], cell: number): void {
+  if (!wear.length) return;
+  g.save();
+  g.globalCompositeOperation = 'multiply';
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  for (const path of wear) {
+    // A light wander across the walking direction: no dead-straight trails.
+    const line = smoothLine(path, false, 2).map((p, i, all) => {
+      const a = all[Math.max(0, i - 1)];
+      const b = all[Math.min(all.length - 1, i + 1)];
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const w = noise2(p.x / (cell * 2.6), p.y / (cell * 2.6), 23) * cell * 0.3;
+      return { x: p.x + (-(b.y - a.y) / len) * w, y: p.y + ((b.x - a.x) / len) * w };
+    });
+    g.beginPath();
+    line.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+    g.strokeStyle = 'rgba(82,66,46,0.16)';
+    g.lineWidth = cell * 0.6;
+    g.stroke();
+    g.strokeStyle = 'rgba(74,58,40,0.18)';
+    g.lineWidth = cell * 0.26;
+    g.stroke();
+  }
+  g.restore();
 }
 
 export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean, cell: number, tex: BuildTextures): PaintedImage {
   const { x: ox, y: oy } = drawing.origin;
   const width = Math.max(1, Math.ceil(drawing.width));
   const height = Math.max(1, Math.ceil(drawing.height));
-  const { styles, field, floorMasks, floorBoxes, wallZone } = geometryOf(drawing, withGround, cell, drawing.masonry.map(asMasonry));
+  const { styles, field, floorMasks, floorBoxes, wallZone, wear } = geometryOf(drawing, withGround, cell, drawing.masonry.map(asMasonry));
   const patches = drawing.floors.map((f) => {
     const shape = new Path2D();
     for (const p of f.shape)
@@ -249,7 +304,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
     const feather = cell * FLOOR_FEATHER;
     for (const p of patches) {
       if (p.box.x - feather > left + w || p.box.y - feather > top + h || p.box.x + p.box.w + feather < left || p.box.y + p.box.h + feather < top) continue;
-      const fill = surfacePattern(g, tex.surface[floorSlot(p.style)], cell, FLOOR_CELLS, styleSeed(p.style) + p.seed) ?? '#77705f';
+      const fill = sheetPattern(g, floorSlot(p.style), tex, cell, styleSeed(p.style), p.seed) ?? '#77705f';
       // Soft: the floor masked by its blurred shape.
       const layer = document.createElement('canvas');
       layer.width = w;
@@ -261,7 +316,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       l.fill(p.shape, 'evenodd');
       l.filter = 'none';
       l.globalCompositeOperation = 'source-in';
-      l.fillStyle = surfacePattern(l, tex.surface[floorSlot(p.style)], cell, FLOOR_CELLS, styleSeed(p.style) + p.seed) ?? '#77705f';
+      l.fillStyle = sheetPattern(l, floorSlot(p.style), tex, cell, styleSeed(p.style), p.seed) ?? '#77705f';
       l.fillRect(left, top, w, h);
       g.drawImage(layer, left, top);
       // Sharp near walls.
@@ -291,14 +346,14 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
   });
 
   // Natural ground after the biome far from walls (E-34); a wall's floor near it.
-  const floorSource = (style: FloorStyle) => (style === 'ground' ? tex.surface[groundSlot(drawing.biome)] : tex.surface[`floor-${style}`]);
+  const floorSlotOf = (style: FloorStyle): SurfaceSlot => (style === 'ground' ? groundSlot(drawing.biome) : `floor-${style}`);
 
   const paintFloors = (g: CanvasRenderingContext2D, left: number, top: number, w: number, h: number) => {
     if (!field) return;
     // The first style covers everything, so where soft edges overlap nothing shows through;
     // the others are blended over it – only where they are.
     const [base, ...others] = [...floorMasks.keys()];
-    g.fillStyle = surfacePattern(g, floorSource(base), cell, FLOOR_CELLS, styleSeed(base)) ?? '#77705f';
+    g.fillStyle = sheetPattern(g, floorSlotOf(base), tex, cell, styleSeed(base), 0) ?? '#77705f';
     g.fillRect(left, top, w, h);
     let layer: CanvasRenderingContext2D | null = null;
     for (const style of others) {
@@ -318,7 +373,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       l.globalCompositeOperation = 'source-over';
       l.setTransform(1, 0, 0, 1, -left, -top);
       l.clearRect(x0, y0, x1 - x0, y1 - y0);
-      l.fillStyle = surfacePattern(l, floorSource(style), cell, FLOOR_CELLS, styleSeed(style)) ?? '#77705f';
+      l.fillStyle = sheetPattern(l, floorSlotOf(style), tex, cell, styleSeed(style), 0) ?? '#77705f';
       l.fillRect(x0, y0, x1 - x0, y1 - y0);
       // Keep it only where this style is nearest; scaled up smoothly, its softened edge blends.
       l.globalCompositeOperation = 'destination-in';
@@ -415,6 +470,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       g.translate(-left - ox, -top - oy);
       paintFloors(g, left + ox, top + oy, w, h);
       paintPatches(g, left + ox, top + oy, w, h);
+      if (drawing.autoGrowth !== false) paintWearPaths(g, wear, cell);
       paintWornDoors(g, wornDoors, cell);
       // Water lies in the ground (E-35); cliffs over it, waterfalls where rivers fall over them.
       paintWater(g, drawing.waters, cell, tex);

@@ -23,6 +23,10 @@ generated pattern, so every slot is optional. File name = slot, `.webp` (preferr
 | `shore-reeds`, `shore-stones` | details along shores (E-35) | square, transparent background, ~256 px |
 | `water-river`, `water-deep`, `water-foam` | water surfaces and foam (E-35; foam with transparency) | square, seamless, ~512 px |
 
+A surface slot may bring **variants** as `<slot>.1.webp`, `<slot>.2.webp` … (DC-119a): the variant
+sheets (`../variantSheet.ts`) lay them in patches over floors and ground, so large areas stop
+repeating one picture. Variants should match their base picture in palette and scale.
+
 Seamless surfaces are blended with themselves when loaded (`seamless`), so small seams are hidden.
 Only pictures whose rights allow shipping them in this public repository belong here; record each
 picture's origin in `docs/TASKS.md` (DC-107a).
@@ -37,3 +41,5 @@ The six cliff and growth pictures and the five grounds were generated the same w
 The three water pictures were generated the same way on 2026-11-26 (DC-107f).
 The two shore pictures were generated the same way on 2026-11-26 (DC-107g).
 The five floor-brush pictures were generated the same way on 2026-11-26 (DC-107b).
+The 69 variant pictures (`*.1/2/3.webp` of all floors, grounds, walls, cliffs and water surfaces)
+were generated the same way on 2026-11-26 (DC-119a).

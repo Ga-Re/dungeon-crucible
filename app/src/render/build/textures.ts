@@ -22,6 +22,8 @@ export type PartSlot = 'part-cornerstone' | 'part-pillar' | 'part-door' | 'growt
 export interface BuildTextures {
   /** Seamless, to be repeated (`createPattern`). */
   surface: Record<SurfaceSlot, HTMLCanvasElement>;
+  /** A slot's variants (`<slot>.1.webp` …), the base first; slots with one picture are absent (DC-119a). */
+  variants: Partial<Record<SurfaceSlot, HTMLCanvasElement[]>>;
   /** Single pictures with transparency, drawn at joints and doors. */
   part: Record<PartSlot, HTMLCanvasElement>;
 }
@@ -228,12 +230,21 @@ export function buildTextures(): Promise<BuildTextures> {
   loading ??= (async () => {
     const surfaceSlots = [...STYLES.flatMap((s) => [`wall-${s}`, `floor-${s}`] as SurfaceSlot[]), ...CLIFF_SURFACES];
     const surface = {} as Record<SurfaceSlot, HTMLCanvasElement>;
+    const variants: Partial<Record<SurfaceSlot, HTMLCanvasElement[]>> = {};
     const part = {} as Record<PartSlot, HTMLCanvasElement>;
     await Promise.all([
       ...surfaceSlots.map(async (slot) => {
         const url = fileFor(slot);
         const img = url ? await load(url) : null;
         surface[slot] = img ? seamless(img) : generatedSurface(slot);
+        const more: HTMLCanvasElement[] = [];
+        for (let n = 1; ; n++) {
+          const vUrl = fileFor(`${slot}.${n}`);
+          if (!vUrl) break;
+          const vImg = await load(vUrl);
+          if (vImg) more.push(seamless(vImg));
+        }
+        if (more.length) variants[slot] = [surface[slot], ...more];
       }),
       ...PARTS.map(async (slot) => {
         const url = fileFor(slot);
@@ -245,7 +256,7 @@ export function buildTextures(): Promise<BuildTextures> {
         } else part[slot] = generatedPart(slot);
       }),
     ]);
-    return { surface, part };
+    return { surface, variants, part };
   })();
   return loading;
 }

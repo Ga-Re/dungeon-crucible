@@ -28,6 +28,8 @@ export interface Cliff {
   steps: number;
   /** A ring's inside: low (a pit) or high (a plateau). */
   inside: 'low' | 'high';
+  /** How decayed it looks, 0–1 (DC-119b): extra cracks and scree at the foot. */
+  decay?: number;
   /** Grass, bushes or moss at the upper edge, after the biome. */
   growth: boolean;
   seed: number;

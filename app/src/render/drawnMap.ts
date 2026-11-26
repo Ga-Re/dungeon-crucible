@@ -8,13 +8,17 @@
  * It is a `PaintedImage`: the renderer has each GPU tile painted on its own, so a drawn map of
  * any size never exists as one canvas. Everything is painted in map coordinates, so tiles meet.
  */
-import { floorField, jitterRing, type FloorStyle, type Jitter } from '../core/build/handDrawn';
+import { floorField, jitterRing, noise2, type FloorStyle, type Jitter } from '../core/build/handDrawn';
+import { hashNoise, lineStrips, wearPaths } from '../core/build/variance';
 import { FLOOR_REACH_CELLS, floorStep } from '../core/build/dirty';
 import { buildGraph, doorSpan, masonryOutline, pointAt, type BuildDoor, type Masonry, type MasonryStyle } from '../core/build/masonry';
 import type { DmDrawing, Drawing } from '../core/build/playerDrawing';
 import type { Decal, PaintedImage } from './pixi/renderer';
-import { floorSlot, groundSlot, type BuildTextures } from './build/textures';
+import { floorSlot, groundSlot, type BuildTextures, type SurfaceSlot } from './build/textures';
+import { surfaceSheet } from './build/variantSheet';
 import { paintCliffs } from './cliffsPaint';
+import { smoothLine } from '../core/build/water';
+import type { Point } from '../core/geometry';
 import { paintWater, paintWaterfalls } from './waterPaint';
 import { paintShore, paintWallFeet, paintWornDoors } from './detailsPaint';
 
@@ -27,7 +31,6 @@ const WAVER: Record<MasonryStyle, { amplitude: number; scale: number }> = {
 };
 
 /** Map cells one texture tile covers: floors, wall surfaces. */
-const FLOOR_CELLS = 3;
 /** How far a painted floor's edge fades out, in cells (DC-107b). */
 const FLOOR_FEATHER = 0.22;
 const WALL_CELLS = 1;
@@ -55,6 +58,8 @@ interface PreparedStyle {
   bottom: number;
   /** Middles of the doors and windows in it: no tower stands in a gate. */
   openings: { x: number; y: number }[];
+  /** The group's walls: their spines carry the texture along the line (DC-119b). */
+  walls: Masonry[];
 }
 
 /** How high a wall stands by its style, in cells; a fortified wall is higher (E-35). */
@@ -79,6 +84,17 @@ function surfacePattern(g: CanvasRenderingContext2D, source: HTMLCanvasElement, 
   return pattern;
 }
 
+/**
+ * Fill for floors and natural ground (DC-119a): the composed variant sheet, repeating only
+ * every SHEET_CELLS cells and aligned to the map's cells; `shift` moves it by whole cells, so
+ * two patches of the same material do not line up.
+ */
+function sheetPattern(g: CanvasRenderingContext2D, slot: SurfaceSlot, tex: BuildTextures, cell: number, seed: number, shift: number): CanvasPattern | null {
+  const pattern = g.createPattern(surfaceSheet(slot, tex, cell, seed), 'repeat');
+  pattern?.setTransform(new DOMMatrix().translate((shift & 15) * cell, ((shift >> 4) & 15) * cell));
+  return pattern;
+}
+
 interface Geometry {
   styles: PreparedStyle[];
   field: ReturnType<typeof floorField> | null;
@@ -89,6 +105,8 @@ interface Geometry {
   step: number;
   /** Near walls (map px): painted floors end sharp there, under the wall (DC-107b). */
   wallZone: Path2D;
+  /** The worn ways between doors (DC-119a), map px. */
+  wear: Point[][];
 }
 
 /**
@@ -103,7 +121,8 @@ const groupOutlines = new Map<string, { shape: Path2D; rings: [number, number][]
 
 function outlineOf(style: MasonryStyle, group: Masonry[], doors: BuildDoor[]): { shape: Path2D; rings: [number, number][][]; joints: PreparedStyle['joints'] } {
   const thickness = group.reduce((s, w) => s + w.thickness, 0) / group.length;
-  const jitter: Jitter = { step: Math.max(3, thickness / 3), amplitude: thickness * WAVER[style].amplitude, scale: thickness * WAVER[style].scale, seed: styleSeed(style) };
+  // The waver differs per group (DC-119b): two straight walls never ripple alike.
+  const jitter: Jitter = { step: Math.max(3, thickness / 3), amplitude: thickness * WAVER[style].amplitude, scale: thickness * WAVER[style].scale, seed: styleSeed(style) + group.reduce((a, w) => a + w.seed, 0) };
   const shape = new Path2D();
   const rings: [number, number][][] = [];
   for (const p of masonryOutline(group, doors))
@@ -139,7 +158,7 @@ function touchingGroups(walls: Masonry[]): Masonry[][] {
 }
 
 function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: number, walls: Masonry[]): Geometry {
-  const key = JSON.stringify([drawing.origin, drawing.width, drawing.height, drawing.masonry, drawing.doors.map((d) => [d.wall, d.at, d.width]), withGround, cell]);
+  const key = JSON.stringify([drawing.origin, drawing.width, drawing.height, drawing.masonry, drawing.doors.map((d) => [d.wall, d.at, d.width, 'window' in d ? d.window ?? false : false]), withGround, cell]);
   const hit = geometries.get(key);
   if (hit) return hit;
   const { x: ox, y: oy } = drawing.origin;
@@ -169,7 +188,7 @@ function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: num
         const wall = group.find((w) => w.id === d.wall)!;
         return pointAt(wall.points, wall.closed, d.at);
       });
-      return { style, shape: built.shape, rings: built.rings, thickness, joints: built.joints, height, fortified, bottom, openings };
+      return { style, shape: built.shape, rings: built.rings, thickness, joints: built.joints, height, fortified, bottom, openings, walls: group };
     }),
   ).sort((a, b) => a.bottom - b.bottom);
   // Groups no drawing uses any more go.
@@ -218,17 +237,56 @@ function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: num
       ring.forEach(([x, y], i) => (i ? wallZone.lineTo(x, y) : wallZone.moveTo(x, y)));
       wallZone.closePath();
     }
-  const geometry = { styles, field, floorMasks, floorBoxes, step, wallZone };
+  // The worn ways between the doors' midpoints (DC-119a); windows wear nothing.
+  const wallsById = new Map(walls.map((w) => [w.id, w]));
+  const doorMids = drawing.doors.flatMap((d) => {
+    const wall = wallsById.get(d.wall);
+    if (!wall || ('window' in d && d.window)) return [];
+    const span = doorSpan(wall, { id: '', wall: wall.id, at: d.at, width: d.width, secret: false, crack: false });
+    const a = pointAt(wall.points, wall.closed, span.from);
+    const b = pointAt(wall.points, wall.closed, span.to);
+    return [{ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }];
+  });
+  const wear = wearPaths(walls, doorMids, { x: ox, y: oy, w: width, h: height }, cell);
+  const geometry = { styles, field, floorMasks, floorBoxes, step, wallZone, wear };
   geometries.set(key, geometry);
   if (geometries.size > KEPT_GEOMETRIES) geometries.delete(geometries.keys().next().value!);
   return geometry;
+}
+
+/** The worn ways between doors (DC-119a): a soft, darker trail ground into the floor. */
+function paintWearPaths(g: CanvasRenderingContext2D, wear: Point[][], cell: number): void {
+  if (!wear.length) return;
+  g.save();
+  g.globalCompositeOperation = 'multiply';
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  for (const path of wear) {
+    // A light wander across the walking direction: no dead-straight trails.
+    const line = smoothLine(path, false, 2).map((p, i, all) => {
+      const a = all[Math.max(0, i - 1)];
+      const b = all[Math.min(all.length - 1, i + 1)];
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const w = noise2(p.x / (cell * 2.6), p.y / (cell * 2.6), 23) * cell * 0.3;
+      return { x: p.x + (-(b.y - a.y) / len) * w, y: p.y + ((b.x - a.x) / len) * w };
+    });
+    g.beginPath();
+    line.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+    g.strokeStyle = 'rgba(82,66,46,0.16)';
+    g.lineWidth = cell * 0.6;
+    g.stroke();
+    g.strokeStyle = 'rgba(74,58,40,0.18)';
+    g.lineWidth = cell * 0.26;
+    g.stroke();
+  }
+  g.restore();
 }
 
 export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean, cell: number, tex: BuildTextures): PaintedImage {
   const { x: ox, y: oy } = drawing.origin;
   const width = Math.max(1, Math.ceil(drawing.width));
   const height = Math.max(1, Math.ceil(drawing.height));
-  const { styles, field, floorMasks, floorBoxes, wallZone } = geometryOf(drawing, withGround, cell, drawing.masonry.map(asMasonry));
+  const { styles, field, floorMasks, floorBoxes, wallZone, wear } = geometryOf(drawing, withGround, cell, drawing.masonry.map(asMasonry));
   const patches = drawing.floors.map((f) => {
     const shape = new Path2D();
     for (const p of f.shape)
@@ -249,7 +307,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
     const feather = cell * FLOOR_FEATHER;
     for (const p of patches) {
       if (p.box.x - feather > left + w || p.box.y - feather > top + h || p.box.x + p.box.w + feather < left || p.box.y + p.box.h + feather < top) continue;
-      const fill = surfacePattern(g, tex.surface[floorSlot(p.style)], cell, FLOOR_CELLS, styleSeed(p.style) + p.seed) ?? '#77705f';
+      const fill = sheetPattern(g, floorSlot(p.style), tex, cell, styleSeed(p.style), p.seed) ?? '#77705f';
       // Soft: the floor masked by its blurred shape.
       const layer = document.createElement('canvas');
       layer.width = w;
@@ -261,7 +319,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       l.fill(p.shape, 'evenodd');
       l.filter = 'none';
       l.globalCompositeOperation = 'source-in';
-      l.fillStyle = surfacePattern(l, tex.surface[floorSlot(p.style)], cell, FLOOR_CELLS, styleSeed(p.style) + p.seed) ?? '#77705f';
+      l.fillStyle = sheetPattern(l, floorSlot(p.style), tex, cell, styleSeed(p.style), p.seed) ?? '#77705f';
       l.fillRect(left, top, w, h);
       g.drawImage(layer, left, top);
       // Sharp near walls.
@@ -291,14 +349,14 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
   });
 
   // Natural ground after the biome far from walls (E-34); a wall's floor near it.
-  const floorSource = (style: FloorStyle) => (style === 'ground' ? tex.surface[groundSlot(drawing.biome)] : tex.surface[`floor-${style}`]);
+  const floorSlotOf = (style: FloorStyle): SurfaceSlot => (style === 'ground' ? groundSlot(drawing.biome) : `floor-${style}`);
 
   const paintFloors = (g: CanvasRenderingContext2D, left: number, top: number, w: number, h: number) => {
     if (!field) return;
     // The first style covers everything, so where soft edges overlap nothing shows through;
     // the others are blended over it – only where they are.
     const [base, ...others] = [...floorMasks.keys()];
-    g.fillStyle = surfacePattern(g, floorSource(base), cell, FLOOR_CELLS, styleSeed(base)) ?? '#77705f';
+    g.fillStyle = sheetPattern(g, floorSlotOf(base), tex, cell, styleSeed(base), 0) ?? '#77705f';
     g.fillRect(left, top, w, h);
     let layer: CanvasRenderingContext2D | null = null;
     for (const style of others) {
@@ -318,7 +376,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       l.globalCompositeOperation = 'source-over';
       l.setTransform(1, 0, 0, 1, -left, -top);
       l.clearRect(x0, y0, x1 - x0, y1 - y0);
-      l.fillStyle = surfacePattern(l, floorSource(style), cell, FLOOR_CELLS, styleSeed(style)) ?? '#77705f';
+      l.fillStyle = sheetPattern(l, floorSlotOf(style), tex, cell, styleSeed(style), 0) ?? '#77705f';
       l.fillRect(x0, y0, x1 - x0, y1 - y0);
       // Keep it only where this style is nearest; scaled up smoothly, its softened edge blends.
       l.globalCompositeOperation = 'destination-in';
@@ -340,6 +398,107 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
   // The side faces seen in the 2.5D look face down the map: lit when the light comes from below.
   const sideLit = Math.max(0, -light.y);
 
+  /**
+   * Lays a texture along a line (DC-119b): slices of the picture, each turned to the line's
+   * direction, their source window moving with the walked distance – courses of stone bend with
+   * the wall instead of running straight through the map.
+   */
+  const paintAlong = (g: CanvasRenderingContext2D, src: HTMLCanvasElement, points: readonly Point[], closed: boolean, across: number, seed: number) => {
+    const step = Math.max(6, cell * 0.45);
+    const perPx = src.width / (cell * WALL_CELLS);
+    const sh = Math.min(src.height, Math.max(8, across * perPx));
+    const sy = Math.floor(hashNoise(seed, 3, 17) * (src.height - sh));
+    const w = step * 1.7;
+    const sw = w * perPx;
+    for (const p of lineStrips(points, closed, step)) {
+      let sx = ((p.u + seed * 53) * perPx) % src.width;
+      if (sx < 0) sx += src.width;
+      g.save();
+      g.translate(p.x, p.y);
+      g.rotate(p.angle);
+      if (sx + sw <= src.width) g.drawImage(src, sx, sy, sw, sh, -w / 2, -across / 2, w, across);
+      else {
+        const first = (src.width - sx) / perPx;
+        g.drawImage(src, sx, sy, src.width - sx, sh, -w / 2, -across / 2, first, across);
+        g.drawImage(src, 0, sy, sw - (src.width - sx), sh, -w / 2 + first, -across / 2, w - first, across);
+      }
+      g.restore();
+    }
+  };
+
+  const lengthOf = (points: readonly Point[], closed: boolean): number => {
+    const pts = closed ? [...points, points[0]] : points;
+    let len = 0;
+    for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    return len;
+  };
+
+  /** Cracks and missing stones on a decayed wall's top (DC-119b). */
+  const paintWallDecay = (g: CanvasRenderingContext2D, w: Masonry) => {
+    const decay = w.decay ?? 0;
+    const len = lengthOf(w.points, w.closed);
+    g.save();
+    g.lineCap = 'round';
+    g.strokeStyle = 'rgba(10,8,6,.5)';
+    g.lineWidth = 1.2;
+    for (let i = 0, n = Math.ceil((len / cell) * decay * 0.8); i < n; i++) {
+      const at = pointAt(w.points, w.closed, hashNoise(i, 11, w.seed) * len);
+      let a = hashNoise(i, 12, w.seed) * Math.PI * 2;
+      g.beginPath();
+      g.moveTo(at.x, at.y);
+      let x = at.x;
+      let y = at.y;
+      for (let k = 0; k < 4; k++) {
+        a += (hashNoise(i * 7 + k, 13, w.seed) - 0.5) * 1.6;
+        x += Math.cos(a) * w.thickness * 0.5;
+        y += Math.sin(a) * w.thickness * 0.5;
+        g.lineTo(x, y);
+      }
+      g.stroke();
+    }
+    // Bites out of the edge: dark gaps where stones are gone.
+    g.fillStyle = 'rgba(12,10,8,.55)';
+    for (let i = 0, n = Math.ceil((len / cell) * decay * 0.7); i < n; i++) {
+      const at = pointAt(w.points, w.closed, hashNoise(i, 14, w.seed) * len);
+      const side = hashNoise(i, 15, w.seed) > 0.5 ? 1 : -1;
+      const next = pointAt(w.points, w.closed, Math.min(len, hashNoise(i, 14, w.seed) * len + 1));
+      const nx = -(next.y - at.y);
+      const ny = next.x - at.x;
+      const nl = Math.hypot(nx, ny) || 1;
+      const r = w.thickness * (0.14 + hashNoise(i, 16, w.seed) * 0.16);
+      g.beginPath();
+      g.arc(at.x + (nx / nl) * side * (w.thickness / 2), at.y + (ny / nl) * side * (w.thickness / 2), r, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+  };
+
+  /** Fallen stones on the ground beside a decayed wall (DC-119b). */
+  const paintWallScree = (g: CanvasRenderingContext2D, w: Masonry) => {
+    const decay = w.decay ?? 0;
+    const len = lengthOf(w.points, w.closed);
+    g.save();
+    g.strokeStyle = 'rgba(20,16,12,.5)';
+    g.lineWidth = 1;
+    for (let i = 0, n = Math.ceil((len / cell) * decay * 1.6); i < n; i++) {
+      const u = hashNoise(i, 21, w.seed) * len;
+      const at = pointAt(w.points, w.closed, u);
+      const next = pointAt(w.points, w.closed, Math.min(len, u + 1));
+      const nx = -(next.y - at.y);
+      const ny = next.x - at.x;
+      const nl = Math.hypot(nx, ny) || 1;
+      const side = hashNoise(i, 22, w.seed) > 0.5 ? 1 : -1;
+      const d = w.thickness * (0.8 + hashNoise(i, 23, w.seed) * 1.4);
+      const r = cell * (0.035 + hashNoise(i, 24, w.seed) * 0.05);
+      g.fillStyle = hashNoise(i, 25, w.seed) > 0.5 ? '#8a8276' : '#79716a';
+      g.beginPath();
+      g.ellipse(at.x + (nx / nl) * side * d, at.y + (ny / nl) * side * d, r, r * 0.8, hashNoise(i, 26, w.seed) * 3, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+    }
+    g.restore();
+  };
+
   const paintWalls = (g: CanvasRenderingContext2D) => {
     // Shadows first, all of them: no shadow lies on a wall painted before it.
     for (const s of styles) {
@@ -355,6 +514,12 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       const t = s.thickness;
       const up = s.height;
       const pattern = surfacePattern(g, tex.surface[`wall-${s.style}`], cell, WALL_CELLS, styleSeed(s.style)) ?? '#5b5650';
+      // Fallen stones lie on the ground, under the wall's body.
+      for (const w of s.walls) if (w.decay) paintWallScree(g, w);
+      // The foot: a dark line grounds the wall on the floor (DC-119b).
+      g.strokeStyle = 'rgba(0,0,0,.2)';
+      g.lineWidth = Math.max(2, t * 0.22);
+      g.stroke(s.shape);
       // The side face: each outline edge swept up to the top.
       const side = new Path2D();
       for (const ring of s.rings)
@@ -375,6 +540,12 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       g.translate(0, -up);
       g.fillStyle = pattern;
       g.fill(s.shape, 'nonzero');
+      // The texture follows each wall's line (DC-119b): courses bend with it; variants per wall.
+      const variants = tex.variants[`wall-${s.style}`] ?? [tex.surface[`wall-${s.style}`]];
+      g.save();
+      g.clip(s.shape, 'nonzero');
+      for (const w of s.walls) paintAlong(g, variants[Math.floor(hashNoise(w.seed, 1, 7) * variants.length)], w.points, w.closed, Math.max(w.thickness * 1.9, t), w.seed);
+      g.restore();
       g.fillStyle = 'rgba(20,16,12,.24)';
       g.fill(s.shape, 'nonzero');
       // A light edge on the side the light comes from, then the outline.
@@ -398,6 +569,8 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
           g.drawImage(part, -size / 2, -size / 2, size, size);
           g.restore();
         }
+      // What has fallen into decay (DC-119b): cracks and missing stones on the top.
+      for (const w of s.walls) if (w.decay) paintWallDecay(g, w);
       // Battlements along fortified walls.
       for (const f of s.fortified) paintBattlements(g, f.points, f.closed, t, pattern, s.openings, cell);
       g.restore();
@@ -415,6 +588,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       g.translate(-left - ox, -top - oy);
       paintFloors(g, left + ox, top + oy, w, h);
       paintPatches(g, left + ox, top + oy, w, h);
+      if (drawing.autoGrowth !== false) paintWearPaths(g, wear, cell);
       paintWornDoors(g, wornDoors, cell);
       // Water lies in the ground (E-35); cliffs over it, waterfalls where rivers fall over them.
       paintWater(g, drawing.waters, cell, tex);

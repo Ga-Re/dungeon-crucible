@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addBuildPoint, addBuildStroke, buildHit, showHiddenDrawn, paintFloorStroke, setMapLook, flipWater, setWaterAnimated, updateWater, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
-import { checkpoint, commitView, setWorkspace, sightWalls, state, undo } from './store';
+import { addBuildPoint, addBuildStroke, buildHit, showHiddenDrawn, paintFloorStroke, setMapLook, flipWater, setWaterAnimated, updateWater, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, setGenerateRegion, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor, updateGenerate } from './build';
+import { buildHooks, checkpoint, commitView, redo, setTool, setWorkspace, sightWalls, state, undo } from './store';
 
 /** The "Build" tab (E-33, DC-107a) in the Map Forge, on the sample crypt (cells of 70 px, 5 ft). */
 describe('build tab', () => {
@@ -377,5 +377,139 @@ describe('editing a scene\'s own drawing leaves the other lists alone (review #1
     expect(state.scene.own.masonry).toHaveLength(1);
     expect(state.scene.own.waters).toHaveLength(1);
     expect(state.scene.own.cliffs.some((c) => c.id === 'map-cliff')).toBe(false);
+  });
+});
+
+/** The area generator (DC-119d): live preview, discard, one undoable step on OK. */
+describe('generate command (DC-119d)', () => {
+  beforeEach(() => {
+    setWorkspace('forge');
+    state.scene.map.masonry = [];
+    state.scene.map.masonryDoors = [];
+    state.scene.map.cliffs = [];
+    state.scene.map.floors = [];
+    state.scene.map.drawn = false;
+    state.buildSelection = null;
+  });
+
+  it('fills the dragged region, follows the settings live, and OK keeps it as one undoable step', () => {
+    startBuildCommand('generate');
+    expect(state.tool).toBe('build-generate');
+    setGenerateRegion({ x: 10, y: 20 }, { x: 10 + 30 * 70, y: 20 + 24 * 70 });
+    const first = state.scene.map.masonry;
+    expect(first.length).toBeGreaterThan(0);
+    expect(state.scene.map.masonryDoors.length).toBeGreaterThan(0);
+    expect(state.scene.map.floors).toHaveLength(1);
+    // A new seed replaces the preview instead of stacking a second one.
+    updateGenerate({ genSeed: 99 });
+    const second = state.scene.map.masonry;
+    expect(second).not.toEqual(first);
+    expect(second.every((w) => !first.includes(w))).toBe(true);
+    // The cave style swaps everything to cave rock.
+    updateGenerate({ genStyle: 'cave', genDensity: 0.8 });
+    expect(state.scene.map.masonry.every((w) => w.style === 'cave-rock')).toBe(true);
+    expect(state.scene.map.floors[0].style).toBe('cave-rock');
+    endBuildCommand(true);
+    expect(state.scene.map.masonry.length).toBeGreaterThan(0);
+    // One undo step brings the empty map back.
+    undo();
+    expect(state.scene.map.masonry).toEqual([]);
+    expect(state.scene.map.floors).toEqual([]);
+  });
+
+  it('discard puts the map back as it was', () => {
+    startBuildCommand('wall');
+    for (const p of [{ x: 0, y: 0 }, { x: 140, y: 0 }]) addBuildPoint(p, 8);
+    finishBuildWall();
+    const before = state.scene.map.masonry;
+    startBuildCommand('generate');
+    setGenerateRegion({ x: 0, y: 0 }, { x: 20 * 70, y: 16 * 70 });
+    expect(state.scene.map.masonry.length).toBeGreaterThan(before.length);
+    endBuildCommand(false);
+    expect(state.scene.map.masonry).toEqual(before);
+    expect(state.scene.map.floors).toEqual([]);
+  });
+
+  it('a tool switch while previewing also puts the map back', () => {
+    startBuildCommand('generate');
+    setGenerateRegion({ x: 0, y: 0 }, { x: 20 * 70, y: 16 * 70 });
+    expect(state.scene.map.masonry.length).toBeGreaterThan(0);
+    setTool('select');
+    expect(state.scene.map.masonry).toEqual([]);
+    expect(state.buildCommand).toBeNull();
+  });
+
+  it('a region under 4×4 cells is ignored', () => {
+    startBuildCommand('generate');
+    setGenerateRegion({ x: 0, y: 0 }, { x: 100, y: 100 });
+    expect(state.buildCommand).toMatchObject({ region: null });
+    expect(state.scene.map.masonry).toEqual([]);
+  });
+});
+
+/** The three escape routes the review found (DC-119d): nothing uncommitted may leak. */
+describe('generate preview never leaks (DC-119d review)', () => {
+  beforeEach(() => {
+    setWorkspace('forge');
+    state.scene.map.masonry = [];
+    state.scene.map.masonryDoors = [];
+    state.scene.map.cliffs = [];
+    state.scene.map.floors = [];
+    state.scene.map.drawn = false;
+    state.buildSelection = null;
+  });
+
+  const preview = () => {
+    startBuildCommand('generate');
+    setGenerateRegion({ x: 0, y: 0 }, { x: 20 * 70, y: 16 * 70 });
+    expect(state.scene.map.masonry.length).toBeGreaterThan(0);
+  };
+
+  it('committing the view (layer, scene or tab switch, saving) drops the preview first', () => {
+    preview();
+    commitView();
+    expect(state.scene.map.masonry).toEqual([]);
+    expect(state.scene.map.floors).toEqual([]);
+    // The command stays open, but wants a fresh region.
+    expect(state.buildCommand).toMatchObject({ kind: 'generate', region: null });
+  });
+
+  it('undo during a preview only drops the preview; redo stays harmless', () => {
+    startBuildCommand('wall');
+    for (const p of [{ x: 0, y: 0 }, { x: 140, y: 0 }]) addBuildPoint(p, 8);
+    finishBuildWall();
+    const committed = state.scene.map.masonry;
+    preview();
+    undo();
+    expect(state.scene.map.masonry).toEqual(committed);
+    // History untouched: the next undo removes the wall, redo brings it back.
+    undo();
+    expect(state.scene.map.masonry).toEqual([]);
+    redo();
+    expect(state.scene.map.masonry).toHaveLength(1);
+  });
+
+  it('a save parks the preview and puts it back: the documents stay clean', () => {
+    preview();
+    const inPreview = state.scene.map.masonry;
+    const unpark = buildHooks.parkPreview!()!;
+    expect(state.scene.map.masonry).toEqual([]);
+    expect(buildHooks.hasPreview!()).toBe(false);
+    unpark();
+    expect(state.scene.map.masonry).toEqual(inPreview);
+    expect(buildHooks.hasPreview!()).toBe(true);
+    endBuildCommand(false);
+    expect(state.scene.map.masonry).toEqual([]);
+  });
+
+  it('a stale snapshot never restores over later work', () => {
+    preview();
+    endBuildCommand(true);
+    const kept = state.scene.map.masonry;
+    expect(kept.length).toBeGreaterThan(0);
+    startBuildCommand('generate');
+    setGenerateRegion({ x: 0, y: 0 }, { x: 10 * 70, y: 8 * 70 });
+    endBuildCommand(false);
+    expect(state.scene.map.masonry).toEqual(kept);
   });
 });

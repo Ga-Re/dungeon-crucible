@@ -57,17 +57,30 @@ describe('smoothLine', () => {
   });
 });
 
-describe('waterOutline', () => {
-  it('a river is one ring around both banks', () => {
-    const ring = waterOutline(river([[0, 0], [200, 0]]));
+describe('waterOutline (organic since DC-119c)', () => {
+  it('a river is one ring around both banks; the shore wobbles by the seed, within bounds', () => {
+    const ring = waterOutline({ ...river([[0, 0], [200, 0]]), seed: 3 });
     const ys = ring.map((p) => p.y);
-    expect(Math.min(...ys)).toBeCloseTo(-20);
-    expect(Math.max(...ys)).toBeCloseTo(20);
+    // Width 40: banks near ±20, bays and tongues at most spine (14%) + bank (9%) wobble away.
+    expect(Math.min(...ys)).toBeLessThan(-20);
+    expect(Math.min(...ys)).toBeGreaterThan(-20 - 40 * 0.25);
+    expect(Math.max(...ys)).toBeGreaterThan(18);
+    expect(Math.max(...ys)).toBeLessThan(20 + 40 * 0.25);
+    // Deterministic; another seed is another shore.
+    expect(waterOutline({ ...river([[0, 0], [200, 0]]), seed: 3 })).toEqual(ring);
+    expect(waterOutline({ ...river([[0, 0], [200, 0]]), seed: 4 })).not.toEqual(ring);
   });
 
-  it('a lake is its ring, rounded', () => {
-    const ring = waterOutline({ kind: 'lake', points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }], closed: true, width: 1 });
-    expect(ring.length).toBe(32);
-    expect(Math.abs(ringArea(ring))).toBeLessThan(10000);
+  it('a lake is its ring, rounded and gently uneven, and stays near its shape', () => {
+    const lake = { kind: 'lake' as const, points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }], closed: true, width: 30, seed: 5 };
+    const ring = waterOutline(lake);
+    expect(ring.length).toBeGreaterThanOrEqual(32);
+    for (const p of ring) {
+      expect(Number.isFinite(p.x)).toBe(true);
+      // Never further from the square than the wobble allows.
+      expect(p.x).toBeGreaterThan(-30 * 0.25 - 1);
+      expect(p.x).toBeLessThan(100 + 30 * 0.25 + 1);
+    }
+    expect(Math.abs(ringArea(ring))).toBeGreaterThan(4000);
   });
 });

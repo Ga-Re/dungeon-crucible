@@ -35,7 +35,7 @@ import { dmDrawing } from '../core/build/playerDrawing';
 import { sceneMap } from '../core/build/sceneDrawing';
 import { doorSpan, pointAt } from '../core/build/masonry';
 import { activeLayers, elementLayer } from '../core/layers';
-import { addBuildPoint, addBuildStroke, paintFloorStroke, buildHit, buildTarget, deleteBuildSelection, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, slideBuildDoor, undoBuildPoint } from '../app/build';
+import { addBuildPoint, addBuildStroke, paintFloorStroke, buildHit, buildTarget, deleteBuildSelection, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, setGenerateRegion, slideBuildDoor, undoBuildPoint } from '../app/build';
 import { BuildCommandPanel } from './BuildCommandPanel';
 import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
@@ -60,7 +60,7 @@ const HINTS: Partial<Record<string, MessageKey>> = {
   'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
   'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom', light: 'hint.light',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
-  'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor', 'build-cliff': 'hint.buildCliff', 'build-water': 'hint.buildWater', 'build-floor': 'hint.buildFloor',
+  'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor', 'build-cliff': 'hint.buildCliff', 'build-water': 'hint.buildWater', 'build-floor': 'hint.buildFloor', 'build-generate': 'hint.buildGenerate',
 };
 
 type Drag =
@@ -76,6 +76,7 @@ type Drag =
   | { kind: 'calib-box'; a: Point }
   | { kind: 'calib-move'; last: Point }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
+  | { kind: 'gen-rect'; a: Point; b: Point }
   | { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; invert: boolean; circle: boolean }
   | { kind: 'fog-path'; tool: 'fog-lasso' | 'fog-brush'; path: Point[]; invert: boolean }
   | { kind: 'build-point'; line: { kind: 'wall' | 'cliff' | 'water'; wall: string }; index: number; to: Point; moved: boolean }
@@ -342,6 +343,9 @@ function DmMap() {
       brush: state.tool === 'fog-brush' ? { p: mouse.current, r: state.brushCells * cell } : state.tool === 'build-floor' && state.buildCommand ? { p: mouse.current, r: (state.buildCommand.brushCells * cell) / 2 } : null,
       calibBox: state.calibration?.box ? { box: state.calibration.box, cells: state.calibration.cells } : null,
       draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
+      genRect: d?.kind === 'gen-rect'
+        ? { x: Math.min(d.a.x, d.b.x), y: Math.min(d.a.y, d.b.y), w: Math.abs(d.b.x - d.a.x), h: Math.abs(d.b.y - d.a.y) }
+        : state.buildCommand?.kind === 'generate' && state.buildCommand.region ? state.buildCommand.region : null,
       fogDraft,
       build: buildOverlayOf(),
       difficult: difficultOf(),
@@ -601,6 +605,9 @@ function DmMap() {
       case 'build-floor':
         drag.current = { kind: 'build-stroke', path: [p], straight: e.shiftKey, alt: e.altKey, floor: true };
         return;
+      case 'build-generate':
+        drag.current = { kind: 'gen-rect', a: p, b: p };
+        return;
       case 'build-edit': {
         const tol = HANDLE_PX / view.current.zoom;
         const hit = buildHit(p, tol);
@@ -731,6 +738,8 @@ function DmMap() {
     } else if (d.kind === 'asset-turn') {
       const q = toWorld(e);
       if (d.moved) turnPlacedAssetTo(d.id, d.start + angleOf(d.pivot, q) - d.from, true);
+    } else if (d.kind === 'gen-rect') {
+      setGenerateRegion(d.a, d.b);
     } else if (d.kind === 'template') {
       addTemplate(d.shape, d.a, d.b);
     } else if (d.kind === 'fog-rect' || d.kind === 'fog-ellipse') {

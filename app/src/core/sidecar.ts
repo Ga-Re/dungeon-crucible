@@ -64,6 +64,8 @@ export const masonrySchema = z.object({
   layer: layerRef,
   height: z.number().positive().optional(),
   fortified: z.boolean().optional(),
+  /** How decayed it looks, 0–1 (DC-119b): cracks, missing stones, scree at the foot. */
+  decay: z.number().min(0).max(1).optional(),
 });
 /** A door on a drawn wall (E-33): its centre as the distance along the wall; open and found are scene state. */
 export const masonryDoorSchema = z.object({ id, wall: id, at: z.number().min(0), width: z.number().positive(), secret: z.boolean().default(false), crack: z.boolean().default(false), window: z.boolean().optional() });
@@ -81,6 +83,8 @@ export const cliffSchema = z.object({
   growth: z.boolean().default(true),
   seed: z.number().int(),
   layer: layerRef,
+  /** How decayed it looks, 0–1 (DC-119b): extra cracks and scree at the foot. */
+  decay: z.number().min(0).max(1).optional(),
 });
 /** A painted floor (E-33, DC-107b): an area of one floor over the floors that follow the walls. */
 export const floorPatchSchema = z.object({ id, style: z.enum(FLOOR_STYLES), shape: z.array(polygonSchema).min(1), seed: z.number().int(), layer: layerRef });
@@ -116,9 +120,9 @@ export const mapLayerSchema = z.object({
 export type MapLayer = z.infer<typeof mapLayerSchema>;
 
 /** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 6;
+export const MAP_VERSION = 7;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
-export const SCENE_VERSION = 8;
+export const SCENE_VERSION = 9;
 
 /**
  * When a house's interior is shown (E-29): by the DM's click only, when a player character steps
@@ -181,6 +185,8 @@ export const MapSidecarSchema = z.object({
   /** Automatic details (E-35): stones and reeds along shores, plants at the foot of walls on natural ground. */
   autoShore: z.boolean().default(true),
   autoGrowth: z.boolean().default(true),
+  /** How a generated map was made (DC-119e): style, settings and seed – a note for re-rolling later. */
+  generated: z.object({ style: z.enum(['dungeon', 'cave']), density: z.number().min(0).max(1), seed: z.number().int(), water: z.boolean(), lights: z.boolean(), details: z.boolean() }).optional(),
   /** Top left of a drawn map's area (map px; it grows left and up too). None: 0, 0. */
   origin: z.object({ x: z.number(), y: z.number() }).optional(),
 });

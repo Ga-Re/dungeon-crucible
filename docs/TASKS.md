@@ -53,6 +53,7 @@ Geklärt im Interview mit dem DM (Skill `topic-interviewer`). „Wie DM“ heiß
 | E-33 | Karten-Editor (DC-107, `docs/KARTENEDITOR.md`) | **Gezeichnete Karten ohne Bild** (neue Kartendatei `library/<name>.map.json` ohne Bild) **und Zeichnen über Bildkarten**, mit denselben Werkzeugen (Ergänzung zu E-32). **Gezeichnete Mauern sind die Quelle**: Linienzüge mit Stil, Dicke und Seed; Sicht- und Bewegungs-Wände werden daraus abgeleitet. Die heutigen unsichtbaren Wände bleiben unverändert und überall als zweites Werkzeug (Fenster, Klippen, Barrieren); keine Umwandlung alter Karten. **Türen sitzen auf der Mauer** (Position, Breite), offen/zu/geheim; „verschlossen“ später einheitlich für alle Türen. Geheime Tür: unentdeckt auf dem TV Mauer – je Tür optional ein dezenter **Riss** (Schalter, neu aus; bewusste Ausnahme vom TV-Grundsatz). **Fläche wächst mit** (Gezeichnetes plus Rand, auf Felder gerundet), in alle Richtungen über einen gespeicherten **Ursprung** (Koordinaten bleiben, Szenen unberührt), **ohne Größengrenze**. **Untergrund**: außen Fels, innen passend zur nächsten Mauer mit weichem Übergang; ein **Boden-Pinsel** malt Böden mit sauberem Übergang an Mauern. **Stile**: Dungeon-Stein, Höhlenfels, Ziegel, Holz. **Optik**: Formen, Ecken, Kreuzungen, Durchbrüche, Zittern, Schatten und Übergänge im eigenen Code (Seeds, keine neue Abhängigkeit); **Texturen** für Flächen und Einzelteile (Ecksteine, Türrahmen, Pfeiler) mit Higgsfield erzeugt und mit der App ausgeliefert (DM: Rechte geklärt). **Zeichnen**: Klick-Klick, Doppelklick/Enter beendet, Startpunkt schließt den Ring; rastet an Feldecken und Mauern ein, Alt frei; Modi Raster/halbes Raster/Winkel/frei. **Bearbeiten**: Punkte ziehen, einfügen, löschen; teilen und verbinden; Stil, Dicke, Seed im Eigenschaften-Panel. **Menüband**: neuer Tab „Bauen“ in der Kartenschmiede. **Szenen** dürfen eigene gezeichnete Mauern haben (wie E-24) und speichern Türzustände. Format: Karte Version 6, Szene Version 8, mit Migration. Reihenfolge: DC-107a → b → c; Wege, Flüsse, Brücken, Räume, Dächer und Streuung danach. | Kein Bild nötig (E-32); Texturen im Repo |
 | E-34 | Gezeichnete Klippen und Abhänge (DC-107d) | **Wirkung wie heutige Klippen** (DC-014): Einweg-Sicht – von oben sieht man hinunter, von unten nicht hinauf; Bewegung darüber blockiert; ein flacher **Abhang** ist nur Optik. **Arten**: Felsklippe, Erdabhang, Grube/Senke, Plateau/Hügel, Schlucht/Graben, Geröllhalde, Terrassen/Stufen, Abgrund/Kluft. **Zeichnen**: offene Kante als Linie wie eine Mauer, die Oberseite per Pfeil („Richtung umdrehen“); ein geschlossener Ring ist Grube (innen tiefer) oder Plateau (innen höher); Schlucht: ein Strich mit Breite. **Aussehen nach Kartenbiom** (bzw. dem Biom eines Bereichs): Schnee, Moos, Sand – kein eigener Stil je Klippe. **Bewuchs** (Gras, Büsche, Moos) an der Oberkante automatisch nach Biom, mit festen Seeds, je Klippe abschaltbar. **Geröllhalde**: Optik und Markierung „schwieriges Gelände“ für den DM; Bewegungskosten kommen mit DC-026 und gelten dann auch hier. **Wirkung** (Klarstellung 2026-11-26): Einweg-Sicht; Bewegung blockiert die App bisher nirgends (auch nicht bei Wänden). **Untergrund** (DM 2026-11-26): fern von Mauern (über 3 Felder, außerhalb geschlossener Mauerringe) natürlicher Boden nach Biom – Gras/Erde, Schnee, Sand (Wüste, Küste), Asche, Sumpf; nahe Mauern weiter deren Boden; Feinarbeit mit dem Boden-Pinsel (DC-107b). | Ergänzung zu E-33 (DM-Wunsch mit Beispielbildern) |
 | E-35 | Karten-Editor wie Tiny Glade, Wasser, 2,5D (DC-107e–g) | Vorbild im Bedienen und in der Automatik (ziehen, das Programm denkt mit, Details entstehen von selbst, alles organisch formbar) – **ohne** Aussehen oder Inhalte des Spiels zu übernehmen. **Zeichnen** (ändert E-33): Ziehen mit gedrückter Maus zeichnet frei (geglättet, danach bearbeitbare Punkte), **Shift** zieht gerade Linien, Klick-Klick bleibt – für alle Werkzeuge. **Wasser**: Fluss/Bach (Strich mit Breite und Fließrichtung; Strömung, Schaum an Steinen und Ufern), See/Teich (Fläche; sanfte Wellen), Meer/Küste (Brandung, Wellen zum Ufer), **Wasserfall automatisch**, wo ein Fluss eine Klippe von oben nach unten kreuzt; Animation **je Karte** an/aus; Wasser ist **nur Optik** (keine Regelwirkung). **2,5D von oben**: die Karte bleibt Draufsicht (Raster, TV, Nebel, Sicht unverändert), Mauern, Klippen und Gebäude zeigen ihre Höhe (Krone versetzt, sichtbare Seitenfläche, Schatten); **Lichtrichtung je Karte** einstellbar. **Automatik**: Türme an Mauerecken, Zinnen und Mauerkrone, Ufer-Details (Steine, Schilf, Kies, Schaum nach Biom), weiche Übergänge (Gras an Mauerfüßen, ausgetretene Kanten, Böden fließen ineinander), jeweils abschaltbar. **Fenster** in gezeichneten Mauern und Häusern (wie Türen auf der Mauer); sie verdecken weder Sicht noch Licht, inneres Licht scheint hinaus. Reihenfolge: Pinsel (DC-107e) → Wasser (DC-107f) → 2,5D mit Automatik und Fenstern (DC-107g). **Ergänzung** (DM 2026-11-26): Türme und Zinnen nur an Mauern mit dem Schalter **„Wehrmauer“** (je Mauer); **Höhe** je Stil vorgegeben (Holz niedrig, Stein/Ziegel mittel, Wehrmauer hoch), je Mauer änderbar; **Fenster** im Tür-Werkzeug (Tür / Geheimtür / Fenster). | DM-Wunsch 2026-11-26 |
+| E-36 | Lebendige Karten: Varianz und Generator (DC-119) | **Optik überall neu** – gilt sofort für alle gezeichneten Karten, die Dateien bleiben unverändert (nur Formen und Seeds sind gespeichert). **Böden**: je Material mehrere Texturvarianten, je Feld deterministisch aus Position+Seed gewählt und gedreht/gespiegelt; Regel-Kacheln (Ränder an Mauern, Übergänge zwischen Materialien); Großflächen-Rauschen (zwei Lagen gemischt + große helle/dunkle Flecken); abgewetzte Wege zwischen Türen. **Mauern/Klippen**: Textur folgt der Linie (Steinreihen biegen sich mit der Spline), Kantenrauheit je Seed, **Verfallsgrad je Element** (Risse, fehlende Steine, Geröll – optionales Feld). **Wasser**: organische Uferlinie je Seed, Textur und Animation folgen der Strömung, Flachzonen mit sichtbarem Grund und Tiefenvarianz. **Generator** in zwei Formen: **Fläche füllen** (Bereich aufziehen, Werkzeug im Bauen-Tab) und **ganze Karte** („Karte generieren …“ im Kartenkatalog); Live-Regler mit sichtbarem Seed, gerechnet im Worker (Vorschau verkleinert, Reglerantwort < ~100 ms); erzeugt Mauern+Türen+Böden, Klippen+Wasser, Ausstattung/Details und Lichtquellen; Stile zum Start **Dungeon** (WFC) und **Höhle** (Cellular Automata + WFC-Detail), Gebäude/Burg und Wildnis später. **Übernehmen backt ein**: alles wird zu normalen Elementen, von Hand editierbar; Seed+Parameter bleiben als Metadaten-Notiz an der Karte (Nachwürfeln in der UI später). **Texturen**: alle Materialien in einem Higgsfield-Durchlauf (Varianten, Randkacheln, Übergänge). Grenzen: TV hält 60 FPS (Bench), nur optionale Zusatzfelder in der Kartendatei (v7, triviale Migration), der TV sieht weiterhin nur die Projektion. Reihenfolge: Optik zuerst (Böden → Mauern/Klippen → Wasser), dann Flächen-Generator, dann Ganz-Karte. **Präzisierung** (DM 2026-11-26): Der Dungeon-Stil nutzt einen **Raumgraph** (Räume platzieren, Gänge als Spannbaum – immer zusammenhängend, Regler wirken direkt); WFC bleibt für flächige Muster und das Höhlen-Detail. **Ohne Worker** (DM 2026-11-26): gemessen ~10 ms bei 120×90 Feldern; ein Worker kommt erst, wenn ein Stil spürbar teurer wird. | DM-Interview 2026-11-26 |
 
 **Bleibt aus Dungeon Crucible:** Pergament als drittes Theme, das eigene Docking mit echten Fenstern und
 Hover-Flyout (statt dockview und Kanten-Leisten), Export/Import ganzer Kampagnen als Archiv – beim Export wählbar:
@@ -469,6 +470,56 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Spiel getrennt, Gegenebene schaltet mit), automatischer Auslöser beim Betreten eines Bereichs durch einen SC
   (aus beim Verlassen, wenn eingestellt), Protokolleintrag. Elemente inaktiver Ebenen fehlen in Sicht, Licht und
   TV-Projektion, werden aber nicht als ausgeblendet gespeichert; Assets werden nach Ebenenhöhe gezeichnet.
+- **DC-119 Lebendige Karten** (E-36) – Varianz und Generator, Teilpakete:
+  - ✓ **DC-119a Böden**: Böden und Naturgrund wiederholen statt einer Textur einen komponierten Bogen aus 16×16
+    Zellen: Flecken aus Varianten und Drehungen (`core/build/variance.ts`, deterministisch je Seed), phasengleich,
+    sodass das Muster eines Fleckens in einem Stück weiterläuft – Kachelböden wechseln an Zellgrenzen in großen
+    Flecken (die Fuge verdeckt den Wechsel, Dielen behalten ihre Richtung), Naturböden in weichen runden Flecken;
+    Varianten werden auf die Helligkeit der Grundtextur eingeebnet; darüber großflächiges, mit dem Bogen nahtlos
+    periodisches Hell/Dunkel und ein leiser Schatten je Kachel. Abgewetzte Wege zwischen Türen (A* um Mauern,
+    durch Türöffnungen; im Geometrie-Cache), als weicher, leicht schlängelnder Pfad gemalt; aus mit dem
+    Automatik-Schalter der Karte. 69 Varianten-Texturen (je 3 für alle Böden, Gründe, Mauern, Klippen, Wasser)
+    mit Higgsfield erzeugt (~242 Credits, Herkunft im Textur-README); Mauern/Klippen/Wasser nutzen sie ab
+    DC-119b/c. Offen aus der Ansicht: Dielen-Varianten unterscheiden sich im Maßstab (wirkt wie gewollter
+    Bodenwechsel – beobachten); Rand-Trim an Mauern kommt mit DC-119b.
+  - ✓ **DC-119b Mauern und Klippen**: Die Textur folgt der Linie – Scheiben des Bildes, je zur Laufrichtung
+    gedreht, das Quellfenster wandert mit der Strecke (`lineStrips`, pur mit Tests); Mauerkronen und Klippenwände
+    biegen sich mit, Varianten je Mauer/Klippe aus DC-119a. Kantenrauheit je Mauergruppe (Seed der Gruppe statt
+    nur des Stils): keine zwei geraden Mauern wackeln gleich. **Verfallsgrad je Element** (Mauer und Klippe,
+    Regler „Verfall“ in den Eigenschaften): Risse und fehlende Steine auf der Krone, Geröll am Fuß; Karte v7 und
+    Szene v9 (optionales Feld `decay`, Leer-Migrationen), in der TV-Projektion mitgegeben (nur Optik). Dazu eine
+    dunkle Fundamentlinie am Mauerfuß (der Rand-Trim aus DC-119a in schlichter Form). Nach dem Review: der
+    Verfall-Regler schreibt erst beim Loslassen (ein Undo-Schritt). Beobachten: die Linien-Scheiben werden je
+    GPU-Kachel nicht auf die Kachel beschnitten – auf sehr großen gezeichneten Karten ggf. Beschnitt nachrüsten.
+  - ✓ **DC-119c Wasser**: Organische Uferlinie je Seed (`organicLine`, ortsbasiert und damit nahtfrei auf Ringen;
+    lange Segmente werden erst unterteilt, damit auch schnurgerade Linien Buchten bekommen): Flüsse bekommen ein
+    wanderndes Rückgrat und Ufer mit atmender Breite (`riverSpine`/`riverRibbon`), Seen/Meere Buchten und Zungen
+    statt der glatten Offset-Linie; Anstrich, bewegtes Wasser und Ufer-Details bauen auf demselben Band auf und
+    bleiben deckungsgleich. Die Flusstextur läuft in Scheiben **mit der Strömung** (die bewegte Schicht tat das
+    schon über ihre UVs). **Flachzonen**: am Ufer schimmert der Grund durch (Meer: Sand, sonst Kies, zwei Bänder);
+    die Wasserfläche nutzt ihre Texturvarianten je Seed (DC-119a). Tests für `organicLine`/`waterOutline`
+    nachgezogen (Determinismus, Schranken).
+  - ✓ **DC-119d Flächen-Generator**: Werkzeug „Generieren“ im Bauen-Tab: Bereich aufziehen (auf ganze Zellen
+    gerastet, ab 4×4), der Generator füllt ihn – Stil **Dungeon** (Raumgraph: Räume, Gänge als Spannbaum, Türen an
+    den Übergängen; alles zusammenhängend) oder **Höhle** (Cellular Automata, nur die größte Kaverne, organisch
+    geglättete Wände); Dichte-Regler, Seed-Feld und „Neu würfeln“ wirken **sofort** auf die Vorschau in der Karte.
+    Erzeugt gezeichnete Mauern (Ringe aus der Konturverfolgung), Türen darauf und eine Bodenfläche der offenen
+    Form. „Fertig“ backt als **einen** Undo-Schritt ein, „Verwerfen“ (auch Werkzeugwechsel) stellt die Karte
+    zurück. Kern pur mit Tests (`core/build/generate.ts`: Determinismus, Zusammenhang, Konturen, Elemente); Lichter
+    und Seed-Notiz an der Karte folgen mit DC-119e. Nach dem Review abgedichtet: Ebenen-/Szenen-/Tab-Wechsel und
+    `commitView` werfen die Vorschau vorher ab, **Speichern parkt sie** (nie auf der Platte), Undo/Redo während
+    der Vorschau verwerfen nur sie (Verlauf unberührt), und ein alter Schnappschuss kann nie über spätere Arbeit
+    zurückgeschrieben werden – alles mit Tests.
+  - ✓ **DC-119e Ganz-Karten-Generator**: „Karte generieren …“ im Kartenkatalog öffnet einen Dialog mit Name,
+    Stil (Dungeon/Höhle), Größe in Feldern, Dichte, Seed + „Neu würfeln“ und Schaltern für **Tümpel** (Höhle:
+    Mulden abseits der Wände, nur zusammenhängende Teiche), **Fackeln** (Dungeon: 1–2 je Raum an der Wand; Höhle:
+    sparsam an der Wand; mit Fackeln steht die Karte auf „Dunkel“) und **Verstreute Details** (Moos- bzw.
+    Geröllflecken). Eine schematische **Live-Vorschau** zeichnet bei jeder Änderung neu. „Karte erzeugen“ backt
+    alles als neue gezeichnete Karte in die Bibliothek (Mauern, Türen, Böden, Seen, Lichter; zufällige Ids) und öffnet sie;
+    **Seed+Parameter** stehen als Notiz `generated` an der Karte (optionales Feld in v7). **Abweichung mit
+    DM-Entscheid (2026-11-26): ohne Worker** – gemessen ~10 ms (Dungeon) / ~3 ms (Höhle) bei 120×90 Feldern,
+    ein Worker käme erst, wenn ein Stil spürbar teurer wird. Klippen und Außen-Stile (Gebäude, Wildnis) folgen
+    später als eigene Stile.
 - **DC-020 Ebenen (Stockwerke)**: anlegen, umbenennen, eigenes Bild gleicher Größe, Arbeitsebene vs. TV-Ebene,
   Freigabe, Nebel je Ebene (T-118a/c/d).
 - ✓ **DC-021 Rastereinmessung per N×N-Box** statt 3-Punkt, als Befehls-Panel; Raster verschieben; Schwenken während
@@ -485,7 +536,7 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - **DC-024 UVTT-Import** mit Raster, Wänden, Türen, Lichtern (T-198).
 - **DC-025 Testfigur und Leck-Prüfung** für Wände (T-194); automatische Wände aus Bereichen (T-141).
 - **DC-026 Parametrische Räume, Gelände mit Bewegungskosten, Treppen zwischen Ebenen** (T-195–197).
-- **DC-027 Karte aus Kacheln, eigene Karten zeichnen** (T-190, Stufe 6).
+- **DC-027 Karte aus Kacheln, eigene Karten zeichnen** (T-190, Stufe 6) – geht in DC-107 (Zeichnen) und DC-119 (Generator) auf.
 - **DC-028 Einzelkarte teilen als `.dmmap`** (T-148).
 
 ### 3.4 Kampagne, Szenen, Atlas

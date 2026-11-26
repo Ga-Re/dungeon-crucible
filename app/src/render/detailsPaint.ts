@@ -5,7 +5,7 @@
  * the context.
  */
 import { offsetPolyline } from '../core/build/cliffs';
-import { smoothLine, waterOutline, type Water } from '../core/build/water';
+import { riverRibbon, waterOutline, type Water } from '../core/build/water';
 import type { Masonry } from '../core/build/masonry';
 import type { Point } from '../core/geometry';
 import type { BuildTextures, PartSlot } from './build/textures';
@@ -44,8 +44,9 @@ export function paintShore(g: CanvasRenderingContext2D, waters: readonly Omit<Wa
     const ring = waterOutline(w);
     if (ring.length < 3) continue;
     // Just on the water's edge: the river's banks, the ring of a lake or the sea.
-    const lines: { points: Point[]; closed: boolean }[] = w.kind === 'river'
-      ? [{ points: offsetPolyline(smoothLine(w.points, false, 3), false, w.width / 2), closed: false }, { points: offsetPolyline(smoothLine(w.points, false, 3), false, -w.width / 2), closed: false }]
+    const banks = w.kind === 'river' ? riverRibbon(w) : null;
+    const lines: { points: Point[]; closed: boolean }[] = banks
+      ? [{ points: banks.left, closed: false }, { points: banks.right, closed: false }]
       : [{ points: ring, closed: true }];
     for (const l of lines)
       along(l.points, l.closed, cell * 0.42, (p, angle, n) => {

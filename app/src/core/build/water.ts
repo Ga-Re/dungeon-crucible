@@ -6,6 +6,7 @@
  */
 import type { Point } from '../geometry';
 import { cliffEdges, offsetPolyline, type Cliff } from './cliffs';
+import { noise2 } from './handDrawn';
 
 export const WATER_KINDS = ['river', 'lake', 'sea'] as const;
 export type WaterKind = (typeof WATER_KINDS)[number];
@@ -25,6 +26,57 @@ export interface Water {
 /** A river's banks: its line moved half its width to its left and to its right. */
 export function riverBanks(w: Pick<Water, 'points' | 'width'>): { left: Point[]; right: Point[] } {
   return { left: offsetPolyline(w.points, false, w.width / 2), right: offsetPolyline(w.points, false, -w.width / 2) };
+}
+
+/**
+ * A line gently displaced across itself (DC-119c): bays and tongues instead of an even offset.
+ * The displacement reads the place, not the walked distance, so a closed ring meets itself
+ * without a seam and nothing moves when points are added elsewhere. Deterministic per seed.
+ */
+export function organicLine(points: readonly Point[], closed: boolean, amplitude: number, wavelength: number, seed: number): Point[] {
+  if (points.length < 2 || amplitude <= 0 || wavelength <= 0) return [...points];
+  // Long segments are split first, so even a dead-straight line can bow.
+  const step = Math.max(wavelength / 3, 6);
+  const pts: Point[] = [];
+  const ring = closed ? [...points, points[0]] : [...points];
+  for (let i = 0; i < ring.length - 1; i++) {
+    const a = ring[i];
+    const b = ring[i + 1];
+    const parts = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / step));
+    for (let q = 0; q < parts; q++) pts.push({ x: a.x + ((b.x - a.x) * q) / parts, y: a.y + ((b.y - a.y) * q) / parts });
+  }
+  if (!closed) pts.push(ring[ring.length - 1]);
+  const n = pts.length;
+  return pts.map((p, i) => {
+    const prev = pts[closed ? (i - 1 + n) % n : Math.max(0, i - 1)];
+    const next = pts[closed ? (i + 1) % n : Math.min(n - 1, i + 1)];
+    const tx = next.x - prev.x;
+    const ty = next.y - prev.y;
+    const len = Math.hypot(tx, ty) || 1;
+    const d = noise2(p.x / wavelength, p.y / wavelength, seed) * amplitude;
+    return { x: p.x + (-ty / len) * d, y: p.y + (tx / len) * d };
+  });
+}
+
+/** The line a river actually flows along: smoothed, wandering a little by its seed. */
+export function riverSpine(w: Pick<Water, 'points' | 'width' | 'seed'>): Point[] {
+  return organicLine(smoothLine(w.points, false, 3), false, w.width * 0.14, w.width * 3, w.seed * 7 + 1);
+}
+
+/**
+ * A river's drawn ribbon (DC-119c): the wandering spine and its two banks, each bank with its
+ * own small unevenness, so the width breathes. The painted water, the moving water and the
+ * shore details all build on this, so they always agree.
+ */
+export function riverRibbon(w: Pick<Water, 'points' | 'width' | 'seed'>): { spine: Point[]; left: Point[]; right: Point[] } {
+  const spine = riverSpine(w);
+  const amp = w.width * 0.09;
+  const wl = w.width * 1.6;
+  return {
+    spine,
+    left: organicLine(offsetPolyline(spine, false, w.width / 2), false, amp, wl, w.seed * 7 + 2),
+    right: organicLine(offsetPolyline(spine, false, -w.width / 2), false, amp, wl, w.seed * 7 + 3),
+  };
 }
 
 export interface Waterfall {
@@ -102,13 +154,14 @@ export function smoothLine(points: readonly Point[], closed: boolean, rounds = 2
  * The water's outline, rounded: a river's two banks joined into one ring (left bank forwards,
  * right bank back), a lake's or the sea's ring. Shared by the painted map and the moving water.
  */
-export function waterOutline(w: Pick<Water, 'kind' | 'points' | 'closed' | 'width'>): Point[] {
+export function waterOutline(w: Pick<Water, 'kind' | 'points' | 'closed' | 'width'> & { seed?: number }): Point[] {
+  const seed = w.seed ?? 0;
   if (w.kind === 'river') {
-    const line = smoothLine(w.points, false, 3);
-    const { left, right } = riverBanks({ points: line, width: w.width });
+    const { left, right } = riverRibbon({ points: w.points, width: w.width, seed });
     return [...left, ...right.reverse()];
   }
-  return smoothLine(w.points, true, 3);
+  // The shore wobbles by the seed (DC-119c): bays and tongues instead of a smooth offset line.
+  return organicLine(smoothLine(w.points, true, 3), true, w.width * 0.25, w.width * 2.2, seed * 7 + 5);
 }
 
 /** Positive when the ring runs clockwise on the map (y down): its inside lies right of its edges. */

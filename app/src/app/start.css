@@ -117,3 +117,13 @@
 .rescue-file { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .rescue-file b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .rescue-file span { color: var(--fg-dim); font-size: 12px; }
+
+/* "Generate map" (DC-119e): fields beside the live schematic preview. */
+.gen-map-dialog { width: min(760px, 100%); }
+.gen-map-grid { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.gen-map-fields { display: flex; flex-direction: column; gap: 10px; min-width: 220px; flex: 1; }
+.gen-map-fields .cmd-field { display: flex; flex-direction: column; gap: 4px; }
+.gen-map-size { display: flex; gap: 10px; }
+.gen-map-preview { flex: 2; min-width: 280px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 4px; background: #161614; padding: 8px; }
+/* Beats `.map-wrap canvas` when the catalog hosts the dialog. */
+.gen-map-dialog .gen-map-preview canvas { position: static; inset: auto; width: auto; height: auto; max-width: 100%; display: block; image-rendering: pixelated; }

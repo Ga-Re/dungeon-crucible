@@ -38,6 +38,8 @@ export interface OverlayState {
   brush: { p: Point; r: number } | null;
   /** "Calibrate grid": the box over N×N cells of the printed grid (E-7). */
   calibBox: { box: GridBox; cells: number } | null;
+  /** The area generator's dragged region (DC-119d). */
+  genRect: { x: number; y: number; w: number; h: number } | null;
   draftTemplate: TemplateLike | null;
   /** "Create area": the shape so far, the part being drawn and a polygon or lasso path (DC-013). */
   areaDraft: { shape: Polygon[]; part: Polygon | null; path: Point[]; color: string; subtract: boolean; editing: string | null } | null;
@@ -401,6 +403,14 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     g.stroke();
   }
   if (o.calibBox) drawCalibBox(g, o.calibBox.box, o.calibBox.cells, px);
+  if (o.genRect) {
+    g.save();
+    g.strokeStyle = '#d9a648';
+    g.lineWidth = 1.5 * px;
+    g.setLineDash([6 * px, 4 * px]);
+    g.strokeRect(o.genRect.x, o.genRect.y, o.genRect.w, o.genRect.h);
+    g.restore();
+  }
 }
 
 /** The calibration box with its N×N cells, to lay over the map's printed grid. */

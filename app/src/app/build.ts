@@ -10,14 +10,15 @@ import { drawnBounds, type BuildDoor, type Masonry, type MasonryStyle } from '..
 import { closesRing, strokeToLine } from '../core/build/strokes';
 import type { Water, WaterKind } from '../core/build/water';
 import { paintFloor, type FloorPaint, type FloorPatch } from '../core/build/floors';
+import { generate, generatedElements, type GenStyle } from '../core/build/generate';
 import { strokeArea } from '../core/poly/shapes';
 import { isInside } from '../core/poly/fog';
 import type { Point } from '../core/geometry';
-import { checkpoint, editableInForge, emit, freshId, log, markDirty, recomputeVision, state } from './store';
+import { buildHooks, checkpoint, editableInForge, emit, freshId, log, markDirty, recomputeVision, state } from './store';
 import type { OwnDrawing } from '../core/build/sceneDrawing';
 
 export interface BuildCommand {
-  kind: 'wall' | 'door' | 'cliff' | 'water' | 'floor';
+  kind: 'wall' | 'door' | 'cliff' | 'water' | 'floor' | 'generate';
   style: MasonryStyle;
   /** Wall thickness in feet. */
   thicknessFt: number;
@@ -43,6 +44,12 @@ export interface BuildCommand {
   /** The floor brush (DC-107b): which floor, how wide (cells across). */
   floorStyle: FloorPaint;
   brushCells: number;
+  /** The area generator (DC-119d): what fills the dragged region and how. */
+  genStyle: GenStyle;
+  genDensity: number;
+  genSeed: number;
+  /** The dragged region (map px); none yet: drag one first. */
+  region: { x: number; y: number; w: number; h: number } | null;
   /** The line being drawn: its points so far. */
   points: Point[];
 }
@@ -60,13 +67,13 @@ export interface BuildSelection {
   onMap?: boolean;
 }
 
-type Options = Omit<BuildCommand, 'kind' | 'points'>;
+type Options = Omit<BuildCommand, 'kind' | 'points' | 'region' | 'genSeed'>;
 
 /** Cells of margin around what is drawn on a drawn map. */
 const MARGIN_CELLS = 2;
 
 /** Options kept between commands, per window. */
-let last: Options = { style: 'dungeon-stone', thicknessFt: 1, snap: 'grid', secret: false, window: false, fortified: false, cliffKind: 'rock', form: 'edge', steep: true, widthFt: 10, steps: 3, inside: 'low', growth: true, waterKind: 'river', riverWidthFt: 10, floorStyle: 'carpet', brushCells: 2 };
+let last: Options = { style: 'dungeon-stone', thicknessFt: 1, snap: 'grid', secret: false, window: false, fortified: false, cliffKind: 'rock', form: 'edge', steep: true, widthFt: 10, steps: 3, inside: 'low', growth: true, waterKind: 'river', riverWidthFt: 10, floorStyle: 'carpet', brushCells: 2, genStyle: 'dungeon', genDensity: 0.6 };
 
 const pxPerFt = () => state.scene.map.grid.cellWidth / state.scene.map.grid.feetPerCell;
 const newSeed = () => Math.floor(Math.random() * 1_000_000);
@@ -86,11 +93,13 @@ export function editableWaters(): Water[] {
 
 /** Starts drawing walls or cliffs, or placing doors (one command at a time). */
 export function startBuildCommand(kind: BuildCommand['kind']): void {
-  state.buildCommand = { kind, ...last, points: [] };
+  // A stale snapshot from an interrupted preview must never restore over another map.
+  if (kind === 'generate') genBefore = null;
+  state.buildCommand = { kind, ...last, genSeed: newSeed(), region: null, points: [] };
   state.wallCommand = null;
   state.areaCommand = null;
   state.placing = null;
-  state.tool = kind === 'wall' ? 'build-wall' : kind === 'cliff' ? 'build-cliff' : kind === 'water' ? 'build-water' : kind === 'floor' ? 'build-floor' : 'build-door';
+  state.tool = kind === 'wall' ? 'build-wall' : kind === 'cliff' ? 'build-cliff' : kind === 'water' ? 'build-water' : kind === 'floor' ? 'build-floor' : kind === 'generate' ? 'build-generate' : 'build-door';
   emit();
 }
 
@@ -98,9 +107,106 @@ export function updateBuildCommand(patch: Partial<Options>): void {
   const c = state.buildCommand;
   if (!c) return;
   state.buildCommand = { ...c, ...patch };
-  const { kind: _k, points: _p, ...options } = state.buildCommand;
+  const { kind: _k, points: _p, region: _r, genSeed: _s, ...options } = state.buildCommand;
   last = options;
   emit();
+}
+
+/* ---------------------------------------------------------------- the area generator (DC-119d) */
+
+/** The map before the generator's preview; the preview replaces it live, OK bakes one undo step. */
+let genBefore: { masonry: Masonry[]; doors: BuildDoor[]; floors: FloorPatch[] } | null = null;
+
+/** The region dragged for the generator, snapped to whole cells; generating starts at 4×4 cells. */
+export function setGenerateRegion(a: Point, b: Point): void {
+  const c = state.buildCommand;
+  if (!c || c.kind !== 'generate') return;
+  const cell = state.scene.map.grid.cellWidth;
+  const x0 = Math.floor(Math.min(a.x, b.x) / cell) * cell;
+  const y0 = Math.floor(Math.min(a.y, b.y) / cell) * cell;
+  const x1 = Math.ceil(Math.max(a.x, b.x) / cell) * cell;
+  const y1 = Math.ceil(Math.max(a.y, b.y) / cell) * cell;
+  if ((x1 - x0) / cell < 4 || (y1 - y0) / cell < 4) return;
+  state.buildCommand = { ...c, region: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
+  regenerate();
+}
+
+/** A generator setting changed: the preview follows at once. */
+export function updateGenerate(patch: Partial<Pick<BuildCommand, 'genStyle' | 'genDensity' | 'genSeed'>>): void {
+  const c = state.buildCommand;
+  if (!c || c.kind !== 'generate') return;
+  state.buildCommand = { ...c, ...patch };
+  const { kind: _k, points: _p, region: _r, genSeed: _s, ...options } = state.buildCommand;
+  last = options;
+  regenerate();
+}
+
+/** Builds the preview into the map (replacing the last one); nothing is on the undo stack yet. */
+function regenerate(): void {
+  const c = state.buildCommand;
+  if (!c || c.kind !== 'generate' || !c.region) {
+    emit();
+    return;
+  }
+  const m = target();
+  genBefore ??= { masonry: m.masonry, doors: m.masonryDoors, floors: m.floors };
+  const cell = state.scene.map.grid.cellWidth;
+  const cols = Math.round(c.region.w / cell);
+  const rows = Math.round(c.region.h / cell);
+  const gen = generate({ cols, rows, density: c.genDensity, seed: c.genSeed, style: c.genStyle });
+  const layer = onCurrentLayer();
+  const els = generatedElements(gen, { x: c.region.x, y: c.region.y }, cell, c.genStyle, c.genSeed, freshId);
+  const withLayer = <T,>(xs: T[]): T[] => (layer.layer ? xs.map((x) => ({ ...x, ...layer })) : xs);
+  apply({ masonry: [...genBefore.masonry, ...withLayer(els.walls)], doors: [...genBefore.doors, ...els.doors] }, undefined, true, undefined, [...genBefore.floors, ...withLayer(els.floors)]);
+  emit();
+}
+
+/** The preview goes back to what the map was (tool switch, discard, undo, leaving the context). */
+function dropGeneratePreview(): void {
+  if (!genBefore) return;
+  apply({ masonry: genBefore.masonry, doors: genBefore.doors }, undefined, true, undefined, genBefore.floors);
+  genBefore = null;
+  // The command, where it stays open, starts over: a region must be dragged anew.
+  const c = state.buildCommand;
+  if (c?.kind === 'generate' && c.region) state.buildCommand = { ...c, region: null };
+}
+buildHooks.cancelPreview = dropGeneratePreview;
+buildHooks.hasPreview = () => genBefore !== null;
+/**
+ * A save takes the preview out and puts it back afterwards (DC-119d): what lands on disk is
+ * always the map without the uncommitted preview.
+ */
+buildHooks.parkPreview = () => {
+  if (!genBefore) return null;
+  const m = target();
+  const preview = { masonry: m.masonry, doors: m.masonryDoors, floors: m.floors };
+  const before = genBefore;
+  apply({ masonry: before.masonry, doors: before.doors }, undefined, true, undefined, before.floors);
+  genBefore = null;
+  return () => {
+    // Put back only while the command still waits with its region (not discarded meanwhile).
+    const c = state.buildCommand;
+    if (c?.kind !== 'generate' || !c.region) return;
+    genBefore = before;
+    apply({ masonry: preview.masonry, doors: preview.doors }, undefined, true, undefined, preview.floors);
+    emit();
+  };
+};
+
+/** "Übernehmen": the preview becomes one undoable step; "Verwerfen": the map stays as it was. */
+function endGenerate(keep: boolean): void {
+  const c = state.buildCommand;
+  if (!c || c.kind !== 'generate' || !genBefore) return;
+  const m = target();
+  const preview = { masonry: m.masonry, doors: m.masonryDoors, floors: m.floors };
+  // Back first, so the undo step holds exactly the generated elements.
+  apply({ masonry: genBefore.masonry, doors: genBefore.doors }, undefined, true, undefined, genBefore.floors);
+  if (keep) {
+    checkpoint();
+    apply({ masonry: preview.masonry, doors: preview.doors }, undefined, true, undefined, preview.floors);
+    log('log.generated');
+  }
+  genBefore = null;
 }
 
 /** Where a point drawn or dragged at `p` goes (`free`: Alt – exactly there). */
@@ -252,7 +358,8 @@ export function finishBuildWall(closed = false): void {
 export function endBuildCommand(keepDrawn: boolean): void {
   const c = state.buildCommand;
   if (!c) return;
-  if (keepDrawn && c.points.length >= 2) finishBuildWall(false);
+  if (c.kind === 'generate') endGenerate(keepDrawn);
+  if (keepDrawn && c.kind !== 'generate' && c.points.length >= 2) finishBuildWall(false);
   state.buildCommand = null;
   state.tool = 'build-edit';
   // Editing starts without a selection: the first click selects, it never adds a point.
@@ -431,7 +538,7 @@ export function splitBuildWall(): void {
   emit();
 }
 
-export function updateMasonry(id: string, patch: Partial<Pick<Masonry, 'style' | 'thickness' | 'seed' | 'height' | 'fortified'>>): void {
+export function updateMasonry(id: string, patch: Partial<Pick<Masonry, 'style' | 'thickness' | 'seed' | 'height' | 'fortified' | 'decay'>>): void {
   checkpoint();
   apply({ masonry: target().masonry.map((w) => (w.id === id ? { ...w, ...patch } : w)), doors: target().masonryDoors });
   emit();
@@ -451,7 +558,7 @@ export function updateBuildDoor(id: string, patch: Partial<Pick<BuildDoor, 'widt
 }
 
 /** Changes a cliff (one step); scree never blocks sight, a ring's form follows its being closed. */
-export function updateCliff(id: string, patch: Partial<Pick<Cliff, 'kind' | 'form' | 'steep' | 'width' | 'steps' | 'inside' | 'growth' | 'seed'>>): void {
+export function updateCliff(id: string, patch: Partial<Pick<Cliff, 'kind' | 'form' | 'steep' | 'width' | 'steps' | 'inside' | 'growth' | 'seed' | 'decay'>>): void {
   checkpoint();
   const m = target();
   const cliffs = m.cliffs.map((c) => {

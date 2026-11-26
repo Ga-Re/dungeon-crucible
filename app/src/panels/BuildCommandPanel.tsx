@@ -13,7 +13,8 @@ import { FLOOR_STYLES, type FloorPaint } from '../core/build/floors';
 import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
-import { endBuildCommand, undoBuildPoint, updateBuildCommand } from '../app/build';
+import { endBuildCommand, undoBuildPoint, updateBuildCommand, updateGenerate } from '../app/build';
+import type { GenStyle } from '../core/build/generate';
 import { useStore } from '../app/store';
 
 const SNAPS: BuildSnap[] = ['grid', 'half', 'angle', 'free'];
@@ -28,7 +29,7 @@ export function BuildCommandPanel() {
       endBuildCommand(true);
     }
   };
-  const title = t(c.kind === 'wall' ? 'build.cmd.wall' : c.kind === 'cliff' ? 'build.cmd.cliff' : c.kind === 'water' ? 'build.cmd.water' : c.kind === 'floor' ? 'build.cmd.floor' : 'build.cmd.door');
+  const title = t(c.kind === 'wall' ? 'build.cmd.wall' : c.kind === 'cliff' ? 'build.cmd.cliff' : c.kind === 'water' ? 'build.cmd.water' : c.kind === 'floor' ? 'build.cmd.floor' : c.kind === 'generate' ? 'build.cmd.generate' : 'build.cmd.door');
   return (
     <form
       className="command-panel"
@@ -57,6 +58,29 @@ export function BuildCommandPanel() {
               <input type="range" min={0.5} max={8} step={0.5} value={c.brushCells} onChange={(e) => updateBuildCommand({ brushCells: Number(e.target.value) })} />
             </label>
             <p className="hint">{t('hint.buildFloor')}</p>
+          </>
+        ) : c.kind === 'generate' ? (
+          <>
+            <label className="cmd-field">
+              <span>{t('build.gen.style')}</span>
+              <select value={c.genStyle} onChange={(e) => updateGenerate({ genStyle: e.target.value as GenStyle })}>
+                <option value="dungeon">{t('build.gen.dungeon')}</option>
+                <option value="cave">{t('build.gen.cave')}</option>
+              </select>
+            </label>
+            <label className="cmd-field">
+              <span>{t('build.gen.density')}</span>
+              <input type="range" min={5} max={100} value={Math.round(c.genDensity * 100)} onChange={(e) => updateGenerate({ genDensity: Number(e.target.value) / 100 })} />
+            </label>
+            <div className="cmd-line">
+              <label className="cmd-field">
+                <span>{t('build.gen.seed')}</span>
+                <input type="number" value={c.genSeed} onChange={(e) => updateGenerate({ genSeed: Math.floor(Number(e.target.value)) || 0 })} />
+              </label>
+              <button type="button" className="btn sm" onClick={() => updateGenerate({ genSeed: Math.floor(Math.random() * 1_000_000) })}><Icon name="dice" />{t('build.reroll')}</button>
+            </div>
+            {c.region ? <button type="button" className="btn sm danger" onClick={() => endBuildCommand(false)}>{t('build.gen.discard')}</button> : <p className="hint">{t('build.gen.region')}</p>}
+            <p className="hint">{t('hint.buildGenerate')}</p>
           </>
         ) : c.kind === 'water' ? (
           <>

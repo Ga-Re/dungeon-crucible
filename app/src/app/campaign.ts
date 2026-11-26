@@ -31,7 +31,7 @@ import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { activateSession, checkpoint, clearTabs, subscribe, closeCreatureTab, closeSessionTab, markDirty, openCreatureTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
+import { activateSession, buildHooks, checkpoint, clearTabs, subscribe, closeCreatureTab, closeSessionTab, markDirty, openCreatureTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
 import { applySceneAmbience, refreshAudioFiles, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
@@ -665,15 +665,21 @@ let running: Promise<void> | null = null;
 
 export async function saveCampaign(force = false): Promise<void> {
   while (running) await running;
-  // The tabs are kept with every save, also when nothing else changed (a tab switched).
-  keepTabs();
-  const unsaved = unsavedSessions();
-  if (!state.campaign || (!state.dirty && !force && !unsaved.length)) return;
-  running = writeCampaign(unsaved);
+  // A generator preview is parked while saving (DC-119d): it never reaches the disk.
+  const unpark = buildHooks.parkPreview?.() ?? null;
   try {
-    await running;
+    // The tabs are kept with every save, also when nothing else changed (a tab switched).
+    keepTabs();
+    const unsaved = unsavedSessions();
+    if (!state.campaign || (!state.dirty && !force && !unsaved.length)) return;
+    running = writeCampaign(unsaved);
+    try {
+      await running;
+    } finally {
+      running = null;
+    }
   } finally {
-    running = null;
+    unpark?.();
   }
 }
 

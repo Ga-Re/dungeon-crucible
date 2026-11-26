@@ -3,6 +3,7 @@
  * for the Map Forge, finds which campaigns use one, opens one in a scene, moves one to the trash.
  */
 import { readDocument } from '../core/documents';
+import { generateMap, mapGenElements, type MapGenOptions } from '../core/build/generate';
 import { DRAWN_RESOURCE, isDrawn, mapSidecarPath } from '../core/persistence';
 import { drawnBounds } from '../core/build/masonry';
 import { dmDrawing, type DmDrawing } from '../core/build/playerDrawing';
@@ -273,6 +274,37 @@ export async function duplicateLibraryMap(mapFile: string, name: string, withCon
  * "New drawn map" (E-33): a map file of its own without a picture – its drawn walls will be its
  * picture. It starts as an empty area of the default grid and opens in a tab of the Map Forge.
  */
+/** A whole generated map in the library (DC-119e): the elements baked in, the settings as a note. */
+export async function generateLibraryMap(name: string, opts: Omit<MapGenOptions, 'cols' | 'rows'> & { cols: number; rows: number }): Promise<string | null> {
+  if (!isDesktop() || !state.root?.root) return null;
+  const taken = new Set([...libraryNames, ...state.libraryMaps.map((m) => m.mapFile)]);
+  const file = mapFileFor(name, taken);
+  const cell = DEFAULT_GRID.cellWidth;
+  const gen = generateMap(opts);
+  // New ids are random, as the file rules ask; a counter only breaks ties.
+  let n = 0;
+  const rid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 8)}${++n}`;
+  const els = mapGenElements(gen, cell, opts.style, opts.seed, rid);
+  const area = drawnBounds(els.walls, cell, 2, [...els.waters, ...els.floors.map((f) => ({ points: f.shape.flatMap((s) => s.outer.map(([x, y]) => ({ x, y }))), width: 1 }))]);
+  const doc: MapSidecar = {
+    kind: 'map', schemaVersion: MAP_VERSION, name, resource: DRAWN_RESOURCE, isVideo: false,
+    widthPx: area.w, heightPx: area.h, origin: { x: area.x, y: area.y },
+    tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
+    layers: [], walls: [], zones: [], pois: [],
+    // Torches make their own light; with none the map stays plainly lit.
+    lights: els.lights.map((l) => ({ id: rid('light'), x: l.x, y: l.y, brightFt: 20, dimFt: 40, color: '#ffb35c' })),
+    ambient: opts.lights && els.lights.length ? 'dark' : 'lit',
+    assets: [], masonry: els.walls, masonryDoors: els.doors, cliffs: [], waters: els.waters, waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: els.floors,
+    generated: { style: opts.style, density: opts.density, seed: opts.seed, water: opts.water, lights: opts.lights, details: opts.details },
+  };
+  await writeDoc(file, MapSidecarSchema, doc);
+  log('log.mapGenerated', { name });
+  await refreshLibraryMaps();
+  state.mapSelected = file;
+  await openMapTab(file);
+  return file;
+}
+
 export async function createDrawnMap(name: string): Promise<string | null> {
   if (!isDesktop() || !state.root?.root) return null;
   const taken = new Set([...libraryNames, ...state.libraryMaps.map((m) => m.mapFile)]);

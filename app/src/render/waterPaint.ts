@@ -6,7 +6,8 @@
  */
 import type { Cliff } from '../core/build/cliffs';
 import { offsetPolyline } from '../core/build/cliffs';
-import { ringArea, smoothLine, waterfalls, waterOutline, type Water } from '../core/build/water';
+import { ringArea, riverSpine, waterfalls, waterOutline, type Water } from '../core/build/water';
+import { hashNoise, lineStrips } from '../core/build/variance';
 import type { Point } from '../core/geometry';
 import type { BuildTextures } from './build/textures';
 
@@ -31,6 +32,11 @@ export function paintWater(g: CanvasRenderingContext2D, waters: readonly WiredWa
     const ring = waterOutline(w);
     if (ring.length < 3) continue;
     const shape = path(ring);
+    const inward = ringArea(ring) > 0 ? -1 : 1;
+    // The surface picture: one of the water's variants, by its seed (DC-119c).
+    const slot = w.kind === 'river' ? 'water-river' : 'water-deep';
+    const sources = tex.variants[slot] ?? [tex.surface[slot]];
+    const source = sources[Math.floor(hashNoise(w.seed, 2, 19) * sources.length)];
     g.save();
     g.lineJoin = 'round';
     // The shore: the sea lies on sand; every shore is wet and dark at the water.
@@ -43,16 +49,56 @@ export function paintWater(g: CanvasRenderingContext2D, waters: readonly WiredWa
     g.lineWidth = cell * 0.32;
     g.stroke(shape);
     // The surface.
-    g.fillStyle = pattern(g, tex.surface[w.kind === 'river' ? 'water-river' : 'water-deep'], cell, w.kind === 'river' ? 2 : 3, w.seed);
+    g.fillStyle = pattern(g, source, cell, w.kind === 'river' ? 2 : 3, w.seed);
     g.fill(shape);
     if (w.kind === 'sea') {
       g.fillStyle = 'rgba(8,36,64,.22)';
       g.fill(shape);
     }
-    // Deeper towards the middle.
     g.clip(shape);
+    // A river's texture runs with the flow (DC-119c): slices along the spine, turned to it.
     if (w.kind === 'river') {
-      const line = smoothLine(w.points, false, 3);
+      const perPx = source.width / (cell * 2);
+      const step = cell * 0.5;
+      const sw = step * 1.7 * perPx;
+      const across = w.width * 1.2;
+      const sh = Math.min(source.height, across * perPx);
+      g.globalAlpha = 0.9;
+      for (const p of lineStrips(riverSpine(w), false, step)) {
+        let sx = ((p.u + w.seed * 53) * perPx) % source.width;
+        if (sx < 0) sx += source.width;
+        g.save();
+        g.translate(p.x, p.y);
+        g.rotate(p.angle);
+        if (sx + sw <= source.width) g.drawImage(source, sx, 0, sw, sh, (-step * 1.7) / 2, -across / 2, step * 1.7, across);
+        else {
+          const first = (source.width - sx) / perPx;
+          g.drawImage(source, sx, 0, source.width - sx, sh, (-step * 1.7) / 2, -across / 2, first, across);
+          g.drawImage(source, 0, 0, sw - (source.width - sx), sh, (-step * 1.7) / 2 + first, -across / 2, step * 1.7 - first, across);
+        }
+        g.restore();
+      }
+      g.globalAlpha = 1;
+    }
+    // Shallows near the shore (DC-119c): the ground shimmers through the water.
+    {
+      const reach = w.kind === 'sea' ? cell * 1.1 : w.kind === 'lake' ? cell * 0.7 : Math.min(w.width * 0.3, cell * 0.6);
+      const groundSrc = tex.surface[w.kind === 'sea' ? 'ground-sand' : 'floor-gravel'];
+      const bandShape = (r: number) => {
+        const b = path(ring);
+        b.addPath(path(offsetPolyline(ring, true, inward * r)));
+        return b;
+      };
+      g.fillStyle = pattern(g, groundSrc, cell, 3, w.seed + 9);
+      g.globalAlpha = w.kind === 'sea' ? 0.5 : 0.4;
+      g.fill(bandShape(reach), 'evenodd');
+      g.globalAlpha = 0.16;
+      g.fill(bandShape(reach * 1.8), 'evenodd');
+      g.globalAlpha = 1;
+    }
+    // Deeper towards the middle.
+    if (w.kind === 'river') {
+      const line = riverSpine(w);
       g.beginPath();
       line.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)));
       g.strokeStyle = 'rgba(0,26,52,.2)';
@@ -60,7 +106,6 @@ export function paintWater(g: CanvasRenderingContext2D, waters: readonly WiredWa
       g.lineWidth = w.width * 0.45;
       g.stroke();
     } else {
-      const inward = ringArea(ring) > 0 ? -1 : 1;
       for (const k of [0.9, 2, 3.4]) {
         g.fillStyle = 'rgba(0,22,48,.16)';
         g.fill(path(offsetPolyline(ring, true, inward * k * cell)));

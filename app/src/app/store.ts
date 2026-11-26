@@ -55,7 +55,7 @@ export type ToolId =
   | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
   | 'cone' | 'sphere' | 'line' | 'cube' | 'light'
   /** The Map Forge's "Build" tab (E-33): edit, draw walls, place doors. */
-  | 'build-edit' | 'build-wall' | 'build-door' | 'build-cliff' | 'build-water' | 'build-floor';
+  | 'build-edit' | 'build-wall' | 'build-door' | 'build-cliff' | 'build-water' | 'build-floor' | 'build-generate';
 
 export interface LogEntry {
   at: number;
@@ -411,11 +411,22 @@ function restore(snap: string): void {
 }
 
 export function undo(): void {
+  // During a generator preview, undo means: drop the preview (never mix it into history).
+  if (buildHooks.hasPreview?.()) {
+    buildHooks.cancelPreview?.();
+    emit();
+    return;
+  }
   const prev = history.undo(snapshot());
   if (prev) restore(prev);
 }
 
 export function redo(): void {
+  if (buildHooks.hasPreview?.()) {
+    buildHooks.cancelPreview?.();
+    emit();
+    return;
+  }
   const next = history.redo(snapshot());
   if (next) restore(next);
 }
@@ -784,6 +795,8 @@ function playingAmbience(): { path: string; volume: number }[] {
  * else to the play state.
  */
 export function commitView(): void {
+  // An uncommitted generator preview never reaches the documents (DC-119d).
+  if (buildHooks.hasPreview?.()) buildHooks.cancelPreview?.();
   if (!state.mapDoc) return;
   const { map, ov } = docsFromView();
   if (state.sceneDoc) state.sceneDoc = ov;
@@ -884,6 +897,16 @@ export function setWorkspace(ws: WorkspaceId): void {
   emit();
 }
 
+/** Hooks the build module registers (no import the other way round). */
+export const buildHooks: {
+  /** Drops the area generator's preview, restoring the map (DC-119d). */
+  cancelPreview: (() => void) | null;
+  /** Whether such a preview lies in the map right now. */
+  hasPreview: (() => boolean) | null;
+  /** Takes the preview out for a save and gives the hand to put it back. */
+  parkPreview: (() => (() => void) | null) | null;
+} = { cancelPreview: null, hasPreview: null, parkPreview: null };
+
 export function setTool(tool: ToolId): void {
   // Another tool ends the placing mode (DC-116); a map open behind the catalog comes to the front.
   state.placing = null;
@@ -891,7 +914,11 @@ export function setTool(tool: ToolId): void {
   // One command at a time: another tool ends "create area" and "draw walls".
   if (tool !== 'area') state.areaCommand = null;
   if (tool !== 'wall') state.wallCommand = null;
-  if (!['build-wall', 'build-door', 'build-cliff', 'build-water', 'build-floor'].includes(tool)) state.buildCommand = null;
+  if (!['build-wall', 'build-door', 'build-cliff', 'build-water', 'build-floor', 'build-generate'].includes(tool)) {
+    // A generator preview on the map goes back before the command is dropped (DC-119d).
+    if (state.buildCommand?.kind === 'generate') buildHooks.cancelPreview?.();
+    state.buildCommand = null;
+  }
   // Another tool – also from drawing to editing – starts without a selection: the first click selects, it never adds a point.
   if (tool !== state.tool) state.buildSelection = null;
   if (tool !== 'calibrate') dropCalibration();
@@ -1031,6 +1058,8 @@ function reversed<T extends Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>>(w: T): T {
 
 /** A different scene or layer is shown: running Map Forge commands and the wall selection end. */
 function clearWallEditing(): void {
+  // Leaving the context (layer, scene, tab) drops a generator preview first (DC-119d).
+  if (state.buildCommand?.kind === 'generate') buildHooks.cancelPreview?.();
   state.wallCommand = null;
   state.selectedWallIds = [];
   state.buildCommand = null;

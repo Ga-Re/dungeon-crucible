@@ -7,6 +7,16 @@
 
 import { BUILTIN_SOUND, BUILTIN_SOUNDS } from '../core/sound';
 
+/** The built-in sounds' files, shipped with the app (`../audio/sounds/`, see its README). */
+const builtinFiles = import.meta.glob('../audio/sounds/*.ogg', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+
+function builtinFile(key: string): string | undefined {
+  return builtinFiles[`../audio/sounds/${key}.ogg`];
+}
+
+/** The built-in sounds the app can also synthesise: the fallback when their file cannot be played. */
+const SYNTHESISED = new Set(['wind', 'drip', 'fire', 'rain', 'choir']);
+
 export const BUILTIN_PREFIX = BUILTIN_SOUND;
 const FADE_S = 1.2;
 
@@ -50,7 +60,7 @@ function noise(c: AudioContext): AudioBufferSourceNode {
   return s;
 }
 
-/** Built-in ambience, synthesised so the soundboard works without any files. */
+/** Built-in ambience: shipped loops, the first five also synthesised as a fallback. */
 export const BUILTIN_AMBIENCE = BUILTIN_SOUNDS.map((key) => ({ id: `${BUILTIN_PREFIX}${key}`, key }));
 
 function startBuiltin(key: string, c: AudioContext, out: AudioNode): () => void {
@@ -160,24 +170,35 @@ export function playLoop(key: string, sound: string, volume: number, url?: strin
   gain.gain.value = 0;
   gain.connect(m);
   gain.gain.setTargetAtTime(volume, c.currentTime, FADE_S / 3);
-  let stop: () => void;
-  if (sound.startsWith(BUILTIN_PREFIX)) {
-    stop = startBuiltin(sound.slice(BUILTIN_PREFIX.length), c, gain);
-  } else {
+  const builtin = sound.startsWith(BUILTIN_PREFIX) ? sound.slice(BUILTIN_PREFIX.length) : null;
+  const file = builtin ? builtinFile(builtin) : url;
+  let stop: () => void = () => undefined;
+  // A built-in sound whose file cannot be played is synthesised instead, where the app can.
+  const synthesise = () => {
+    if (builtin && SYNTHESISED.has(builtin)) stop = startBuiltin(builtin, c, gain);
+  };
+  if (file) {
     const el = new Audio();
-    if (url && !url.startsWith('blob:')) el.crossOrigin = 'anonymous';
-    el.src = url ?? '';
+    if (!file.startsWith('blob:')) el.crossOrigin = 'anonymous';
+    el.src = file;
     el.loop = true;
-    const node = c.createMediaElementSource(el);
-    node.connect(gain);
-    void el.play().catch(() => undefined);
-    stop = () => {
+    c.createMediaElementSource(el).connect(gain);
+    const release = () => {
       el.pause();
       el.removeAttribute('src');
       el.load();
     };
-  }
-  tracks.set(key, { gain, stop });
+    stop = release;
+    const fail = () => {
+      if (stop !== release || tracks.get(key)?.gain !== gain) return;
+      release();
+      synthesise();
+    };
+    el.addEventListener('error', fail, { once: true });
+    // Only a file that cannot be decoded falls back; a play() stopped early or held back by autoplay does not.
+    void el.play().catch((e: unknown) => (e as Error | undefined)?.name === 'NotSupportedError' && fail());
+  } else synthesise();
+  tracks.set(key, { gain, stop: () => stop() });
 }
 
 export function setAmbienceVolume(id: string, volume: number): void {

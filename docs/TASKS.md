@@ -311,6 +311,11 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     Lautstärke. Wiedergabe `app/mapSound.ts` nur im Orchestrator, eigene Schlüssel neben dem Soundboard; Projektion
     unverändert (Test: nichts davon im TV-Frame). Im Orchestrator kann eine Quelle schon verschoben, geändert und
     (Werkzeug Ausblenden) ausgeblendet werden; die eigene Bedienung dafür kommt mit DC-104c.
+    **Eingebaute Klänge** (DM 2026-11-26): 12 nahtlose Loops mit Higgsfield erzeugt (Mirelo, je 25 s → 21 s
+    Loop, −20 LUFS, Opus mono, zusammen 1,3 MB; Rechte vom DM bestätigt, Herkunft in
+    `app/src/audio/sounds/README.md`) – Höhlenwind, Tropfen, Fackeln, Regen, Chor, Wasserfall, Bach, Lagerfeuer,
+    Wald, Sturm, Brandung, Taverne. Sie ersetzen die synthetischen fünf (die bleiben als Rückfall, wenn eine Datei
+    nicht abspielbar ist) und gelten auch im Soundboard.
   - **DC-104b Dämpfung durch Wände**: Wand zwischen Figur und Quelle → leiser und dumpfer (Tiefpass).
   - **DC-104c Szenen-Steuerung**: Quelle an/aus (Ausblenden, Ebenen), Lautstärke je Szene, globalen Sound
     überschreiben oder stumm, szeneneigene Quellen; Start und Spiel getrennt; Szene v11.

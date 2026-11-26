@@ -9,7 +9,7 @@ import type { Scene, SoundSource } from './scene';
 
 /** Built-in sounds (synthesised by the app, no file): `builtin:<key>`. */
 export const BUILTIN_SOUND = 'builtin:';
-export const BUILTIN_SOUNDS = ['wind', 'drip', 'fire', 'rain', 'choir'] as const;
+export const BUILTIN_SOUNDS = ['wind', 'drip', 'fire', 'rain', 'choir', 'waterfall', 'brook', 'campfire', 'forest', 'storm', 'sea', 'tavern'] as const;
 
 /** Audio files the app plays. */
 export const AUDIO_FILE = /\.(mp3|ogg|oga|opus|wav|m4a|aac|flac)$/i;

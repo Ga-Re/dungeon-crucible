@@ -414,7 +414,7 @@ function apply(edit: Edit, cliffs: Cliff[] = state.scene.map.cliffs, final = tru
   m.masonryDoors = edit.doors;
   m.cliffs = cliffs;
   if (m.drawn) {
-    const b = drawnBounds(m.masonry, m.grid.cellWidth, MARGIN_CELLS, m.cliffs);
+    const b = drawnBounds(m.masonry, m.grid.cellWidth, MARGIN_CELLS, [...m.cliffs, ...m.waters]);
     m.origin = { x: b.x, y: b.y };
     m.widthPx = b.w;
     m.heightPx = b.h;

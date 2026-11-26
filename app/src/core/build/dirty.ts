@@ -9,7 +9,7 @@ import { floorField } from './handDrawn';
 import type { Bounds, Masonry } from './masonry';
 import type { Drawing } from './playerDrawing';
 
-type AnyDrawing = Pick<Drawing, 'origin' | 'width' | 'height' | 'masonry' | 'doors'> & Partial<Pick<Drawing, 'cliffs' | 'biome'>>;
+type AnyDrawing = Pick<Drawing, 'origin' | 'width' | 'height' | 'masonry' | 'doors'> & Partial<Pick<Drawing, 'cliffs' | 'biome' | 'waters'>>;
 
 /** Farther than this many cells from every wall (and outside closed rings) lies natural ground (E-34). */
 export const FLOOR_REACH_CELLS = 3;
@@ -57,6 +57,15 @@ export function changedRegion(prev: AnyDrawing, next: AnyDrawing, cell: number, 
     const b = cliffsAfter.get(id);
     if (a && b && JSON.stringify(a) === JSON.stringify(b)) continue;
     for (const c of [a, b]) if (c) region = union(region, boundsOf({ points: c.points }, c.width * Math.max(1, c.steps) + cell * 2));
+  }
+  // Water (E-35): with room for its shore and the waterfalls it makes at cliffs.
+  const watersBefore = new Map((prev.waters ?? []).map((w) => [w.id, w]));
+  const watersAfter = new Map((next.waters ?? []).map((w) => [w.id, w]));
+  for (const id of new Set([...watersBefore.keys(), ...watersAfter.keys()])) {
+    const a = watersBefore.get(id);
+    const b = watersAfter.get(id);
+    if (a && b && JSON.stringify(a) === JSON.stringify(b)) continue;
+    for (const w of [a, b]) if (w) region = union(region, boundsOf({ points: w.points }, w.width + cell * 2));
   }
   if (!region) return null;
   // Floors: wherever the nearest wall's style is another now (softened over two samples).

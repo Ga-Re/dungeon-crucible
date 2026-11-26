@@ -12,7 +12,7 @@ const doors: BuildDoor[] = [
   { id: 'd-secret', wall: 'm-a', at: 150, width: 40, secret: true, crack: false },
   { id: 'd-crack', wall: 'm-a', at: 250, width: 40, secret: true, crack: true },
 ];
-const map = { masonry, masonryDoors: doors, cliffs: [], biome: 'nebel', layers: [{ id: 'upper', name: 'U', height: 1, defaultActive: false, editorHidden: false, locked: false }], origin: { x: -50, y: -20 }, widthPx: 400, heightPx: 200 };
+const map = { masonry, masonryDoors: doors, cliffs: [], waters: [], waterAnimated: true, biome: 'nebel', layers: [{ id: 'upper', name: 'U', height: 1, defaultActive: false, editorHidden: false, locked: false }], origin: { x: -50, y: -20 }, widthPx: 400, heightPx: 200 };
 
 describe('playerDrawing (what the TV may know)', () => {
   it('is null for a map without drawn walls', () => {
@@ -60,7 +60,7 @@ describe('dmDrawing', () => {
 describe('a drawn map without walls yet', () => {
   it('still has its drawing (its area) for the TV and the DM', () => {
     const empty = { ...map, masonry: [], masonryDoors: [], drawn: true };
-    expect(playerDrawing(empty, {}, {})).toEqual({ origin: { x: -50, y: -20 }, width: 400, height: 200, biome: 'nebel', masonry: [], doors: [], cracks: [], cliffs: [] });
+    expect(playerDrawing(empty, {}, {})).toEqual({ origin: { x: -50, y: -20 }, width: 400, height: 200, biome: 'nebel', masonry: [], doors: [], cracks: [], cliffs: [], waters: [], waterAnimated: true });
     expect(dmDrawing(empty, {})).not.toBeNull();
   });
 
@@ -97,5 +97,14 @@ describe('cliffs take the biome of the area they lie in (E-34)', () => {
 
   it("outside any area: none (the map's biome)", () => {
     expect(playerDrawing({ ...m, cliffs: [{ ...cl, points: [{ x: 500, y: 500 }, { x: 560, y: 500 }] }] }, {}, {}, [{ shape: square, biome: 'schnee', secret: false }])!.cliffs[0].biome).toBeUndefined();
+  });
+});
+
+describe('water for the TV (E-35)', () => {
+  it('sends water on active layers with the animation switch', () => {
+    const w = (id: string, layer?: string) => ({ id, kind: 'lake' as const, points: [{ x: 0, y: 0 }, { x: 70, y: 0 }, { x: 70, y: 70 }], closed: true, width: 40, seed: 1, ...(layer ? { layer } : {}) });
+    const d = playerDrawing({ ...map, masonry: [], masonryDoors: [], waters: [w('a'), w('b', 'upper')], waterAnimated: false }, {}, {})!;
+    expect(d.waters.map((x) => x.id)).toEqual(['a']);
+    expect(d.waterAnimated).toBe(false);
   });
 });

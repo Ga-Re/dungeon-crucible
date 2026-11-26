@@ -12,6 +12,7 @@ import { EMPTY_LEVEL_FOG } from './fogModel';
 import type { LevelFog, Polygon } from './poly/types';
 import type { Masonry } from './build/masonry';
 import type { Cliff } from './build/cliffs';
+import type { Water } from './build/water';
 import { activeLayers, drawOrder, elementLayer } from './layers';
 import { DEFAULT_TABLE, type HiddenElements, type MapAssetPlacement, type Scene, type Zone } from './scene';
 import { diffElements, resolveElements, type MapElements, type SceneLayer } from './mapLayers';
@@ -181,6 +182,8 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     masonry: (fromView ? m.masonry : previous.masonry).map(copyMasonry),
     masonryDoors: (fromView ? m.masonryDoors : previous.masonryDoors).map((d) => ({ ...d })),
     cliffs: (fromView ? m.cliffs : previous.cliffs).map(copyCliff),
+    waters: (fromView ? m.waters : previous.waters).map(copyWater),
+    waterAnimated: fromView ? m.waterAnimated : previous.waterAnimated,
     ...((fromView ? m.origin : previous.origin) ? { origin: { ...(fromView ? m.origin : previous.origin)! } } : {}),
   };
 }
@@ -231,6 +234,10 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     overrides: layer.overrides,
     added: layer.added,
   };
+}
+
+function copyWater(w: Water): Water {
+  return { ...w, points: w.points.map((q) => ({ x: q.x, y: q.y })) };
 }
 
 function copyCliff(c: Cliff): Cliff {
@@ -310,6 +317,8 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       masonry: map.masonry.map(copyMasonry),
       masonryDoors: map.masonryDoors.map((d) => ({ ...d })),
       cliffs: map.cliffs.map(copyCliff),
+      waters: map.waters.map(copyWater),
+      waterAnimated: map.waterAnimated,
       ...(map.origin ? { origin: { ...map.origin } } : {}),
       ...(isDrawn(map.resource) ? { drawn: true } : {}),
     },

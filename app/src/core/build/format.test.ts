@@ -115,3 +115,17 @@ describe('cliffs in the map file (E-34)', () => {
     expect(MapSidecarSchema.parse(without).cliffs).toEqual([]);
   });
 });
+
+describe('water in the map file (E-35)', () => {
+  it('round-trips with its animation switch; files without read with none, animated', () => {
+    const scene = createSampleScene();
+    scene.map.waters = [{ id: 'w-a', kind: 'river', points: [{ x: 0, y: 0 }, { x: 140, y: 70 }], closed: false, width: 50, seed: 3 }];
+    scene.map.waterAnimated = false;
+    const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(scene, 'builtin:crypt', 'map'))));
+    expect(map.waters).toEqual(scene.map.waters);
+    expect(map.waterAnimated).toBe(false);
+    expect(sceneFromDocuments(map, null, null, undefined, 'map').map).toMatchObject({ waters: scene.map.waters, waterAnimated: false });
+    const { waters: _w, waterAnimated: _a, ...without } = map;
+    expect(MapSidecarSchema.parse(without)).toMatchObject({ waters: [], waterAnimated: true });
+  });
+});

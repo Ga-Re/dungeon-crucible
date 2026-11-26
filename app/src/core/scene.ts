@@ -6,6 +6,7 @@ import type { Condition } from './rules/rules2024';
 import type { InteriorTrigger, MapLayer } from './sidecar';
 import type { BuildDoor, Masonry } from './build/masonry';
 import type { Cliff } from './build/cliffs';
+import type { Water } from './build/water';
 
 /** A cliff or gallery is one way: one sees down from its upper side, not up from below (DC-014). */
 export type WallKind = 'wall' | 'door' | 'secret-door' | 'window' | 'cliff';
@@ -149,6 +150,9 @@ export interface MapInfo {
   masonryDoors: BuildDoor[];
   /** Drawn cliffs and slopes (E-34). */
   cliffs: Cliff[];
+  /** Drawn rivers, lakes and sea (E-35), and whether their water moves. */
+  waters: Water[];
+  waterAnimated: boolean;
   /** Top left of a drawn map's area; none: 0, 0. */
   origin?: Point;
   /** A drawn map (E-33): no picture, its drawn walls are its picture. */
@@ -177,7 +181,7 @@ export interface MapAssetPlacement {
 }
 
 /** Catalog defaults of a map that has none yet. */
-export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets' | 'layers' | 'masonry' | 'masonryDoors' | 'cliffs'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [], layers: [], masonry: [], masonryDoors: [], cliffs: [] };
+export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets' | 'layers' | 'masonry' | 'masonryDoors' | 'cliffs' | 'waters' | 'waterAnimated'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [], layers: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true };
 
 /** Map elements hidden in a scene (DC-103): kept apart, so vision, light and the TV never see them. */
 export interface HiddenElements {

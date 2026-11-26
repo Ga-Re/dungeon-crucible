@@ -29,7 +29,7 @@ interface Painted {
 
 /** What the painted picture depends on: walls and where doors are shown – not whether they are open. */
 export function paintKey(drawing: Drawing | DmDrawing, cell: number): string {
-  return JSON.stringify([cell, drawing.origin, drawing.width, drawing.height, drawing.biome, drawing.masonry, drawing.doors.map((d) => [d.wall, d.at, d.width]), drawing.cliffs]);
+  return JSON.stringify([cell, drawing.origin, drawing.width, drawing.height, drawing.biome, drawing.masonry, drawing.doors.map((d) => [d.wall, d.at, d.width]), drawing.cliffs, drawing.waters]);
 }
 
 export function bindMap(renderer: Renderer, host: HTMLElement, onError?: (e: unknown) => void): MapBinding {

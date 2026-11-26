@@ -8,6 +8,7 @@ import { fogEffectSchema, levelFogSchema, polygonSchema } from './poly/types';
 import { idSchema } from './documents';
 import { MASONRY_STYLES } from './build/masonry';
 import { CLIFF_FORMS, CLIFF_KINDS } from './build/cliffs';
+import { WATER_KINDS } from './build/water';
 
 export const SIDECAR_SUFFIX = '.dm.json';
 export const SCENE_SUFFIX = '.scene.json';
@@ -75,6 +76,16 @@ export const cliffSchema = z.object({
   steps: z.number().int().min(1).max(12).default(3),
   inside: z.enum(['low', 'high']).default('low'),
   growth: z.boolean().default(true),
+  seed: z.number().int(),
+  layer: layerRef,
+});
+/** Drawn water (E-35): a river (a line with a width, flowing in its drawing direction), a lake or the sea (rings). */
+export const waterSchema = z.object({
+  id,
+  kind: z.enum(WATER_KINDS),
+  points: z.array(z.object({ x: z.number(), y: z.number() })).min(2),
+  closed: z.boolean().default(false),
+  width: z.number().positive(),
   seed: z.number().int(),
   layer: layerRef,
 });
@@ -155,6 +166,9 @@ export const MapSidecarSchema = z.object({
   masonryDoors: z.array(masonryDoorSchema).default([]),
   /** Drawn cliffs and slopes (E-34). */
   cliffs: z.array(cliffSchema).default([]),
+  /** Drawn rivers, lakes and sea (E-35), and whether their water moves (per map). */
+  waters: z.array(waterSchema).default([]),
+  waterAnimated: z.boolean().default(true),
   /** Top left of a drawn map's area (map px; it grows left and up too). None: 0, 0. */
   origin: z.object({ x: z.number(), y: z.number() }).optional(),
 });

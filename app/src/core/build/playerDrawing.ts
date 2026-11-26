@@ -9,6 +9,7 @@ import { activeLayers, elementLayer } from '../layers';
 import type { MapLayer } from '../sidecar';
 import { foundKey, MASONRY_STYLES, type BuildDoor, type Masonry } from './masonry';
 import { CLIFF_FORMS, CLIFF_KINDS, type Cliff } from './cliffs';
+import { WATER_KINDS, type Water } from './water';
 import { areaContains } from '../areas';
 import type { Polygon } from '../poly/types';
 
@@ -31,6 +32,9 @@ export const drawingSchema = z.object({
   })).default([]),
   /** The biome cliffs take their look from (E-34). */
   biome: z.string().default('nebel'),
+  /** Rivers, lakes and sea on the shown layers (E-35), and whether their water moves. */
+  waters: z.array(z.object({ id: z.string(), kind: z.enum(WATER_KINDS), points: z.array(point).min(2), closed: z.boolean(), width: z.number().positive(), seed: z.number() })).default([]),
+  waterAnimated: z.boolean().default(true),
 });
 export type Drawing = z.infer<typeof drawingSchema>;
 
@@ -45,6 +49,8 @@ interface DrawnMap {
   masonry: readonly Masonry[];
   masonryDoors: readonly BuildDoor[];
   cliffs: readonly Cliff[];
+  waters: readonly Water[];
+  waterAnimated: boolean;
   /** The map's fog biome: cliffs look after it. */
   biome: string;
   layers: readonly MapLayer[];
@@ -80,7 +86,9 @@ function area(map: DrawnMap) {
   return { origin: { x: map.origin?.x ?? 0, y: map.origin?.y ?? 0 }, width: map.widthPx, height: map.heightPx, biome: map.biome };
 }
 
-const empty = (map: DrawnMap) => !map.masonry.length && !map.cliffs.length && !map.drawn;
+const empty = (map: DrawnMap) => !map.masonry.length && !map.cliffs.length && !map.waters.length && !map.drawn;
+
+const wireWater = ({ layer: _l, ...w }: Water): Drawing['waters'][number] => ({ ...w, points: w.points.map((p) => ({ x: p.x, y: p.y })) });
 
 /**
  * `areas`: the scene's shown areas – an undiscovered secret one never lends its biome, its look
@@ -101,7 +109,8 @@ export function playerDrawing(map: DrawnMap, doorStates: Readonly<Record<string,
   }
   const known = areas.filter((a) => !a.secret || a.discovered === true);
   const cliffs = map.cliffs.filter((c) => active.has(elementLayer(c))).map((c) => wireCliff(c, known));
-  return { ...area(map), masonry: shown.map(wire), doors, cracks, cliffs };
+  const waters = map.waters.filter((w) => active.has(elementLayer(w))).map(wireWater);
+  return { ...area(map), masonry: shown.map(wire), doors, cracks, cliffs, waters, waterAnimated: map.waterAnimated };
 }
 
 /** `layersOn`: in a scene, only the walls of its active layers (like the scene's walls); none: all (the Map Forge). */
@@ -112,5 +121,6 @@ export function dmDrawing(map: DrawnMap, doorStates: Readonly<Record<string, boo
   const ids = new Set(shown.map((w) => w.id));
   const doors = map.masonryDoors.filter((d) => ids.has(d.wall)).map((d) => ({ wall: d.wall, at: d.at, width: d.width, open: doorStates[d.id] === true, secret: d.secret }));
   const cliffs = (active ? map.cliffs.filter((c) => active.has(elementLayer(c))) : map.cliffs).map((c) => wireCliff(c, areas));
-  return { ...area(map), masonry: shown.map(wire), doors, cracks: [], cliffs };
+  const waters = (active ? map.waters.filter((w) => active.has(elementLayer(w))) : map.waters).map(wireWater);
+  return { ...area(map), masonry: shown.map(wire), doors, cracks: [], cliffs, waters, waterAnimated: map.waterAnimated };
 }

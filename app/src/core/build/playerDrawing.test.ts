@@ -79,3 +79,23 @@ describe('cliffs for the TV (E-34)', () => {
     expect(d.biome).toBe('nebel');
   });
 });
+
+describe('cliffs take the biome of the area they lie in (E-34)', () => {
+  const cl = { id: 'a', points: [{ x: 10, y: 10 }, { x: 60, y: 10 }], closed: false, kind: 'rock' as const, form: 'edge' as const, steep: true, width: 70, steps: 3, inside: 'low' as const, growth: true, seed: 1 };
+  const square = [{ outer: [[0, 0], [100, 0], [100, 100], [0, 100]] as [number, number][], holes: [] }];
+  const m = { ...map, masonry: [], masonryDoors: [], cliffs: [cl] };
+
+  it('for the DM, any area', () => {
+    expect(dmDrawing(m, {}, undefined, [{ shape: square, biome: 'schnee', secret: true }])!.cliffs[0].biome).toBe('schnee');
+  });
+
+  it('for the TV, not an undiscovered secret area (its biome would give it away)', () => {
+    expect(playerDrawing(m, {}, {}, [{ shape: square, biome: 'schnee', secret: true, discovered: false }])!.cliffs[0].biome).toBeUndefined();
+    expect(playerDrawing(m, {}, {}, [{ shape: square, biome: 'schnee', secret: true, discovered: true }])!.cliffs[0].biome).toBe('schnee');
+    expect(playerDrawing(m, {}, {}, [{ shape: square, biome: 'wueste', secret: false }])!.cliffs[0].biome).toBe('wueste');
+  });
+
+  it("outside any area: none (the map's biome)", () => {
+    expect(playerDrawing({ ...m, cliffs: [{ ...cl, points: [{ x: 500, y: 500 }, { x: 560, y: 500 }] }] }, {}, {}, [{ shape: square, biome: 'schnee', secret: false }])!.cliffs[0].biome).toBeUndefined();
+  });
+});

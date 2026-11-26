@@ -169,7 +169,7 @@ export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFram
       seedKey: o.seedKey,
       grid: { type: g.type, cellWidth: g.cellWidth, cellHeight: g.cellHeight, originX: g.originX, originY: g.originY, rotationDeg: g.rotationDeg, feetPerCell: g.feetPerCell },
       showGrid: o.showGrid,
-      drawn: playerDrawing(scene.map, scene.masonryDoorsOpen, scene.layersOn),
+      drawn: playerDrawing(scene.map, scene.masonryDoorsOpen, scene.layersOn, scene.zones),
     },
     fog: {
       open: copy(openArea(scene.fog, o.visible)),

@@ -106,3 +106,12 @@
 .ms-tags .chip button { padding: 0 2px; border: 0; background: none; color: var(--fg-dim); cursor: pointer; }
 .ms-tags input { flex: 1; min-width: 100px; height: 22px; border: 0; background: transparent; }
 .ms-tags input:focus { outline: none; }
+
+/* Rescue copies offered when a campaign opens (DC-003). */
+.rescue-dialog { width: min(560px, 100%); }
+.rescue-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.rescue-list li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.rescue-list .btn { height: 28px; padding: 0 12px; }
+.rescue-file { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.rescue-file b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.rescue-file span { color: var(--fg-dim); font-size: 12px; }

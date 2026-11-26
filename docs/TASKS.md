@@ -201,10 +201,10 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - ✓ **DC-092 Startbildschirm umbauen** (E-1): Kampagnen aus `campaigns/` statt frei gewählter Ordner; „Neue
   Kampagne“ ohne Ordnerdialog; „Kampagne öffnen“ entfällt oder wird zu „Wurzelordner wechseln“; Archiv-Import
   entpackt nach `campaigns/` und benutzte Dateien in die Bibliothek.
-- ◐ **DC-093 Bibliothek** (E-1): Karten, Audio, Kreaturen flach in `library/`, Sidecars daneben; Import kopiert
+- ✓ **DC-093 Bibliothek** (E-1): Karten, Audio, Kreaturen flach in `library/`, Sidecars daneben; Import kopiert
   hinein, Duplikate per Hash erkennen; Kartenliste mit Suche (Name, Tags, Typ); Löschen mit Warnung und Papierkorb
-  (benutzte Karten: nur das Bild, die Kartendaten bleiben) – erledigt. Offen: Vorschaubilder im Katalog
-  (DC-093b), Papierkorb wiederherstellen (DC-035). Tags bearbeiten: erledigt mit DC-011.
+  (benutzte Karten: nur das Bild, die Kartendaten bleiben). Vorschaubilder im Katalog kamen mit DC-117, Tags
+  bearbeiten mit DC-011; Papierkorb wiederherstellen ist DC-035.
 - ✓ **DC-094 Karte/Szene mit Overrides** (E-2, E-16, E-24, E-26): Szene = Kartenverweis + Overrides je Element-ID
   + eigene Elemente + Zustand (`resolveElements`/`diffElements`); die Kartenschmiede zeigt und bearbeitet die Karte
   (ohne Tokens, mit Start-Nebel), jeder andere Arbeitsbereich die Szene; der TV zeigt in der Schmiede weiter die
@@ -257,8 +257,14 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Test: Rundreise einer Datei mit allen Feldern.
 - ✓ **DC-002 Ältere/neuere Dateiversionen** (Teil von DC-090, erledigt mit ihr). Neuere `schemaVersion` ablehnen statt überschreiben;
   Migrationsgerüst für Kampagne, Karte, Szene, Kreatur.
-- **DC-003 Rettungskopie bei fehlgeschlagenem Speichern** (Gerätespeicher, Angebot beim nächsten Start) und
-  Absturzerkennung (TV bleibt nach Absturz dunkel). Nach T-114b, T-238.
+- ✓ **DC-003 Rettungskopie bei fehlgeschlagenem Speichern** und Absturzerkennung. Nach T-114b, T-238.
+  Entscheidungen des SL: Kopien liegen im App-Speicher des Geräts (nie im Wurzelordner, nie synchronisiert); sie
+  werden **beim Öffnen der Kampagne** angeboten (Dialog je Dokument: Wiederherstellen / Verwerfen / Später
+  entscheiden); nach einem Absturz zeigt der Startbildschirm **nur einen Hinweis**. Umsetzung: `core/rescue.ts`
+  (eine Kopie je Datei, die neueste; ein späteres erfolgreiches Speichern löscht nur eine Kopie derselben
+  Sitzung), `app/rescue.ts` (Anschluss an `writeDoc`, Absturzmarke bis `beforeunload`), `RescueDialog.tsx`;
+  Wiederherstellen schreibt die Datei zurück und liest die Kampagne ohne vorheriges Speichern neu ein. Der TV bleibt
+  nach einem Neustart ohnehin dunkel, bis eine Szene auf ihn gelegt wird (DC-034).
 - ✓ **DC-004 PixiJS-Warnung beim Kartenwechsel** („destroyed while still bound“): beim Abbau des lebendigen Nebels
   und der Nebel-Überblendung wurden Texturen vor ihrem Shader zerstört (bei der Überblendung hing das Aufräumen an
   der Ebene, die PixiJS erst nach ihren Kindern abbaut); jetzt geht der Shader zuerst, am Mesh selbst. Nebenbei:

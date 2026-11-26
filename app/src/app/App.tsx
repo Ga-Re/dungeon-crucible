@@ -26,6 +26,8 @@ import { StartScreen } from './StartScreen';
 import { isDesktop } from '../platform/bridge';
 import { openTable, refreshMonitors, startFrameLoop } from './tableOutput';
 import { importMapFile } from './importMap';
+import { startRunMarker } from './rescue';
+import { RescueDialog } from './RescueDialog';
 
 export function App() {
   const ws = useStore((s) => s.ws);
@@ -42,6 +44,8 @@ export function App() {
     // The desktop app starts on the start screen (recent campaigns, new, open, import).
     if (isDesktop()) {
       state.home = true;
+      // Not closed cleanly last time: say so; documents that could not be saved are offered when their campaign opens.
+      if (startRunMarker()) state.notice = { key: 'start.crashed' };
       void refreshRoot();
     }
     removeLegacyLayouts();
@@ -73,6 +77,7 @@ export function App() {
         <DockArea key={ws} ws={ws} />
       </div>
       <StatusBar />
+      <RescueDialog />
     </div>
   );
 }

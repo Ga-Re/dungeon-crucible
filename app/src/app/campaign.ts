@@ -10,6 +10,7 @@
  * references into the library are relative to the root (`library/x.webp.dm.json`), so both stay
  * valid in another root folder and in archives.
  */
+import { keepRescue, offerRescue, savedOk } from './rescue';
 import { manifestFromState, mapSidecarFromScene, mapSidecarPath, resetToStart, sceneFromDocuments, sceneIssues, sceneOverrideFromScene, startOf, tableFromManifest, BUILTIN_PREFIX, isDrawn } from '../core/persistence';
 import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MAP_VERSION, MapSidecarSchema, SceneOverrideSchema, type Creature, type MapSidecar, type SceneOverride } from '../core/sidecar';
 import { keepUnknown, newId, readDocument, slugId, type DocumentKind } from '../core/documents';
@@ -89,7 +90,14 @@ export async function writeDoc(rel: string, schema: z.ZodType, value: unknown): 
   const out = keepUnknown(schema, before, value);
   if (before !== undefined && JSON.stringify(before) === JSON.stringify(out)) return;
   const text = JSON.stringify(out, null, 2);
-  await writeText(rel, text);
+  try {
+    await writeText(rel, text);
+  } catch (e) {
+    // Not lost (DC-003): kept on this device and offered when the campaign opens again.
+    keepRescue(rel, text);
+    throw e;
+  }
+  savedOk(rel);
   // A copy: `out` can share objects with `value`, which the app changes in place later.
   originals.set(rel, JSON.parse(text));
 }
@@ -179,11 +187,24 @@ const ERROR_KEYS: Record<CampaignError, MessageKey> = {
 export async function openCampaign(slug: string): Promise<void> {
   if (state.campaign) await closeCampaign({ toStart: false });
   const ok = await loadCampaign({ slug, name: slug });
+  // Documents whose save failed last time are offered now (DC-003).
+  if (ok) offerRescue(slug);
   if (!ok) {
     const newer = readOnly.has(`campaigns/${slug}/${CAMPAIGN_FILE}`);
     state.campaign = null;
     notice(newer ? 'start.error.newer' : ERROR_KEYS.notCampaign);
   }
+}
+
+/**
+ * Reads the open campaign again from its files without saving first: after a rescue copy was
+ * written back (DC-003), what is in memory is older than the file.
+ */
+export async function reloadCampaign(): Promise<void> {
+  const slug = state.campaign?.slug;
+  if (!slug) return;
+  await closeCampaign({ toStart: false, save: false });
+  await openCampaign(slug);
 }
 
 /** Imports a campaign archive (.zip) into the root folder and opens it. */
@@ -330,9 +351,9 @@ function enterCampaign(ws?: WorkspaceId): void {
 }
 
 /** Saves and closes the open campaign; back to the start screen unless another one opens. */
-export async function closeCampaign({ toStart = true } = {}): Promise<void> {
+export async function closeCampaign({ toStart = true, save = true } = {}): Promise<void> {
   if (state.campaign) {
-    await saveCampaign(true);
+    if (save) await saveCampaign(true);
     stopAll();
   }
   state.campaign = null;

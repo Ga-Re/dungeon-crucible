@@ -2,6 +2,7 @@
  * DM application state. A tiny external store: components subscribe via
  * `useStore`, actions mutate state and call `emit()`.
  */
+import type { RescueCopy } from '../core/rescue';
 import { useSyncExternalStore } from 'react';
 import type { Point } from '../core/geometry';
 import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
@@ -197,6 +198,8 @@ export interface AppState {
   recent: RecentCampaign[];
   /** A message on the start screen (e.g. why an import failed). */
   notice: { key: MessageKey; params?: Record<string, string | number> } | null;
+  /** Rescue copies offered for the campaign just opened (DC-003). */
+  rescueOffer: RescueCopy[];
 }
 
 function initial(): AppState {
@@ -270,6 +273,7 @@ function initial(): AppState {
     editStart: false,
     recent: [],
     notice: null,
+    rescueOffer: [],
     assetInfo: {},
     selectedAssetId: null,
     currentLayer: BASE_LAYER,

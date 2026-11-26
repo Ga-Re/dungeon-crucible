@@ -9,7 +9,7 @@ import type { InteriorTrigger } from '../core/sidecar';
 import { useI18n } from '../i18n/i18n';
 import { deleteBuildSelection, flipCliff, flipWater, rerollCliff, rerollMasonry, setMapLook, setWaterAnimated, showHiddenDrawn, splitBuildWall, updateBuildDoor, updateCliff, updateMasonry, updateWater, type BuildSelection } from '../app/build';
 import { CliffFields, WaterFields } from './BuildCommandPanel';
-import { MASONRY_STYLES, type MasonryStyle } from '../core/build/masonry';
+import { MASONRY_STYLES, type Masonry, type MasonryStyle } from '../core/build/masonry';
 import { defaultWallHeight } from '../render/drawnMap';
 import type { MessageKey } from '../i18n/en';
 import { TableView, type FrameSource } from '../table/TableView';
@@ -420,6 +420,15 @@ function OwnBuildProperties({ sel }: { sel: BuildSelection }) {
       <NumberRow id="bw-height" label={t('build.height')} value={ft(wall.height ?? defaultWallHeight(wall, grid.cellWidth))} step={0.5} min={0.5} onCommit={(v) => v > 0 && updateMasonry(wall.id, { height: v / ftPerPx })} />
       <label className="cmd-check"><input type="checkbox" checked={!!wall.fortified} onChange={(e) => updateMasonry(wall.id, { fortified: e.target.checked })} />{t('build.fortified')}</label>
       <DecayRow id="bw-decay" value={wall.decay ?? 0} onCommit={(v) => updateMasonry(wall.id, { decay: v || undefined })} />
+      {wall.closed && (
+        <div className="row"><label htmlFor="bw-solid">{t('build.solid')}</label>
+          <select id="bw-solid" value={wall.solid ?? ''} onChange={(e) => updateMasonry(wall.id, { solid: (e.target.value || undefined) as Masonry['solid'] })}>
+            <option value="">{t('build.solid.none')}</option>
+            <option value="outside">{t('build.solid.outside')}</option>
+            <option value="inside">{t('build.solid.inside')}</option>
+          </select>
+        </div>
+      )}
       <div className="cmd-line">
         <button className="btn sm" onClick={() => rerollMasonry(wall.id)}><Icon name="reset" />{t('build.reroll')}</button>
         {sel.point !== null && <button className="btn sm" onClick={splitBuildWall}><Icon name="line" />{t('build.split')}</button>}

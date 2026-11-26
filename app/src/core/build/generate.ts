@@ -252,11 +252,20 @@ export interface GeneratedElements {
 /**
  * The generated grid as the map's own elements, in map px: one closed drawn wall per boundary
  * ring (caves rounded organically), a door where each corridor meets a room, and one floor
- * patch of the whole open shape. Ids come from the caller; seeds derive from `seed`.
+ * patch of the whole open shape. The rings carry solid rock (DC-119f): outside the outer ones –
+ * within `rockReach`, or to the map's edge without it – and inside the holes. Ids come from the
+ * caller; seeds derive from `seed`.
  */
-export function generatedElements(gen: Generated, origin: Point, cell: number, style: GenStyle, seed: number, freshId: (prefix: string) => string): GeneratedElements {
+export function generatedElements(gen: Generated, origin: Point, cell: number, style: GenStyle, seed: number, freshId: (prefix: string) => string, rockReach?: number): GeneratedElements {
   const rings = contours(gen.open, gen.cols, gen.rows).map((ring) => ring.map(([x, y]) => ({ x: origin.x + x * cell, y: origin.y + y * cell })));
   const shaped = style === 'cave' ? rings.map((r) => smoothLine(r, true, 2)) : rings;
+  // Outer boundaries and holes run opposite ways round: the largest ring tells which is which.
+  const signed = (pts: readonly Point[]) => pts.reduce((s, p, i) => {
+    const q = pts[(i + 1) % pts.length];
+    return s + p.x * q.y - q.x * p.y;
+  }, 0);
+  const largest = shaped.reduce((best, r) => (Math.abs(signed(r)) > Math.abs(signed(best)) ? r : best), shaped[0] ?? []);
+  const outerSign = Math.sign(signed(largest));
   const walls: Masonry[] = shaped.map((points, i) => ({
     id: freshId('masonry'),
     points,
@@ -264,6 +273,9 @@ export function generatedElements(gen: Generated, origin: Point, cell: number, s
     style: style === 'cave' ? 'cave-rock' : 'dungeon-stone',
     thickness: Math.max(6, cell * (style === 'cave' ? 0.26 : 0.18)),
     seed: seed * 31 + i,
+    // Carved into the stone (DC-119f): rock around the passages, rock blocks where holes are.
+    solid: Math.sign(signed(points)) === outerSign ? 'outside' : 'inside',
+    ...(Math.sign(signed(points)) === outerSign && rockReach ? { solidReach: rockReach } : {}),
   }));
   // A door sits where its cell edge crosses the nearest wall ring.
   const doors: BuildDoor[] = [];

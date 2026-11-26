@@ -27,6 +27,10 @@ export interface Masonry {
   height?: number;
   /** How decayed it looks, 0–1 (DC-119b). */
   decay?: number;
+  /** A closed wall: solid rock on this side, drawn raised (DC-119f). */
+  solid?: 'outside' | 'inside';
+  /** How far outside rock reaches (map px); none: to the map's edge. */
+  solidReach?: number;
   /** A fortified wall: towers at its corners and battlements on top (E-35). */
   fortified?: boolean;
 }

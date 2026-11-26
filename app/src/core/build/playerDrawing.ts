@@ -22,7 +22,7 @@ export const drawingSchema = z.object({
   origin: point,
   width: z.number().positive(),
   height: z.number().positive(),
-  masonry: z.array(z.object({ id: z.string(), points: z.array(point).min(2), closed: z.boolean(), style: z.enum(MASONRY_STYLES), thickness: z.number().positive(), seed: z.number(), height: z.number().positive().optional(), fortified: z.boolean().optional(), decay: z.number().min(0).max(1).optional() })),
+  masonry: z.array(z.object({ id: z.string(), points: z.array(point).min(2), closed: z.boolean(), style: z.enum(MASONRY_STYLES), thickness: z.number().positive(), seed: z.number(), height: z.number().positive().optional(), fortified: z.boolean().optional(), decay: z.number().min(0).max(1).optional(), solid: z.enum(['outside', 'inside']).optional(), solidReach: z.number().positive().optional() })),
   doors: z.array(z.object({ wall: z.string(), at: z.number(), width: z.number().positive(), open: z.boolean(), window: z.boolean().optional() })),
   cracks: z.array(z.object({ wall: z.string(), at: z.number(), width: z.number().positive() })),
   /** Cliffs and slopes on the shown layers (E-34): what anyone at the table may see. */
@@ -94,7 +94,7 @@ const wireCliff = ({ layer: _l, ...c }: Cliff, areas: readonly BiomeArea[]): Dra
   return { ...c, points: c.points.map((p) => ({ x: p.x, y: p.y })), ...(biome ? { biome } : {}) };
 };
 
-const wire = (w: Masonry): Drawing['masonry'][number] => ({ id: w.id, points: w.points.map((p) => ({ x: p.x, y: p.y })), closed: w.closed, style: w.style, thickness: w.thickness, seed: w.seed, ...(w.height ? { height: w.height } : {}), ...(w.fortified ? { fortified: true } : {}), ...(w.decay ? { decay: w.decay } : {}) });
+const wire = (w: Masonry): Drawing['masonry'][number] => ({ id: w.id, points: w.points.map((p) => ({ x: p.x, y: p.y })), closed: w.closed, style: w.style, thickness: w.thickness, seed: w.seed, ...(w.height ? { height: w.height } : {}), ...(w.fortified ? { fortified: true } : {}), ...(w.decay ? { decay: w.decay } : {}), ...(w.solid ? { solid: w.solid } : {}), ...(w.solidReach ? { solidReach: w.solidReach } : {}) });
 
 function area(map: DrawnMap) {
   return { origin: { x: map.origin?.x ?? 0, y: map.origin?.y ?? 0 }, width: map.widthPx, height: map.heightPx, biome: map.biome, lightAngle: map.lightAngle ?? 45, autoShore: map.autoShore ?? true, autoGrowth: map.autoGrowth ?? true };

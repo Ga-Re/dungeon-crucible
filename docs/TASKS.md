@@ -260,10 +260,14 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - ✓ **DC-003 Rettungskopie bei fehlgeschlagenem Speichern** und Absturzerkennung. Nach T-114b, T-238.
   Entscheidungen des SL: Kopien liegen im App-Speicher des Geräts (nie im Wurzelordner, nie synchronisiert); sie
   werden **beim Öffnen der Kampagne** angeboten (Dialog je Dokument: Wiederherstellen / Verwerfen / Später
-  entscheiden); nach einem Absturz zeigt der Startbildschirm **nur einen Hinweis**. Umsetzung: `core/rescue.ts`
-  (eine Kopie je Datei, die neueste; ein späteres erfolgreiches Speichern löscht nur eine Kopie derselben
-  Sitzung), `app/rescue.ts` (Anschluss an `writeDoc`, Absturzmarke bis `beforeunload`), `RescueDialog.tsx`;
-  Wiederherstellen schreibt die Datei zurück und liest die Kampagne ohne vorheriges Speichern neu ein. Der TV bleibt
+  entscheiden); nach einem Absturz zeigt der Startbildschirm **nur einen Hinweis**; wurde die Datei seit der Kopie
+  geändert, **warnt** der Dialog und überschreibt erst nach „Trotzdem überschreiben“, eine Datei einer neueren
+  App-Version nie. Umsetzung: `core/rescue.ts` (eine Kopie je Datei und Sitzung, die neueste – ein späteres
+  Fehlschlagen überschreibt die Kopie einer früheren Sitzung nie; ein späteres erfolgreiches Speichern löscht nur
+  eine Kopie derselben Sitzung; Fingerabdruck der Datei als Grundlage der Kopie), `app/rescue.ts` (Anschluss an
+  `writeDoc`, Absturzmarke bis `beforeunload`), `RescueDialog.tsx`. Ein Speicherlauf versucht alle geänderten
+  Dokumente, auch nach einem Fehler, damit jedes seine Kopie bekommt. Wiederherstellen schreibt die Datei zurück und
+  liest die Kampagne ohne vorheriges Speichern neu ein. Der TV bleibt
   nach einem Neustart ohnehin dunkel, bis eine Szene auf ihn gelegt wird (DC-034).
 - ✓ **DC-004 PixiJS-Warnung beim Kartenwechsel** („destroyed while still bound“): beim Abbau des lebendigen Nebels
   und der Nebel-Überblendung wurden Texturen vor ihrem Shader zerstört (bei der Überblendung hing das Aufräumen an

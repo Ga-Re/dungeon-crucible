@@ -10,6 +10,7 @@
  * references into the library are relative to the root (`library/x.webp.dm.json`), so both stay
  * valid in another root folder and in archives.
  */
+import { fileHash } from '../core/rescue';
 import { keepRescue, offerRescue, savedOk } from './rescue';
 import { manifestFromState, mapSidecarFromScene, mapSidecarPath, resetToStart, sceneFromDocuments, sceneIssues, sceneOverrideFromScene, startOf, tableFromManifest, BUILTIN_PREFIX, isDrawn } from '../core/persistence';
 import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MAP_VERSION, MapSidecarSchema, SceneOverrideSchema, type Creature, type MapSidecar, type SceneOverride } from '../core/sidecar';
@@ -57,6 +58,8 @@ async function urlForResource(resource: string): Promise<string | null> {
 
 /** What each document looked like when read or last written: writing merges into it, so unknown fields survive. */
 const originals = new Map<string, unknown>();
+/** `fileHash` of each document as last read or written: what a rescue copy is based on (DC-003). */
+const bases = new Map<string, string>();
 /** Documents from a newer app version: shown if possible, never written back. */
 const readOnly = new Set<string>();
 
@@ -71,6 +74,7 @@ export async function readDoc<T>(rel: string, kind: DocumentKind, schema: z.ZodT
   const r = readDocument(kind, schema, text);
   if (r.ok) {
     originals.set(rel, r.raw);
+    bases.set(rel, fileHash(text));
     readOnly.delete(rel);
     return r.value;
   }
@@ -94,10 +98,11 @@ export async function writeDoc(rel: string, schema: z.ZodType, value: unknown): 
     await writeText(rel, text);
   } catch (e) {
     // Not lost (DC-003): kept on this device and offered when the campaign opens again.
-    keepRescue(rel, text);
+    keepRescue(rel, JSON.stringify(out), bases.get(rel) ?? null);
     throw e;
   }
   savedOk(rel);
+  bases.set(rel, fileHash(text));
   // A copy: `out` can share objects with `value`, which the app changes in place later.
   originals.set(rel, JSON.parse(text));
 }
@@ -362,6 +367,7 @@ export async function closeCampaign({ toStart = true, save = true } = {}): Promi
   state.players = [];
   creatureFiles.clear();
   originals.clear();
+  bases.clear();
   readOnly.clear();
   replaceScene(emptyScene(state.scene.table), { resource: '', fileName: '', scenePath: null, sceneName: '' });
   clearTabs();
@@ -404,14 +410,22 @@ async function saveCreatures(): Promise<void> {
     files.set(c, file);
   }
   const renamed: string[] = [];
+  // Every creature is tried; the first failure is reported once all were (DC-003).
+  let failed: unknown = null;
   for (const [c, file] of files) {
     const before = creatureFiles.get(c.id);
     if (before && before !== file) {
       // The unknown fields of the old file move along to the new one.
       if (originals.has(before)) originals.set(file, originals.get(before)!);
-      renamed.push(before);
     }
-    await writeDoc(file, CreatureSchema, c);
+    try {
+      await writeDoc(file, CreatureSchema, c);
+    } catch (e) {
+      // The old file stays until the new one is written.
+      failed ??= e;
+      continue;
+    }
+    if (before && before !== file) renamed.push(before);
     creatureFiles.set(c.id, file);
   }
   for (const old of renamed) {
@@ -419,6 +433,7 @@ async function saveCreatures(): Promise<void> {
     await trashFile(old, false);
     originals.delete(old);
   }
+  if (failed) throw failed;
 }
 
 /** Loads campaign `info.slug`; false if its folder holds no (readable) campaign. */
@@ -667,30 +682,46 @@ async function writeCampaign(unsaved: ReturnType<typeof unsavedSessions>): Promi
   state.saving = true;
   emit();
   const shown = state.activeTab;
+  // Every document is tried, also after one failed: each failed one is kept as a rescue copy (DC-003).
+  const errors: unknown[] = [];
+  const attempt = async (write: () => Promise<void>): Promise<boolean> => {
+    try {
+      await write();
+      return true;
+    } catch (e) {
+      errors.push(e);
+      return false;
+    }
+  };
   try {
     const s = state.scene;
+    const campaign = state.campaign;
     // A campaign without a map yet has no scene: only the manifest and creatures are written.
     commitView();
     // The document shown: a scene and its map, or a map open on its own (E-30).
-    if (state.mapDoc && state.mapFile && (state.sceneDoc || !state.scenePath)) await writeDoc(state.mapFile, MapSidecarSchema, state.mapDoc);
-    if (state.scenePath && state.sceneDoc) await writeDoc(campaignPath(state.scenePath), SceneOverrideSchema, state.sceneDoc);
+    if (state.mapDoc && state.mapFile && (state.sceneDoc || !state.scenePath)) await attempt(() => writeDoc(state.mapFile, MapSidecarSchema, state.mapDoc));
+    if (state.scenePath && state.sceneDoc) await attempt(() => writeDoc(campaignPath(state.scenePath!), SceneOverrideSchema, state.sceneDoc));
     // Documents put away with changes (E-30); a map the shown document has too is written once, as shown.
     const written = new Set(state.mapDoc ? [state.mapFile] : []);
     for (const u of unsaved) {
+      let ok = true;
       if (u.mapDoc && u.mapFile && !written.has(u.mapFile)) {
-        await writeDoc(u.mapFile, MapSidecarSchema, u.mapDoc);
+        ok = await attempt(() => writeDoc(u.mapFile!, MapSidecarSchema, u.mapDoc));
         written.add(u.mapFile);
       }
-      if (u.scenePath && u.sceneDoc) await writeDoc(campaignPath(u.scenePath), SceneOverrideSchema, u.sceneDoc);
-      sessionSaved(u.id);
+      if (u.scenePath && u.sceneDoc) ok = (await attempt(() => writeDoc(campaignPath(u.scenePath!), SceneOverrideSchema, u.sceneDoc))) && ok;
+      if (ok) sessionSaved(u.id);
     }
-    await saveCreatures();
+    await attempt(saveCreatures);
     // With a map on its own shown, the campaign keeps the scene on the TV as its scene.
-    await writeDoc(campaignPath(CAMPAIGN_FILE), CampaignManifestSchema, manifestFromState(state.campaign.name, state.scenePath ?? state.tvScenePath, s.table, state.players));
-    // Saved is what was shown when the save began; shown by now in a tab, that one is saved.
-    if (state.activeTab === shown) state.dirty = false;
-    else if (shown) sessionSaved(shown);
-    state.lastSavedAt = Date.now();
+    await attempt(() => writeDoc(campaignPath(CAMPAIGN_FILE), CampaignManifestSchema, manifestFromState(campaign.name, state.scenePath ?? state.tvScenePath, s.table, state.players)));
+    if (!errors.length) {
+      // Saved is what was shown when the save began; shown by now in a tab, that one is saved.
+      if (state.activeTab === shown) state.dirty = false;
+      else if (shown) sessionSaved(shown);
+      state.lastSavedAt = Date.now();
+    }
+    for (const e of errors) log('log.saveFailed', { error: String(e) });
   } catch (e) {
     log('log.saveFailed', { error: String(e) });
   } finally {

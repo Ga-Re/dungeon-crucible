@@ -54,6 +54,8 @@ export function App() {
     const keys = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       if ((e.target as HTMLElement).closest('input,textarea,select')) return;
+      // The rescue dialog is modal: nothing behind it changes or closes the campaign.
+      if (state.rescueOffer.length) return;
       const k = e.key.toLowerCase();
       if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
       else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }

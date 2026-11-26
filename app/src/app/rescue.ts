@@ -4,9 +4,9 @@
  * opens again: restore writes it back, discard drops it. A marker set at start and removed when
  * the window closes tells a clean end from a crash; after a crash the start screen says so.
  */
-import { copiesFor, dropAfterSave, dropCopy, keepCopy, parseRescue, serializeRescue, type RescueCopy, type RescueStore } from '../core/rescue';
+import { copiesFor, dropAfterSave, dropCopy, keepCopy, parseRescue, restoreCheck, serializeRescue, type RescueCopy, type RescueStore } from '../core/rescue';
 import { newId } from '../core/documents';
-import { writeText } from '../platform/bridge';
+import { readText, writeText } from '../platform/bridge';
 import { emit, log, state } from './store';
 
 const KEY = 'dc.rescueCopies';
@@ -45,10 +45,13 @@ function store(s: RescueStore): boolean {
 
 const root = () => state.root?.root ?? '';
 
-/** A save of `path` failed: keep what would have been written. */
-export function keepRescue(path: string, text: string): void {
+/**
+ * A save of `path` failed: keep what would have been written (compact JSON, device storage is
+ * small) and what the file was when the app last read or wrote it (`base`, see `fileHash`).
+ */
+export function keepRescue(path: string, text: string, base: string | null): void {
   if (!root()) return;
-  if (!store(keepCopy(load(), { root: root(), path, text, at: Date.now(), session: SESSION }))) log('log.rescueFailed', { file: path });
+  if (!store(keepCopy(load(), { root: root(), path, text, at: Date.now(), session: SESSION, base }))) log('log.rescueFailed', { file: path });
 }
 
 /** A save of `path` succeeded: a copy of this run is no longer needed. */
@@ -64,25 +67,41 @@ export function offerRescue(slug: string): void {
   emit();
 }
 
-/** "Restore": the copy is written back; the campaign then reloads what it shows. */
-export async function restoreRescue(copy: RescueCopy, reload: () => Promise<void>): Promise<boolean> {
+export type RestoreResult = 'restored' | 'changed' | 'newer' | 'failed';
+
+const without = (copy: RescueCopy) => state.rescueOffer.filter((c) => !(c.path === copy.path && c.session === copy.session));
+
+/**
+ * "Restore": the copy is written back and the campaign reloads what it shows. Not over a file
+ * from a newer app version (`newer`), and over a file changed since only when `overwrite` (the DM
+ * confirmed after `changed`).
+ */
+export async function restoreRescue(copy: RescueCopy, reload: () => Promise<void>, overwrite = false): Promise<RestoreResult> {
+  let file: string | null;
   try {
-    await writeText(copy.path, copy.text);
+    file = await readText(copy.path);
+  } catch {
+    file = null;
+  }
+  const check = restoreCheck(copy, file);
+  if (check === 'newer' || (check === 'changed' && !overwrite)) return check;
+  try {
+    await writeText(copy.path, JSON.stringify(JSON.parse(copy.text), null, 2));
   } catch (e) {
     log('log.saveFailed', { error: String(e) });
-    return false;
+    return 'failed';
   }
-  store(dropCopy(load(), copy.root, copy.path));
-  state.rescueOffer = state.rescueOffer.filter((c) => c.path !== copy.path);
+  store(dropCopy(load(), copy));
+  state.rescueOffer = without(copy);
   log('log.rescueRestored', { file: copy.path });
   await reload();
   emit();
-  return true;
+  return 'restored';
 }
 
 export function discardRescue(copy: RescueCopy): void {
-  store(dropCopy(load(), copy.root, copy.path));
-  state.rescueOffer = state.rescueOffer.filter((c) => c.path !== copy.path);
+  store(dropCopy(load(), copy));
+  state.rescueOffer = without(copy);
   emit();
 }
 
@@ -90,7 +109,20 @@ export function discardRescue(copy: RescueCopy): void {
  * At start: whether the app ended without closing its window last time (a crash or a forced
  * quit). Marks this run as running; closing the window clears the mark.
  */
+let started: boolean | null = null;
+
 export function startRunMarker(target: Pick<Window, 'addEventListener'> = window): boolean {
+  // Once per run: React's development mode starts effects twice.
+  if (started === null) started = markRun(target);
+  return started;
+}
+
+/** Tests: as if the app started anew. */
+export function resetRunMarkerForTests(): void {
+  started = null;
+}
+
+function markRun(target: Pick<Window, 'addEventListener'>): boolean {
   const st = storage();
   if (!st) return false;
   let crashed = false;

@@ -78,3 +78,30 @@ describe('storeys (DC-020)', () => {
     expect(ov.hidden).toContain('up-wall');
   });
 });
+
+describe('storeys: kept across views (DC-020 review)', () => {
+  it('a drawn door opened on a storey stays open after saving from another storey', () => {
+    const forge = createSampleScene();
+    forge.map.storeys = [{ id: 'up', name: 'Up', level: 1, footprint: [] }];
+    forge.map.masonry = [{ id: 'upwall', points: [{ x: 0, y: 0 }, { x: 140, y: 0 }], closed: false, style: 'dungeon-stone', thickness: 14, seed: 1, storey: 'up' }];
+    forge.map.masonryDoors = [{ id: 'updoor', wall: 'upwall', at: 70, width: 50, secret: false, crack: false }];
+    const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(forge, 'builtin:crypt'))));
+    const up = sceneFromDocuments(map, null, null, undefined, 'scene', 'up');
+    up.masonryDoorsOpen = { updoor: true };
+    const ov1 = SceneOverrideSchema.parse(JSON.parse(JSON.stringify(sceneOverrideFromScene(up, 'S', PATH, { round: 1, turn: 0 }, map))));
+    expect(ov1.doors.updoor).toBe(true);
+    const ground = sceneFromDocuments(map, ov1, null);
+    const ov2 = sceneOverrideFromScene(ground, 'S', PATH, { round: 1, turn: 0 }, map);
+    expect(ov2.doors.updoor).toBe(true);
+  });
+
+  it('figures on a storey the map no longer has never show on the map itself, and are kept', () => {
+    const map = storeyMap();
+    const base = sceneFromDocuments(map, null, null);
+    const ov = SceneOverrideSchema.parse(JSON.parse(JSON.stringify(sceneOverrideFromScene({ ...base, tokens: createSampleScene().tokens.map((t, i) => (i === 0 ? { ...t, storey: 'up' } : t)) }, 'S', PATH, { round: 1, turn: 0 }, map))));
+    const without = { ...map, storeys: [] };
+    const ground = sceneFromDocuments(without, ov, null);
+    expect(ground.tokens.some((t) => t.storey === 'up')).toBe(false);
+    expect(sceneOverrideFromScene(ground, 'S', PATH, { round: 1, turn: 0 }, without).tokens.length).toBe(ov.tokens.length);
+  });
+});

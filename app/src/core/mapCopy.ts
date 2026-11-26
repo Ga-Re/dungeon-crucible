@@ -26,7 +26,8 @@ export function duplicateMap(map: MapSidecar, name: string, withContent: boolean
     const drawing = isDrawn(copy.resource)
       ? { masonry: copy.masonry.map(({ layer: _l, ...w }) => w), masonryDoors: copy.masonryDoors, cliffs: copy.cliffs.map(({ layer: _l, ...c }) => c), waters: copy.waters.map(({ layer: _l, ...w }) => w), floors: copy.floors.map(({ layer: _l, ...f }) => f) }
       : { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [] };
-    return { ...rest, walls: [], zones: [], lights: [], sounds: [], assets: [], layers: [], pois: [], ...drawing };
+    // Variants are pictures of the map and come along (new ids); storeys are content and do not (E-40/41).
+    return { ...rest, walls: [], zones: [], lights: [], sounds: [], assets: [], layers: [], pois: [], storeys: [], variants: copy.variants.map((v) => ({ ...v, id: fresh('variant') })), ...drawing };
   }
   const ids = new Map<string, string>();
   const renew = <T extends { id: string }>(xs: T[], prefix: string) => xs.map((x) => {
@@ -34,8 +35,10 @@ export function duplicateMap(map: MapSidecar, name: string, withContent: boolean
     ids.set(x.id, id);
     return { ...x, id };
   });
-  // Layers and areas first: other elements refer to them.
+  // Layers, storeys and areas first: other elements refer to them.
   copy.layers = renew(copy.layers, 'layer');
+  copy.storeys = renew(copy.storeys, 'storey');
+  copy.variants = renew(copy.variants, 'variant');
   copy.zones = renew(copy.zones, 'area');
   copy.walls = renew(copy.walls, 'wall');
   copy.lights = renew(copy.lights, 'light');
@@ -48,7 +51,7 @@ export function duplicateMap(map: MapSidecar, name: string, withContent: boolean
   copy.waters = renew(copy.waters, 'water');
   copy.floors = renew(copy.floors, 'floor');
   const ref = (id: string | undefined) => (id === undefined ? undefined : ids.get(id) ?? id);
-  const onLayer = <T extends { layer?: string }>(x: T): T => (x.layer ? { ...x, layer: ref(x.layer) } : x);
+  const onLayer = <T extends { layer?: string; storey?: string }>(x: T): T => ({ ...x, ...(x.layer ? { layer: ref(x.layer) } : {}), ...(x.storey ? { storey: ref(x.storey) } : {}) });
   copy.layers = copy.layers.map((l) => ({
     ...l,
     ...(l.trigger ? { trigger: { ...l.trigger, area: ref(l.trigger.area)! } } : {}),

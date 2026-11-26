@@ -270,7 +270,9 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
   const assetDoors = Object.fromEntries(Object.entries(scene.assetDoorsOpen).filter(([k]) => ofPlacement(k)));
   const interiors = Object.fromEntries(Object.entries(scene.interiorsOn).filter(([k]) => placements.has(k)));
   // States of drawn doors (open, found) are left out once the door is gone (E-33) – the map's and the scene's own.
-  const drawnDoors = new Set([...scene.map.masonryDoors, ...scene.own.masonryDoors].map((d) => d.id));
+  // Every drawn door's state is kept – also of doors on other storeys, put aside in the view (E-40).
+  const offDrawn = scene.map.offStorey;
+  const drawnDoors = new Set([...scene.map.masonryDoors, ...scene.own.masonryDoors, ...(offDrawn?.masonryDoors ?? []), ...(offDrawn?.own.masonryDoors ?? [])].map((d) => d.id));
   const masonryDoors = Object.fromEntries(Object.entries(scene.masonryDoorsOpen).filter(([k]) => drawnDoors.has(k.replace(/:found$/, ''))));
   return {
     kind: 'scene',
@@ -359,7 +361,8 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   // The storey this view shows (E-40): elements on others are put aside, kept for saving.
   const storeyIds = new Set(map.storeys.map((s) => s.id));
   const here = storeyIds.has(storey) ? storey : '';
-  const storeyOf = (x: { storey?: string }) => (x.storey && storeyIds.has(x.storey) ? x.storey : '');
+  // An element on a storey the map no longer has is never shown – kept for saving, put aside (E-40).
+  const storeyOf = (x: { storey?: string }) => (x.storey ? (storeyIds.has(x.storey) ? x.storey : '\u0000gone') : '');
   const onHere = (x: { storey?: string }) => storeyOf(x) === here;
   // The start state shows the scene's start instead of its play state.
   const st = layer === 'start' && override ? startOf(override) : null;
@@ -418,7 +421,8 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const drawing = drawingAll && ownDrawn ? { ...drawingAll, ...ownDrawn.here } : null;
   const [tokensHere, tokensOff] = split((state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })));
   // And doors on drawn walls by their id, found secret ones by `<id>:found` (E-33).
-  const drawnDoors = new Set([...map.masonryDoors, ...(drawing?.masonryDoors ?? [])].map((d) => d.id));
+  // The states of all drawn doors, on every storey (E-40).
+  const drawnDoors = new Set([...map.masonryDoors, ...(drawingAll?.masonryDoors ?? [])].map((d) => d.id));
   const masonryDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => drawnDoors.has(id.replace(/:found$/, ''))));
   return {
     map: {

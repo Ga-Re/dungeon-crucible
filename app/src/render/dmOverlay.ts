@@ -12,6 +12,22 @@ import type { ViewerVision } from '../core/vision';
 import type { Leak } from '../core/leaks';
 import { drawTemplate, hexToRgba, type TemplateLike } from './shared';
 
+/** The map's turn in the view being drawn: labels are turned back by it (E-42). */
+let textTurn = 0;
+
+/** Text at a map point, upright on screen however the map is turned. */
+function uprightText(g: CanvasRenderingContext2D, text: string, x: number, y: number): void {
+  if (!textTurn) {
+    g.fillText(text, x, y);
+    return;
+  }
+  g.save();
+  g.translate(x, y);
+  g.rotate((-textTurn * Math.PI) / 180);
+  g.fillText(text, 0, 0);
+  g.restore();
+}
+
 export interface OverlayView {
   zoom: number;
   x: number;
@@ -76,7 +92,7 @@ function drawDifficult(g: CanvasRenderingContext2D, d: NonNullable<OverlayState[
     const i = Math.floor((l.points.length - 1) / 2);
     const a = l.points[i];
     const b = l.points[Math.min(l.points.length - 1, i + 1)];
-    g.fillText(d.label, (a.x + b.x) / 2, (a.y + b.y) / 2 + l.depth * 0.6);
+    uprightText(g, d.label, (a.x + b.x) / 2, (a.y + b.y) / 2 + l.depth * 0.6);
   }
   g.restore();
 }
@@ -164,7 +180,8 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
   const cell = scene.map.grid.cellWidth;
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, g.canvas.width, g.canvas.height);
-  // Turned with the map (E-42), as the renderer's camera.
+  // Turned with the map (E-42), as the renderer's camera; texts stay upright.
+  textTurn = view.rot ?? 0;
   const a = ((view.rot ?? 0) * Math.PI) / 180;
   const k = dpr * view.zoom;
   g.setTransform(Math.round(Math.cos(a)) * k, Math.round(Math.sin(a)) * k, -Math.round(Math.sin(a)) * k, Math.round(Math.cos(a)) * k, dpr * view.x, dpr * view.y);
@@ -194,7 +211,7 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     g.fillStyle = hexToRgba(z.color, o.editMode ? 1 : 0.7);
     g.textBaseline = 'top';
     const at = labelOf(z.shape);
-    g.fillText(`${z.secret ? '◆ ' : ''}${z.name.toUpperCase()}`, at.x, at.y);
+    uprightText(g, `${z.secret ? '◆ ' : ''}${z.name.toUpperCase()}`, at.x, at.y);
     g.restore();
   }
 
@@ -466,10 +483,15 @@ function drawCalibBox(g: CanvasRenderingContext2D, b: GridBox, cells: number, px
 function label(g: CanvasRenderingContext2D, text: string, x: number, y: number, px: number): void {
   g.font = `600 ${13 * px}px 'JetBrains Mono', monospace`;
   const w = g.measureText(text).width;
+  // Upright however the map is turned (E-42), its backing with it.
+  g.save();
+  g.translate(x, y);
+  g.rotate((-textTurn * Math.PI) / 180);
   g.fillStyle = 'rgba(20,20,20,.85)';
-  g.fillRect(x - 6 * px, y - 16 * px, w + 12 * px, 22 * px);
+  g.fillRect(-6 * px, -16 * px, w + 12 * px, 22 * px);
   g.fillStyle = '#ffd79a';
-  g.fillText(text, x, y);
+  g.fillText(text, 0, 0);
+  g.restore();
 }
 
 /** Selection colour of the map (the theme's `--sel`). */

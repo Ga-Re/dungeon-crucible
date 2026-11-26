@@ -925,7 +925,8 @@ export async function openMapInNewScene(resource: string, sidecar: MapSidecar | 
   const { map, url } = await mapOf(resource, sidecar);
   // A new scene starts with the map's start fog and the party: the characters of the players
   // present, with their hit points from the scene played so far (DC-096).
-  const before = state.layer === 'scene' ? state.scene.tokens : (state.sceneDoc?.tokens ?? []);
+  // All of them, on every storey (E-40).
+  const before = state.layer === 'scene' ? [...state.scene.tokens, ...(state.scene.offStoreyTokens ?? [])] : (state.sceneDoc?.tokens ?? []);
   const ov = sceneOverrideFromScene(sceneFromDocuments(map, null, url, tvSettings(), 'scene'), map.name, mapFile, { round: 1, turn: 0 }, map);
   const taken = new Set<string>();
   // The middle of the map's area (a drawn map's may start left of or above 0, E-33).

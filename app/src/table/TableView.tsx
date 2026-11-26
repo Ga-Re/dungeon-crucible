@@ -171,7 +171,7 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
       }
       r.setCamera(camera);
       // Cut to the storey's footprint (E-40): outside it, nothing of this storey is drawn.
-      const key = f.storeyClip ? JSON.stringify([camera, s, f.storeyClip.length, f.seq]) : '';
+      const key = f.storeyClip ? JSON.stringify([camera, s, f.storeyClip]) : '';
       if (key !== clipKey) {
         clipKey = key;
         host.style.clipPath = f.storeyClip ? `path(evenodd, '${clipPath(f.storeyClip, camera, s)}')` : '';

@@ -7,6 +7,7 @@ import { CHALLENGE_RATINGS, CONDITIONS } from './rules/rules2024';
 import { fogEffectSchema, levelFogSchema, polygonSchema } from './poly/types';
 import { idSchema } from './documents';
 import { MASONRY_STYLES } from './build/masonry';
+import { CLIFF_FORMS, CLIFF_KINDS } from './build/cliffs';
 
 export const SIDECAR_SUFFIX = '.dm.json';
 export const SCENE_SUFFIX = '.scene.json';
@@ -62,6 +63,21 @@ export const masonrySchema = z.object({
 });
 /** A door on a drawn wall (E-33): its centre as the distance along the wall; open and found are scene state. */
 export const masonryDoorSchema = z.object({ id, wall: id, at: z.number().min(0), width: z.number().positive(), secret: z.boolean().default(false), crack: z.boolean().default(false) });
+/** A drawn cliff or slope (E-34): its upper side is left of its direction (as in DC-014). */
+export const cliffSchema = z.object({
+  id,
+  points: z.array(z.object({ x: z.number(), y: z.number() })).min(2),
+  closed: z.boolean().default(false),
+  kind: z.enum(CLIFF_KINDS),
+  form: z.enum(CLIFF_FORMS).default('edge'),
+  steep: z.boolean().default(true),
+  width: z.number().positive(),
+  steps: z.number().int().min(1).max(12).default(3),
+  inside: z.enum(['low', 'high']).default('low'),
+  growth: z.boolean().default(true),
+  seed: z.number().int(),
+  layer: layerRef,
+});
 export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color, layer: layerRef });
 
 /**
@@ -137,6 +153,8 @@ export const MapSidecarSchema = z.object({
   /** Drawn walls and the doors on them (E-33, version 6). */
   masonry: z.array(masonrySchema).default([]),
   masonryDoors: z.array(masonryDoorSchema).default([]),
+  /** Drawn cliffs and slopes (E-34). */
+  cliffs: z.array(cliffSchema).default([]),
   /** Top left of a drawn map's area (map px; it grows left and up too). None: 0, 0. */
   origin: z.object({ x: z.number(), y: z.number() }).optional(),
 });

@@ -297,8 +297,11 @@ export interface Bounds {
 /** Cells of an empty drawn map. */
 const EMPTY_CELLS = 20;
 
-/** The area of a drawn map: all masonry plus `margin` cells, on whole cells – also left of and above 0. */
-export function drawnBounds(masonry: readonly Masonry[], cell: number, margin: number): Bounds {
+/**
+ * The area of a drawn map: all masonry (and cliffs, with their width: a ravine's other edge, the
+ * steps of terraces) plus `margin` cells, on whole cells – also left of and above 0.
+ */
+export function drawnBounds(masonry: readonly Masonry[], cell: number, margin: number, cliffs: readonly { points: readonly Point[]; width: number }[] = []): Bounds {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -310,6 +313,13 @@ export function drawnBounds(masonry: readonly Masonry[], cell: number, margin: n
       minY = Math.min(minY, p.y - h);
       maxX = Math.max(maxX, p.x + h);
       maxY = Math.max(maxY, p.y + h);
+    }
+  for (const c of cliffs)
+    for (const p of c.points) {
+      minX = Math.min(minX, p.x - c.width);
+      minY = Math.min(minY, p.y - c.width);
+      maxX = Math.max(maxX, p.x + c.width);
+      maxY = Math.max(maxY, p.y + c.width);
     }
   if (minX === Infinity) return { x: 0, y: 0, w: EMPTY_CELLS * cell, h: EMPTY_CELLS * cell };
   const x = (Math.floor(minX / cell) - margin) * cell;

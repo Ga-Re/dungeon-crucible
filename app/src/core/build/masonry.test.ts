@@ -153,3 +153,11 @@ describe('drawnBounds', () => {
     expect(drawnBounds([], 50, 2)).toEqual({ x: 0, y: 0, w: 1000, h: 1000 });
   });
 });
+
+describe('drawnBounds with cliffs', () => {
+  it('reaches round cliffs and their width too', () => {
+    const c = { points: [{ x: 1000, y: 0 }, { x: 1100, y: 0 }], width: 140 };
+    // 140 px on every side of its points: x 860…1240, y −140…140, out to whole 50-px cells.
+    expect(drawnBounds([], 50, 0, [c])).toEqual({ x: 850, y: -150, w: 400, h: 300 });
+  });
+});

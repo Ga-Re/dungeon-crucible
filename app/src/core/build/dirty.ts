@@ -9,14 +9,14 @@ import { floorField } from './handDrawn';
 import type { Bounds, Masonry } from './masonry';
 import type { Drawing } from './playerDrawing';
 
-type AnyDrawing = Pick<Drawing, 'origin' | 'width' | 'height' | 'masonry' | 'doors'>;
+type AnyDrawing = Pick<Drawing, 'origin' | 'width' | 'height' | 'masonry' | 'doors'> & Partial<Pick<Drawing, 'cliffs' | 'biome'>>;
 
 /** Size of the floor samples (map px): at most 250 000 of them over the map, at least half a cell. Shared with `drawnMap`. */
 export function floorStep(d: Pick<Drawing, 'width' | 'height'>, cell: number): number {
   return Math.max(cell / 2, Math.sqrt((d.width * d.height) / 250_000));
 }
 
-function boundsOf(w: AnyDrawing['masonry'][number], pad: number): Bounds {
+function boundsOf(w: { points: readonly { x: number; y: number }[] }, pad: number): Bounds {
   const xs = w.points.map((p) => p.x);
   const ys = w.points.map((p) => p.y);
   const x = Math.min(...xs) - pad;
@@ -32,7 +32,7 @@ function union(a: Bounds | null, b: Bounds): Bounds {
 }
 
 export function changedRegion(prev: AnyDrawing, next: AnyDrawing, cell: number, prevCell = cell): Bounds | 'all' | null {
-  if (cell !== prevCell || prev.width !== next.width || prev.height !== next.height || prev.origin.x !== next.origin.x || prev.origin.y !== next.origin.y) return 'all';
+  if (cell !== prevCell || prev.biome !== next.biome || prev.width !== next.width || prev.height !== next.height || prev.origin.x !== next.origin.x || prev.origin.y !== next.origin.y) return 'all';
   const doorsKey = (d: AnyDrawing, id: string) => JSON.stringify(d.doors.filter((x) => x.wall === id).map((x) => [x.at, x.width]));
   const before = new Map(prev.masonry.map((w) => [w.id, w]));
   const after = new Map(next.masonry.map((w) => [w.id, w]));
@@ -45,6 +45,15 @@ export function changedRegion(prev: AnyDrawing, next: AnyDrawing, cell: number, 
     if (a && b && JSON.stringify(a) === JSON.stringify(b) && doorsKey(prev, id) === doorsKey(next, id)) continue;
     if (a) region = union(region, boundsOf(a, pad(a)));
     if (b) region = union(region, boundsOf(b, pad(b)));
+  }
+  // Cliffs (E-34): with room for their face, the far edge of a ravine, terraces and growth.
+  const cliffsBefore = new Map((prev.cliffs ?? []).map((c) => [c.id, c]));
+  const cliffsAfter = new Map((next.cliffs ?? []).map((c) => [c.id, c]));
+  for (const id of new Set([...cliffsBefore.keys(), ...cliffsAfter.keys()])) {
+    const a = cliffsBefore.get(id);
+    const b = cliffsAfter.get(id);
+    if (a && b && JSON.stringify(a) === JSON.stringify(b)) continue;
+    for (const c of [a, b]) if (c) region = union(region, boundsOf({ points: c.points }, c.width * Math.max(1, c.steps) + cell * 2));
   }
   if (!region) return null;
   // Floors: wherever the nearest wall's style is another now (softened over two samples).

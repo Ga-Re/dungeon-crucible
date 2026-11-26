@@ -272,7 +272,7 @@ function apply(edit: Edit, final = true): void {
   m.masonry = edit.masonry;
   m.masonryDoors = edit.doors;
   if (m.drawn) {
-    const b = drawnBounds(m.masonry, m.grid.cellWidth, MARGIN_CELLS);
+    const b = drawnBounds(m.masonry, m.grid.cellWidth, MARGIN_CELLS, m.cliffs);
     m.origin = { x: b.x, y: b.y };
     m.widthPx = b.w;
     m.heightPx = b.h;

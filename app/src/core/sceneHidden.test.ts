@@ -7,7 +7,7 @@ import { rectPolygon } from './fogModel';
 
 /** Hiding map elements in a scene, for its start or its play state (DC-103). */
 const map: MapSidecar = {
-  kind: 'map', schemaVersion: MAP_VERSION, name: 'Hall', layers: [], masonry: [], masonryDoors: [], resource: 'hall.png', isVideo: false, widthPx: 1000, heightPx: 1000,
+  kind: 'map', schemaVersion: MAP_VERSION, name: 'Hall', layers: [], masonry: [], masonryDoors: [], cliffs: [], resource: 'hall.png', isVideo: false, widthPx: 1000, heightPx: 1000,
   tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
   walls: [
     { id: 'w1', kind: 'wall', x1: 0, y1: 0, x2: 100, y2: 0 },

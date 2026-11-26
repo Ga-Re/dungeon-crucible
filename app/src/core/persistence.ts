@@ -11,6 +11,7 @@
 import { EMPTY_LEVEL_FOG } from './fogModel';
 import type { LevelFog, Polygon } from './poly/types';
 import type { Masonry } from './build/masonry';
+import type { Cliff } from './build/cliffs';
 import { activeLayers, drawOrder, elementLayer } from './layers';
 import { DEFAULT_TABLE, type HiddenElements, type MapAssetPlacement, type Scene, type Zone } from './scene';
 import { diffElements, resolveElements, type MapElements, type SceneLayer } from './mapLayers';
@@ -179,6 +180,7 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     // Drawn walls are edited in the Map Forge only, like placed assets.
     masonry: (fromView ? m.masonry : previous.masonry).map(copyMasonry),
     masonryDoors: (fromView ? m.masonryDoors : previous.masonryDoors).map((d) => ({ ...d })),
+    cliffs: (fromView ? m.cliffs : previous.cliffs).map(copyCliff),
     ...((fromView ? m.origin : previous.origin) ? { origin: { ...(fromView ? m.origin : previous.origin)! } } : {}),
   };
 }
@@ -229,6 +231,10 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     overrides: layer.overrides,
     added: layer.added,
   };
+}
+
+function copyCliff(c: Cliff): Cliff {
+  return { ...c, points: c.points.map((q) => ({ x: q.x, y: q.y })) };
 }
 
 function copyMasonry(w: Masonry): Masonry {
@@ -303,6 +309,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       layers: map.layers.map((l) => ({ ...l, ...(l.trigger ? { trigger: { ...l.trigger } } : {}) })),
       masonry: map.masonry.map(copyMasonry),
       masonryDoors: map.masonryDoors.map((d) => ({ ...d })),
+      cliffs: map.cliffs.map(copyCliff),
       ...(map.origin ? { origin: { ...map.origin } } : {}),
       ...(isDrawn(map.resource) ? { drawn: true } : {}),
     },

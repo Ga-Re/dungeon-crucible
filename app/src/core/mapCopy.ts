@@ -23,7 +23,9 @@ export function duplicateMap(map: MapSidecar, name: string, withContent: boolean
   copy.name = name;
   if (!withContent) {
     const { startFog: _f, ...rest } = copy;
-    const drawing = isDrawn(copy.resource) ? { masonry: copy.masonry.map(({ layer: _l, ...w }) => w), masonryDoors: copy.masonryDoors } : { masonry: [], masonryDoors: [] };
+    const drawing = isDrawn(copy.resource)
+      ? { masonry: copy.masonry.map(({ layer: _l, ...w }) => w), masonryDoors: copy.masonryDoors, cliffs: copy.cliffs.map(({ layer: _l, ...c }) => c) }
+      : { masonry: [], masonryDoors: [], cliffs: [] };
     return { ...rest, walls: [], zones: [], lights: [], assets: [], layers: [], pois: [], ...drawing };
   }
   const ids = new Map<string, string>();
@@ -41,6 +43,7 @@ export function duplicateMap(map: MapSidecar, name: string, withContent: boolean
   copy.pois = renew(copy.pois, 'poi');
   copy.masonry = renew(copy.masonry, 'masonry');
   copy.masonryDoors = renew(copy.masonryDoors, 'door');
+  copy.cliffs = renew(copy.cliffs, 'cliff');
   const ref = (id: string | undefined) => (id === undefined ? undefined : ids.get(id) ?? id);
   const onLayer = <T extends { layer?: string }>(x: T): T => (x.layer ? { ...x, layer: ref(x.layer) } : x);
   copy.layers = copy.layers.map((l) => ({
@@ -53,6 +56,7 @@ export function duplicateMap(map: MapSidecar, name: string, withContent: boolean
   copy.lights = copy.lights.map(onLayer);
   copy.assets = copy.assets.map(onLayer);
   copy.masonry = copy.masonry.map(onLayer);
+  copy.cliffs = copy.cliffs.map(onLayer);
   copy.masonryDoors = copy.masonryDoors.map((d) => ({ ...d, wall: ref(d.wall)! }));
   return copy;
 }

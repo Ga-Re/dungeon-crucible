@@ -118,6 +118,7 @@ export function createSampleScene(): Scene {
       layers: [],
       masonry: [],
       masonryDoors: [],
+      cliffs: [],
     },
     walls,
     zones,

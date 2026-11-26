@@ -72,7 +72,8 @@ export async function refreshLibraryMaps(): Promise<void> {
       const mapFile = `library/${e.name}`;
       const side = await readDoc(mapFile, 'map', MapSidecarSchema, { quiet: true });
       if (side && isDrawn(side.resource)) {
-        const drawing = dmDrawing({ ...side, drawn: true }, {}) ?? undefined;
+        // The map file's `biome` is its landscape (free text); cliffs look after the fog biome.
+        const drawing = dmDrawing({ ...side, biome: side.fogBiome, drawn: true }, {}) ?? undefined;
         maps.push({ ...catalogEntry(mapFile, side.resource, side, e, false, scenes, true), drawing });
         continue;
       }
@@ -281,7 +282,7 @@ export async function createDrawnMap(name: string): Promise<string | null> {
     kind: 'map', schemaVersion: MAP_VERSION, name, resource: DRAWN_RESOURCE, isVideo: false,
     widthPx: area.w, heightPx: area.h, origin: { x: area.x, y: area.y },
     tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
-    layers: [], walls: [], zones: [], pois: [], lights: [], ambient: 'dark', assets: [], masonry: [], masonryDoors: [],
+    layers: [], walls: [], zones: [], pois: [], lights: [], ambient: 'dark', assets: [], masonry: [], masonryDoors: [], cliffs: [],
   };
   await writeDoc(file, MapSidecarSchema, doc);
   log('log.drawnMapCreated', { name });

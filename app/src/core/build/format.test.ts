@@ -103,3 +103,15 @@ describe('duplicating a drawn map', () => {
     expect(copy.origin).toEqual({ x: -100, y: -50 });
   });
 });
+
+describe('cliffs in the map file (E-34)', () => {
+  it('round-trip; files without them read with none', () => {
+    const scene = createSampleScene();
+    scene.map.cliffs = [{ id: 'cl-a', points: [{ x: 0, y: 0 }, { x: 140, y: 0 }], closed: false, kind: 'earth', form: 'ravine', steep: true, width: 70, steps: 3, inside: 'low', growth: false, seed: 9 }];
+    const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(scene, 'builtin:crypt', 'map'))));
+    expect(map.cliffs).toEqual(scene.map.cliffs);
+    expect(sceneFromDocuments(map, null, null, undefined, 'map').map.cliffs).toEqual(scene.map.cliffs);
+    const { cliffs: _c, ...without } = map;
+    expect(MapSidecarSchema.parse(without).cliffs).toEqual([]);
+  });
+});

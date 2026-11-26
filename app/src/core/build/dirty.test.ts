@@ -3,7 +3,7 @@ import { changedRegion } from './dirty';
 import type { Drawing } from './playerDrawing';
 
 const wall = (id: string, x: number, style: Drawing['masonry'][number]['style'] = 'dungeon-stone') => ({ id, points: [{ x, y: 0 }, { x, y: 700 }], closed: false, style, thickness: 14, seed: 1 });
-const base: Drawing = { origin: { x: 0, y: 0 }, width: 2800, height: 700, masonry: [wall('a', 140), wall('b', 2660)], doors: [], cracks: [] };
+const base: Drawing = { origin: { x: 0, y: 0 }, width: 2800, height: 700, masonry: [wall('a', 140), wall('b', 2660)], doors: [], cracks: [], cliffs: [], biome: 'nebel' };
 
 describe('changedRegion', () => {
   it('is nothing when nothing that is painted changed (door states are drawn apart)', () => {
@@ -39,5 +39,22 @@ describe('changedRegion', () => {
     const r = changedRegion(base, { ...base, doors: [{ wall: 'a', at: 350, width: 70, open: false }] }, 70);
     expect(r).not.toBeNull();
     expect(r).not.toBe('all');
+  });
+});
+
+describe('changedRegion with cliffs (E-34)', () => {
+  const c = { id: 'c', points: [{ x: 1400, y: 100 }, { x: 1600, y: 100 }], closed: false, kind: 'rock' as const, form: 'edge' as const, steep: true, width: 70, steps: 3, inside: 'low' as const, growth: true, seed: 1 };
+
+  it('covers an added cliff with room for its face and growth', () => {
+    const r = changedRegion(base, { ...base, cliffs: [c] }, 70);
+    expect(r).not.toBe('all');
+    if (r && r !== 'all') {
+      expect(r.x).toBeLessThan(1400);
+      expect(r.x + r.w).toBeGreaterThan(1600);
+    }
+  });
+
+  it('repaints everything when the biome changes (cliffs look after it)', () => {
+    expect(changedRegion(base, { ...base, biome: 'schnee' }, 70)).toBe('all');
   });
 });

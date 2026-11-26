@@ -12,7 +12,7 @@ const doors: BuildDoor[] = [
   { id: 'd-secret', wall: 'm-a', at: 150, width: 40, secret: true, crack: false },
   { id: 'd-crack', wall: 'm-a', at: 250, width: 40, secret: true, crack: true },
 ];
-const map = { masonry, masonryDoors: doors, layers: [{ id: 'upper', name: 'U', height: 1, defaultActive: false, editorHidden: false, locked: false }], origin: { x: -50, y: -20 }, widthPx: 400, heightPx: 200 };
+const map = { masonry, masonryDoors: doors, cliffs: [], biome: 'nebel', layers: [{ id: 'upper', name: 'U', height: 1, defaultActive: false, editorHidden: false, locked: false }], origin: { x: -50, y: -20 }, widthPx: 400, heightPx: 200 };
 
 describe('playerDrawing (what the TV may know)', () => {
   it('is null for a map without drawn walls', () => {
@@ -60,11 +60,22 @@ describe('dmDrawing', () => {
 describe('a drawn map without walls yet', () => {
   it('still has its drawing (its area) for the TV and the DM', () => {
     const empty = { ...map, masonry: [], masonryDoors: [], drawn: true };
-    expect(playerDrawing(empty, {}, {})).toEqual({ origin: { x: -50, y: -20 }, width: 400, height: 200, masonry: [], doors: [], cracks: [] });
+    expect(playerDrawing(empty, {}, {})).toEqual({ origin: { x: -50, y: -20 }, width: 400, height: 200, biome: 'nebel', masonry: [], doors: [], cracks: [], cliffs: [] });
     expect(dmDrawing(empty, {})).not.toBeNull();
   });
 
   it('the DM sees in a scene only the walls of its active layers', () => {
     expect(dmDrawing(map, {}, {})!.masonry.map((w) => w.id)).toEqual(['m-a']);
+  });
+});
+
+describe('cliffs for the TV (E-34)', () => {
+  const cl = (id: string, layer?: string) => ({ id, points: [{ x: 0, y: 0 }, { x: 70, y: 0 }], closed: false, kind: 'rock' as const, form: 'edge' as const, steep: true, width: 70, steps: 3, inside: 'low' as const, growth: true, seed: 1, ...(layer ? { layer } : {}) });
+
+  it('sends those on active layers, without their layer', () => {
+    const d = playerDrawing({ ...map, masonry: [], masonryDoors: [], cliffs: [cl('a'), cl('b', 'upper')] }, {}, {})!;
+    expect(d.cliffs.map((c) => c.id)).toEqual(['a']);
+    expect(d.cliffs[0]).not.toHaveProperty('layer');
+    expect(d.biome).toBe('nebel');
   });
 });

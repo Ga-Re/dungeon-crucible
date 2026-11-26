@@ -7,6 +7,7 @@
 import { activeLayers, elementLayer } from '../layers';
 import type { Scene, Wall } from '../scene';
 import { deriveWalls, foundKey, type BuildDoor } from './masonry';
+import { cliffSightWalls } from './cliffs';
 
 const derived = new WeakMap<object, { key: string; out: Wall[] }>();
 
@@ -23,14 +24,16 @@ function masonryKey(masonry: Scene['map']['masonry']): string {
 const NONE: Wall[] = [];
 
 export function masonrySightWalls(scene: Pick<Scene, 'map' | 'masonryDoorsOpen' | 'layersOn'>, allLayers: boolean): Wall[] {
-  const { masonry, masonryDoors, layers } = scene.map;
-  if (!masonry.length) return NONE;
+  const { masonry, masonryDoors, layers, cliffs } = scene.map;
+  if (!masonry.length && !cliffs.length) return NONE;
   const active = allLayers ? null : activeLayers(layers, scene.layersOn);
-  const key = `${masonryKey(masonry)}#${JSON.stringify([masonryDoors, scene.masonryDoorsOpen, active && [...active]])}`;
+  const key = `${masonryKey(masonry)}#${JSON.stringify([masonryDoors, scene.masonryDoorsOpen, active && [...active], cliffs])}`;
   const hit = derived.get(masonry);
   if (hit?.key === key) return hit.out;
   const shown = active ? masonry.filter((w) => active.has(elementLayer(w))) : masonry;
-  const out = deriveWalls(shown, masonryDoors, scene.masonryDoorsOpen);
+  const shownCliffs = active ? cliffs.filter((c) => active.has(elementLayer(c))) : cliffs;
+  // Steep cliffs see down, not up (E-34), like the cliffs of DC-014.
+  const out = [...deriveWalls(shown, masonryDoors, scene.masonryDoorsOpen), ...cliffSightWalls(shownCliffs)];
   derived.set(masonry, { key, out });
   return out;
 }

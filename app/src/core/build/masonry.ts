@@ -23,6 +23,10 @@ export interface Masonry {
   /** Fixes its look: stone offsets, jitter, textures (nothing flickers when it is edited). */
   seed: number;
   layer?: string;
+  /** How high it stands in the 2.5D look (map px); none: after its style (E-35). */
+  height?: number;
+  /** A fortified wall: towers at its corners and battlements on top (E-35). */
+  fortified?: boolean;
 }
 
 export interface BuildDoor {
@@ -37,6 +41,8 @@ export interface BuildDoor {
   secret: boolean;
   /** An unfound secret door shows a faint crack on the TV (the DM's choice per door). */
   crack: boolean;
+  /** A window instead of a door (E-35): blocks neither sight nor light; never secret, never opened. */
+  window?: boolean;
 }
 
 /** Where a door is: on one segment of its masonry, from…to as distances along the masonry. */
@@ -115,7 +121,9 @@ export function deriveWalls(masonry: readonly Masonry[], doors: readonly BuildDo
     (spans.get(w.id) ?? spans.set(w.id, []).get(w.id)!).push(span);
     const a = pointAt(w.points, w.closed, span.from);
     const b = pointAt(w.points, w.closed, span.to);
-    doorWalls.push({ id: d.id, kind: d.secret ? 'secret-door' : 'door', x1: a.x, y1: a.y, x2: b.x, y2: b.y, open: open[d.id] ?? false, ...(w.layer ? { layer: w.layer } : {}) });
+    const layer = w.layer ? { layer: w.layer } : {};
+    if (d.window) doorWalls.push({ id: d.id, kind: 'window', x1: a.x, y1: a.y, x2: b.x, y2: b.y, ...layer });
+    else doorWalls.push({ id: d.id, kind: d.secret ? 'secret-door' : 'door', x1: a.x, y1: a.y, x2: b.x, y2: b.y, open: open[d.id] ?? false, ...layer });
   }
   const out: Wall[] = [];
   for (const w of masonry) {

@@ -121,6 +121,7 @@ export function createSampleScene(): Scene {
       cliffs: [],
       waters: [],
       waterAnimated: true,
+      lightAngle: 45,
     },
     walls,
     zones,

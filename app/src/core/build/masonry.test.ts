@@ -161,3 +161,19 @@ describe('drawnBounds with cliffs', () => {
     expect(drawnBounds([], 50, 0, [c])).toEqual({ x: 850, y: -150, w: 400, h: 300 });
   });
 });
+
+describe('windows on drawn walls (E-35)', () => {
+  const l = m('a', [[0, 0], [100, 0], [100, 100]]);
+
+  it('are window walls in the gap: they block neither sight nor light', () => {
+    const walls = deriveWalls([l], [{ ...door('w', 'a', 50), window: true }], {});
+    const win = walls.find((w) => w.id === 'w')!;
+    expect(win.kind).toBe('window');
+    expect(walls.filter((w) => w.id.startsWith('a#0')).map((w) => [w.x1, w.x2])).toEqual([[0, 30], [70, 100]]);
+    expect(sightBlockers(walls, { x: 50, y: 50 })).not.toContain(win);
+  });
+
+  it('a window is never secret', () => {
+    expect(deriveWalls([l], [{ ...door('w', 'a', 50, { secret: true }), window: true }], {}).find((w) => w.id === 'w')!.kind).toBe('window');
+  });
+});

@@ -184,6 +184,7 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     cliffs: (fromView ? m.cliffs : previous.cliffs).map(copyCliff),
     waters: (fromView ? m.waters : previous.waters).map(copyWater),
     waterAnimated: fromView ? m.waterAnimated : previous.waterAnimated,
+    lightAngle: fromView ? m.lightAngle : previous.lightAngle,
     ...((fromView ? m.origin : previous.origin) ? { origin: { ...(fromView ? m.origin : previous.origin)! } } : {}),
   };
 }
@@ -319,6 +320,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       cliffs: map.cliffs.map(copyCliff),
       waters: map.waters.map(copyWater),
       waterAnimated: map.waterAnimated,
+      lightAngle: map.lightAngle,
       ...(map.origin ? { origin: { ...map.origin } } : {}),
       ...(isDrawn(map.resource) ? { drawn: true } : {}),
     },

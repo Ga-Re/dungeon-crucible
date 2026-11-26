@@ -20,8 +20,8 @@ export const drawingSchema = z.object({
   origin: point,
   width: z.number().positive(),
   height: z.number().positive(),
-  masonry: z.array(z.object({ id: z.string(), points: z.array(point).min(2), closed: z.boolean(), style: z.enum(MASONRY_STYLES), thickness: z.number().positive(), seed: z.number() })),
-  doors: z.array(z.object({ wall: z.string(), at: z.number(), width: z.number().positive(), open: z.boolean() })),
+  masonry: z.array(z.object({ id: z.string(), points: z.array(point).min(2), closed: z.boolean(), style: z.enum(MASONRY_STYLES), thickness: z.number().positive(), seed: z.number(), height: z.number().positive().optional(), fortified: z.boolean().optional() })),
+  doors: z.array(z.object({ wall: z.string(), at: z.number(), width: z.number().positive(), open: z.boolean(), window: z.boolean().optional() })),
   cracks: z.array(z.object({ wall: z.string(), at: z.number(), width: z.number().positive() })),
   /** Cliffs and slopes on the shown layers (E-34): what anyone at the table may see. */
   cliffs: z.array(z.object({
@@ -35,6 +35,8 @@ export const drawingSchema = z.object({
   /** Rivers, lakes and sea on the shown layers (E-35), and whether their water moves. */
   waters: z.array(z.object({ id: z.string(), kind: z.enum(WATER_KINDS), points: z.array(point).min(2), closed: z.boolean(), width: z.number().positive(), seed: z.number() })).default([]),
   waterAnimated: z.boolean().default(true),
+  /** Where the light falls towards (degrees; E-35). */
+  lightAngle: z.number().default(45),
 });
 export type Drawing = z.infer<typeof drawingSchema>;
 
@@ -51,6 +53,7 @@ interface DrawnMap {
   cliffs: readonly Cliff[];
   waters: readonly Water[];
   waterAnimated: boolean;
+  lightAngle?: number;
   /** The map's fog biome: cliffs look after it. */
   biome: string;
   layers: readonly MapLayer[];
@@ -80,10 +83,10 @@ const wireCliff = ({ layer: _l, ...c }: Cliff, areas: readonly BiomeArea[]): Dra
   return { ...c, points: c.points.map((p) => ({ x: p.x, y: p.y })), ...(biome ? { biome } : {}) };
 };
 
-const wire = (w: Masonry): Drawing['masonry'][number] => ({ id: w.id, points: w.points.map((p) => ({ x: p.x, y: p.y })), closed: w.closed, style: w.style, thickness: w.thickness, seed: w.seed });
+const wire = (w: Masonry): Drawing['masonry'][number] => ({ id: w.id, points: w.points.map((p) => ({ x: p.x, y: p.y })), closed: w.closed, style: w.style, thickness: w.thickness, seed: w.seed, ...(w.height ? { height: w.height } : {}), ...(w.fortified ? { fortified: true } : {}) });
 
 function area(map: DrawnMap) {
-  return { origin: { x: map.origin?.x ?? 0, y: map.origin?.y ?? 0 }, width: map.widthPx, height: map.heightPx, biome: map.biome };
+  return { origin: { x: map.origin?.x ?? 0, y: map.origin?.y ?? 0 }, width: map.widthPx, height: map.heightPx, biome: map.biome, lightAngle: map.lightAngle ?? 45 };
 }
 
 const empty = (map: DrawnMap) => !map.masonry.length && !map.cliffs.length && !map.waters.length && !map.drawn;
@@ -103,6 +106,11 @@ export function playerDrawing(map: DrawnMap, doorStates: Readonly<Record<string,
   const cracks: Drawing['cracks'] = [];
   for (const d of map.masonryDoors) {
     if (!ids.has(d.wall)) continue;
+    // A window is always seen for what it is; a secret door only once found.
+    if (d.window) {
+      doors.push({ wall: d.wall, at: d.at, width: d.width, open: false, window: true });
+      continue;
+    }
     const known = !d.secret || doorStates[foundKey(d.id)] === true;
     if (known) doors.push({ wall: d.wall, at: d.at, width: d.width, open: doorStates[d.id] === true });
     else if (d.crack) cracks.push({ wall: d.wall, at: d.at, width: d.width });
@@ -119,7 +127,7 @@ export function dmDrawing(map: DrawnMap, doorStates: Readonly<Record<string, boo
   const active = layersOn ? activeLayers(map.layers, layersOn) : null;
   const shown = active ? map.masonry.filter((w) => active.has(elementLayer(w))) : map.masonry;
   const ids = new Set(shown.map((w) => w.id));
-  const doors = map.masonryDoors.filter((d) => ids.has(d.wall)).map((d) => ({ wall: d.wall, at: d.at, width: d.width, open: doorStates[d.id] === true, secret: d.secret }));
+  const doors = map.masonryDoors.filter((d) => ids.has(d.wall)).map((d) => ({ wall: d.wall, at: d.at, width: d.width, open: doorStates[d.id] === true, secret: !d.window && d.secret, ...(d.window ? { window: true } : {}) }));
   const cliffs = (active ? map.cliffs.filter((c) => active.has(elementLayer(c))) : map.cliffs).map((c) => wireCliff(c, areas));
   const waters = (active ? map.waters.filter((w) => active.has(elementLayer(w))) : map.waters).map(wireWater);
   return { ...area(map), masonry: shown.map(wire), doors, cracks: [], cliffs, waters, waterAnimated: map.waterAnimated };

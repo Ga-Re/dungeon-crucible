@@ -87,3 +87,9 @@ describe('masonrySightWalls after an edit in place', () => {
     expect(masonrySightWalls(s, true).find((w) => w.id.startsWith('m-a#0~1'))?.x2).toBe(300);
   });
 });
+
+describe('windows are not doors', () => {
+  it('a click never opens a window', () => {
+    expect(toggledMasonryDoor([{ id: 'w', wall: 'm-a', at: 50, width: 40, secret: false, crack: false, window: true }], {}, 'w')).toBeNull();
+  });
+});

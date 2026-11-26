@@ -60,7 +60,7 @@ describe('dmDrawing', () => {
 describe('a drawn map without walls yet', () => {
   it('still has its drawing (its area) for the TV and the DM', () => {
     const empty = { ...map, masonry: [], masonryDoors: [], drawn: true };
-    expect(playerDrawing(empty, {}, {})).toEqual({ origin: { x: -50, y: -20 }, width: 400, height: 200, biome: 'nebel', masonry: [], doors: [], cracks: [], cliffs: [], waters: [], waterAnimated: true });
+    expect(playerDrawing(empty, {}, {})).toEqual({ origin: { x: -50, y: -20 }, width: 400, height: 200, biome: 'nebel', lightAngle: 45, masonry: [], doors: [], cracks: [], cliffs: [], waters: [], waterAnimated: true });
     expect(dmDrawing(empty, {})).not.toBeNull();
   });
 
@@ -106,5 +106,16 @@ describe('water for the TV (E-35)', () => {
     const d = playerDrawing({ ...map, masonry: [], masonryDoors: [], waters: [w('a'), w('b', 'upper')], waterAnimated: false }, {}, {})!;
     expect(d.waters.map((x) => x.id)).toEqual(['a']);
     expect(d.waterAnimated).toBe(false);
+  });
+});
+
+describe('windows, wall height and light for the TV (E-35)', () => {
+  it('a window is always shown, marked as one; walls carry height and fortification; the map its light', () => {
+    const wall = { id: 'm-w', points: [{ x: 0, y: 0 }, { x: 300, y: 0 }], closed: false, style: 'brick' as const, thickness: 10, seed: 1, height: 40, fortified: true };
+    const win = { id: 'w', wall: 'm-w', at: 50, width: 40, secret: true, crack: false, window: true };
+    const d = playerDrawing({ ...map, masonry: [wall], masonryDoors: [win], lightAngle: 120 }, {}, {})!;
+    expect(d.doors).toEqual([{ wall: 'm-w', at: 50, width: 40, open: false, window: true }]);
+    expect(d.masonry[0]).toMatchObject({ height: 40, fortified: true });
+    expect(d.lightAngle).toBe(120);
   });
 });

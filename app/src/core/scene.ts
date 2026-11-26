@@ -153,6 +153,8 @@ export interface MapInfo {
   /** Drawn rivers, lakes and sea (E-35), and whether their water moves. */
   waters: Water[];
   waterAnimated: boolean;
+  /** Where the light falls towards in the 2.5D look (degrees; 45: to the lower right). */
+  lightAngle: number;
   /** Top left of a drawn map's area; none: 0, 0. */
   origin?: Point;
   /** A drawn map (E-33): no picture, its drawn walls are its picture. */
@@ -181,7 +183,7 @@ export interface MapAssetPlacement {
 }
 
 /** Catalog defaults of a map that has none yet. */
-export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets' | 'layers' | 'masonry' | 'masonryDoors' | 'cliffs' | 'waters' | 'waterAnimated'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [], layers: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true };
+export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets' | 'layers' | 'masonry' | 'masonryDoors' | 'cliffs' | 'waters' | 'waterAnimated' | 'lightAngle'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [], layers: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45 };
 
 /** Map elements hidden in a scene (DC-103): kept apart, so vision, light and the TV never see them. */
 export interface HiddenElements {

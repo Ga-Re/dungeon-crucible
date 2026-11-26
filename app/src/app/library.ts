@@ -282,7 +282,7 @@ export async function createDrawnMap(name: string): Promise<string | null> {
     kind: 'map', schemaVersion: MAP_VERSION, name, resource: DRAWN_RESOURCE, isVideo: false,
     widthPx: area.w, heightPx: area.h, origin: { x: area.x, y: area.y },
     tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
-    layers: [], walls: [], zones: [], pois: [], lights: [], ambient: 'dark', assets: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true,
+    layers: [], walls: [], zones: [], pois: [], lights: [], ambient: 'dark', assets: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45,
   };
   await writeDoc(file, MapSidecarSchema, doc);
   log('log.drawnMapCreated', { name });

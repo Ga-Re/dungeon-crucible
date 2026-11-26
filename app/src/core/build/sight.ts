@@ -65,7 +65,7 @@ export function withMasonry(walls: readonly Wall[], extra: readonly Wall[]): rea
 /** The scene's door states with door `id` opened or closed; a secret door once opened stays found. Null: no such door. */
 export function toggledMasonryDoor(doors: readonly BuildDoor[], states: Readonly<Record<string, boolean>>, id: string): Record<string, boolean> | null {
   const d = doors.find((x) => x.id === id);
-  if (!d) return null;
+  if (!d || d.window) return null;
   const open = !states[id];
   return { ...states, [id]: open, ...(d.secret && open ? { [foundKey(id)]: true } : {}) };
 }

@@ -3,7 +3,7 @@ import { changedRegion } from './dirty';
 import type { Drawing } from './playerDrawing';
 
 const wall = (id: string, x: number, style: Drawing['masonry'][number]['style'] = 'dungeon-stone') => ({ id, points: [{ x, y: 0 }, { x, y: 700 }], closed: false, style, thickness: 14, seed: 1 });
-const base: Drawing = { origin: { x: 0, y: 0 }, width: 2800, height: 700, masonry: [wall('a', 140), wall('b', 2660)], doors: [], cracks: [], cliffs: [], biome: 'nebel', waters: [], waterAnimated: true };
+const base: Drawing = { origin: { x: 0, y: 0 }, width: 2800, height: 700, masonry: [wall('a', 140), wall('b', 2660)], doors: [], cracks: [], cliffs: [], biome: 'nebel', waters: [], waterAnimated: true, lightAngle: 45 };
 
 describe('changedRegion', () => {
   it('is nothing when nothing that is painted changed (door states are drawn apart)', () => {
@@ -59,5 +59,6 @@ describe('changedRegion with cliffs (E-34)', () => {
 
   it('repaints everything when the biome changes (cliffs look after it)', () => {
     expect(changedRegion(base, { ...base, biome: 'schnee' }, 70)).toBe('all');
+    expect(changedRegion(base, { ...base, lightAngle: 200 }, 70)).toBe('all');
   });
 });

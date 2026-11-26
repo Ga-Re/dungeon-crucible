@@ -61,9 +61,11 @@ export const masonrySchema = z.object({
   thickness: z.number().positive(),
   seed: z.number().int(),
   layer: layerRef,
+  height: z.number().positive().optional(),
+  fortified: z.boolean().optional(),
 });
 /** A door on a drawn wall (E-33): its centre as the distance along the wall; open and found are scene state. */
-export const masonryDoorSchema = z.object({ id, wall: id, at: z.number().min(0), width: z.number().positive(), secret: z.boolean().default(false), crack: z.boolean().default(false) });
+export const masonryDoorSchema = z.object({ id, wall: id, at: z.number().min(0), width: z.number().positive(), secret: z.boolean().default(false), crack: z.boolean().default(false), window: z.boolean().optional() });
 /** A drawn cliff or slope (E-34): its upper side is left of its direction (as in DC-014). */
 export const cliffSchema = z.object({
   id,
@@ -169,6 +171,8 @@ export const MapSidecarSchema = z.object({
   /** Drawn rivers, lakes and sea (E-35), and whether their water moves (per map). */
   waters: z.array(waterSchema).default([]),
   waterAnimated: z.boolean().default(true),
+  /** Where the light falls towards in the 2.5D look (degrees, map coordinates; 45: to the lower right, E-35). */
+  lightAngle: z.number().default(45),
   /** Top left of a drawn map's area (map px; it grows left and up too). None: 0, 0. */
   origin: z.object({ x: z.number(), y: z.number() }).optional(),
 });

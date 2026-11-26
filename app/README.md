@@ -82,21 +82,27 @@ Measures whether the TV keeps 60 FPS: a 4K video map, fog with holes (living fog
 Mittel by default), 20 tokens and a moving camera, drawn by the real renderer in the table window
 while the DM window is open. Budget: at most 1 % missed refreshes at 4K/60 Hz.
 
-1. Make the 4K test video once (needs ffmpeg) and copy it into your campaign folder as
-   `maps/bench-4k.mp4`:
+1. Make the 4K test video once (needs ffmpeg). It is written to `app/bench-assets/bench-4k.mp4`
+   (git-ignored, never committed):
 
    ```bash
    npm run bench:video
    ```
 
-2. Open that campaign folder in the app once (it is reopened on start, so the file may be read), then start:
+2. Copy it into the **library of your root folder**, e.g. `<root folder>/library/bench-4k.mp4`. The app
+   serves media only from `<root folder>/library/` (the asset protocol never serves campaign data), and the
+   root folder is the one chosen on the start screen – it is remembered on this device and loaded on
+   start, so choose it in the app once before benchmarking. As a video in the library it also shows up
+   in the map catalog; move it to the trash there when you no longer need it.
+
+3. Start the benchmark with the absolute path of that copy:
 
    ```bash
-   VITE_BENCH_VIDEO="/absolute/path/to/campaign/maps/bench-4k.mp4" npm run bench
+   VITE_BENCH_VIDEO="/absolute/path/to/root folder/library/bench-4k.mp4" npm run bench
    ```
 
    Open the table window on the TV. `VITE_BENCH_QUALITY=off|medium|high` picks the fog look,
    `VITE_BENCH_SECONDS` the measurement length.
 
-3. After about 40 s the verdict appears on the TV and in the terminal between
+4. After about 40 s the verdict appears on the TV and in the terminal between
    `===== BENCH RESULTS` and `===== END`; it is also saved in `app/bench-results/`.

@@ -156,6 +156,8 @@ function DmMap() {
       const cell = sc.map.grid.cellWidth;
       // Drawn walls (E-33): a drawn map's picture, or drawn over the picture map; in a scene those of its active layers.
       const drawing = dmDrawing(sc.map, sc.masonryDoorsOpen, state.layer === 'map' ? undefined : sc.layersOn, sc.zones);
+      // Moving water, when the map's water is animated (E-35).
+      r.setWater(drawing && drawing.waterAnimated && drawing.waters.length ? { waters: drawing.waters, cliffs: drawing.cliffs, cell } : null);
       if (sc.map.drawn && drawing) void map?.setDrawn(drawing, cell);
       else {
         void map?.set(sc.map.imageUrl, sc.map.isVideo);

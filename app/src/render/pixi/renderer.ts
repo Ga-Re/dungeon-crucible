@@ -29,6 +29,7 @@ import {
 import type { Camera, Size } from "./camera";
 import { disposeFog } from "./fog-dispose";
 import { shiftGrid, shiftLighting, shiftPolygons, ZERO, type Origin } from "./origin";
+import { buildWaterLayer, type WaterHandle, type WaterScene } from "./water-layer";
 import { easeOut, fadeProgress } from "./fog-fade";
 import { mapTiles } from "./map-tiles";
 import {
@@ -267,6 +268,8 @@ export interface Renderer {
   setDrawing(image: MapImage | null, origin?: Origin): void;
   /** Dungeon Crucible (E-33): doors and cracks of drawn walls, above them; replaces those set before. */
   setDecals(decals: readonly Decal[]): void;
+  /** Dungeon Crucible (E-35): moving water over the drawn water; `null` stills it (the painted water stays). */
+  setWater(scene: WaterScene | null): void;
   /**
    * Dungeon Crucible (E-33): paints only `region` (picture px) of the painted map – or of the
    * drawing over a picture map – again, from `image` of the same size. False when that is not
@@ -360,6 +363,12 @@ export async function createRenderer(
   const decalLayer = new Container();
   world.addChild(decalLayer);
   const decalTextures = new Map<HTMLCanvasElement, Texture>();
+  // Moving water (E-35): over the drawing, under grid, assets, tokens and fog.
+  const waterHost = new Container();
+  world.addChild(waterHost);
+  let water: WaterHandle | null = null;
+  let waterKey: string | null = null;
+  const waterStart = now();
   // Grid lines (T-106b): above the map (which goes in at index 0), below the fog (added last).
   const gridLayer = new Graphics();
   world.addChild(gridLayer);
@@ -1077,6 +1086,7 @@ export async function createRenderer(
       try {
         stepFade();
         stepLiving();
+        water?.setTime((now() - waterStart) / 1000);
         stepOutgoing();
         stepGlides();
         stepFlicker();
@@ -1100,7 +1110,7 @@ export async function createRenderer(
         resolve();
       });
       // A fade, a glide or drifting fog draws every frame; otherwise drawing stays on demand.
-      if (fade || outgoing || glides.size > 0 || drifting()) requestDraw();
+      if (fade || outgoing || glides.size > 0 || drifting() || water) requestDraw();
     });
   };
 
@@ -1138,6 +1148,18 @@ export async function createRenderer(
       drawMemory();
       drawLighting();
       drawGrid();
+      requestDraw();
+    },
+    setWater(scene) {
+      const key = scene ? JSON.stringify(scene) : null;
+      if (key === waterKey) return;
+      waterKey = key;
+      water?.destroy();
+      water = null;
+      if (scene && (scene.waters.length > 0)) {
+        water = buildWaterLayer(scene);
+        waterHost.addChild(water.container);
+      }
       requestDraw();
     },
     setDecals(decals) {
@@ -1310,6 +1332,8 @@ export async function createRenderer(
       for (const child of decalLayer.removeChildren()) child.destroy();
       for (const texture of decalTextures.values()) texture.destroy(true);
       decalTextures.clear();
+      water?.destroy();
+      water = null;
       drawTokens([]);
       drawAssets([]);
       for (const entry of assetTextures.values()) {

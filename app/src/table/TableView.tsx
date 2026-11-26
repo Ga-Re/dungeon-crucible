@@ -71,6 +71,8 @@ export function TableView({ source }: { source: FrameSource }) {
         lastSeq = f.seq;
         const cell = f.map.grid.cellWidth;
         // A drawn map (E-33) has no picture: its drawing is its picture; else it lies over the picture.
+        const d = f.map.drawn;
+        r.setWater(d && d.waterAnimated && d.waters.length ? { waters: d.waters, cliffs: d.cliffs, cell } : null);
         if (f.map.imageUrl === null && f.map.drawn) void map?.setDrawn(f.map.drawn, cell);
         else {
           void map?.set(f.map.imageUrl, f.map.isVideo);

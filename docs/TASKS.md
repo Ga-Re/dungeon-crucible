@@ -336,7 +336,9 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     eine ausgeschaltete Quelle wählt sie nur aus (vorher Absturz); im Spiel gehen Lichter und Assets beim Klick
     vor; Stoß zweier Wandstücke zählt als eine Wand; Wände werden nur gerechnet, wenn jemand eine Quelle hört;
     nicht abspielbare Dateien stehen im Protokoll; Einmal-Effekte (sfx) sind keine Quellen. Das Soundboard-Panel ist für eine
-    weitere Spalte zu schmal (dort überlappen schon die drei Spalten – eigener Punkt, nicht Teil dieser Aufgabe).
+    weitere Spalte zu schmal. ✓ Behoben (DM 2026-11-26, `feature/soundboard-layout`): Die Spalten des Soundboards
+    überlappten in schmalen Panels; jetzt brechen sie unter 200 px Breite in Zeilen um, Regler und
+    Effekt-Knöpfe passen sich an (in der App auf Deutsch geprüft: schmal untereinander, breit nebeneinander).
 - **DC-105 Szenenübergang** (T-135): Übergang beim Szenenwechsel auf dem TV (z. B. Ausblenden über Schwarz, Dauer),
   danach als Standard je Karte (T-176b).
 - **DC-012 Kartenkatalog der Bibliothek** – geht in DC-093 auf.

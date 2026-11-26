@@ -113,6 +113,14 @@ describe('persistence', () => {
     expect(sceneFromDocuments(without, null, null).map.transition).toBeUndefined();
   });
 
+  it('a map\'s look (turn, cut, adjustment) goes into the map file and back (DC-022)', () => {
+    const forge = createSampleScene();
+    forge.map.look = { rotation: 90, crop: { x: 10, y: 20, w: 300, h: 200 }, adjust: { brightness: 1.2, contrast: 1, saturation: 0.8, hue: 15 } };
+    const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(forge, 'builtin:crypt'))));
+    expect(map.look).toEqual(forge.map.look);
+    expect(sceneFromDocuments(map, null, null).map.look).toEqual(forge.map.look);
+  });
+
   it('keeps secret zones locked on a fresh scene', () => {
     const scene = createSampleScene();
     const map = mapSidecarFromScene(scene, 'builtin:crypt');

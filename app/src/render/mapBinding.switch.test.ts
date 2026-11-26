@@ -30,3 +30,15 @@ describe('changing the map', () => {
     expect(calls.at(-1)).toEqual({ url: 'b.png' });
   });
 });
+
+describe('cut and adjustment of a picture (DC-022)', async () => {
+  const { cropIn, pictureFilter } = await import('./mapBinding');
+  it('the cut stays inside the picture, in whole pixels', () => {
+    expect(cropIn(undefined, 100, 80)).toBeNull();
+    expect(cropIn({ x: -5, y: 10.4, w: 500, h: 30 }, 100, 80)).toEqual({ x: 0, y: 10, w: 100, h: 30 });
+  });
+  it('an adjustment becomes one filter', () => {
+    expect(pictureFilter(undefined)).toBe('');
+    expect(pictureFilter({ brightness: 1.2, contrast: 0.9, saturation: 1, hue: -20 })).toBe('brightness(1.2) contrast(0.9) saturate(1) hue-rotate(-20deg)');
+  });
+});

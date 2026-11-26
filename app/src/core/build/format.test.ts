@@ -17,9 +17,9 @@ function drawnMap() {
   return MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(scene, 'builtin:crypt', 'map'))));
 }
 
-describe('map file version 10 (E-33, DC-119b/f, E-37, E-38)', () => {
-  it('is version 10', () => {
-    expect(MAP_VERSION).toBe(10);
+describe('map file version 11 (E-33, DC-119b/f, E-37, E-38, E-42)', () => {
+  it('is version 11', () => {
+    expect(MAP_VERSION).toBe(11);
   });
 
   it('reads a version 5 map without drawn walls', () => {

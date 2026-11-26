@@ -16,6 +16,8 @@ export interface OverlayView {
   zoom: number;
   x: number;
   y: number;
+  /** The map's turn (E-42); none: upright. */
+  rot?: 0 | 90 | 180 | 270;
 }
 
 export interface OverlayState {
@@ -162,7 +164,10 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
   const cell = scene.map.grid.cellWidth;
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, g.canvas.width, g.canvas.height);
-  g.setTransform(dpr * view.zoom, 0, 0, dpr * view.zoom, dpr * view.x, dpr * view.y);
+  // Turned with the map (E-42), as the renderer's camera.
+  const a = ((view.rot ?? 0) * Math.PI) / 180;
+  const k = dpr * view.zoom;
+  g.setTransform(Math.round(Math.cos(a)) * k, Math.round(Math.sin(a)) * k, -Math.round(Math.sin(a)) * k, Math.round(Math.cos(a)) * k, dpr * view.x, dpr * view.y);
   const px = 1 / view.zoom;
 
   g.strokeStyle = 'rgba(255,255,255,.15)';

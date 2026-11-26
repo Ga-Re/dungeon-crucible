@@ -110,6 +110,18 @@ const soundRef = z.string().min(1);
  * quieter towards the edge when `fade`. Plays only in the Orchestrator, never on the TV.
  */
 export const mapSoundSchema = z.object({ id, sound: soundRef, x: z.number(), y: z.number(), radiusFt: z.number().positive(), volume: z.number().min(0).max(1), fade: z.boolean().default(true), layer: layerRef });
+/**
+ * How a map's picture is shown (DC-022, E-42), never changing the file: turned in 90° steps (the
+ * whole map turns, everything on it with it), cut to a rectangle (picture px), and adjusted.
+ */
+export const mapLookSchema = z.object({
+  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).default(0),
+  crop: z.object({ x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }).optional(),
+  /** 1 = unchanged; hue in degrees. */
+  adjust: z.object({ brightness: z.number().min(0).max(3), contrast: z.number().min(0).max(3), saturation: z.number().min(0).max(3), hue: z.number().min(-180).max(180) }).optional(),
+});
+export type MapLook = z.infer<typeof mapLookSchema>;
+
 /** How the TV changes to a scene on this map (DC-105, E-38): fade, through black or a hard cut, and how long. */
 export const transitionSchema = z.object({ kind: z.enum(['fade', 'black', 'cut']), seconds: z.number().min(0).max(10) });
 /** A map's sound everywhere (E-37): wind, a snowstorm. */
@@ -137,7 +149,7 @@ export const mapLayerSchema = z.object({
 export type MapLayer = z.infer<typeof mapLayerSchema>;
 
 /** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 10;
+export const MAP_VERSION = 11;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
 export const SCENE_VERSION = 11;
 
@@ -188,6 +200,8 @@ export const MapSidecarSchema = z.object({
   ambientSound: ambientSoundSchema.optional(),
   /** How the TV changes to a scene on this map (E-38, version 10); none: a one-second fade. */
   transition: transitionSchema.optional(),
+  /** How the picture is shown (E-42, version 11): turned, cut, adjusted; none: as it is. */
+  look: mapLookSchema.optional(),
   /** What is revealed when a new scene starts on this map (painted in the Map Forge, E-26). */
   startFog: levelFogSchema.optional(),
   /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */

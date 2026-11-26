@@ -35,7 +35,7 @@ import type { MonitorInfo } from '../platform/bridge';
 import { emptyScene } from '../core/emptyScene';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import type { AssetKind, AssetSidecar, Creature, MapLayer, Player } from '../core/sidecar';
+import type { AssetKind, AssetSidecar, Creature, MapLayer, MapLook, Player } from '../core/sidecar';
 import { missingPartyTokens, tokenFromCreature } from '../core/party';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
@@ -183,6 +183,8 @@ export interface AppState {
   placing: Placing | null;
   /** The Map Forge's leak check (DC-025): open, with its test figure (not saved). */
   leakCheck: { figure: Point | null; darkvisionFt: number } | null;
+  /** "Adjust picture" (DC-022): open with its preview, or not. */
+  lookCommand: LookCommand | null;
   /** The placing mode's options as last used (kept for the next time, this session). */
   placeOptions: Omit<PlaceOptions, 'variant'> & { snap: boolean };
   /** Houses a player character came into whose interior waits for the DM's yes (E-29; not saved). */
@@ -298,6 +300,7 @@ function initial(): AppState {
     interiorAsks: [],
     placing: null,
     leakCheck: null,
+    lookCommand: null,
     placeOptions: { randomRotation: false, rotationStep: 90, rotation: 0, randomScale: false, scaleSpread: 0.1, snap: true },
     tabs: [],
     activeTab: null,
@@ -2413,6 +2416,61 @@ export function removeLight(id: string): void {
 export function selectLight(id: string | null): void {
   state.selectedLightId = id;
   if (id) state.selectedSoundId = null;
+  emit();
+}
+
+/* ---------- The picture's look (DC-022, E-42) ---------- */
+
+/** "Adjust picture": the look as edited (a preview until OK) and as it was. */
+export interface LookCommand {
+  draft: MapLook;
+  /** A cut is being dragged on the map. */
+  cropping?: boolean;
+}
+
+/** The look the DM window shows: the one being edited, else the map's. */
+export function shownLook(): MapLook | undefined {
+  return state.lookCommand?.draft ?? state.scene.map.look;
+}
+
+export function startLookCommand(): void {
+  if (state.layer !== 'map') return;
+  state.areaCommand = null;
+  state.wallCommand = null;
+  state.placing = null;
+  state.lookCommand = { draft: structuredClone(state.scene.map.look ?? { rotation: 0 }) };
+  emit();
+}
+
+/** Changes the preview (nothing saved yet). */
+export function updateLook(patch: Partial<MapLook>): void {
+  if (!state.lookCommand) return;
+  state.lookCommand = { draft: { ...state.lookCommand.draft, ...patch } };
+  emit();
+}
+
+/** Starts (or ends) dragging a cut on the map. */
+export function setCropping(on: boolean): void {
+  if (!state.lookCommand) return;
+  state.lookCommand = { ...state.lookCommand, cropping: on };
+  emit();
+}
+
+/** OK: the look as one undoable step; unchanged parts (no turn, no cut, no adjustment) are left out. */
+export function finishLookCommand(): void {
+  const c = state.lookCommand;
+  if (!c) return;
+  state.lookCommand = null;
+  checkpoint();
+  const plain = c.draft.rotation === 0 && !c.draft.crop && !c.draft.adjust;
+  if (plain) delete state.scene.map.look;
+  else state.scene.map.look = structuredClone(c.draft);
+  markDirty();
+  emit();
+}
+
+export function cancelLookCommand(): void {
+  state.lookCommand = null;
   emit();
 }
 

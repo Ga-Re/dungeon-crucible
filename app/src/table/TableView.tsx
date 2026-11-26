@@ -141,7 +141,7 @@ export function TableView({ source }: { source: FrameSource }) {
         r.setWater(d && d.waterAnimated && d.waters.length ? { waters: d.waters, cliffs: d.cliffs, cell } : null);
         if (f.map.imageUrl === null && f.map.drawn) void map?.setDrawn(f.map.drawn, cell);
         else {
-          void map?.set(f.map.imageUrl, f.map.isVideo);
+          void map?.set(f.map.imageUrl, f.map.isVideo, f.map.look);
           void map?.setOver(f.map.drawn, cell);
         }
         r.setGrid(f.map.showGrid && f.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: f.map.grid.originX, offsetYPx: f.map.grid.originY, color: '#000000', alpha: 0.35 } : null);

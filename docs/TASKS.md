@@ -618,7 +618,13 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   während des Einmessens schreibt die Vorschau nicht. Schwenken mit mittlerer/rechter Maustaste oder Leertaste. Die
   3-Punkt-Kalibrierung ist entfernt; die Box misst kein gedrehtes Raster (Drehung wird 0, das Feld bleibt in der
   Datei).
-- **DC-022 Zuschneiden, Drehen, Bildanpassung** nicht-destruktiv (T-192, E-42). Branch `feature/map-forge-more`.
+- ✓ **DC-022 Zuschneiden, Drehen, Bildanpassung** nicht-destruktiv (T-192, E-42). Branch `feature/map-forge-more`.
+  Erledigt: Karte v11 `look` (Drehung 0/90/180/270, Zuschnitt, Helligkeit/Kontrast/Sättigung/Farbton). Drehen
+  dreht die **Ansicht** (DM-Fenster über `render/viewTransform.ts`, TV über die Frame-Drehung = Tisch + Karte) –
+  die Daten (Wände, Nebel, Figuren, Szenen) bleiben unverändert und drehen so alle mit. Zuschnitt und Anpassung
+  wirken beim Laden auf eine Kopie des Bildes (`mapBinding`, Video nur Anpassung per CSS-Filter); außerhalb des
+  Zuschnitts schwarz. Befehls-Panel „Bild anpassen“ (Karte › Karte) mit Vorschau, Zuschnitt auf der Karte
+  aufziehen, OK als ein Schritt. Gezeichnete Karten: nur Drehen. In der App geprüft (DM-Fenster und TV).
 - **DC-023 Kartenvarianten** je Ebene (Tag/Nacht/zerstört) (T-191, E-41). Branch `feature/map-forge-more`.
 - **DC-024 UVTT-Import** mit Raster, Wänden, Türen, Lichtern (T-198). **Zurückgestellt** (DM 2026-11-26).
 - ✓ **DC-025 Testfigur und Leck-Prüfung** für Wände (T-194, E-43); automatische Wände aus Bereichen (T-141) später.

@@ -3,7 +3,7 @@ import type { Point, Segment } from './geometry';
 import type { GridConfig, DisplaySpec } from './grid';
 import type { FogEffect, LevelFog, Polygon } from './poly/types';
 import type { Condition } from './rules/rules2024';
-import type { InteriorTrigger, MapLayer } from './sidecar';
+import type { InteriorTrigger, MapLayer, MapLook } from './sidecar';
 import type { Transition } from './transition';
 import type { BuildDoor, Masonry } from './build/masonry';
 import type { Cliff } from './build/cliffs';
@@ -189,6 +189,8 @@ export interface MapInfo {
   ambientSound?: { sound: string; volume: number };
   /** How the TV changes to a scene on this map (E-38); none: the default fade. */
   transition?: Transition;
+  /** How the picture is shown (E-42): turned, cut, adjusted; none: as it is. */
+  look?: MapLook;
 }
 
 export type MapType = 'dungeon' | 'building' | 'region' | 'world' | 'arena';

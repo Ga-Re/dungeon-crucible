@@ -9,7 +9,7 @@ import { floorField } from './handDrawn';
 import type { Bounds, Masonry } from './masonry';
 import type { Drawing } from './playerDrawing';
 
-type AnyDrawing = Pick<Drawing, 'origin' | 'width' | 'height' | 'masonry' | 'doors'> & Partial<Pick<Drawing, 'cliffs' | 'biome' | 'waters' | 'lightAngle'>>;
+type AnyDrawing = Pick<Drawing, 'origin' | 'width' | 'height' | 'masonry' | 'doors'> & Partial<Pick<Drawing, 'cliffs' | 'biome' | 'waters' | 'lightAngle' | 'autoShore' | 'autoGrowth'>>;
 
 /** Farther than this many cells from every wall (and outside closed rings) lies natural ground (E-34). */
 export const FLOOR_REACH_CELLS = 3;
@@ -35,7 +35,7 @@ function union(a: Bounds | null, b: Bounds): Bounds {
 }
 
 export function changedRegion(prev: AnyDrawing, next: AnyDrawing, cell: number, prevCell = cell): Bounds | 'all' | null {
-  if (cell !== prevCell || prev.biome !== next.biome || prev.lightAngle !== next.lightAngle || prev.width !== next.width || prev.height !== next.height || prev.origin.x !== next.origin.x || prev.origin.y !== next.origin.y) return 'all';
+  if (cell !== prevCell || prev.biome !== next.biome || prev.lightAngle !== next.lightAngle || prev.autoShore !== next.autoShore || prev.autoGrowth !== next.autoGrowth || prev.width !== next.width || prev.height !== next.height || prev.origin.x !== next.origin.x || prev.origin.y !== next.origin.y) return 'all';
   const doorsKey = (d: AnyDrawing, id: string) => JSON.stringify(d.doors.filter((x) => x.wall === id).map((x) => [x.at, x.width]));
   const before = new Map(prev.masonry.map((w) => [w.id, w]));
   const after = new Map(next.masonry.map((w) => [w.id, w]));

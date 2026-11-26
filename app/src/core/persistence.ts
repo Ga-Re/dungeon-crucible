@@ -185,6 +185,8 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     waters: (fromView ? m.waters : previous.waters).map(copyWater),
     waterAnimated: fromView ? m.waterAnimated : previous.waterAnimated,
     lightAngle: fromView ? m.lightAngle : previous.lightAngle,
+    autoShore: fromView ? m.autoShore : previous.autoShore,
+    autoGrowth: fromView ? m.autoGrowth : previous.autoGrowth,
     ...((fromView ? m.origin : previous.origin) ? { origin: { ...(fromView ? m.origin : previous.origin)! } } : {}),
   };
 }
@@ -321,6 +323,8 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       waters: map.waters.map(copyWater),
       waterAnimated: map.waterAnimated,
       lightAngle: map.lightAngle,
+      autoShore: map.autoShore,
+      autoGrowth: map.autoGrowth,
       ...(map.origin ? { origin: { ...map.origin } } : {}),
       ...(isDrawn(map.resource) ? { drawn: true } : {}),
     },

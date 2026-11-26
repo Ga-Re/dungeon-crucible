@@ -3,7 +3,7 @@ import { changedRegion } from './dirty';
 import type { Drawing } from './playerDrawing';
 
 const wall = (id: string, x: number, style: Drawing['masonry'][number]['style'] = 'dungeon-stone') => ({ id, points: [{ x, y: 0 }, { x, y: 700 }], closed: false, style, thickness: 14, seed: 1 });
-const base: Drawing = { origin: { x: 0, y: 0 }, width: 2800, height: 700, masonry: [wall('a', 140), wall('b', 2660)], doors: [], cracks: [], cliffs: [], biome: 'nebel', waters: [], waterAnimated: true, lightAngle: 45 };
+const base: Drawing = { origin: { x: 0, y: 0 }, width: 2800, height: 700, masonry: [wall('a', 140), wall('b', 2660)], doors: [], cracks: [], cliffs: [], biome: 'nebel', waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true };
 
 describe('changedRegion', () => {
   it('is nothing when nothing that is painted changed (door states are drawn apart)', () => {

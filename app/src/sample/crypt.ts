@@ -122,6 +122,8 @@ export function createSampleScene(): Scene {
       waters: [],
       waterAnimated: true,
       lightAngle: 45,
+      autoShore: true,
+      autoGrowth: true,
     },
     walls,
     zones,

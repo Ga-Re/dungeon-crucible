@@ -37,6 +37,9 @@ export const drawingSchema = z.object({
   waterAnimated: z.boolean().default(true),
   /** Where the light falls towards (degrees; E-35). */
   lightAngle: z.number().default(45),
+  /** Automatic details (E-35). */
+  autoShore: z.boolean().default(true),
+  autoGrowth: z.boolean().default(true),
 });
 export type Drawing = z.infer<typeof drawingSchema>;
 
@@ -54,6 +57,8 @@ interface DrawnMap {
   waters: readonly Water[];
   waterAnimated: boolean;
   lightAngle?: number;
+  autoShore?: boolean;
+  autoGrowth?: boolean;
   /** The map's fog biome: cliffs look after it. */
   biome: string;
   layers: readonly MapLayer[];
@@ -86,7 +91,7 @@ const wireCliff = ({ layer: _l, ...c }: Cliff, areas: readonly BiomeArea[]): Dra
 const wire = (w: Masonry): Drawing['masonry'][number] => ({ id: w.id, points: w.points.map((p) => ({ x: p.x, y: p.y })), closed: w.closed, style: w.style, thickness: w.thickness, seed: w.seed, ...(w.height ? { height: w.height } : {}), ...(w.fortified ? { fortified: true } : {}) });
 
 function area(map: DrawnMap) {
-  return { origin: { x: map.origin?.x ?? 0, y: map.origin?.y ?? 0 }, width: map.widthPx, height: map.heightPx, biome: map.biome, lightAngle: map.lightAngle ?? 45 };
+  return { origin: { x: map.origin?.x ?? 0, y: map.origin?.y ?? 0 }, width: map.widthPx, height: map.heightPx, biome: map.biome, lightAngle: map.lightAngle ?? 45, autoShore: map.autoShore ?? true, autoGrowth: map.autoGrowth ?? true };
 }
 
 const empty = (map: DrawnMap) => !map.masonry.length && !map.cliffs.length && !map.waters.length && !map.drawn;

@@ -77,7 +77,7 @@ function hash(a: number, b: number): number {
 
 /** Growth pictures tinted for a biome, made once each. */
 const tinted = new Map<string, HTMLCanvasElement>();
-function growthPicture(tex: BuildTextures, slot: PartSlot, biome: string): HTMLCanvasElement {
+export function growthPicture(tex: BuildTextures, slot: PartSlot, biome: string): HTMLCanvasElement {
   const tint = TINT[biome];
   if (!tint) return tex.part[slot];
   const key = `${slot}:${biome}`;

@@ -19,6 +19,7 @@ generated pattern, so every slot is optional. File name = slot, `.webp` (preferr
 | `cliff-rock`, `cliff-earth`, `cliff-scree` | faces of cliffs and slopes from above (E-34) | square, seamless, ~512 px |
 | `growth-grass`, `growth-bush`, `growth-moss` | plants along the upper edge of cliffs | square, transparent background, ~256 px |
 | `ground-grass`, `ground-snow`, `ground-sand`, `ground-ash`, `ground-swamp` | natural ground far from walls, after the biome (E-34) | square, seamless, ~512 px |
+| `shore-reeds`, `shore-stones` | details along shores (E-35) | square, transparent background, ~256 px |
 | `water-river`, `water-deep`, `water-foam` | water surfaces and foam (E-35; foam with transparency) | square, seamless, ~512 px |
 
 Seamless surfaces are blended with themselves when loaded (`seamless`), so small seams are hidden.
@@ -33,3 +34,4 @@ repository. Pillar and corner stone were generated a second time to get a strict
 They were scaled to their slot size and converted to WebP; no third-party picture was used.
 The six cliff and growth pictures and the five grounds were generated the same way on 2026-11-26 (DC-107d).
 The three water pictures were generated the same way on 2026-11-26 (DC-107f).
+The two shore pictures were generated the same way on 2026-11-26 (DC-107g).

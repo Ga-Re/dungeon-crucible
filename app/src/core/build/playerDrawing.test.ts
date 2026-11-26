@@ -60,7 +60,7 @@ describe('dmDrawing', () => {
 describe('a drawn map without walls yet', () => {
   it('still has its drawing (its area) for the TV and the DM', () => {
     const empty = { ...map, masonry: [], masonryDoors: [], drawn: true };
-    expect(playerDrawing(empty, {}, {})).toEqual({ origin: { x: -50, y: -20 }, width: 400, height: 200, biome: 'nebel', lightAngle: 45, masonry: [], doors: [], cracks: [], cliffs: [], waters: [], waterAnimated: true });
+    expect(playerDrawing(empty, {}, {})).toEqual({ origin: { x: -50, y: -20 }, width: 400, height: 200, biome: 'nebel', lightAngle: 45, autoShore: true, autoGrowth: true, masonry: [], doors: [], cracks: [], cliffs: [], waters: [], waterAnimated: true });
     expect(dmDrawing(empty, {})).not.toBeNull();
   });
 

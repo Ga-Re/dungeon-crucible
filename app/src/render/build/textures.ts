@@ -17,7 +17,7 @@ const GROUND_OF: Record<string, GroundSlot> = { schnee: 'ground-snow', wueste: '
 export function groundSlot(biome: string): GroundSlot {
   return GROUND_OF[biome] ?? 'ground-grass';
 }
-export type PartSlot = 'part-cornerstone' | 'part-pillar' | 'part-door' | 'growth-grass' | 'growth-bush' | 'growth-moss';
+export type PartSlot = 'part-cornerstone' | 'part-pillar' | 'part-door' | 'growth-grass' | 'growth-bush' | 'growth-moss' | 'shore-reeds' | 'shore-stones';
 
 export interface BuildTextures {
   /** Seamless, to be repeated (`createPattern`). */
@@ -31,7 +31,7 @@ export const TILE = 512;
 const PART = 256;
 
 const STYLES: MasonryStyle[] = ['dungeon-stone', 'cave-rock', 'brick', 'wood'];
-const PARTS: PartSlot[] = ['part-cornerstone', 'part-pillar', 'part-door', 'growth-grass', 'growth-bush', 'growth-moss'];
+const PARTS: PartSlot[] = ['part-cornerstone', 'part-pillar', 'part-door', 'growth-grass', 'growth-bush', 'growth-moss', 'shore-reeds', 'shore-stones'];
 /** Cliff faces (E-34). */
 const CLIFF_SURFACES: SurfaceSlot[] = ['cliff-rock', 'cliff-earth', 'cliff-scree', 'ground-grass', 'ground-snow', 'ground-sand', 'ground-ash', 'ground-swamp', 'water-river', 'water-deep', 'water-foam'];
 

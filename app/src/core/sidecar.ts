@@ -173,6 +173,9 @@ export const MapSidecarSchema = z.object({
   waterAnimated: z.boolean().default(true),
   /** Where the light falls towards in the 2.5D look (degrees, map coordinates; 45: to the lower right, E-35). */
   lightAngle: z.number().default(45),
+  /** Automatic details (E-35): stones and reeds along shores, plants at the foot of walls on natural ground. */
+  autoShore: z.boolean().default(true),
+  autoGrowth: z.boolean().default(true),
   /** Top left of a drawn map's area (map px; it grows left and up too). None: 0, 0. */
   origin: z.object({ x: z.number(), y: z.number() }).optional(),
 });

@@ -16,6 +16,7 @@ import type { Decal, PaintedImage } from './pixi/renderer';
 import { groundSlot, type BuildTextures } from './build/textures';
 import { paintCliffs } from './cliffsPaint';
 import { paintWater, paintWaterfalls } from './waterPaint';
+import { paintShore, paintWallFeet, paintWornDoors } from './detailsPaint';
 
 /** How each style's outline wavers, by its thickness. */
 const WAVER: Record<MasonryStyle, { amplitude: number; scale: number }> = {
@@ -213,6 +214,22 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
   const height = Math.max(1, Math.ceil(drawing.height));
   const { styles, field, floorMasks, floorBoxes } = geometryOf(drawing, withGround, cell, drawing.masonry.map(asMasonry));
 
+  // Where natural ground lies (not a wall's floor): plants grow at the foot of walls there (E-35).
+  const onGround = (p: { x: number; y: number }) => {
+    if (!field) return false;
+    const c = Math.floor((p.x - ox) / field.step);
+    const r = Math.floor((p.y - oy) / field.step);
+    return c >= 0 && r >= 0 && c < field.cols && r < field.rows && field.styles[r * field.cols + c] === 'ground';
+  };
+  // Worn ground in front of doors (not windows).
+  const wallsById = new Map(drawing.masonry.map((m) => [m.id, asMasonry(m)]));
+  const wornDoors = drawing.doors.flatMap((d) => {
+    const wall = wallsById.get(d.wall);
+    if (!wall || ('window' in d && d.window)) return [];
+    const span = doorSpan(wall, { id: '', wall: wall.id, at: d.at, width: d.width, secret: false, crack: false });
+    return [{ a: pointAt(wall.points, wall.closed, span.from), b: pointAt(wall.points, wall.closed, span.to) }];
+  });
+
   // Natural ground after the biome far from walls (E-34); a wall's floor near it.
   const floorSource = (style: FloorStyle) => (style === 'ground' ? tex.surface[groundSlot(drawing.biome)] : tex.surface[`floor-${style}`]);
 
@@ -337,11 +354,14 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       // From here on in map coordinates.
       g.translate(-left - ox, -top - oy);
       paintFloors(g, left + ox, top + oy, w, h);
+      paintWornDoors(g, wornDoors, cell);
       // Water lies in the ground (E-35); cliffs over it, waterfalls where rivers fall over them.
       paintWater(g, drawing.waters, cell, tex);
+      if (drawing.autoShore !== false) paintShore(g, drawing.waters, cell, tex, drawing.biome);
       // Cliffs and slopes lie on the ground, under the walls (E-34).
       paintCliffs(g, drawing.cliffs, drawing.biome, cell, tex, drawing.lightAngle ?? 45);
       paintWaterfalls(g, drawing.waters, drawing.cliffs, cell);
+      if (drawing.autoGrowth !== false) paintWallFeet(g, drawing.masonry, cell, tex, drawing.biome, onGround);
       paintWalls(g);
       g.restore();
     },

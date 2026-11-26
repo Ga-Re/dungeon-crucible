@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { produceFrame, setNextTransition, state, toggleBlackout } from './store';
 
 /** Scene transitions on the TV (DC-105, E-38). The sample's map has no transition: a one-second fade. */
 describe('the TV changes its picture', () => {
+  beforeEach(() => {
+    state.scene.table.blackout = false;
+    delete state.scene.map.transition;
+    state.nextTransition = null;
+  });
+
   it('blackout fades out, lifting it fades in; each change counts on, and the frame carries it', () => {
     const n = state.tvCut.n;
     toggleBlackout();

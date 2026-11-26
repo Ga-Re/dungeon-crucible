@@ -68,9 +68,11 @@ export function TableView({ source }: { source: FrameSource }) {
 
     /** The transition over everything: the still fading, black coming or going. Done: nothing. */
     const drawCut = (now: number, s: { width: number; height: number }) => {
+      if (!cut) return;
       const g = cutCanvas.getContext('2d');
-      const p = cut ? (now - cut.start) / cut.ms : 1;
-      if (!g || !cut || (p >= 1 && cut.play !== 'out')) {
+      const p = (now - cut.start) / cut.ms;
+      // Done: nothing over the view (after "out" the view is hidden on the black background).
+      if (!g || p >= 1) {
         cut = null;
         cutCanvas.style.visibility = 'hidden';
         return;
@@ -107,12 +109,14 @@ export function TableView({ source }: { source: FrameSource }) {
         blank();
         cut = null;
         cutCanvas.style.visibility = 'hidden';
+        lastCut = -1;
         return;
       }
       const f = latest.frame;
       const s = size();
       // A new change of picture (E-38): the still of what is shown now, before the new frame is drawn.
-      if (f.cut.n !== lastCut) {
+      const newCut = f.cut.n !== lastCut;
+      if (newCut) {
         const first = lastCut === -1;
         lastCut = f.cut.n;
         const timed = !first && f.cut.play !== 'cut' && f.cut.ms > 0;
@@ -146,7 +150,8 @@ export function TableView({ source }: { source: FrameSource }) {
         r.setLighting(f.lighting.darkness > 0 || f.lighting.glows.length ? { ...f.lighting, softEdge: cell * 0.35 } : null);
         const look = lookFromWire(f.fog.look);
         r.setMemory(f.fog.clear, { opacity: f.fog.memoryOpacity, softEdge: look.softEdges ? cell * 0.25 : 0 });
-        r.setFog(f.fog.open, fogOptions({ look, cellSizePx: cell, seedKey: f.map.seedKey, effect: f.fog.effect, opacity: 1, quick: f.fog.quick }));
+        // Another scene's fog comes at once, never grown out of the fog before (DC-105).
+        r.setFog(f.fog.open, fogOptions({ look, cellSizePx: cell, seedKey: f.map.seedKey, effect: f.fog.effect, opacity: 1, quick: f.fog.quick, jump: newCut }));
       }
       r.setCamera(camera);
       drawOverlay(overlay, f, camera, s, now - latest.receivedAt);

@@ -349,7 +349,11 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   fail-closed: Beim Kartenwechsel wird das alte Kartenbild sofort entfernt (vorher stand es bis zum Laden des neuen
   unter dem neuen Nebel). In der App geprüft (Helligkeit des TV-Fensters über die Zeit): Überblenden 83→42,
   über Schwarz 34/12/16/58/83, Verdunkeln 52→0, Freigabe 24→83. Benchmark auf dem TV steht aus (ein Standbild je
-  Übergang, eine 2D-Fläche für ~1 s).
+  Übergang, eine 2D-Fläche für ~1 s). Nach dem Review: Beim Szenenwechsel auf derselben Karte kommt der Nebel der neuen
+  Szene sofort (vorher wuchs er aus dem alten und zeigte die neue Szene kurz, wo die alte offen war); die einmalige
+  Wahl gilt auch auf einer Karte mit „Sofort“; die Freigabe derselben Szene blendet nur ein und übernimmt keine
+  Kartenänderungen (E-30); nach dem Verdunkeln bleibt keine Zeichenarbeit; der Übergang landet nur in der
+  Kartendatei, wenn er vom Standard abweicht.
 - **DC-012 Kartenkatalog der Bibliothek** – geht in DC-093 auf.
 - ✓ **DC-013 Bereiche als Polygon/Ellipse/Lasso**, additiv zeichnen, bearbeiten, Biom-Override, Name, geheim
   (T-108c1, T-260); Begriff „Bereich“ (T-262); „Bereich anlegen“ als Befehls-Panel (E-6). DM-Entscheidungen

@@ -31,7 +31,7 @@ import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { activateSession, buildHooks, checkpoint, clearTabs, subscribe, closeCreatureTab, closeSessionTab, markDirty, openCreatureTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
+import { activateSession, buildHooks, checkpoint, clearTabs, subscribe, closeCreatureTab, closeSessionTab, markDirty, openCreatureTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, fadeTvIn, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
 import { applySceneAmbience, refreshAudioFiles, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
@@ -585,7 +585,8 @@ export async function putOnTv(scenePath: string | null): Promise<void> {
     state.scene.table.blackout = false;
   }
   if (scenePath === state.tvScenePath) {
-    if (released) setTvScene(scenePath, true);
+    // Only the fade in: map edits wait for "apply to the TV" (E-30).
+    if (released) fadeTvIn();
     else emit();
     return;
   }

@@ -27,6 +27,11 @@ export interface FogOptionInput {
   opacity: number;
   /** A change from token movement: no ragged spread, a short transition. */
   quick: boolean;
+  /**
+   * Another scene came (DC-105): its fog at once, never grown out of the scene before – on the
+   * same map that fog would show the new scene where the old one was open.
+   */
+  jump?: boolean;
 }
 
 export function fogOptions(i: FogOptionInput): FogOptions {
@@ -35,8 +40,8 @@ export function fogOptions(i: FogOptionInput): FogOptions {
   return {
     opacity: i.opacity,
     softEdge: softEdgeWidth(i.cellSizePx, i.look.softEdges),
-    fade: i.quick ? Math.min(fadeMs, QUICK_FADE_MS) : fadeMs,
-    ...(i.quick ? {} : { speed: fogSpeed(i.look, i.cellSizePx, i.seedKey) }),
+    fade: i.jump ? 0 : i.quick ? Math.min(fadeMs, QUICK_FADE_MS) : fadeMs,
+    ...(i.quick || i.jump ? {} : { speed: fogSpeed(i.look, i.cellSizePx, i.seedKey) }),
     coverFrom: i.look.coverFrom,
     ...(living ? { living } : {}),
   };

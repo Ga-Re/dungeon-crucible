@@ -725,6 +725,7 @@ export function clearTabs(): void {
   state.vault.drafts = {};
   state.tvScenePath = null;
   state.tvAsk = null;
+  state.nextTransition = null;
 }
 
 /**
@@ -735,15 +736,23 @@ export function clearTabs(): void {
 export function setTvScene(scenePath: string | null, fromBlack = false): void {
   if (scenePath && !isSceneOpen(scenePath)) return;
   const before = state.tvScenePath;
+  // Fading out to nothing goes as the map leaving says.
+  const leaving = tvTransition();
   state.tvScenePath = scenePath;
   state.tvAsk = null;
   snapshotTvMap();
   if (scenePath !== before || fromBlack) {
-    if (!scenePath) cutTv('out');
+    if (!scenePath) cutTv('out', leaving);
     else if (!before || fromBlack) cutTv('in');
     else cutTv(state.nextTransition ?? tvTransition().kind);
     state.nextTransition = null;
   }
+  emit();
+}
+
+/** The TV, black until now, fades in on the scene it has (E-38) – its map stays as the TV has it (E-30). */
+export function fadeTvIn(): void {
+  cutTv('in');
   emit();
 }
 
@@ -752,10 +761,13 @@ function tvTransition(): Transition {
   return tvView()?.scene.map.transition ?? DEFAULT_TRANSITION;
 }
 
-/** The TV changes its picture: `play` for as long as the TV scene's map says (a cut: at once). */
-function cutTv(play: TransitionPlay): void {
-  const t = tvTransition();
-  const ms = play === 'cut' || t.kind === 'cut' ? 0 : Math.round(t.seconds * 1000);
+/**
+ * The TV changes its picture: `play` (a cut: at once) for as long as `t` – the TV scene's map –
+ * says. A fade chosen for this change only also plays on a map that cuts, at the default length.
+ */
+function cutTv(play: TransitionPlay, t: Transition = tvTransition()): void {
+  const seconds = t.kind === 'cut' ? (play === 'fade' || play === 'black' ? DEFAULT_TRANSITION.seconds : 0) : t.seconds;
+  const ms = play === 'cut' ? 0 : Math.round(seconds * 1000);
   state.tvCut = { n: state.tvCut.n + 1, play: ms === 0 ? 'cut' : play, ms };
 }
 
@@ -2546,7 +2558,10 @@ export function applyMapSettings(s: MapSettings): boolean {
   m.biome = s.biome;
   if (s.ambientSound) m.ambientSound = { ...s.ambientSound };
   else delete m.ambientSound;
-  m.transition = { ...s.transition };
+  // Written only when it is not the default, so maps keep no field they do not need.
+  const plain = s.transition.kind === DEFAULT_TRANSITION.kind && s.transition.seconds === DEFAULT_TRANSITION.seconds;
+  if (plain && !m.transition) delete m.transition;
+  else m.transition = { ...s.transition };
   state.scene.ambient = s.ambient;
   recomputeVision();
   markDirty();

@@ -9,6 +9,7 @@ import type { BuildSnap } from '../core/build/editing';
 import { MASONRY_STYLES } from '../core/build/masonry';
 import { CLIFF_FORMS, CLIFF_KINDS, type CliffForm, type CliffKind } from '../core/build/cliffs';
 import { WATER_KINDS, type WaterKind } from '../core/build/water';
+import { FLOOR_STYLES, type FloorPaint } from '../core/build/floors';
 import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
@@ -27,7 +28,7 @@ export function BuildCommandPanel() {
       endBuildCommand(true);
     }
   };
-  const title = t(c.kind === 'wall' ? 'build.cmd.wall' : c.kind === 'cliff' ? 'build.cmd.cliff' : c.kind === 'water' ? 'build.cmd.water' : 'build.cmd.door');
+  const title = t(c.kind === 'wall' ? 'build.cmd.wall' : c.kind === 'cliff' ? 'build.cmd.cliff' : c.kind === 'water' ? 'build.cmd.water' : c.kind === 'floor' ? 'build.cmd.floor' : 'build.cmd.door');
   return (
     <form
       className="command-panel"
@@ -43,7 +44,21 @@ export function BuildCommandPanel() {
         <button type="button" className="ab-btn" title={t('build.done')} aria-label={t('build.done')} onClick={() => endBuildCommand(true)}><Icon name="close" /></button>
       </div>
       <div className="cmd-body">
-        {c.kind === 'water' ? (
+        {c.kind === 'floor' ? (
+          <>
+            <label className="cmd-field">
+              <span>{t('build.floor')}</span>
+              <select value={c.floorStyle} onChange={(e) => updateBuildCommand({ floorStyle: e.target.value as FloorPaint })}>
+                {FLOOR_STYLES.map((f) => <option key={f} value={f}>{t(`build.floor.${f}` as MessageKey)}</option>)}
+              </select>
+            </label>
+            <label className="cmd-field">
+              <span>{t('build.brush', { n: c.brushCells })}</span>
+              <input type="range" min={0.5} max={8} step={0.5} value={c.brushCells} onChange={(e) => updateBuildCommand({ brushCells: Number(e.target.value) })} />
+            </label>
+            <p className="hint">{t('hint.buildFloor')}</p>
+          </>
+        ) : c.kind === 'water' ? (
           <>
             <WaterFields kind={c.waterKind} widthFt={c.riverWidthFt} onChange={(p) => updateBuildCommand({ ...(p.kind ? { waterKind: p.kind } : {}), ...(p.widthFt ? { riverWidthFt: p.widthFt } : {}) })} />
             <label className="cmd-field">

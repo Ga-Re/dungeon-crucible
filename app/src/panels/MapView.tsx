@@ -34,7 +34,7 @@ import { DARKNESS } from '../core/projection';
 import { dmDrawing } from '../core/build/playerDrawing';
 import { doorSpan, pointAt } from '../core/build/masonry';
 import { activeLayers, elementLayer } from '../core/layers';
-import { addBuildPoint, addBuildStroke, buildHit, buildTarget, deleteBuildSelection, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, slideBuildDoor, undoBuildPoint } from '../app/build';
+import { addBuildPoint, addBuildStroke, paintFloorStroke, buildHit, buildTarget, deleteBuildSelection, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, slideBuildDoor, undoBuildPoint } from '../app/build';
 import { BuildCommandPanel } from './BuildCommandPanel';
 import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
@@ -59,7 +59,7 @@ const HINTS: Partial<Record<string, MessageKey>> = {
   'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
   'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom', light: 'hint.light',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
-  'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor', 'build-cliff': 'hint.buildCliff', 'build-water': 'hint.buildWater',
+  'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor', 'build-cliff': 'hint.buildCliff', 'build-water': 'hint.buildWater', 'build-floor': 'hint.buildFloor',
 };
 
 type Drag =
@@ -80,7 +80,7 @@ type Drag =
   | { kind: 'build-point'; line: { kind: 'wall' | 'cliff' | 'water'; wall: string }; index: number; to: Point; moved: boolean }
   | { kind: 'build-door'; id: string; moved: boolean }
   /** A stroke while drawing a wall or cliff (E-35): freehand, or straight with Shift; a click if it barely moved. */
-  | { kind: 'build-stroke'; path: Point[]; straight: boolean; alt: boolean };
+  | { kind: 'build-stroke'; path: Point[]; straight: boolean; alt: boolean; floor?: boolean };
 
 export function MapView() {
   const viewAsPlayer = useStore((s) => s.viewAsPlayer);
@@ -338,7 +338,7 @@ function DmMap() {
       selectedWallIds: state.selectedWallIds,
       wallDraft: wallDraftOf(),
       wallEnds: d?.kind === 'wall-ends' ? d.to : null,
-      brush: state.tool === 'fog-brush' ? { p: mouse.current, r: state.brushCells * cell } : null,
+      brush: state.tool === 'fog-brush' ? { p: mouse.current, r: state.brushCells * cell } : state.tool === 'build-floor' && state.buildCommand ? { p: mouse.current, r: (state.buildCommand.brushCells * cell) / 2 } : null,
       calibBox: state.calibration?.box ? { box: state.calibration.box, cells: state.calibration.cells } : null,
       draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
       fogDraft,
@@ -391,7 +391,7 @@ function DmMap() {
     const pxPerFt = state.scene.map.grid.cellWidth / state.scene.map.grid.feetPerCell;
     const d = drag.current;
     const stroke = d?.kind === 'build-stroke' ? (d.straight ? [d.path[0], mouse.current] : [...d.path, mouse.current]) : [];
-    const draft = c && c.kind !== 'door' ? [...c.points, ...stroke] : [];
+    const draft = c && c.kind !== 'door' && c.kind !== 'floor' ? [...c.points, ...stroke] : [];
     const next = draft.length && !stroke.length ? buildTarget(mouse.current, altHeld.current, HANDLE_PX / view.current.zoom) : null;
     const w = sel?.kind === 'wall' ? state.scene.map.masonry.find((x) => x.id === sel.wall) : undefined;
     const cl = sel?.kind === 'cliff' ? state.scene.map.cliffs.find((x) => x.id === sel.wall) : sel?.kind === 'water' ? state.scene.map.waters.find((x) => x.id === sel.wall) : undefined;
@@ -455,8 +455,9 @@ function DmMap() {
       drag.current = { kind: 'pan', sx: e.clientX - r.left, sy: e.clientY - r.top, vx: view.current.x, vy: view.current.y };
       return;
     }
-    // Alt pings, except where it changes a drawing tool (fog: the other mode; area: no snapping).
-    if ((e.altKey && !state.tool.startsWith('fog-') && state.tool !== 'area' && state.tool !== 'wall') || state.tool === 'ping') {
+    // Alt pings, except where it changes a drawing tool (fog: the other mode; area, walls, build: no
+    // snapping; the floor brush: erasing).
+    if ((e.altKey && !state.tool.startsWith('fog-') && !state.tool.startsWith('build-') && state.tool !== 'area' && state.tool !== 'wall') || state.tool === 'ping') {
       addPing(p);
       return;
     }
@@ -594,6 +595,9 @@ function DmMap() {
       case 'build-door':
         placeBuildDoor(p, e.altKey, HANDLE_PX / view.current.zoom);
         return;
+      case 'build-floor':
+        drag.current = { kind: 'build-stroke', path: [p], straight: e.shiftKey, alt: e.altKey, floor: true };
+        return;
       case 'build-edit': {
         const tol = HANDLE_PX / view.current.zoom;
         const hit = buildHit(p, tol);
@@ -708,6 +712,8 @@ function DmMap() {
       if (d.moved) moveBuildPoint(d.line, d.index, d.to, true, HANDLE_PX / view.current.zoom);
     } else if (d.kind === 'build-door') {
       if (d.moved) slideBuildDoor(d.id, toWorld(e), e.altKey, true);
+    } else if (d.kind === 'build-stroke' && d.floor) {
+      paintFloorStroke([...d.path, toWorld(e)], d.straight || e.shiftKey, d.alt || e.altKey);
     } else if (d.kind === 'build-stroke') {
       const tol = HANDLE_PX / view.current.zoom;
       const end = toWorld(e);

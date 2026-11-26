@@ -153,6 +153,7 @@ function Ribbon() {
     if (b.id === 'build:door') return tool === 'build-door';
     if (b.id === 'build:cliff') return tool === 'build-cliff';
     if (b.id === 'build:water') return tool === 'build-water';
+    if (b.id === 'build:floor') return tool === 'build-floor';
     if (b.id === 'grid:calibrate') return tool === 'calibrate';
     return false;
   };
@@ -184,6 +185,7 @@ function Ribbon() {
       case 'build:door': return startBuildCommand('door');
       case 'build:cliff': return startBuildCommand('cliff');
       case 'build:water': return startBuildCommand('water');
+      case 'build:floor': return startBuildCommand('floor');
       case 'grid:calibrate': return startCalibration();
       case 'vault:import': return void importVaultAssets();
       case 'vault:pack': return void startPackImport();

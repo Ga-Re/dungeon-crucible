@@ -9,7 +9,7 @@ import { floorField } from './handDrawn';
 import type { Bounds, Masonry } from './masonry';
 import type { Drawing } from './playerDrawing';
 
-type AnyDrawing = Pick<Drawing, 'origin' | 'width' | 'height' | 'masonry' | 'doors'> & Partial<Pick<Drawing, 'cliffs' | 'biome' | 'waters' | 'lightAngle' | 'autoShore' | 'autoGrowth'>>;
+type AnyDrawing = Pick<Drawing, 'origin' | 'width' | 'height' | 'masonry' | 'doors'> & Partial<Pick<Drawing, 'cliffs' | 'biome' | 'waters' | 'lightAngle' | 'autoShore' | 'autoGrowth' | 'floors'>>;
 
 /** Farther than this many cells from every wall (and outside closed rings) lies natural ground (E-34). */
 export const FLOOR_REACH_CELLS = 3;
@@ -67,6 +67,15 @@ export function changedRegion(prev: AnyDrawing, next: AnyDrawing, cell: number, 
     const b = watersAfter.get(id);
     if (a && b && JSON.stringify(a) === JSON.stringify(b)) continue;
     for (const w of [a, b]) if (w) region = union(region, boundsOf({ points: w.points }, w.width + cell * 2));
+  }
+  // Painted floors (DC-107b): where they were and are, with room for their soft edge.
+  const floorsBefore = new Map((prev.floors ?? []).map((f) => [f.id, f]));
+  const floorsAfter = new Map((next.floors ?? []).map((f) => [f.id, f]));
+  for (const id of new Set([...floorsBefore.keys(), ...floorsAfter.keys()])) {
+    const a = floorsBefore.get(id);
+    const b = floorsAfter.get(id);
+    if (a && b && JSON.stringify(a) === JSON.stringify(b)) continue;
+    for (const f of [a, b]) if (f) region = union(region, boundsOf({ points: f.shape.flatMap((p) => p.outer.map(([x, y]) => ({ x, y }))) }, cell));
   }
   if (!region) return null;
   // Floors: wherever the nearest wall's style is another now (softened over two samples).

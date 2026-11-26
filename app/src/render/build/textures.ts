@@ -7,7 +7,7 @@
 import { noise2 } from '../../core/build/handDrawn';
 import type { MasonryStyle } from '../../core/build/masonry';
 
-export type SurfaceSlot = `wall-${MasonryStyle}` | `floor-${MasonryStyle}` | 'cliff-rock' | 'cliff-earth' | 'cliff-scree' | GroundSlot | 'water-river' | 'water-deep' | 'water-foam';
+export type SurfaceSlot = `wall-${MasonryStyle}` | `floor-${MasonryStyle}` | 'cliff-rock' | 'cliff-earth' | 'cliff-scree' | GroundSlot | 'water-river' | 'water-deep' | 'water-foam' | 'floor-carpet' | 'floor-marble' | 'floor-gravel' | 'floor-dirt' | 'floor-moss';
 /** Natural ground far from walls, after the biome (E-34). */
 export type GroundSlot = 'ground-grass' | 'ground-snow' | 'ground-sand' | 'ground-ash' | 'ground-swamp';
 
@@ -33,7 +33,7 @@ const PART = 256;
 const STYLES: MasonryStyle[] = ['dungeon-stone', 'cave-rock', 'brick', 'wood'];
 const PARTS: PartSlot[] = ['part-cornerstone', 'part-pillar', 'part-door', 'growth-grass', 'growth-bush', 'growth-moss', 'shore-reeds', 'shore-stones'];
 /** Cliff faces (E-34). */
-const CLIFF_SURFACES: SurfaceSlot[] = ['cliff-rock', 'cliff-earth', 'cliff-scree', 'ground-grass', 'ground-snow', 'ground-sand', 'ground-ash', 'ground-swamp', 'water-river', 'water-deep', 'water-foam'];
+const CLIFF_SURFACES: SurfaceSlot[] = ['cliff-rock', 'cliff-earth', 'cliff-scree', 'ground-grass', 'ground-snow', 'ground-sand', 'ground-ash', 'ground-swamp', 'water-river', 'water-deep', 'water-foam', 'floor-carpet', 'floor-marble', 'floor-gravel', 'floor-dirt', 'floor-moss'];
 
 const files = import.meta.glob('./textures/*.{webp,png}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
@@ -104,7 +104,18 @@ const BASE: Record<SurfaceSlot, [number, number, number]> = {
   'water-river': [52, 128, 150],
   'water-deep': [30, 82, 110],
   'water-foam': [236, 244, 250],
+  'floor-carpet': [128, 40, 36],
+  'floor-marble': [214, 212, 206],
+  'floor-gravel': [150, 142, 128],
+  'floor-dirt': [116, 86, 58],
+  'floor-moss': [84, 112, 58],
 };
+
+/** The picture a painted floor (DC-107b) is made of. */
+export function floorSlot(style: string): SurfaceSlot {
+  const ground: Record<string, SurfaceSlot> = { grass: 'ground-grass', snow: 'ground-snow', sand: 'ground-sand', ash: 'ground-ash', swamp: 'ground-swamp' };
+  return ground[style] ?? (`floor-${style}` as SurfaceSlot);
+}
 
 /** Noise that repeats every `period` cells. */
 function tiledNoise(x: number, y: number, period: number, seed: number): number {

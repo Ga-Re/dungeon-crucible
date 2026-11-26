@@ -9,12 +9,14 @@ import { doorPlacement, hitDoor, hitMasonry, hitVertex, insertPoint, joinEnds, m
 import { drawnBounds, type BuildDoor, type Masonry, type MasonryStyle } from '../core/build/masonry';
 import { closesRing, strokeToLine } from '../core/build/strokes';
 import type { Water, WaterKind } from '../core/build/water';
+import { paintFloor, type FloorPaint, type FloorPatch } from '../core/build/floors';
+import { strokeArea } from '../core/poly/shapes';
 import { isInside } from '../core/poly/fog';
 import type { Point } from '../core/geometry';
 import { checkpoint, editableInForge, emit, freshId, log, markDirty, recomputeVision, state } from './store';
 
 export interface BuildCommand {
-  kind: 'wall' | 'door' | 'cliff' | 'water';
+  kind: 'wall' | 'door' | 'cliff' | 'water' | 'floor';
   style: MasonryStyle;
   /** Wall thickness in feet. */
   thicknessFt: number;
@@ -37,6 +39,9 @@ export interface BuildCommand {
   /** Water (E-35): river, lake or sea; a river's width in feet. */
   waterKind: WaterKind;
   riverWidthFt: number;
+  /** The floor brush (DC-107b): which floor, how wide (cells across). */
+  floorStyle: FloorPaint;
+  brushCells: number;
   /** The line being drawn: its points so far. */
   points: Point[];
 }
@@ -58,7 +63,7 @@ type Options = Omit<BuildCommand, 'kind' | 'points'>;
 const MARGIN_CELLS = 2;
 
 /** Options kept between commands, per window. */
-let last: Options = { style: 'dungeon-stone', thicknessFt: 1, snap: 'grid', secret: false, window: false, fortified: false, cliffKind: 'rock', form: 'edge', steep: true, widthFt: 10, steps: 3, inside: 'low', growth: true, waterKind: 'river', riverWidthFt: 10 };
+let last: Options = { style: 'dungeon-stone', thicknessFt: 1, snap: 'grid', secret: false, window: false, fortified: false, cliffKind: 'rock', form: 'edge', steep: true, widthFt: 10, steps: 3, inside: 'low', growth: true, waterKind: 'river', riverWidthFt: 10, floorStyle: 'carpet', brushCells: 2 };
 
 const pxPerFt = () => state.scene.map.grid.cellWidth / state.scene.map.grid.feetPerCell;
 const newSeed = () => Math.floor(Math.random() * 1_000_000);
@@ -83,7 +88,7 @@ export function startBuildCommand(kind: BuildCommand['kind']): void {
   state.wallCommand = null;
   state.areaCommand = null;
   state.placing = null;
-  state.tool = kind === 'wall' ? 'build-wall' : kind === 'cliff' ? 'build-cliff' : kind === 'water' ? 'build-water' : 'build-door';
+  state.tool = kind === 'wall' ? 'build-wall' : kind === 'cliff' ? 'build-cliff' : kind === 'water' ? 'build-water' : kind === 'floor' ? 'build-floor' : 'build-door';
   emit();
 }
 
@@ -156,6 +161,24 @@ export function addBuildStroke(stroke: readonly Point[], straight: boolean, tolP
   }
   state.buildCommand = { ...c, points: line };
   finishBuildWall(ring && line.length >= 3);
+}
+
+/**
+ * The floor brush (DC-107b): a stroke painted with the chosen floor, as wide as the brush (Shift:
+ * straight from where it began to where it ended), or erased with Alt. One step per stroke.
+ */
+export function paintFloorStroke(stroke: readonly Point[], straight: boolean, erase: boolean): boolean {
+  const c = state.buildCommand;
+  if (!c || c.kind !== 'floor' || state.layer !== 'map' || !stroke.length) return false;
+  const path = straight && stroke.length > 1 ? [stroke[0], stroke[stroke.length - 1]] : stroke;
+  const area = strokeArea(path.map((p) => [p.x, p.y] as [number, number]), (c.brushCells * state.scene.map.grid.cellWidth) / 2);
+  if (!area) return false;
+  checkpoint();
+  const m = state.scene.map;
+  const floors = paintFloor(m.floors, area, c.floorStyle, erase, () => freshId('floor'), newSeed()).map((f) => (f.layer || !onCurrentLayer().layer ? f : { ...f, ...onCurrentLayer() }));
+  apply({ masonry: m.masonry, doors: m.masonryDoors }, m.cliffs, true, m.waters, floors);
+  emit();
+  return true;
 }
 
 /** Backspace while drawing: the last point goes. */
@@ -483,14 +506,16 @@ export function setWaterAnimated(on: boolean): void {
  * Takes an edit into the map: a drawn map's area follows what is drawn (it grows and shrinks,
  * left and up too); sight is recomputed (fully when `final`).
  */
-function apply(edit: Edit, cliffs: Cliff[] = state.scene.map.cliffs, final = true, waters: Water[] = state.scene.map.waters): void {
+function apply(edit: Edit, cliffs: Cliff[] = state.scene.map.cliffs, final = true, waters: Water[] = state.scene.map.waters, floors: FloorPatch[] = state.scene.map.floors): void {
   const m = state.scene.map;
+  m.floors = floors;
   m.masonry = edit.masonry;
   m.masonryDoors = edit.doors;
   m.cliffs = cliffs;
   m.waters = waters;
   if (m.drawn) {
-    const b = drawnBounds(m.masonry, m.grid.cellWidth, MARGIN_CELLS, [...m.cliffs, ...m.waters]);
+    const floorEdges = m.floors.map((f) => ({ points: f.shape.flatMap((p) => p.outer.map(([x, y]) => ({ x, y }))), width: 1 }));
+    const b = drawnBounds(m.masonry, m.grid.cellWidth, MARGIN_CELLS, [...m.cliffs, ...m.waters, ...floorEdges]);
     m.origin = { x: b.x, y: b.y };
     m.widthPx = b.w;
     m.heightPx = b.h;

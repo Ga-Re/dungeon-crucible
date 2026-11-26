@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Drawing } from '../core/build/playerDrawing';
 import { paintKey } from './mapBinding';
 
-const base: Drawing = { origin: { x: 0, y: 0 }, width: 700, height: 700, biome: 'nebel', masonry: [], doors: [], cracks: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true };
+const base: Drawing = { origin: { x: 0, y: 0 }, width: 700, height: 700, biome: 'nebel', masonry: [], doors: [], cracks: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [] };
 const cliff = { id: 'c', points: [{ x: 0, y: 0 }, { x: 70, y: 0 }], closed: false, kind: 'rock' as const, form: 'edge' as const, steep: true, width: 70, steps: 3, inside: 'low' as const, growth: true, seed: 1 };
 
 describe('paintKey (whether a drawn map is painted again)', () => {

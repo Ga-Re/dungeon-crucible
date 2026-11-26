@@ -13,6 +13,7 @@ import type { LevelFog, Polygon } from './poly/types';
 import type { Masonry } from './build/masonry';
 import type { Cliff } from './build/cliffs';
 import type { Water } from './build/water';
+import type { FloorPatch } from './build/floors';
 import { activeLayers, drawOrder, elementLayer } from './layers';
 import { DEFAULT_TABLE, type HiddenElements, type MapAssetPlacement, type Scene, type Zone } from './scene';
 import { diffElements, resolveElements, type MapElements, type SceneLayer } from './mapLayers';
@@ -183,6 +184,7 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     masonryDoors: (fromView ? m.masonryDoors : previous.masonryDoors).map((d) => ({ ...d })),
     cliffs: (fromView ? m.cliffs : previous.cliffs).map(copyCliff),
     waters: (fromView ? m.waters : previous.waters).map(copyWater),
+    floors: (fromView ? m.floors : previous.floors).map(copyFloor),
     waterAnimated: fromView ? m.waterAnimated : previous.waterAnimated,
     lightAngle: fromView ? m.lightAngle : previous.lightAngle,
     autoShore: fromView ? m.autoShore : previous.autoShore,
@@ -237,6 +239,10 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     overrides: layer.overrides,
     added: layer.added,
   };
+}
+
+function copyFloor(f: FloorPatch): FloorPatch {
+  return { ...f, shape: copyShape(f.shape) };
 }
 
 function copyWater(w: Water): Water {
@@ -321,6 +327,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       masonryDoors: map.masonryDoors.map((d) => ({ ...d })),
       cliffs: map.cliffs.map(copyCliff),
       waters: map.waters.map(copyWater),
+      floors: map.floors.map(copyFloor),
       waterAnimated: map.waterAnimated,
       lightAngle: map.lightAngle,
       autoShore: map.autoShore,

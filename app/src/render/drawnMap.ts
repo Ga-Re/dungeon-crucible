@@ -13,7 +13,7 @@ import { FLOOR_REACH_CELLS, floorStep } from '../core/build/dirty';
 import { buildGraph, doorSpan, masonryOutline, pointAt, type BuildDoor, type Masonry, type MasonryStyle } from '../core/build/masonry';
 import type { DmDrawing, Drawing } from '../core/build/playerDrawing';
 import type { Decal, PaintedImage } from './pixi/renderer';
-import { groundSlot, type BuildTextures } from './build/textures';
+import { floorSlot, groundSlot, type BuildTextures } from './build/textures';
 import { paintCliffs } from './cliffsPaint';
 import { paintWater, paintWaterfalls } from './waterPaint';
 import { paintShore, paintWallFeet, paintWornDoors } from './detailsPaint';
@@ -28,6 +28,8 @@ const WAVER: Record<MasonryStyle, { amplitude: number; scale: number }> = {
 
 /** Map cells one texture tile covers: floors, wall surfaces. */
 const FLOOR_CELLS = 3;
+/** How far a painted floor's edge fades out, in cells (DC-107b). */
+const FLOOR_FEATHER = 0.22;
 const WALL_CELLS = 1;
 
 const asMasonry = (w: Drawing['masonry'][number]): Masonry => ({ ...w, points: w.points.map((p) => ({ ...p })) });
@@ -85,6 +87,8 @@ interface Geometry {
   /** Where each floor style is, in map px (with its soft edge): tiles elsewhere skip it. */
   floorBoxes: Map<FloorStyle, { x: number; y: number; w: number; h: number }>;
   step: number;
+  /** Near walls (map px): painted floors end sharp there, under the wall (DC-107b). */
+  wallZone: Path2D;
 }
 
 /**
@@ -207,7 +211,14 @@ function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: num
     // Two samples of room for the softened edge.
     for (const [s, [c0, r0, c1, r1]] of box) floorBoxes.set(s, { x: ox + (c0 - 2) * step, y: oy + (r0 - 2) * step, w: (c1 - c0 + 5) * step, h: (r1 - r0 + 5) * step });
   }
-  const geometry = { styles, field, floorMasks, floorBoxes, step };
+  // Where painted floors end sharp: the walls widened by a soft edge's reach.
+  const wallZone = new Path2D();
+  for (const p of masonryOutline(walls.map((w) => ({ ...w, thickness: w.thickness + cell * FLOOR_FEATHER * 2 })), []))
+    for (const ring of [p.outer, ...p.holes]) {
+      ring.forEach(([x, y], i) => (i ? wallZone.lineTo(x, y) : wallZone.moveTo(x, y)));
+      wallZone.closePath();
+    }
+  const geometry = { styles, field, floorMasks, floorBoxes, step, wallZone };
   geometries.set(key, geometry);
   if (geometries.size > KEPT_GEOMETRIES) geometries.delete(geometries.keys().next().value!);
   return geometry;
@@ -217,7 +228,51 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
   const { x: ox, y: oy } = drawing.origin;
   const width = Math.max(1, Math.ceil(drawing.width));
   const height = Math.max(1, Math.ceil(drawing.height));
-  const { styles, field, floorMasks, floorBoxes } = geometryOf(drawing, withGround, cell, drawing.masonry.map(asMasonry));
+  const { styles, field, floorMasks, floorBoxes, wallZone } = geometryOf(drawing, withGround, cell, drawing.masonry.map(asMasonry));
+  const patches = drawing.floors.map((f) => {
+    const shape = new Path2D();
+    for (const p of f.shape)
+      for (const ring of [p.outer, ...p.holes]) {
+        ring.forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)));
+        shape.closePath();
+      }
+    const xs = f.shape.flatMap((p) => p.outer.map(([x]) => x));
+    const ys = f.shape.flatMap((p) => p.outer.map(([, y]) => y));
+    return { style: f.style, seed: f.seed, shape, box: { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) } };
+  });
+
+  /**
+   * Painted floors over the automatic ones: their edge fades out softly, but near walls it ends
+   * sharp – there the wall covers it, so a floor painted up to a wall meets it cleanly.
+   */
+  const paintPatches = (g: CanvasRenderingContext2D, left: number, top: number, w: number, h: number) => {
+    const feather = cell * FLOOR_FEATHER;
+    for (const p of patches) {
+      if (p.box.x - feather > left + w || p.box.y - feather > top + h || p.box.x + p.box.w + feather < left || p.box.y + p.box.h + feather < top) continue;
+      const fill = surfacePattern(g, tex.surface[floorSlot(p.style)], cell, FLOOR_CELLS, styleSeed(p.style) + p.seed) ?? '#77705f';
+      // Soft: the floor masked by its blurred shape.
+      const layer = document.createElement('canvas');
+      layer.width = w;
+      layer.height = h;
+      const l = layer.getContext('2d')!;
+      l.setTransform(1, 0, 0, 1, -left, -top);
+      l.fillStyle = '#fff';
+      l.filter = `blur(${Math.max(1, Math.round(feather / 2))}px)`;
+      l.fill(p.shape, 'evenodd');
+      l.filter = 'none';
+      l.globalCompositeOperation = 'source-in';
+      l.fillStyle = surfacePattern(l, tex.surface[floorSlot(p.style)], cell, FLOOR_CELLS, styleSeed(p.style) + p.seed) ?? '#77705f';
+      l.fillRect(left, top, w, h);
+      g.drawImage(layer, left, top);
+      // Sharp near walls.
+      g.save();
+      g.clip(p.shape, 'evenodd');
+      g.clip(wallZone, 'nonzero');
+      g.fillStyle = fill;
+      g.fillRect(left, top, w, h);
+      g.restore();
+    }
+  };
 
   // Where natural ground lies (not a wall's floor): plants grow at the foot of walls there (E-35).
   const onGround = (p: { x: number; y: number }) => {
@@ -359,6 +414,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       // From here on in map coordinates.
       g.translate(-left - ox, -top - oy);
       paintFloors(g, left + ox, top + oy, w, h);
+      paintPatches(g, left + ox, top + oy, w, h);
       paintWornDoors(g, wornDoors, cell);
       // Water lies in the ground (E-35); cliffs over it, waterfalls where rivers fall over them.
       paintWater(g, drawing.waters, cell, tex);
@@ -478,6 +534,7 @@ function scaled<D extends Drawing | DmDrawing>(d: D, k: number): D {
     cracks: d.cracks.map((x) => ({ ...x, at: x.at * k, width: x.width * k })),
     cliffs: d.cliffs.map((c) => ({ ...c, width: c.width * k, points: c.points.map((p) => ({ x: p.x * k, y: p.y * k })) })),
     waters: d.waters.map((w) => ({ ...w, width: w.width * k, points: w.points.map((p) => ({ x: p.x * k, y: p.y * k })) })),
+    floors: d.floors.map((f) => ({ ...f, shape: f.shape.map((p) => ({ outer: p.outer.map(([x, y]) => [x * k, y * k] as [number, number]), holes: p.holes.map((h) => h.map(([x, y]) => [x * k, y * k] as [number, number])) })) })),
   };
 }
 

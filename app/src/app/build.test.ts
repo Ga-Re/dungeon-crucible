@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addBuildPoint, addBuildStroke, buildHit, setMapLook, flipWater, setWaterAnimated, updateWater, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
+import { addBuildPoint, addBuildStroke, buildHit, paintFloorStroke, setMapLook, flipWater, setWaterAnimated, updateWater, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
 import { checkpoint, setWorkspace, sightWalls, state, undo } from './store';
 
 /** The "Build" tab (E-33, DC-107a) in the Map Forge, on the sample crypt (cells of 70 px, 5 ft). */
@@ -278,5 +278,33 @@ describe('windows, fortified walls and the map look (E-35, DC-107g)', () => {
     expect(state.scene.map).toMatchObject({ lightAngle: 135, autoShore: false });
     undo();
     expect(state.scene.map).toMatchObject({ lightAngle: 45, autoShore: true });
+  });
+});
+
+describe('the floor brush (DC-107b)', () => {
+  beforeEach(() => {
+    setWorkspace('forge');
+    state.scene.map.floors = [];
+  });
+
+  it('paints a strip as wide as the brush, merges the same floor, erases with Alt; one step each', () => {
+    startBuildCommand('floor');
+    updateBuildCommand({ floorStyle: 'marble', brushCells: 2 });
+    expect(paintFloorStroke([{ x: 0, y: 16000 }, { x: 350, y: 16000 }], false, false)).toBe(true);
+    paintFloorStroke([{ x: 300, y: 16000 }, { x: 600, y: 16000 }], false, false);
+    expect(state.scene.map.floors).toHaveLength(1);
+    expect(state.scene.map.floors[0].style).toBe('marble');
+    paintFloorStroke([{ x: 0, y: 16000 }, { x: 600, y: 16000 }], false, true);
+    expect(state.scene.map.floors).toEqual([]);
+    undo();
+    expect(state.scene.map.floors).toHaveLength(1);
+  });
+
+  it('with Shift a straight strip from start to end', () => {
+    startBuildCommand('floor');
+    updateBuildCommand({ floorStyle: 'gravel', brushCells: 1 });
+    paintFloorStroke([{ x: 0, y: 17000 }, { x: 100, y: 17500 }, { x: 420, y: 17000 }], true, false);
+    const ys = state.scene.map.floors[0].shape[0].outer.map(([, y]) => y);
+    expect(Math.max(...ys)).toBeLessThan(17000 + 40);
   });
 });

@@ -10,6 +10,8 @@ import type { MapLayer } from '../sidecar';
 import { foundKey, MASONRY_STYLES, type BuildDoor, type Masonry } from './masonry';
 import { CLIFF_FORMS, CLIFF_KINDS, type Cliff } from './cliffs';
 import { WATER_KINDS, type Water } from './water';
+import { FLOOR_STYLES, type FloorPatch } from './floors';
+import { polygonSchema } from '../poly/types';
 import { areaContains } from '../areas';
 import type { Polygon } from '../poly/types';
 
@@ -37,6 +39,8 @@ export const drawingSchema = z.object({
   waterAnimated: z.boolean().default(true),
   /** Where the light falls towards (degrees; E-35). */
   lightAngle: z.number().default(45),
+  /** Painted floors on the shown layers (DC-107b). */
+  floors: z.array(z.object({ id: z.string(), style: z.enum(FLOOR_STYLES), shape: z.array(polygonSchema), seed: z.number() })).default([]),
   /** Automatic details (E-35). */
   autoShore: z.boolean().default(true),
   autoGrowth: z.boolean().default(true),
@@ -56,6 +60,7 @@ interface DrawnMap {
   cliffs: readonly Cliff[];
   waters: readonly Water[];
   waterAnimated: boolean;
+  floors?: readonly FloorPatch[];
   lightAngle?: number;
   autoShore?: boolean;
   autoGrowth?: boolean;
@@ -94,7 +99,9 @@ function area(map: DrawnMap) {
   return { origin: { x: map.origin?.x ?? 0, y: map.origin?.y ?? 0 }, width: map.widthPx, height: map.heightPx, biome: map.biome, lightAngle: map.lightAngle ?? 45, autoShore: map.autoShore ?? true, autoGrowth: map.autoGrowth ?? true };
 }
 
-const empty = (map: DrawnMap) => !map.masonry.length && !map.cliffs.length && !map.waters.length && !map.drawn;
+const empty = (map: DrawnMap) => !map.masonry.length && !map.cliffs.length && !map.waters.length && !(map.floors ?? []).length && !map.drawn;
+
+const wireFloor = ({ layer: _l, ...f }: FloorPatch): Drawing['floors'][number] => ({ ...f, shape: f.shape.map((p) => ({ outer: p.outer.map(([x, y]) => [x, y] as [number, number]), holes: p.holes.map((h) => h.map(([x, y]) => [x, y] as [number, number])) })) });
 
 const wireWater = ({ layer: _l, ...w }: Water): Drawing['waters'][number] => ({ ...w, points: w.points.map((p) => ({ x: p.x, y: p.y })) });
 
@@ -123,7 +130,8 @@ export function playerDrawing(map: DrawnMap, doorStates: Readonly<Record<string,
   const known = areas.filter((a) => !a.secret || a.discovered === true);
   const cliffs = map.cliffs.filter((c) => active.has(elementLayer(c))).map((c) => wireCliff(c, known));
   const waters = map.waters.filter((w) => active.has(elementLayer(w))).map(wireWater);
-  return { ...area(map), masonry: shown.map(wire), doors, cracks, cliffs, waters, waterAnimated: map.waterAnimated };
+  const floors = (map.floors ?? []).filter((f) => active.has(elementLayer(f))).map(wireFloor);
+  return { ...area(map), masonry: shown.map(wire), doors, cracks, cliffs, waters, waterAnimated: map.waterAnimated, floors };
 }
 
 /** `layersOn`: in a scene, only the walls of its active layers (like the scene's walls); none: all (the Map Forge). */
@@ -135,5 +143,6 @@ export function dmDrawing(map: DrawnMap, doorStates: Readonly<Record<string, boo
   const doors = map.masonryDoors.filter((d) => ids.has(d.wall)).map((d) => ({ wall: d.wall, at: d.at, width: d.width, open: doorStates[d.id] === true, secret: !d.window && d.secret, ...(d.window ? { window: true } : {}) }));
   const cliffs = (active ? map.cliffs.filter((c) => active.has(elementLayer(c))) : map.cliffs).map((c) => wireCliff(c, areas));
   const waters = (active ? map.waters.filter((w) => active.has(elementLayer(w))) : map.waters).map(wireWater);
-  return { ...area(map), masonry: shown.map(wire), doors, cracks: [], cliffs, waters, waterAnimated: map.waterAnimated };
+  const floors = (map.floors ?? []).filter((f) => !active || active.has(elementLayer(f))).map(wireFloor);
+  return { ...area(map), masonry: shown.map(wire), doors, cracks: [], cliffs, waters, waterAnimated: map.waterAnimated, floors };
 }

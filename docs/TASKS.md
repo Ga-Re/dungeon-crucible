@@ -375,7 +375,15 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     Mauern zwischengespeichert. Gemessen (200 × 200 Felder, 400 Räume): eine Mauer zeichnen blockiert ~0,18 s (vorher
     ~0,7 s); wächst die Fläche, wird alles neu gemalt.
     Offen: `npm run bench` (braucht das 4K-Testvideo und den TV) – DM.
-  - **DC-107b Boden-Pinsel** mit sauberem Übergang an Mauern.
+  - ✓ **DC-107b Boden-Pinsel** mit sauberem Übergang an Mauern. DM 2026-11-26: Böden = die 4 Mauerböden, die 5
+    natürlichen und neu Teppich, Marmor, Kies, Lehmweg, Moos (Higgsfield); Rand weich, an Mauern sauber (endet unter
+    der Mauer); Ziehen malt, Alt radiert, Shift gerade Bahnen, Größe in Feldern; gleicher Boden verschmilzt.
+    Umgesetzt: Kern (`core/build/floors.ts`: gleicher Boden wird eine Fläche, Übermalen ersetzt, Radieren nimmt weg),
+    Karte Version 6 um `floors` erweitert, TV-Freigabe (aktive Ebenen), Änderungsbereich und Fläche der Karte;
+    Darstellung über den automatischen Böden mit weichem Rand, nahe Mauern scharf (dort deckt die Mauer ab);
+    Werkzeug „Boden“ im Tab „Bauen“ mit Boden, Pinselgröße und Pinselvorschau. 5 Texturen mit Higgsfield.
+    Nebenbei behoben: Alt löste in allen Bau-Werkzeugen einen Ping aus statt „frei“ bzw. „radieren“ (seit DC-107a).
+    Geprüft in der App (Teppich, Lehmweg mit Shift, Radieren mit Alt).
   - **DC-107c Eigene Mauern in Szenen** (Szene v8).
   - ✓ **DC-107d Klippen und Abhänge** (E-34, DM-Wunsch 2026-11-26): Klippen, Abhänge, Gruben, Plateaus, Schluchten,
     Geröllhalden, Terrassen und Abgründe zeichnen; Einweg-Sicht und Bewegungsblock wie die Klippen aus DC-014;

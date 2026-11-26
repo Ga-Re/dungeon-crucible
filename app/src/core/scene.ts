@@ -7,6 +7,7 @@ import type { InteriorTrigger, MapLayer } from './sidecar';
 import type { BuildDoor, Masonry } from './build/masonry';
 import type { Cliff } from './build/cliffs';
 import type { Water } from './build/water';
+import type { FloorPatch } from './build/floors';
 
 /** A cliff or gallery is one way: one sees down from its upper side, not up from below (DC-014). */
 export type WallKind = 'wall' | 'door' | 'secret-door' | 'window' | 'cliff';
@@ -153,6 +154,8 @@ export interface MapInfo {
   /** Drawn rivers, lakes and sea (E-35), and whether their water moves. */
   waters: Water[];
   waterAnimated: boolean;
+  /** Painted floors (DC-107b). */
+  floors: FloorPatch[];
   /** Where the light falls towards in the 2.5D look (degrees; 45: to the lower right). */
   lightAngle: number;
   /** Automatic details: along shores, at the foot of walls (E-35). */
@@ -186,7 +189,7 @@ export interface MapAssetPlacement {
 }
 
 /** Catalog defaults of a map that has none yet. */
-export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets' | 'layers' | 'masonry' | 'masonryDoors' | 'cliffs' | 'waters' | 'waterAnimated' | 'lightAngle' | 'autoShore' | 'autoGrowth'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [], layers: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true };
+export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets' | 'layers' | 'masonry' | 'masonryDoors' | 'cliffs' | 'waters' | 'waterAnimated' | 'lightAngle' | 'autoShore' | 'autoGrowth' | 'floors'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [], layers: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [] };
 
 /** Map elements hidden in a scene (DC-103): kept apart, so vision, light and the TV never see them. */
 export interface HiddenElements {

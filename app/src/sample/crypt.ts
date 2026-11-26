@@ -124,6 +124,7 @@ export function createSampleScene(): Scene {
       lightAngle: 45,
       autoShore: true,
       autoGrowth: true,
+      floors: [],
     },
     walls,
     zones,

@@ -9,6 +9,7 @@ import { idSchema } from './documents';
 import { MASONRY_STYLES } from './build/masonry';
 import { CLIFF_FORMS, CLIFF_KINDS } from './build/cliffs';
 import { WATER_KINDS } from './build/water';
+import { FLOOR_STYLES } from './build/floors';
 
 export const SIDECAR_SUFFIX = '.dm.json';
 export const SCENE_SUFFIX = '.scene.json';
@@ -81,6 +82,8 @@ export const cliffSchema = z.object({
   seed: z.number().int(),
   layer: layerRef,
 });
+/** A painted floor (E-33, DC-107b): an area of one floor over the floors that follow the walls. */
+export const floorPatchSchema = z.object({ id, style: z.enum(FLOOR_STYLES), shape: z.array(polygonSchema).min(1), seed: z.number().int(), layer: layerRef });
 /** Drawn water (E-35): a river (a line with a width, flowing in its drawing direction), a lake or the sea (rings). */
 export const waterSchema = z.object({
   id,
@@ -170,6 +173,8 @@ export const MapSidecarSchema = z.object({
   cliffs: z.array(cliffSchema).default([]),
   /** Drawn rivers, lakes and sea (E-35), and whether their water moves (per map). */
   waters: z.array(waterSchema).default([]),
+  /** Painted floors (DC-107b). */
+  floors: z.array(floorPatchSchema).default([]),
   waterAnimated: z.boolean().default(true),
   /** Where the light falls towards in the 2.5D look (degrees, map coordinates; 45: to the lower right, E-35). */
   lightAngle: z.number().default(45),

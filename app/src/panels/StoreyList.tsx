@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
-import { addStorey, deleteStorey, renameStorey, setWorkingStorey, useStore } from '../app/store';
+import { addStorey, areaToFootprint, clearFootprint, deleteStorey, moveTokenToStorey, renameStorey, setTvStorey, setWorkingStorey, useStore } from '../app/store';
 
 export function StoreyList() {
   const { t } = useI18n();
@@ -14,6 +14,9 @@ export function StoreyList() {
   const here = useStore((s) => s.scene.map.storey ?? '');
   const tv = useStore((s) => (s.layer !== 'map' ? (s.scene.tvStorey ?? '') : null));
   const forge = useStore((s) => s.layer === 'map');
+  const selectedToken = useStore((s) => (s.layer !== 'map' ? s.selectedTokenId : null));
+  const selectedZone = useStore((s) => (s.layer === 'map' && s.scene.map.storey ? s.selectedZoneId : null));
+  const handDrawn = useStore((s) => (s.scene.map.storeys ?? []).find((x) => x.id === s.scene.map.storey)?.footprint.length ?? 0);
   const [editing, setEditing] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   // In a scene there is nothing to choose on a map without storeys.
@@ -40,7 +43,12 @@ export function StoreyList() {
                 </button>
               )}
               <span className="meta mono">{r.level > 0 ? `+${r.level}` : r.level}</span>
-              {tv === r.id && <span className="meta" title={t('storey.onTv')}><Icon name="monitor" /></span>}
+              {tv !== null && (
+                <button className={`ab-btn ${tv === r.id ? 'on' : ''}`} title={t(tv === r.id ? 'storey.onTv' : 'storey.toTv')} aria-label={`${t(tv === r.id ? 'storey.onTv' : 'storey.toTv')}: ${r.name}`} aria-pressed={tv === r.id} onClick={() => setTvStorey(r.id)}><Icon name="monitor" /></button>
+              )}
+              {selectedToken && here !== r.id && (
+                <button className="ab-btn" title={t('storey.moveToken')} aria-label={`${t('storey.moveToken')}: ${r.name}`} onClick={() => moveTokenToStorey(selectedToken, r.id)}><Icon name="token" /></button>
+              )}
               {forge && r.id && <button className="ab-btn" title={t('storey.delete')} aria-label={`${t('storey.delete')}: ${r.name}`} onClick={() => setConfirm(r.id)}><Icon name="trash" /></button>}
             </div>
             {confirm === r.id && (
@@ -55,6 +63,12 @@ export function StoreyList() {
           </li>
         ))}
       </ul>
+      {forge && here && (
+        <div className="library-buttons">
+          <button className="btn sm" disabled={!selectedZone} title={t('storey.areaHint')} onClick={() => selectedZone && areaToFootprint(selectedZone)}><Icon name="zone" />{t('storey.addArea')}</button>
+          {handDrawn > 0 && <button className="btn sm" onClick={clearFootprint}><Icon name="close" />{t('storey.clearArea')}</button>}
+        </div>
+      )}
       {forge && (
         <div className="library-buttons">
           <button className="btn sm" onClick={() => addStorey('', true)}><Icon name="up" />{t('storey.addUp')}</button>

@@ -2489,6 +2489,66 @@ export function deleteStorey(id: string): void {
   emit();
 }
 
+/**
+ * Shows storey `id` ("": the map itself) on the TV (E-40): for the start while preparing, else for
+ * the play state; on the TV it changes with a transition. One undoable step.
+ */
+export function setTvStorey(id: string): void {
+  if (state.layer === 'map' || !state.mapDoc || (state.scene.tvStorey ?? '') === id) return;
+  if (id && !state.scene.map.storeys?.some((x) => x.id === id)) return;
+  checkpoint();
+  if (id) state.scene.tvStorey = id;
+  else delete state.scene.tvStorey;
+  markDirty();
+  if (state.layer === 'scene' && state.scenePath && state.scenePath === state.tvScenePath) cutTv(state.nextTransition ?? tvTransition().kind);
+  emit();
+}
+
+/** Puts a figure of this storey on storey `id` (E-40); it leaves the view of this one. One undoable step. */
+export function moveTokenToStorey(tokenId: string, id: string): void {
+  const t = state.scene.tokens.find((x) => x.id === tokenId);
+  if (!t || (state.scene.map.storey ?? '') === id) return;
+  if (id && !state.scene.map.storeys?.some((x) => x.id === id)) return;
+  checkpoint();
+  const moved = { ...t, ...(id ? { storey: id } : {}) };
+  if (!id) delete moved.storey;
+  state.scene.tokens = state.scene.tokens.filter((x) => x.id !== tokenId);
+  state.scene.offStoreyTokens = [...(state.scene.offStoreyTokens ?? []), moved];
+  if (state.selectedTokenId === tokenId) state.selectedTokenId = null;
+  markDirty();
+  recomputeVision();
+  emit();
+}
+
+/**
+ * Adds area `zoneId` to the footprint of the storey worked on (E-40) and removes the area – it was
+ * drawn for that (Map Forge, one undoable step).
+ */
+export function areaToFootprint(zoneId: string): void {
+  const m = state.scene.map;
+  const def = m.storey ? m.storeys?.find((x) => x.id === m.storey) : undefined;
+  const zone = state.scene.zones.find((z) => z.id === zoneId);
+  if (state.layer !== 'map' || !def || !zone) return;
+  checkpoint();
+  def.footprint = [...def.footprint, ...structuredClone(zone.shape)];
+  state.scene.zones = state.scene.zones.filter((z) => z.id !== zoneId);
+  if (state.selectedZoneId === zoneId) state.selectedZoneId = null;
+  markDirty();
+  recomputeVision();
+  emit();
+}
+
+/** Clears the hand-drawn part of the footprint of the storey worked on (Map Forge, one undoable step). */
+export function clearFootprint(): void {
+  const m = state.scene.map;
+  const def = m.storey ? m.storeys?.find((x) => x.id === m.storey) : undefined;
+  if (state.layer !== 'map' || !def || !def.footprint.length) return;
+  checkpoint();
+  def.footprint = [];
+  markDirty();
+  emit();
+}
+
 /* ---------- Map variants (DC-023, E-41) ---------- */
 
 /** Library pictures by path → their URL (null: cannot be shown); looked up once. */

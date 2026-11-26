@@ -607,8 +607,19 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     Katalog-Vorschau skaliert die Reichweite mit. Hinweise: ein „außen“ ohne Reichweite füllt bis zum Kartenrand;
     eine Höhle in einem Felsblock wird vom Block gefüllt; ein aufgetrennter Ring trägt keinen Fels, bis er wieder
     geschlossen ist.
-- **DC-020 Ebenen (Stockwerke)** (E-40): anlegen, umbenennen, eigenes Bild gleicher Größe, Arbeitsebene vs. TV-Ebene,
-  Freigabe, Nebel je Ebene (T-118a/c/d). Branch `feature/map-forge-more`.
+- ✓ **DC-020 Ebenen (Stockwerke)** (E-40): anlegen, umbenennen, eigenes Bild gleicher Größe, Arbeitsebene vs. TV-Ebene,
+  Freigabe, Nebel je Ebene (T-118a/c/d). Branch `feature/map-forge-more`. Erledigt in drei Schritten:
+  (a) Karte v11 `storeys` (Name, Höhe, Bild, Grundfläche, Start-Nebel), `storey` an jedem Element und jeder
+  Figur, Szene v12 `storeyFog` und `tvStorey`; eine Ansicht zeigt ein Stockwerk, die anderen werden beiseitegelegt
+  und beim Speichern zusammengeführt; Browser › Stockwerke: arbeiten auf, darüber/Keller anlegen, umbenennen,
+  löschen (mit allem darauf). (b) `core/storeyShape.ts` Grundfläche (geschlossene Mauern, Böden, von Hand) und
+  Stockwerke darunter; TV-Frame mit `storeyClip` und `below` (je Stockwerk eigener Nebel), das TV-Fenster zeichnet
+  darunter weichgezeichnet und schneidet oben auf die Grundfläche; DM-Fenster dieselbe Unterlage ohne Nebel.
+  (c) „Dieses Stockwerk auf den TV“ (mit Übergang), ausgewählte Figur auf ein anderes Stockwerk setzen, Bereich zur
+  Grundfläche übernehmen / gezeichnete Grundfläche leeren. In der App geprüft (Turm über der Krypta: unten
+  weichgezeichnet mit eigenem Nebel, oben eigener Nebel). Offen: Bild eines Stockwerks wählen (Feld ist da, noch
+  keine Bedienung), Varianten je Stockwerk, Treppen (DC-026); die Grundfläche eines Stockwerks ist auf dem TV als
+  Umriss erkennbar (folgt aus E-40).
 - ✓ **DC-021 Rastereinmessung per N×N-Box** statt 3-Punkt, als Befehls-Panel; Raster verschieben; Schwenken während
   des Einmessens (T-177, T-251). Erledigt: Befehls-Panel „Raster einmessen“ (Menüband Karte › Raster): Felder je
   Seite 1–10 (Standard 3); ein auf der Karte aufgezogenes Quadrat über N×N Felder des gedruckten Rasters ergibt

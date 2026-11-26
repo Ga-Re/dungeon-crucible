@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addLight, addStorey, deleteStorey, renameStorey, setWorkingStorey, setWorkspace, state, undo } from './store';
+import { addLight, addStorey, areaToFootprint, deleteStorey, moveTokenToStorey, renameStorey, setTvStorey, setWorkingStorey, setWorkspace, state, undo } from './store';
+import { rectPolygon } from '../core/fogModel';
 
 /** Storeys in the Map Forge (DC-020, E-40). */
 describe('storeys', () => {
@@ -39,5 +40,39 @@ describe('storeys', () => {
     expect(state.mapDoc!.lights.some((l) => l.storey === id)).toBe(false);
     undo();
     expect(state.scene.map.storeys!.some((s) => s.id === id)).toBe(true);
+  });
+});
+
+describe('storeys in play (DC-020 step c)', () => {
+  it('the TV shows a storey chosen apart from the one worked on; a figure goes to another storey; both undoable', () => {
+    setWorkspace('forge');
+    setWorkingStorey('');
+    addStorey('Gallery', true);
+    const id = state.scene.map.storey!;
+    setWorkingStorey('');
+    setWorkspace('play');
+    expect(state.scene.map.storey).toBeUndefined();
+    setTvStorey(id);
+    expect(state.scene.tvStorey).toBe(id);
+    expect(state.scene.map.storey).toBeUndefined();
+    undo();
+    expect(state.scene.tvStorey).toBeUndefined();
+    const t = state.scene.tokens[0];
+    moveTokenToStorey(t.id, id);
+    expect(state.scene.tokens.some((x) => x.id === t.id)).toBe(false);
+    setWorkingStorey(id);
+    expect(state.scene.tokens.find((x) => x.id === t.id)?.storey).toBe(id);
+    setWorkingStorey('');
+    undo();
+  });
+
+  it('an area drawn on a storey becomes part of its footprint', () => {
+    setWorkspace('forge');
+    addStorey('Roof', true);
+    state.scene.zones = [...state.scene.zones, { id: 'fp', name: 'fp', shape: [rectPolygon(0, 0, 70, 70)], secret: false, color: '#ffffff', discovered: true, storey: state.scene.map.storey }];
+    areaToFootprint('fp');
+    const def = state.scene.map.storeys!.find((x) => x.id === state.scene.map.storey)!;
+    expect(def.footprint).toEqual([rectPolygon(0, 0, 70, 70)]);
+    expect(state.scene.zones.some((z) => z.id === 'fp')).toBe(false);
   });
 });

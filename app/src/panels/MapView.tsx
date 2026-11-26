@@ -58,7 +58,7 @@ const HINTS: Partial<Record<string, MessageKey>> = {
   'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
   'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom', light: 'hint.light',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
-  'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor',
+  'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor', 'build-cliff': 'hint.buildCliff',
 };
 
 type Drag =
@@ -76,7 +76,7 @@ type Drag =
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
   | { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; invert: boolean; circle: boolean }
   | { kind: 'fog-path'; tool: 'fog-lasso' | 'fog-brush'; path: Point[]; invert: boolean }
-  | { kind: 'build-point'; wall: string; index: number; to: Point; moved: boolean }
+  | { kind: 'build-point'; line: { kind: 'wall' | 'cliff'; wall: string }; index: number; to: Point; moved: boolean }
   | { kind: 'build-door'; id: string; moved: boolean };
 
 export function MapView() {
@@ -373,16 +373,18 @@ function DmMap() {
     const sel = state.buildSelection;
     if (!c && !sel) return null;
     const pxPerFt = state.scene.map.grid.cellWidth / state.scene.map.grid.feetPerCell;
-    const draft = c?.kind === 'wall' ? c.points : [];
+    const draft = c && c.kind !== 'door' ? c.points : [];
     const next = draft.length ? buildTarget(mouse.current, altHeld.current, HANDLE_PX / view.current.zoom) : null;
-    const w = sel ? state.scene.map.masonry.find((x) => x.id === sel.wall) : undefined;
+    const w = sel?.kind === 'wall' ? state.scene.map.masonry.find((x) => x.id === sel.wall) : undefined;
+    const cl = sel?.kind === 'cliff' ? state.scene.map.cliffs.find((x) => x.id === sel.wall) : undefined;
     const door = sel?.door ? state.scene.map.masonryDoors.find((x) => x.id === sel.door) : undefined;
     const span = w && door ? doorSpan(w, door) : null;
+    const line = w ?? cl;
     return {
       draft,
       next,
-      thickness: (c?.thicknessFt ?? 1) * pxPerFt,
-      selected: w ? { points: w.points, closed: w.closed, thickness: w.thickness, point: sel!.point, door: span ? { a: pointAt(w.points, w.closed, span.from), b: pointAt(w.points, w.closed, span.to) } : null } : null,
+      thickness: c?.kind === 'cliff' ? 6 : (c?.thicknessFt ?? 1) * pxPerFt,
+      selected: line ? { points: line.points, closed: line.closed, thickness: w ? w.thickness : 6, point: sel!.point, door: w && span ? { a: pointAt(w.points, w.closed, span.from), b: pointAt(w.points, w.closed, span.to) } : null } : null,
     };
   };
 
@@ -564,7 +566,8 @@ function DmMap() {
       case 'wall':
         addWallPoint(wallTarget(p, e.altKey));
         return;
-      case 'build-wall': {
+      case 'build-wall':
+      case 'build-cliff': {
         const tol = HANDLE_PX / view.current.zoom;
         addBuildPoint(buildTarget(p, e.altKey, tol), tol);
         return;
@@ -578,14 +581,14 @@ function DmMap() {
         const sel = state.buildSelection;
         if (hit?.point != null) {
           selectBuild(hit);
-          drag.current = { kind: 'build-point', wall: hit.wall, index: hit.point, to: p, moved: false };
+          drag.current = { kind: 'build-point', line: hit, index: hit.point, to: p, moved: false };
         } else if (hit?.door) {
           selectBuild(hit);
           drag.current = { kind: 'build-door', id: hit.door, moved: false };
-        } else if (hit && sel && sel.wall === hit.wall && !sel.door) {
-          // A click on the selected wall's line: a new point there, dragged at once.
-          const index = insertBuildPoint(hit.wall, p);
-          drag.current = { kind: 'build-point', wall: hit.wall, index, to: p, moved: true };
+        } else if (hit && sel && sel.kind === hit.kind && sel.wall === hit.wall && !sel.door) {
+          // A click on the selected line: a new point there, dragged at once.
+          const index = insertBuildPoint(hit, p);
+          drag.current = { kind: 'build-point', line: hit, index, to: p, moved: true };
         } else selectBuild(hit);
         return;
       }
@@ -645,8 +648,8 @@ function DmMap() {
       // The whole drag is one undoable step (an inserted point already set it).
       if (!d.moved) checkpoint();
       d.moved = true;
-      d.to = buildTarget(p, e.altKey, HANDLE_PX / view.current.zoom, d.wall);
-      moveBuildPoint(d.wall, d.index, d.to, false, HANDLE_PX / view.current.zoom);
+      d.to = buildTarget(p, e.altKey, HANDLE_PX / view.current.zoom, d.line.wall);
+      moveBuildPoint(d.line, d.index, d.to, false, HANDLE_PX / view.current.zoom);
     } else if (d.kind === 'build-door') {
       if (!d.moved) checkpoint();
       d.moved = true;
@@ -679,7 +682,7 @@ function DmMap() {
     } else if (d.kind === 'wall-ends') {
       if (d.moved) moveWallEnds(d.ends, d.to, true);
     } else if (d.kind === 'build-point') {
-      if (d.moved) moveBuildPoint(d.wall, d.index, d.to, true, HANDLE_PX / view.current.zoom);
+      if (d.moved) moveBuildPoint(d.line, d.index, d.to, true, HANDLE_PX / view.current.zoom);
     } else if (d.kind === 'build-door') {
       if (d.moved) slideBuildDoor(d.id, toWorld(e), e.altKey, true);
     } else if (d.kind === 'asset-move') {
@@ -722,7 +725,7 @@ function DmMap() {
         onDoubleClick={(e) => {
           if (state.tool === 'fog-polygon' || state.tool === 'area') finishPolygon(e.altKey);
           else if (state.tool === 'wall') endWallChain();
-          else if (state.tool === 'build-wall') finishBuildWall();
+          else if (state.tool === 'build-wall' || state.tool === 'build-cliff') finishBuildWall();
           // Map Forge: a double-click on a wall selects its chain, on an area edits it.
           else if (state.tool === 'select' && state.layer === 'map') {
             const p = toWorld(e);

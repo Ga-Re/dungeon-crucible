@@ -1,65 +1,84 @@
 /**
- * The Map Forge's "Build" tab (E-33, DC-107a): drawing walls (click by click; double-click or
- * Enter ends one, a click on its start closes the ring), placing doors on them, and editing –
- * points dragged, inserted and removed, walls split and joined, style, thickness, seed and doors
- * changed. Each change is one undoable step; a drawn map's area grows with what is drawn.
+ * The Map Forge's "Build" tab (E-33, E-34): drawing walls and cliffs (click by click; double-click
+ * or Enter ends one, a click on its start closes the ring), placing doors on walls, and editing
+ * both – points dragged, inserted and removed, lines split and joined, their settings changed.
+ * Each change is one undoable step; a drawn map's area grows with what is drawn.
  */
-import { doorPlacement, hitDoor, hitMasonry, hitVertex, insertPoint, joinEnds, masonryPoints, movePoint, removePoint, removeWall, slideDoor, snapBuildPoint, splitAt, type BuildSnap, type Edit, type WallEnd } from '../core/build/editing';
+import { CLIFF_FORMS, type Cliff, type CliffForm, type CliffKind } from '../core/build/cliffs';
+import { doorPlacement, hitDoor, hitMasonry, hitVertex, insertPoint, joinEnds, masonryPoints, movePoint, removePoint, removeWall, slideDoor, snapBuildPoint, splitAt, type BuildSnap, type Edit, type Line, type WallEnd } from '../core/build/editing';
 import { drawnBounds, type BuildDoor, type Masonry, type MasonryStyle } from '../core/build/masonry';
 import type { Point } from '../core/geometry';
 import { checkpoint, editableInForge, emit, freshId, log, markDirty, recomputeVision, state } from './store';
 
 export interface BuildCommand {
-  kind: 'wall' | 'door';
+  kind: 'wall' | 'door' | 'cliff';
   style: MasonryStyle;
   /** Wall thickness in feet. */
   thicknessFt: number;
   snap: BuildSnap;
   /** Doors placed are secret. */
   secret: boolean;
-  /** The wall being drawn: its points so far. */
+  /** Cliffs (E-34): what they are and how they are shaped. */
+  cliffKind: CliffKind;
+  form: CliffForm;
+  steep: boolean;
+  /** A ravine's width, the distance between terraces, in feet. */
+  widthFt: number;
+  steps: number;
+  inside: Cliff['inside'];
+  growth: boolean;
+  /** The line being drawn: its points so far. */
   points: Point[];
 }
 
 export interface BuildSelection {
+  /** A drawn wall or a cliff. */
+  kind: 'wall' | 'cliff';
+  /** Its id. */
   wall: string;
   /** A point of it, if one was picked. */
   point: number | null;
-  /** A door on it, if one was picked. */
+  /** A door on it (walls), if one was picked. */
   door: string | null;
 }
 
+type Options = Omit<BuildCommand, 'kind' | 'points'>;
+
 /** Cells of margin around what is drawn on a drawn map. */
 const MARGIN_CELLS = 2;
-/** Default thickness of a new wall, in feet. */
-const DEFAULT_THICKNESS_FT = 1;
 
-/** Options kept between commands (style, thickness, snapping), per window. */
-let last: Pick<BuildCommand, 'style' | 'thicknessFt' | 'snap' | 'secret'> = { style: 'dungeon-stone', thicknessFt: DEFAULT_THICKNESS_FT, snap: 'grid', secret: false };
+/** Options kept between commands, per window. */
+let last: Options = { style: 'dungeon-stone', thicknessFt: 1, snap: 'grid', secret: false, cliffKind: 'rock', form: 'edge', steep: true, widthFt: 10, steps: 3, inside: 'low', growth: true };
 
 const pxPerFt = () => state.scene.map.grid.cellWidth / state.scene.map.grid.feetPerCell;
+const newSeed = () => Math.floor(Math.random() * 1_000_000);
 
-/** The drawn walls that can be edited (layers neither hidden in the editor nor locked). */
+/** The drawn walls and cliffs that can be edited (layers neither hidden in the editor nor locked). */
 export function editableMasonry(): Masonry[] {
   return state.scene.map.masonry.filter(editableInForge);
 }
 
-/** Starts drawing walls or placing doors (one command at a time). */
+export function editableCliffs(): Cliff[] {
+  return state.scene.map.cliffs.filter(editableInForge);
+}
+
+/** Starts drawing walls or cliffs, or placing doors (one command at a time). */
 export function startBuildCommand(kind: BuildCommand['kind']): void {
   if (state.layer !== 'map') return;
   state.buildCommand = { kind, ...last, points: [] };
   state.wallCommand = null;
   state.areaCommand = null;
   state.placing = null;
-  state.tool = kind === 'wall' ? 'build-wall' : 'build-door';
+  state.tool = kind === 'wall' ? 'build-wall' : kind === 'cliff' ? 'build-cliff' : 'build-door';
   emit();
 }
 
-export function updateBuildCommand(patch: Partial<Pick<BuildCommand, 'style' | 'thicknessFt' | 'snap' | 'secret'>>): void {
+export function updateBuildCommand(patch: Partial<Options>): void {
   const c = state.buildCommand;
   if (!c) return;
   state.buildCommand = { ...c, ...patch };
-  last = { style: state.buildCommand.style, thicknessFt: state.buildCommand.thicknessFt, snap: state.buildCommand.snap, secret: state.buildCommand.secret };
+  const { kind: _k, points: _p, ...options } = state.buildCommand;
+  last = options;
   emit();
 }
 
@@ -68,14 +87,14 @@ export function buildTarget(p: Point, free: boolean, tolPx: number, skipWall?: s
   const c = state.buildCommand;
   const mode = free || !state.snap ? 'free' : (c?.snap ?? last.snap);
   const from = c?.points.at(-1) ?? null;
-  const magnets = [...masonryPoints(editableMasonry(), skipWall), ...(c?.points.slice(0, -1) ?? [])];
+  const magnets = [...masonryPoints([...editableMasonry(), ...editableCliffs()], skipWall), ...(c?.points.slice(0, -1) ?? [])];
   return snapBuildPoint(p, { mode, grid: state.scene.map.grid, from, magnets, tol: tolPx });
 }
 
 /** A click while drawing: the next point; on the first point again (with three or more) the ring closes. */
 export function addBuildPoint(p: Point, tolPx: number): void {
   const c = state.buildCommand;
-  if (!c || c.kind !== 'wall') return;
+  if (!c || c.kind === 'door') return;
   const first = c.points[0];
   if (first && c.points.length >= 3 && Math.hypot(first.x - p.x, first.y - p.y) <= tolPx) {
     finishBuildWall(true);
@@ -95,7 +114,10 @@ export function undoBuildPoint(): void {
   emit();
 }
 
-/** Ends the wall being drawn (double-click, Enter, its start clicked again) – added as one step; drawing goes on. */
+/**
+ * Ends the line being drawn (double-click, Enter, its start clicked again) – added as one step;
+ * drawing goes on. A cliff drawn as a ring (or closed by its start) is a pit or plateau.
+ */
 export function finishBuildWall(closed = false): void {
   const c = state.buildCommand;
   if (!c || c.points.length < 2 || state.layer !== 'map') {
@@ -104,23 +126,38 @@ export function finishBuildWall(closed = false): void {
     return;
   }
   checkpoint();
-  const wall: Masonry = {
-    id: freshId('masonry'),
-    points: c.points.map((q) => ({ x: q.x, y: q.y })),
-    closed: closed && c.points.length >= 3,
-    style: c.style,
-    thickness: Math.max(1, c.thicknessFt * pxPerFt()),
-    seed: Math.floor(Math.random() * 1_000_000),
-    ...onCurrentLayer(),
-  };
-  apply({ masonry: [...state.scene.map.masonry, wall], doors: state.scene.map.masonryDoors });
+  const points = c.points.map((q) => ({ x: q.x, y: q.y }));
+  const m = state.scene.map;
+  if (c.kind === 'cliff') {
+    const ring = (closed || c.form === 'ring') && points.length >= 3;
+    const cliff: Cliff = {
+      id: freshId('cliff'),
+      points,
+      closed: ring,
+      kind: c.cliffKind,
+      form: ring ? 'ring' : c.form === 'ring' ? 'edge' : c.form,
+      steep: c.cliffKind !== 'scree' && c.steep,
+      width: Math.max(1, c.widthFt * pxPerFt()),
+      steps: c.steps,
+      inside: c.inside,
+      growth: c.growth,
+      seed: newSeed(),
+      ...onCurrentLayer(),
+    };
+    apply({ masonry: m.masonry, doors: m.masonryDoors }, m.cliffs.concat(cliff));
+    state.buildSelection = { kind: 'cliff', wall: cliff.id, point: null, door: null };
+    log('log.cliffAdded');
+  } else {
+    const wall: Masonry = { id: freshId('masonry'), points, closed: closed && points.length >= 3, style: c.style, thickness: Math.max(1, c.thicknessFt * pxPerFt()), seed: newSeed(), ...onCurrentLayer() };
+    apply({ masonry: [...m.masonry, wall], doors: m.masonryDoors });
+    state.buildSelection = { kind: 'wall', wall: wall.id, point: null, door: null };
+    log('log.masonryAdded');
+  }
   state.buildCommand = { ...c, points: [] };
-  state.buildSelection = { wall: wall.id, point: null, door: null };
-  log('log.masonryAdded');
   emit();
 }
 
-/** OK or Escape on an empty drawing: the command ends (a wall being drawn is added first). */
+/** OK or Escape on an empty drawing: the command ends (a line being drawn is added first). */
 export function endBuildCommand(keepDrawn: boolean): void {
   const c = state.buildCommand;
   if (!c) return;
@@ -139,7 +176,7 @@ export function placeBuildDoor(p: Point, free: boolean, tolPx: number): boolean 
   checkpoint();
   const door: BuildDoor = { id: freshId('door'), wall: at.wall, at: at.at, width: state.scene.map.grid.cellWidth, secret: c.secret, crack: false };
   apply({ masonry: state.scene.map.masonry, doors: [...state.scene.map.masonryDoors, door] });
-  state.buildSelection = { wall: at.wall, point: null, door: door.id };
+  state.buildSelection = { kind: 'wall', wall: at.wall, point: null, door: door.id };
   log('log.doorAdded');
   emit();
   return true;
@@ -147,15 +184,20 @@ export function placeBuildDoor(p: Point, free: boolean, tolPx: number): boolean 
 
 /* ---------- Selecting and editing ---------- */
 
-/** What a click at `p` picks in the "Edit" tool: a point, a door, a wall – in that order. */
+/** What a click at `p` picks in the "Edit" tool: a point, a door, a wall, a cliff – in that order. */
 export function buildHit(p: Point, tolPx: number): BuildSelection | null {
   const walls = editableMasonry();
+  const cliffs = editableCliffs();
   const v = hitVertex(walls, p, tolPx);
-  if (v) return { wall: v.wall, point: v.index, door: null };
+  if (v) return { kind: 'wall', wall: v.wall, point: v.index, door: null };
+  const cv = hitVertex(cliffs, p, tolPx);
+  if (cv) return { kind: 'cliff', wall: cv.wall, point: cv.index, door: null };
   const door = hitDoor(walls, state.scene.map.masonryDoors, p, tolPx);
-  if (door) return { wall: state.scene.map.masonryDoors.find((d) => d.id === door)!.wall, point: null, door };
+  if (door) return { kind: 'wall', wall: state.scene.map.masonryDoors.find((d) => d.id === door)!.wall, point: null, door };
   const line = hitMasonry(walls, p, tolPx);
-  return line ? { wall: line.wall, point: null, door: null } : null;
+  if (line) return { kind: 'wall', wall: line.wall, point: null, door: null };
+  const cl = hitMasonry(cliffs, p, tolPx);
+  return cl ? { kind: 'cliff', wall: cl.wall, point: null, door: null } : null;
 }
 
 export function selectBuild(sel: BuildSelection | null): void {
@@ -167,38 +209,55 @@ export function selectBuild(sel: BuildSelection | null): void {
   emit();
 }
 
-/** A click on the line of the selected wall: a new point there (one step), returned for dragging. */
-export function insertBuildPoint(wall: string, p: Point): number {
+/** The lines of a kind and the edit applied to them (doors only go with walls). */
+function lines(kind: BuildSelection['kind']): Line[] {
+  return kind === 'wall' ? state.scene.map.masonry : state.scene.map.cliffs;
+}
+
+function applyTo(kind: BuildSelection['kind'], edit: Edit<Line>, final = true): void {
+  const m = state.scene.map;
+  if (kind === 'wall') apply({ masonry: edit.masonry as Masonry[], doors: edit.doors }, m.cliffs, final);
+  else apply({ masonry: m.masonry, doors: m.masonryDoors }, edit.masonry as Cliff[], final);
+}
+
+const doorsOf = (kind: BuildSelection['kind']) => (kind === 'wall' ? state.scene.map.masonryDoors : []);
+
+/** A click on the line of the selected wall or cliff: a new point there (one step), returned for dragging. */
+export function insertBuildPoint(sel: Pick<BuildSelection, 'kind' | 'wall'>, p: Point): number {
   checkpoint();
-  const out = insertPoint(state.scene.map.masonry, wall, p);
-  apply({ masonry: out.masonry, doors: state.scene.map.masonryDoors });
-  state.buildSelection = { wall, point: out.index, door: null };
+  const out = insertPoint(lines(sel.kind), sel.wall, p);
+  applyTo(sel.kind, { masonry: out.masonry, doors: doorsOf(sel.kind) });
+  state.buildSelection = { kind: sel.kind, wall: sel.wall, point: out.index, door: null };
   emit();
   return out.index;
 }
 
 /**
- * Moves a point live while dragging; `done` joins it to another wall's end it was dropped on (or
- * to its own other end: the ring closes). The caller sets the checkpoint when the drag starts.
+ * Moves a point live while dragging; `done` joins it to another end of the same kind it was
+ * dropped on (or to its own other end: the ring closes). The caller sets the checkpoint.
  */
-export function moveBuildPoint(wall: string, index: number, to: Point, done: boolean, tolPx: number): void {
-  let edit = movePoint(state.scene.map.masonry, state.scene.map.masonryDoors, wall, index, to);
+export function moveBuildPoint(sel: Pick<BuildSelection, 'kind' | 'wall'>, index: number, to: Point, done: boolean, tolPx: number): void {
+  let edit = movePoint(lines(sel.kind), doorsOf(sel.kind), sel.wall, index, to);
   if (done) {
-    const w = edit.masonry.find((x) => x.id === wall);
+    const w = edit.masonry.find((x) => x.id === sel.wall);
     const end: WallEnd['end'] | null = w && !w.closed ? (index === 0 ? 'first' : index === w.points.length - 1 ? 'last' : null) : null;
     if (w && end) {
-      const target = endNear(edit.masonry, to, tolPx, { wall, end });
-      if (target) edit = joinEnds(edit.masonry, edit.doors, { wall, end }, target);
+      const target = endNear(edit.masonry, to, tolPx, { wall: sel.wall, end });
+      if (target) {
+        edit = joinEnds(edit.masonry, edit.doors, { wall: sel.wall, end }, target);
+        // A cliff closed into a ring becomes a pit or plateau.
+        if (sel.kind === 'cliff') edit = { ...edit, masonry: edit.masonry.map((x) => (x.id === sel.wall && x.closed ? { ...(x as Cliff), form: 'ring' } : x)) };
+      }
     }
   }
-  apply(edit, done);
-  if (done && !state.scene.map.masonry.some((x) => x.id === wall)) state.buildSelection = null;
+  applyTo(sel.kind, edit, done);
+  if (done && !lines(sel.kind).some((x) => x.id === sel.wall)) state.buildSelection = null;
   emit();
 }
 
-/** Another open wall's end (or this wall's other end) at `p`. */
-function endNear(masonry: readonly Masonry[], p: Point, tol: number, self: WallEnd): WallEnd | null {
-  for (const w of masonry) {
+/** Another open line's end (or this line's other end) at `p`. */
+function endNear(all: readonly Line[], p: Point, tol: number, self: WallEnd): WallEnd | null {
+  for (const w of all) {
     if (w.closed || w.points.length < 2) continue;
     for (const end of ['first', 'last'] as const) {
       if (w.id === self.wall && end === self.end) continue;
@@ -213,30 +272,34 @@ function endNear(masonry: readonly Masonry[], p: Point, tol: number, self: WallE
 /** Slides a door along its wall live while dragging (the caller sets the checkpoint). */
 export function slideBuildDoor(id: string, to: Point, free: boolean, done: boolean): void {
   const doors = state.scene.map.masonryDoors.map((d) => (d.id === id ? slideDoor(state.scene.map.masonry, d, to, free || !state.snap ? null : state.scene.map.grid) : d));
-  apply({ masonry: state.scene.map.masonry, doors }, done);
+  apply({ masonry: state.scene.map.masonry, doors }, state.scene.map.cliffs, done);
   emit();
 }
 
-/** Delete: the selected point, door or wall (one step). */
+/** Delete: the selected point, door, wall or cliff (one step). */
 export function deleteBuildSelection(): boolean {
   const sel = state.buildSelection;
   if (!sel || state.layer !== 'map') return false;
   checkpoint();
-  const { masonry, masonryDoors } = state.scene.map;
-  if (sel.door) apply({ masonry, doors: masonryDoors.filter((d) => d.id !== sel.door) });
-  else if (sel.point !== null) apply(removePoint(masonry, masonryDoors, sel.wall, sel.point));
-  else apply(removeWall(masonry, masonryDoors, sel.wall));
-  state.buildSelection = sel.point !== null && state.scene.map.masonry.some((w) => w.id === sel.wall) ? { ...sel, point: null } : null;
+  const all = lines(sel.kind);
+  const doors = doorsOf(sel.kind);
+  if (sel.door) apply({ masonry: state.scene.map.masonry, doors: doors.filter((d) => d.id !== sel.door) });
+  else if (sel.point !== null) applyTo(sel.kind, removePoint(all, doors, sel.wall, sel.point));
+  else applyTo(sel.kind, removeWall(all, doors, sel.wall));
+  state.buildSelection = sel.point !== null && lines(sel.kind).some((w) => w.id === sel.wall) ? { ...sel, point: null } : null;
   emit();
   return true;
 }
 
-/** "Split here": the selected wall at its selected point (one step). */
+/** "Split here": the selected wall or cliff at its selected point (one step). */
 export function splitBuildWall(): void {
   const sel = state.buildSelection;
   if (!sel || sel.point === null) return;
   checkpoint();
-  apply(splitAt(state.scene.map.masonry, state.scene.map.masonryDoors, sel.wall, sel.point, freshId('masonry')));
+  let edit = splitAt(lines(sel.kind), doorsOf(sel.kind), sel.wall, sel.point, freshId(sel.kind === 'wall' ? 'masonry' : 'cliff'));
+  // A ring opened is an edge again.
+  if (sel.kind === 'cliff') edit = { ...edit, masonry: edit.masonry.map((x) => (!x.closed && (x as Cliff).form === 'ring' ? { ...(x as Cliff), form: 'edge' } : x)) };
+  applyTo(sel.kind, edit);
   state.buildSelection = { ...sel, point: null };
   emit();
 }
@@ -250,7 +313,7 @@ export function updateMasonry(id: string, patch: Partial<Pick<Masonry, 'style' |
 
 /** A new look for the selected wall's jitter and stones. */
 export function rerollMasonry(id: string): void {
-  updateMasonry(id, { seed: Math.floor(Math.random() * 1_000_000) });
+  updateMasonry(id, { seed: newSeed() });
 }
 
 export function updateBuildDoor(id: string, patch: Partial<Pick<BuildDoor, 'width' | 'secret' | 'crack'>>): void {
@@ -261,16 +324,53 @@ export function updateBuildDoor(id: string, patch: Partial<Pick<BuildDoor, 'widt
   emit();
 }
 
+/** Changes a cliff (one step); scree never blocks sight, a ring's form follows its being closed. */
+export function updateCliff(id: string, patch: Partial<Pick<Cliff, 'kind' | 'form' | 'steep' | 'width' | 'steps' | 'inside' | 'growth' | 'seed'>>): void {
+  if (state.layer !== 'map') return;
+  checkpoint();
+  const m = state.scene.map;
+  const cliffs = m.cliffs.map((c) => {
+    if (c.id !== id) return c;
+    const next = { ...c, ...patch };
+    if (next.kind === 'scree') next.steep = false;
+    // Only a closed line is a ring; a ring asked of an open line closes it (three points or more).
+    if (patch.form === 'ring') next.closed = next.points.length >= 3;
+    else if (patch.form) next.closed = false;
+    if (!next.closed && next.form === 'ring') next.form = 'edge';
+    return next;
+  });
+  apply({ masonry: m.masonry, doors: m.masonryDoors }, cliffs);
+  emit();
+}
+
+/** "Flip direction": the cliff's upper and lower sides swap (one step). */
+export function flipCliff(id: string): void {
+  const c = state.scene.map.cliffs.find((x) => x.id === id);
+  if (!c || state.layer !== 'map') return;
+  checkpoint();
+  // A ring keeps its inside low or high: that is turned instead.
+  const cliffs = state.scene.map.cliffs.map((x) => (x.id !== id ? x : x.form === 'ring' ? { ...x, inside: x.inside === 'low' ? ('high' as const) : ('low' as const) } : { ...x, points: [...x.points].reverse() }));
+  apply({ masonry: state.scene.map.masonry, doors: state.scene.map.masonryDoors }, cliffs);
+  emit();
+}
+
+export function rerollCliff(id: string): void {
+  updateCliff(id, { seed: newSeed() });
+}
+
+export const CLIFF_FORM_LIST = CLIFF_FORMS;
+
 /* ---------- Applying an edit ---------- */
 
 /**
  * Takes an edit into the map: a drawn map's area follows what is drawn (it grows and shrinks,
  * left and up too); sight is recomputed (fully when `final`).
  */
-function apply(edit: Edit, final = true): void {
+function apply(edit: Edit, cliffs: Cliff[] = state.scene.map.cliffs, final = true): void {
   const m = state.scene.map;
   m.masonry = edit.masonry;
   m.masonryDoors = edit.doors;
+  m.cliffs = cliffs;
   if (m.drawn) {
     const b = drawnBounds(m.masonry, m.grid.cellWidth, MARGIN_CELLS, m.cliffs);
     m.origin = { x: b.x, y: b.y };

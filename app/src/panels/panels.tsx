@@ -7,7 +7,8 @@ import { d20Test } from '../core/rules/dice';
 import { playerOfToken } from '../core/party';
 import type { InteriorTrigger } from '../core/sidecar';
 import { useI18n } from '../i18n/i18n';
-import { deleteBuildSelection, rerollMasonry, splitBuildWall, updateBuildDoor, updateMasonry, type BuildSelection } from '../app/build';
+import { deleteBuildSelection, flipCliff, rerollCliff, rerollMasonry, splitBuildWall, updateBuildDoor, updateCliff, updateMasonry, type BuildSelection } from '../app/build';
+import { CliffFields } from './BuildCommandPanel';
 import { MASONRY_STYLES, type MasonryStyle } from '../core/build/masonry';
 import type { MessageKey } from '../i18n/en';
 import { TableView, type FrameSource } from '../table/TableView';
@@ -294,11 +295,28 @@ function MapProperties() {
 /** The drawn wall or door selected in the "Build" tab (E-33): style, thickness, look; door width, secret, crack. */
 function BuildProperties({ sel }: { sel: BuildSelection }) {
   const { t } = useI18n();
-  const wall = useStore((s) => s.scene.map.masonry.find((w) => w.id === sel.wall));
+  const wall = useStore((s) => (sel.kind === 'wall' ? s.scene.map.masonry.find((w) => w.id === sel.wall) : undefined));
   const door = useStore((s) => (sel.door ? s.scene.map.masonryDoors.find((d) => d.id === sel.door) : undefined));
   const grid = useStore((s) => s.scene.map.grid);
-  if (!wall) return <p className="hint">{t('props.noSelection')}</p>;
+  const cliff = useStore((s) => (sel.kind === 'cliff' ? s.scene.map.cliffs.find((c) => c.id === sel.wall) : undefined));
   const ftPerPx = grid.feetPerCell / grid.cellWidth;
+  if (cliff)
+    return (
+      <>
+        <div className="row"><label>{t('props.name')}</label><span>{t('build.props.cliff')}</span></div>
+        <CliffFields
+          value={{ cliffKind: cliff.kind, form: cliff.form, steep: cliff.steep, widthFt: Math.round(cliff.width * ftPerPx), steps: cliff.steps, inside: cliff.inside, growth: cliff.growth }}
+          onChange={(p) => updateCliff(cliff.id, { ...(p.cliffKind ? { kind: p.cliffKind } : {}), ...(p.form ? { form: p.form } : {}), ...(p.steep !== undefined ? { steep: p.steep } : {}), ...(p.widthFt ? { width: p.widthFt / ftPerPx } : {}), ...(p.steps ? { steps: p.steps } : {}), ...(p.inside ? { inside: p.inside } : {}), ...(p.growth !== undefined ? { growth: p.growth } : {}) })}
+        />
+        <div className="cmd-line">
+          <button className="btn sm" onClick={() => flipCliff(cliff.id)}><Icon name="redo" />{t('build.cliff.flip')}</button>
+          <button className="btn sm" onClick={() => rerollCliff(cliff.id)}><Icon name="reset" />{t('build.reroll')}</button>
+        </div>
+        {sel.point !== null && <button className="btn sm" onClick={splitBuildWall}><Icon name="line" />{t('build.split')}</button>}
+        <button className="btn sm danger" onClick={() => deleteBuildSelection()}><Icon name="trash" />{t('build.delete')}</button>
+      </>
+    );
+  if (!wall) return <p className="hint">{t('props.noSelection')}</p>;
   const ft = (px: number) => Math.round(px * ftPerPx * 100) / 100;
   if (door)
     return (

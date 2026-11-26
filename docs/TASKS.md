@@ -379,6 +379,14 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   - **DC-107d Klippen und Abhänge** (E-34, DM-Wunsch 2026-11-26): Klippen, Abhänge, Gruben, Plateaus, Schluchten,
     Geröllhalden, Terrassen und Abgründe zeichnen; Einweg-Sicht und Bewegungsblock wie die Klippen aus DC-014;
     Aussehen nach Biom, Bewuchs an der Oberkante. Reihenfolge der Pakete b–d wählt der DM.
+    ◐ Stand 2026-11-26: Kern (`core/build/cliffs.ts`: Kanten mit Oberseite links, Schlucht, Terrassen, Ring als Grube
+    oder Plateau, Einweg-Sichtlinien), Karte Version 6 um `cliffs` erweitert (leer als Vorgabe), TV-Freigabe (aktive
+    Ebenen, Biom; Biom eines Bereichs, aber nie eines unentdeckten geheimen), Darstellung (`render/cliffsPaint.ts`:
+    Wand der Klippe, Schatten, Lippe, Geröll, Abgrund, Schnee, Bewuchs nach Biom), natürlicher Boden nach Biom fern von
+    Mauern, Werkzeug „Klippe“ im Tab „Bauen“ mit Befehls-Panel und Eigenschaften (Art, Form, steil, Breite, Stufen,
+    innen, Bewuchs, Richtung umdrehen, neu würfeln, teilen, löschen). 14 Texturen mit Higgsfield erzeugt.
+    Geprüft in der App: alle Formen und Arten, Schnee-Biom, Zeichnen im Tab. Offen: Markierung „schwieriges Gelände“
+    der Geröllhalde für den DM im DM-Fenster; Auswahl einer Klippe in der App selbst angesehen.
   - Danach (eigene Pakete): Wege/Flüsse/Brücken, Räume und Dächer, Detailstreuung, Wildnis-/Stadt-Modus.
 - **DC-015 Assets und Ebenen** – Props siehe DC-041, Stockwerke DC-020, Zeichenebenen DC-101 (E-18).
 

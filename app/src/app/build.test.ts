@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addBuildPoint, deleteBuildSelection, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
+import { addBuildPoint, buildHit, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
 import { checkpoint, setWorkspace, sightWalls, state, undo } from './store';
 
 /** The "Build" tab (E-33, DC-107a) in the Map Forge, on the sample crypt (cells of 70 px, 5 ft). */
@@ -8,6 +8,7 @@ describe('build tab', () => {
     setWorkspace('forge');
     state.scene.map.masonry = [];
     state.scene.map.masonryDoors = [];
+    state.scene.map.cliffs = [];
     state.scene.map.drawn = false;
     state.buildSelection = null;
   });
@@ -22,7 +23,7 @@ describe('build tab', () => {
     const [w] = state.scene.map.masonry;
     expect(w).toMatchObject({ style: 'brick', thickness: 28, closed: false });
     expect(w.points).toHaveLength(3);
-    expect(state.buildSelection).toEqual({ wall: w.id, point: null, door: null });
+    expect(state.buildSelection).toEqual({ kind: 'wall', wall: w.id, point: null, door: null });
     expect(sightWalls(state.scene).some((x) => x.id.startsWith(`${w.id}#`))).toBe(true);
     // Drawing goes on with a new wall; the options stay.
     expect(state.buildCommand).toMatchObject({ points: [], style: 'brick' });
@@ -82,17 +83,71 @@ describe('build tab', () => {
     finishBuildWall();
     endBuildCommand(false);
     const [a, b] = state.scene.map.masonry;
-    const i = insertBuildPoint(a.id, { x: 140, y: 4003 });
+    const i = insertBuildPoint({ kind: 'wall', wall: a.id }, { x: 140, y: 4003 });
     expect(i).toBe(1);
     expect(state.scene.map.masonry[0].points[1]).toEqual({ x: 140, y: 4000 });
     // Dragging a's last point onto b's first joins them into one wall.
     checkpoint();
-    moveBuildPoint(a.id, 2, { x: 420, y: 4000 }, true, 8);
+    moveBuildPoint({ kind: 'wall', wall: a.id }, 2, { x: 420, y: 4000 }, true, 8);
     expect(state.scene.map.masonry).toHaveLength(1);
     expect(state.scene.map.masonry[0].points.map((p) => p.x)).toEqual([0, 140, 420, 700]);
     expect(state.scene.map.masonry.some((w) => w.id === b.id)).toBe(false);
-    selectBuild({ wall: a.id, point: 2, door: null });
+    selectBuild({ kind: 'wall', wall: a.id, point: 2, door: null });
     splitBuildWall();
     expect(state.scene.map.masonry.map((w) => w.points.length)).toEqual([3, 2]);
+  });
+});
+
+describe('cliffs in the build tab (E-34)', () => {
+  beforeEach(() => {
+    setWorkspace('forge');
+    state.scene.map.masonry = [];
+    state.scene.map.masonryDoors = [];
+    state.scene.map.cliffs = [];
+    state.buildSelection = null;
+  });
+
+  it('draws a steep cliff that blocks sight one way; flips; scree never blocks', () => {
+    startBuildCommand('cliff');
+    updateBuildCommand({ cliffKind: 'rock', form: 'edge', steep: true });
+    addBuildPoint({ x: 0, y: 5000 }, 8);
+    addBuildPoint({ x: 420, y: 5000 }, 8);
+    finishBuildWall();
+    const [c] = state.scene.map.cliffs;
+    expect(c).toMatchObject({ kind: 'rock', form: 'edge', closed: false, steep: true });
+    expect(state.buildSelection).toEqual({ kind: 'cliff', wall: c.id, point: null, door: null });
+    expect(sightWalls(state.scene).filter((w) => w.id.startsWith(`${c.id}#`)).every((w) => w.kind === 'cliff')).toBe(true);
+    flipCliff(c.id);
+    expect(state.scene.map.cliffs[0].points[0]).toEqual({ x: 420, y: 5000 });
+    updateCliff(c.id, { kind: 'scree' });
+    expect(state.scene.map.cliffs[0].steep).toBe(false);
+    expect(sightWalls(state.scene).some((w) => w.id.startsWith(`${c.id}#`))).toBe(false);
+    undo();
+    expect(state.scene.map.cliffs[0].kind).toBe('rock');
+  });
+
+  it('a click on its start closes a ring: a pit; flipping makes it a plateau', () => {
+    startBuildCommand('cliff');
+    updateBuildCommand({ form: 'edge' });
+    for (const p of [{ x: 0, y: 6000 }, { x: 280, y: 6000 }, { x: 280, y: 6280 }]) addBuildPoint(p, 8);
+    addBuildPoint({ x: 2, y: 6001 }, 8);
+    const [c] = state.scene.map.cliffs;
+    expect(c).toMatchObject({ closed: true, form: 'ring', inside: 'low' });
+    flipCliff(c.id);
+    expect(state.scene.map.cliffs[0].inside).toBe('high');
+  });
+
+  it('is picked and edited like a wall', () => {
+    startBuildCommand('cliff');
+    addBuildPoint({ x: 0, y: 7000 }, 8);
+    addBuildPoint({ x: 280, y: 7000 }, 8);
+    addBuildPoint({ x: 560, y: 7000 }, 8);
+    finishBuildWall();
+    endBuildCommand(false);
+    const id = state.scene.map.cliffs[0].id;
+    expect(buildHit({ x: 281, y: 7001 }, 8)).toEqual({ kind: 'cliff', wall: id, point: 1, door: null });
+    selectBuild({ kind: 'cliff', wall: id, point: 1, door: null });
+    deleteBuildSelection();
+    expect(state.scene.map.cliffs[0].points).toHaveLength(2);
   });
 });

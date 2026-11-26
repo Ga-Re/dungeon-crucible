@@ -7,7 +7,7 @@ import { d20Test } from '../core/rules/dice';
 import { playerOfToken } from '../core/party';
 import type { InteriorTrigger } from '../core/sidecar';
 import { useI18n } from '../i18n/i18n';
-import { deleteBuildSelection, flipCliff, flipWater, rerollCliff, rerollMasonry, setMapLook, setWaterAnimated, splitBuildWall, updateBuildDoor, updateCliff, updateMasonry, updateWater, type BuildSelection } from '../app/build';
+import { deleteBuildSelection, flipCliff, flipWater, rerollCliff, rerollMasonry, setMapLook, setWaterAnimated, showHiddenDrawn, splitBuildWall, updateBuildDoor, updateCliff, updateMasonry, updateWater, type BuildSelection } from '../app/build';
 import { CliffFields, WaterFields } from './BuildCommandPanel';
 import { MASONRY_STYLES, type MasonryStyle } from '../core/build/masonry';
 import { defaultWallHeight } from '../render/drawnMap';
@@ -264,6 +264,7 @@ function MapProperties() {
       {map.widthPx > 0 && <div className="row"><label /><span className="hint mono">{map.widthPx}×{map.heightPx} px · {tileCount(map.widthPx, map.heightPx)} GPU tiles</span></div>}
       <div className="row"><label>{t('map.ambient')}</label><span>{t(ambient === 'lit' ? 'ambient.lit' : 'ambient.dark')}</span></div>
       {map.drawn && editable && <MapLook />}
+      {!editable && <SceneDrawnHidden />}
       {map.waters.length > 0 && (
         <label className="cmd-check"><input type="checkbox" checked={map.waterAnimated} disabled={!editable} onChange={(e) => setWaterAnimated(e.target.checked)} />{t('build.water.animated')}</label>
       )}
@@ -298,6 +299,19 @@ function MapProperties() {
   );
 }
 
+/** In a scene: how many drawn map elements it hides, and "show again" (DC-107c). */
+function SceneDrawnHidden() {
+  const { t } = useI18n();
+  const n = useStore((s) => s.scene.drawnHidden.length);
+  if (!n) return null;
+  return (
+    <div className="cmd-line">
+      <span className="hint">{t('build.scene.hidden', { n })}</span>
+      <button className="btn sm" onClick={showHiddenDrawn}><Icon name="eye" />{t('build.scene.showAgain')}</button>
+    </div>
+  );
+}
+
 /** Directions the light can fall towards (degrees, map coordinates: 0 to the right, 90 down). */
 const LIGHT_ANGLES = [45, 90, 135, 180, 225, 270, 315, 0] as const;
 
@@ -320,12 +334,30 @@ function MapLook() {
 
 /** The drawn wall or door selected in the "Build" tab (E-33): style, thickness, look; door width, secret, crack. */
 function BuildProperties({ sel }: { sel: BuildSelection }) {
+  if (sel.onMap) return <MapDrawnInScene />;
+  return <OwnBuildProperties sel={sel} />;
+}
+
+/** A drawn element of the map, picked in a scene (DC-107c): it can only be hidden there. */
+function MapDrawnInScene() {
   const { t } = useI18n();
-  const wall = useStore((s) => (sel.kind === 'wall' ? s.scene.map.masonry.find((w) => w.id === sel.wall) : undefined));
-  const door = useStore((s) => (sel.door ? s.scene.map.masonryDoors.find((d) => d.id === sel.door) : undefined));
+  return (
+    <>
+      <p className="hint">{t('build.scene.mapElement')}</p>
+      <button className="btn sm" onClick={() => deleteBuildSelection()}><Icon name="eyeoff" />{t('build.scene.hide')}</button>
+    </>
+  );
+}
+
+function OwnBuildProperties({ sel }: { sel: BuildSelection }) {
+  const { t } = useI18n();
+  // The map's in the Map Forge, the scene's own in a scene (DC-107c).
+  const lists = useStore((s) => (s.layer === 'map' ? s.scene.map : s.scene.own));
+  const wall = lists.masonry.find((w) => (sel.kind === 'wall' ? w.id === sel.wall : false));
+  const door = sel.door ? lists.masonryDoors.find((d) => d.id === sel.door) : undefined;
   const grid = useStore((s) => s.scene.map.grid);
-  const cliff = useStore((s) => (sel.kind === 'cliff' ? s.scene.map.cliffs.find((c) => c.id === sel.wall) : undefined));
-  const water = useStore((s) => (sel.kind === 'water' ? s.scene.map.waters.find((w) => w.id === sel.wall) : undefined));
+  const cliff = sel.kind === 'cliff' ? lists.cliffs.find((c) => c.id === sel.wall) : undefined;
+  const water = sel.kind === 'water' ? lists.waters.find((w) => w.id === sel.wall) : undefined;
   const animated = useStore((s) => s.scene.map.waterAnimated);
   const ftPerPx = grid.feetPerCell / grid.cellWidth;
   if (cliff)

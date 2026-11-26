@@ -41,6 +41,28 @@ export interface WorkspaceDef {
   layout: DefaultLayout;
 }
 
+/**
+ * Drawn walls, doors, cliffs, water and floors (E-33): in the Map Forge they are the map's, in the
+ * Game Orchestrator the scene's own (DC-107c).
+ */
+const buildTools: RibbonTab = {
+  label: 'tab.build',
+  groups: [
+    {
+      label: 'group.build',
+      buttons: [
+        { id: 'tool:build-edit', icon: 'select', label: 'tool.buildEdit', tool: 'build-edit' },
+        { id: 'build:wall', icon: 'wall', label: 'tool.buildWall' },
+        { id: 'build:door', icon: 'door', label: 'tool.buildDoor' },
+        { id: 'build:cliff', icon: 'cliff', label: 'tool.buildCliff' },
+        { id: 'build:water', icon: 'water', label: 'tool.buildWater' },
+        { id: 'build:floor', icon: 'brush', label: 'tool.buildFloor' },
+      ],
+    },
+    { label: 'group.grid', buttons: [{ id: 'toggle:snap', icon: 'magnet', label: 'tool.snap' }] },
+  ],
+};
+
 const view: RibbonGroup = {
   label: 'group.view',
   buttons: [
@@ -144,24 +166,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
           { label: 'group.light', buttons: [{ id: 'tool:light', icon: 'light', label: 'tool.light', tool: 'light' }] },
         ],
       },
-      {
-        // Drawn walls and doors (E-33): the walls are the map's picture and its sight at once.
-        label: 'tab.build',
-        groups: [
-          {
-            label: 'group.build',
-            buttons: [
-              { id: 'tool:build-edit', icon: 'select', label: 'tool.buildEdit', tool: 'build-edit' },
-              { id: 'build:wall', icon: 'wall', label: 'tool.buildWall' },
-              { id: 'build:door', icon: 'door', label: 'tool.buildDoor' },
-              { id: 'build:cliff', icon: 'cliff', label: 'tool.buildCliff' },
-              { id: 'build:water', icon: 'water', label: 'tool.buildWater' },
-              { id: 'build:floor', icon: 'brush', label: 'tool.buildFloor' },
-            ],
-          },
-          { label: 'group.grid', buttons: [{ id: 'toggle:snap', icon: 'magnet', label: 'tool.snap' }] },
-        ],
-      },
+      buildTools,
       fogTools,
     ],
     layout: { center: 'map', left: ['browser', 'assets'], right: ['properties', 'fog'], bottom: ['log'] },
@@ -233,6 +238,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
           },
         ],
       },
+      buildTools,
       fogTools,
       {
         label: 'tab.spells',

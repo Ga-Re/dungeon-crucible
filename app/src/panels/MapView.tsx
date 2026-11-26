@@ -394,9 +394,11 @@ function DmMap() {
     const stroke = d?.kind === 'build-stroke' ? (d.straight ? [d.path[0], mouse.current] : [...d.path, mouse.current]) : [];
     const draft = c && c.kind !== 'door' && c.kind !== 'floor' ? [...c.points, ...stroke] : [];
     const next = draft.length && !stroke.length ? buildTarget(mouse.current, altHeld.current, HANDLE_PX / view.current.zoom) : null;
-    const w = sel?.kind === 'wall' ? state.scene.map.masonry.find((x) => x.id === sel.wall) : undefined;
-    const cl = sel?.kind === 'cliff' ? state.scene.map.cliffs.find((x) => x.id === sel.wall) : sel?.kind === 'water' ? state.scene.map.waters.find((x) => x.id === sel.wall) : undefined;
-    const door = sel?.door ? state.scene.map.masonryDoors.find((x) => x.id === sel.door) : undefined;
+    // The map's drawing, or in a scene its own (DC-107c).
+    const lists = !sel || sel.onMap || state.layer === 'map' ? state.scene.map : state.scene.own;
+    const w = sel?.kind === 'wall' ? lists.masonry.find((x) => x.id === sel.wall) : undefined;
+    const cl = sel?.kind === 'cliff' ? lists.cliffs.find((x) => x.id === sel.wall) : sel?.kind === 'water' ? lists.waters.find((x) => x.id === sel.wall) : undefined;
+    const door = sel?.door ? lists.masonryDoors.find((x) => x.id === sel.door) : undefined;
     const span = w && door ? doorSpan(w, door) : null;
     const line = w ?? cl;
     return {
@@ -606,10 +608,10 @@ function DmMap() {
         if (hit?.point != null) {
           selectBuild(hit);
           drag.current = { kind: 'build-point', line: hit, index: hit.point, to: p, moved: false };
-        } else if (hit?.door) {
+        } else if (hit?.door && !hit.onMap) {
           selectBuild(hit);
           drag.current = { kind: 'build-door', id: hit.door, moved: false };
-        } else if (hit && sel && sel.kind === hit.kind && sel.wall === hit.wall && !sel.door) {
+        } else if (hit && !hit.onMap && sel && !sel.onMap && sel.kind === hit.kind && sel.wall === hit.wall && !sel.door) {
           // A click on the selected line: a new point there, dragged at once.
           const index = insertBuildPoint(hit, p);
           drag.current = { kind: 'build-point', line: hit, index, to: p, moved: true };
@@ -804,7 +806,8 @@ function DmMap() {
       {ws === 'forge' && <AreaCommandPanel />}
       {(ws === 'forge' || ws === 'play') && <PlacingPanel />}
       {ws === 'forge' && <WallCommandPanel />}
-      {ws === 'forge' && <BuildCommandPanel />}
+      {/* The Build tab draws into the map in the Map Forge, into the scene in the Orchestrator (DC-107c). */}
+      <BuildCommandPanel />
       {ws === 'forge' && <CalibrationPanel />}
       {!mapPresent && !catalog && (
         <div className="map-empty">

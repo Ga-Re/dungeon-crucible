@@ -384,7 +384,15 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     Werkzeug „Boden“ im Tab „Bauen“ mit Boden, Pinselgröße und Pinselvorschau. 5 Texturen mit Higgsfield.
     Nebenbei behoben: Alt löste in allen Bau-Werkzeugen einen Ping aus statt „frei“ bzw. „radieren“ (seit DC-107a).
     Geprüft in der App (Teppich, Lehmweg mit Shift, Radieren mit Alt).
-  - **DC-107c Eigene Mauern in Szenen** (Szene v8).
+  - ✓ **DC-107c Eigene Mauern in Szenen** (Szene v8). DM 2026-11-26: gezeichnet im Tab „Bauen“ des Spielleiters
+    (Spielstand, oder mit „Startzustand bearbeiten“ der Start); eine Szene darf Mauern/Türen/Fenster, Klippen, Wasser
+    und Böden haben und gezeichnete Elemente der Karte ausblenden. Umgesetzt: Szene Version 8 mit `drawing` im
+    Spielstand und im Start (eigene Zeichnung + `hidden`), „Szene zurücksetzen“ holt die des Starts zurück;
+    `core/build/sceneDrawing.ts` (was die Szene zeigt: Karte ohne Ausgeblendetes plus Eigenes) für Sicht, TV und
+    DM-Fenster; die Werkzeuge zeichnen in die Szene, die Karte bleibt unberührt (ihre Fläche wächst nicht mit);
+    Karten-Elemente werden in der Szene ausgewählt und mit Entf/„In dieser Szene ausblenden“ ausgeblendet,
+    „Wieder zeigen“ im Kartenbereich. Geprüft in der App (Barrikade nur in der Szene, auf dem TV, Karte
+    unverändert).
   - ✓ **DC-107d Klippen und Abhänge** (E-34, DM-Wunsch 2026-11-26): Klippen, Abhänge, Gruben, Plateaus, Schluchten,
     Geröllhalden, Terrassen und Abgründe zeichnen; Einweg-Sicht und Bewegungsblock wie die Klippen aus DC-014;
     Aussehen nach Biom, Bewuchs an der Oberkante. Reihenfolge der Pakete b–d wählt der DM.

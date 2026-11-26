@@ -14,6 +14,7 @@ import { strokeArea } from '../core/poly/shapes';
 import { isInside } from '../core/poly/fog';
 import type { Point } from '../core/geometry';
 import { checkpoint, editableInForge, emit, freshId, log, markDirty, recomputeVision, state } from './store';
+import type { OwnDrawing } from '../core/build/sceneDrawing';
 
 export interface BuildCommand {
   kind: 'wall' | 'door' | 'cliff' | 'water' | 'floor';
@@ -55,6 +56,8 @@ export interface BuildSelection {
   point: number | null;
   /** A door on it (walls), if one was picked. */
   door: string | null;
+  /** In a scene: a drawn element of the map – it can only be hidden there (DC-107c). */
+  onMap?: boolean;
 }
 
 type Options = Omit<BuildCommand, 'kind' | 'points'>;
@@ -70,20 +73,19 @@ const newSeed = () => Math.floor(Math.random() * 1_000_000);
 
 /** The drawn walls and cliffs that can be edited (layers neither hidden in the editor nor locked). */
 export function editableMasonry(): Masonry[] {
-  return state.scene.map.masonry.filter(editableInForge);
+  return state.layer === 'map' ? target().masonry.filter(editableInForge) : target().masonry;
 }
 
 export function editableCliffs(): Cliff[] {
-  return state.scene.map.cliffs.filter(editableInForge);
+  return state.layer === 'map' ? target().cliffs.filter(editableInForge) : target().cliffs;
 }
 
 export function editableWaters(): Water[] {
-  return state.scene.map.waters.filter(editableInForge);
+  return state.layer === 'map' ? target().waters.filter(editableInForge) : target().waters;
 }
 
 /** Starts drawing walls or cliffs, or placing doors (one command at a time). */
 export function startBuildCommand(kind: BuildCommand['kind']): void {
-  if (state.layer !== 'map') return;
   state.buildCommand = { kind, ...last, points: [] };
   state.wallCommand = null;
   state.areaCommand = null;
@@ -106,7 +108,9 @@ export function buildTarget(p: Point, free: boolean, tolPx: number, skipWall?: s
   const c = state.buildCommand;
   const mode = free || !state.snap ? 'free' : (c?.snap ?? last.snap);
   const from = c?.points.at(-1) ?? null;
-  const magnets = [...masonryPoints([...editableMasonry(), ...editableCliffs(), ...editableWaters()], skipWall), ...(c?.points.slice(0, -1) ?? [])];
+  // In a scene the map's lines catch too (a scene wall joins a map wall cleanly).
+  const mapLines = state.layer === 'map' ? [] : [...state.scene.map.masonry, ...state.scene.map.cliffs, ...state.scene.map.waters];
+  const magnets = [...masonryPoints([...editableMasonry(), ...editableCliffs(), ...editableWaters(), ...mapLines], skipWall), ...(c?.points.slice(0, -1) ?? [])];
   return snapBuildPoint(p, { mode, grid: state.scene.map.grid, from, magnets, tol: tolPx });
 }
 
@@ -169,12 +173,12 @@ export function addBuildStroke(stroke: readonly Point[], straight: boolean, tolP
  */
 export function paintFloorStroke(stroke: readonly Point[], straight: boolean, erase: boolean): boolean {
   const c = state.buildCommand;
-  if (!c || c.kind !== 'floor' || state.layer !== 'map' || !stroke.length) return false;
+  if (!c || c.kind !== 'floor' || !stroke.length) return false;
   const path = straight && stroke.length > 1 ? [stroke[0], stroke[stroke.length - 1]] : stroke;
   const area = strokeArea(path.map((p) => [p.x, p.y] as [number, number]), (c.brushCells * state.scene.map.grid.cellWidth) / 2);
   if (!area) return false;
   checkpoint();
-  const m = state.scene.map;
+  const m = target();
   const floors = paintFloor(m.floors, area, c.floorStyle, erase, () => freshId('floor'), newSeed()).map((f) => (f.layer || !onCurrentLayer().layer ? f : { ...f, ...onCurrentLayer() }));
   apply({ masonry: m.masonry, doors: m.masonryDoors }, m.cliffs, true, m.waters, floors);
   emit();
@@ -195,14 +199,14 @@ export function undoBuildPoint(): void {
  */
 export function finishBuildWall(closed = false): void {
   const c = state.buildCommand;
-  if (!c || c.points.length < 2 || state.layer !== 'map') {
+  if (!c || c.points.length < 2) {
     if (c) state.buildCommand = { ...c, points: [] };
     emit();
     return;
   }
   checkpoint();
   const points = c.points.map((q) => ({ x: q.x, y: q.y }));
-  const m = state.scene.map;
+  const m = target();
   if (c.kind === 'water') {
     // A river is a line; a lake or the sea a ring, however it was drawn.
     const ring = c.waterKind !== 'river';
@@ -259,12 +263,12 @@ export function endBuildCommand(keepDrawn: boolean): void {
 /** "Place door": a door one cell wide on the wall clicked, centred on a cell (unless Alt). */
 export function placeBuildDoor(p: Point, free: boolean, tolPx: number): boolean {
   const c = state.buildCommand;
-  if (!c || c.kind !== 'door' || state.layer !== 'map') return false;
+  if (!c || c.kind !== 'door') return false;
   const at = doorPlacement(editableMasonry(), p, free || !state.snap ? null : state.scene.map.grid, tolPx);
   if (!at) return false;
   checkpoint();
   const door: BuildDoor = { id: freshId(c.window ? 'window' : 'door'), wall: at.wall, at: at.at, width: state.scene.map.grid.cellWidth, secret: !c.window && c.secret, crack: false, ...(c.window ? { window: true } : {}) };
-  apply({ masonry: state.scene.map.masonry, doors: [...state.scene.map.masonryDoors, door] });
+  apply({ masonry: target().masonry, doors: [...target().masonryDoors, door] });
   state.buildSelection = { kind: 'wall', wall: at.wall, point: null, door: door.id };
   log('log.doorAdded');
   emit();
@@ -273,23 +277,35 @@ export function placeBuildDoor(p: Point, free: boolean, tolPx: number): boolean 
 
 /* ---------- Selecting and editing ---------- */
 
-/** What a click at `p` picks in the "Edit" tool: a point, a door, a wall, a cliff – in that order. */
+/**
+ * What a click at `p` picks in the "Edit" tool: a point, a door, a wall, a cliff, water – in that
+ * order. In a scene its own drawing first, then what the map shows there (to hide it, DC-107c).
+ */
 export function buildHit(p: Point, tolPx: number): BuildSelection | null {
-  const walls = editableMasonry();
+  const own = hitIn(editableMasonry(), target().masonryDoors, editableCliffs(), editableWaters(), p, tolPx);
+  if (own || state.layer === 'map') return own;
+  const off = new Set(state.scene.drawnHidden);
+  const m = state.scene.map;
+  const mapHit = hitIn(m.masonry.filter((w) => !off.has(w.id)), m.masonryDoors.filter((d) => !off.has(d.id)), m.cliffs.filter((c) => !off.has(c.id)), m.waters.filter((w) => !off.has(w.id)), p, tolPx);
+  // Only the whole element: points and lines of the map are not edited in a scene.
+  return mapHit ? { ...mapHit, point: null, onMap: true } : null;
+}
+
+function hitIn(walls: Masonry[], doorList: readonly BuildDoor[], cliffList: Cliff[], waterList: Water[], p: Point, tolPx: number): BuildSelection | null {
   // A cliff is hit on its face too, not only on its upper edge: what is seen is what is clicked.
-  const cliffs = editableCliffs().map((c) => ({ ...c, thickness: state.scene.map.grid.cellWidth * 1.2 }));
+  const cliffs = cliffList.map((c) => ({ ...c, thickness: state.scene.map.grid.cellWidth * 1.2 }));
   const v = hitVertex(walls, p, tolPx);
   if (v) return { kind: 'wall', wall: v.wall, point: v.index, door: null };
   const cv = hitVertex(cliffs, p, tolPx);
   if (cv) return { kind: 'cliff', wall: cv.wall, point: cv.index, door: null };
-  const door = hitDoor(walls, state.scene.map.masonryDoors, p, tolPx);
-  if (door) return { kind: 'wall', wall: state.scene.map.masonryDoors.find((d) => d.id === door)!.wall, point: null, door };
+  const door = hitDoor(walls, doorList, p, tolPx);
+  if (door) return { kind: 'wall', wall: doorList.find((d) => d.id === door)!.wall, point: null, door };
   const line = hitMasonry(walls, p, tolPx);
   if (line) return { kind: 'wall', wall: line.wall, point: null, door: null };
   const cl = hitMasonry(cliffs, p, tolPx);
   if (cl) return { kind: 'cliff', wall: cl.wall, point: null, door: null };
   // Water: a river on its width, a lake or the sea anywhere on it.
-  const waters = editableWaters().map((w) => ({ ...w, thickness: w.kind === 'river' ? w.width : 0 }));
+  const waters = waterList.map((w) => ({ ...w, thickness: w.kind === 'river' ? w.width : 0 }));
   const wv = hitVertex(waters, p, tolPx);
   if (wv) return { kind: 'water', wall: wv.wall, point: wv.index, door: null };
   const wl = hitMasonry(waters, p, tolPx);
@@ -309,7 +325,7 @@ export function selectBuild(sel: BuildSelection | null): void {
 
 /** The lines of a kind and the edit applied to them (doors only go with walls). */
 function lines(kind: BuildSelection['kind']): Line[] {
-  return kind === 'wall' ? state.scene.map.masonry : kind === 'cliff' ? state.scene.map.cliffs : state.scene.map.waters;
+  return kind === 'wall' ? target().masonry : kind === 'cliff' ? target().cliffs : target().waters;
 }
 
 function applyTo(kind: BuildSelection['kind'], edit: Edit<Line>, final = true): void {
@@ -319,7 +335,7 @@ function applyTo(kind: BuildSelection['kind'], edit: Edit<Line>, final = true): 
   else apply({ masonry: m.masonry, doors: m.masonryDoors }, m.cliffs, final, edit.masonry as Water[]);
 }
 
-const doorsOf = (kind: BuildSelection['kind']) => (kind === 'wall' ? state.scene.map.masonryDoors : []);
+const doorsOf = (kind: BuildSelection['kind']) => (kind === 'wall' ? target().masonryDoors : []);
 
 /** A click on the line of the selected wall or cliff: a new point there (one step), returned for dragging. */
 export function insertBuildPoint(sel: Pick<BuildSelection, 'kind' | 'wall'>, p: Point): number {
@@ -370,19 +386,28 @@ function endNear(all: readonly Line[], p: Point, tol: number, self: WallEnd): Wa
 
 /** Slides a door along its wall live while dragging (the caller sets the checkpoint). */
 export function slideBuildDoor(id: string, to: Point, free: boolean, done: boolean): void {
-  const doors = state.scene.map.masonryDoors.map((d) => (d.id === id ? slideDoor(state.scene.map.masonry, d, to, free || !state.snap ? null : state.scene.map.grid) : d));
-  apply({ masonry: state.scene.map.masonry, doors }, state.scene.map.cliffs, done);
+  const doors = target().masonryDoors.map((d) => (d.id === id ? slideDoor(target().masonry, d, to, free || !state.snap ? null : state.scene.map.grid) : d));
+  apply({ masonry: target().masonry, doors }, target().cliffs, done);
   emit();
 }
 
 /** Delete: the selected point, door, wall or cliff (one step). */
 export function deleteBuildSelection(): boolean {
   const sel = state.buildSelection;
-  if (!sel || state.layer !== 'map') return false;
+  if (!sel) return false;
   checkpoint();
+  if (sel.onMap) {
+    // In a scene, a drawn element of the map is hidden there, not deleted (DC-107c).
+    state.scene.drawnHidden = [...state.scene.drawnHidden, sel.door ?? sel.wall];
+    state.buildSelection = null;
+    markDirty();
+    recomputeVision();
+    emit();
+    return true;
+  }
   const all = lines(sel.kind);
   const doors = doorsOf(sel.kind);
-  if (sel.door) apply({ masonry: state.scene.map.masonry, doors: doors.filter((d) => d.id !== sel.door) });
+  if (sel.door) apply({ masonry: target().masonry, doors: doors.filter((d) => d.id !== sel.door) });
   else if (sel.point !== null) applyTo(sel.kind, removePoint(all, doors, sel.wall, sel.point));
   else applyTo(sel.kind, removeWall(all, doors, sel.wall));
   state.buildSelection = sel.point !== null && lines(sel.kind).some((w) => w.id === sel.wall) ? { ...sel, point: null } : null;
@@ -406,9 +431,8 @@ export function splitBuildWall(): void {
 }
 
 export function updateMasonry(id: string, patch: Partial<Pick<Masonry, 'style' | 'thickness' | 'seed' | 'height' | 'fortified'>>): void {
-  if (state.layer !== 'map') return;
   checkpoint();
-  apply({ masonry: state.scene.map.masonry.map((w) => (w.id === id ? { ...w, ...patch } : w)), doors: state.scene.map.masonryDoors });
+  apply({ masonry: target().masonry.map((w) => (w.id === id ? { ...w, ...patch } : w)), doors: target().masonryDoors });
   emit();
 }
 
@@ -418,19 +442,17 @@ export function rerollMasonry(id: string): void {
 }
 
 export function updateBuildDoor(id: string, patch: Partial<Pick<BuildDoor, 'width' | 'secret' | 'crack' | 'window'>>): void {
-  if (state.layer !== 'map') return;
   checkpoint();
   // A window is never secret; a door that stops being secret loses its crack.
-  const doors = state.scene.map.masonryDoors.map((d) => (d.id === id ? { ...d, ...patch, ...(patch.secret === false || patch.window ? { crack: false } : {}), ...(patch.window ? { secret: false } : {}) } : d));
-  apply({ masonry: state.scene.map.masonry, doors });
+  const doors = target().masonryDoors.map((d) => (d.id === id ? { ...d, ...patch, ...(patch.secret === false || patch.window ? { crack: false } : {}), ...(patch.window ? { secret: false } : {}) } : d));
+  apply({ masonry: target().masonry, doors });
   emit();
 }
 
 /** Changes a cliff (one step); scree never blocks sight, a ring's form follows its being closed. */
 export function updateCliff(id: string, patch: Partial<Pick<Cliff, 'kind' | 'form' | 'steep' | 'width' | 'steps' | 'inside' | 'growth' | 'seed'>>): void {
-  if (state.layer !== 'map') return;
   checkpoint();
-  const m = state.scene.map;
+  const m = target();
   const cliffs = m.cliffs.map((c) => {
     if (c.id !== id) return c;
     const next = { ...c, ...patch };
@@ -447,12 +469,12 @@ export function updateCliff(id: string, patch: Partial<Pick<Cliff, 'kind' | 'for
 
 /** "Flip direction": the cliff's upper and lower sides swap (one step). */
 export function flipCliff(id: string): void {
-  const c = state.scene.map.cliffs.find((x) => x.id === id);
-  if (!c || state.layer !== 'map') return;
+  const c = target().cliffs.find((x) => x.id === id);
+  if (!c) return;
   checkpoint();
   // A ring keeps its inside low or high: that is turned instead.
-  const cliffs = state.scene.map.cliffs.map((x) => (x.id !== id ? x : x.form === 'ring' ? { ...x, inside: x.inside === 'low' ? ('high' as const) : ('low' as const) } : { ...x, points: [...x.points].reverse() }));
-  apply({ masonry: state.scene.map.masonry, doors: state.scene.map.masonryDoors }, cliffs);
+  const cliffs = target().cliffs.map((x) => (x.id !== id ? x : x.form === 'ring' ? { ...x, inside: x.inside === 'low' ? ('high' as const) : ('low' as const) } : { ...x, points: [...x.points].reverse() }));
+  apply({ masonry: target().masonry, doors: target().masonryDoors }, cliffs);
   emit();
 }
 
@@ -464,8 +486,7 @@ export const CLIFF_FORM_LIST = CLIFF_FORMS;
 
 /** Changes water (one step); a river is a line, a lake or the sea a ring (three points or more). */
 export function updateWater(id: string, patch: Partial<Pick<Water, 'kind' | 'width'>>): void {
-  if (state.layer !== 'map') return;
-  const m = state.scene.map;
+  const m = target();
   const w = m.waters.find((x) => x.id === id);
   if (!w || (patch.kind && patch.kind !== 'river' && w.points.length < 3)) return;
   checkpoint();
@@ -475,8 +496,8 @@ export function updateWater(id: string, patch: Partial<Pick<Water, 'kind' | 'wid
 
 /** "Flip flow": a river flows the other way (one step). */
 export function flipWater(id: string): void {
-  const m = state.scene.map;
-  if (state.layer !== 'map' || !m.waters.some((x) => x.id === id)) return;
+  const m = target();
+  if (!m.waters.some((x) => x.id === id)) return;
   checkpoint();
   apply({ masonry: m.masonry, doors: m.masonryDoors }, m.cliffs, true, m.waters.map((x) => (x.id === id ? { ...x, points: [...x.points].reverse() } : x)));
   emit();
@@ -488,6 +509,16 @@ export function setMapLook(patch: Partial<{ lightAngle: number; autoShore: boole
   checkpoint();
   Object.assign(state.scene.map, patch);
   markDirty();
+  emit();
+}
+
+/** "Show again": the map's drawn elements this scene hides come back (one step, DC-107c). */
+export function showHiddenDrawn(): void {
+  if (state.layer === 'map' || !state.scene.drawnHidden.length) return;
+  checkpoint();
+  state.scene.drawnHidden = [];
+  markDirty();
+  recomputeVision();
   emit();
 }
 
@@ -506,14 +537,16 @@ export function setWaterAnimated(on: boolean): void {
  * Takes an edit into the map: a drawn map's area follows what is drawn (it grows and shrinks,
  * left and up too); sight is recomputed (fully when `final`).
  */
-function apply(edit: Edit, cliffs: Cliff[] = state.scene.map.cliffs, final = true, waters: Water[] = state.scene.map.waters, floors: FloorPatch[] = state.scene.map.floors): void {
+function apply(edit: Edit, cliffs: Cliff[] = target().cliffs, final = true, waters: Water[] = target().waters, floors: FloorPatch[] = target().floors): void {
+  const t = target();
+  t.floors = floors;
+  t.masonry = edit.masonry;
+  t.masonryDoors = edit.doors;
+  t.cliffs = cliffs;
+  t.waters = waters;
+  // A drawn map's area follows the map's drawing; a scene's own drawing leaves it as it is.
   const m = state.scene.map;
-  m.floors = floors;
-  m.masonry = edit.masonry;
-  m.masonryDoors = edit.doors;
-  m.cliffs = cliffs;
-  m.waters = waters;
-  if (m.drawn) {
+  if (m.drawn && t === m) {
     const floorEdges = m.floors.map((f) => ({ points: f.shape.flatMap((p) => p.outer.map(([x, y]) => ({ x, y }))), width: 1 }));
     const b = drawnBounds(m.masonry, m.grid.cellWidth, MARGIN_CELLS, [...m.cliffs, ...m.waters, ...floorEdges]);
     m.origin = { x: b.x, y: b.y };
@@ -524,7 +557,16 @@ function apply(edit: Edit, cliffs: Cliff[] = state.scene.map.cliffs, final = tru
   recomputeVision(final);
 }
 
+/**
+ * What is drawn into: the map in the Map Forge, the scene's own drawing in a scene (its play state
+ * or, while it is edited, its start state – DC-107c).
+ */
+function target(): OwnDrawing {
+  return state.layer === 'map' ? state.scene.map : state.scene.own;
+}
+
 function onCurrentLayer(): { layer?: string } {
+  if (state.layer !== 'map') return {};
   const layer = state.currentLayer;
   return layer && state.scene.map.layers.some((l) => l.id === layer) ? { layer } : {};
 }

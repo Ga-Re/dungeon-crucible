@@ -395,7 +395,7 @@ function restore(snap: string): void {
   state.selectedWallIds = state.selectedWallIds.filter((id) => walls.has(id));
   // Likewise a drawn wall or door (E-33).
   const b = state.buildSelection;
-  if (b && !(b.door ? state.scene.map.masonryDoors.some((d) => d.id === b.door) : (b.kind === 'wall' ? state.scene.map.masonry : b.kind === 'cliff' ? state.scene.map.cliffs : state.scene.map.waters).some((w) => w.id === b.wall))) state.buildSelection = null;
+  if (b && !(b.door ? [...state.scene.map.masonryDoors, ...state.scene.own.masonryDoors].some((d) => d.id === b.door) : (b.onMap || state.layer === 'map' ? state.scene.map : state.scene.own)[b.kind === 'wall' ? 'masonry' : b.kind === 'cliff' ? 'cliffs' : 'waters'].some((w) => w.id === b.wall))) state.buildSelection = null;
   if (state.selectedAssetId && !editableAssets().some((a) => a.id === state.selectedAssetId)) state.selectedAssetId = null;
   // Who is in which house as of this step (E-29): stepping back into a house is no new entering.
   interiorInside = charactersInHouses();

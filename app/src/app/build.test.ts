@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addBuildPoint, addBuildStroke, buildHit, paintFloorStroke, setMapLook, flipWater, setWaterAnimated, updateWater, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
-import { checkpoint, setWorkspace, sightWalls, state, undo } from './store';
+import { addBuildPoint, addBuildStroke, buildHit, showHiddenDrawn, paintFloorStroke, setMapLook, flipWater, setWaterAnimated, updateWater, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
+import { checkpoint, commitView, setWorkspace, sightWalls, state, undo } from './store';
 
 /** The "Build" tab (E-33, DC-107a) in the Map Forge, on the sample crypt (cells of 70 px, 5 ft). */
 describe('build tab', () => {
@@ -306,5 +306,46 @@ describe('the floor brush (DC-107b)', () => {
     paintFloorStroke([{ x: 0, y: 17000 }, { x: 100, y: 17500 }, { x: 420, y: 17000 }], true, false);
     const ys = state.scene.map.floors[0].shape[0].outer.map(([, y]) => y);
     expect(Math.max(...ys)).toBeLessThan(17000 + 40);
+  });
+});
+
+describe('drawing in a scene (DC-107c)', () => {
+  it("draws into the scene, leaves the map untouched, hides a map wall there; saved with the scene", () => {
+    setWorkspace('forge');
+    state.scene.map.masonry = [];
+    state.scene.map.masonryDoors = [];
+    startBuildCommand('wall');
+    addBuildPoint({ x: 0, y: 18000 }, 8);
+    addBuildPoint({ x: 420, y: 18000 }, 8);
+    finishBuildWall();
+    endBuildCommand(false);
+    const mapWall = state.scene.map.masonry[0].id;
+    commitView();
+    setWorkspace('play');
+    expect(state.layer).toBe('scene');
+    startBuildCommand('wall');
+    addBuildPoint({ x: 0, y: 18280 }, 8);
+    addBuildPoint({ x: 420, y: 18280 }, 8);
+    finishBuildWall();
+    endBuildCommand(false);
+    expect(state.scene.map.masonry).toHaveLength(1);
+    expect(state.scene.own.masonry).toHaveLength(1);
+    expect(sightWalls(state.scene).some((w) => w.id.startsWith(`${state.scene.own.masonry[0].id}#`))).toBe(true);
+    // The map's wall: picked as the map's, Delete hides it here only.
+    const hit = buildHit({ x: 200, y: 18001 }, 8);
+    expect(hit).toMatchObject({ kind: 'wall', wall: mapWall, onMap: true });
+    selectBuild(hit);
+    deleteBuildSelection();
+    expect(state.scene.drawnHidden).toEqual([mapWall]);
+    expect(state.scene.map.masonry).toHaveLength(1);
+    expect(sightWalls(state.scene).some((w) => w.id.startsWith(`${mapWall}#`))).toBe(false);
+    commitView();
+    expect(state.sceneDoc!.drawing.masonry).toHaveLength(1);
+    expect(state.sceneDoc!.drawing.hidden).toEqual([mapWall]);
+    expect(state.mapDoc!.masonry).toHaveLength(1);
+    showHiddenDrawn();
+    expect(state.scene.drawnHidden).toEqual([]);
+    undo();
+    expect(state.scene.drawnHidden).toEqual([mapWall]);
   });
 });

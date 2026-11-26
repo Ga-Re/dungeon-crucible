@@ -148,6 +148,22 @@ export const mapStoreySchema = z.object({
 });
 export type MapStorey = z.infer<typeof mapStoreySchema>;
 
+/**
+ * Stairs between two storeys (DC-026, E-44): a rectangle (map px) at the same place on both,
+ * from storey `from` to storey `to` (none: the map itself); `dir` is the way up, as drawn.
+ */
+export const stairSchema = z.object({
+  id,
+  x: z.number(),
+  y: z.number(),
+  w: z.number().positive(),
+  h: z.number().positive(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  dir: z.enum(['n', 'e', 's', 'w']).default('n'),
+});
+export type Stair = z.infer<typeof stairSchema>;
+
 /** How the TV changes to a scene on this map (DC-105, E-38): fade, through black or a hard cut, and how long. */
 export const transitionSchema = z.object({ kind: z.enum(['fade', 'black', 'cut']), seconds: z.number().min(0).max(10) });
 /** A map's sound everywhere (E-37): wind, a snowstorm. */
@@ -175,7 +191,7 @@ export const mapLayerSchema = z.object({
 export type MapLayer = z.infer<typeof mapLayerSchema>;
 
 /** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 11;
+export const MAP_VERSION = 12;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
 export const SCENE_VERSION = 12;
 
@@ -232,6 +248,8 @@ export const MapSidecarSchema = z.object({
   variants: z.array(mapVariantSchema).default([]),
   /** Storeys above (or cellars below) the map itself (E-40, version 11). */
   storeys: z.array(mapStoreySchema).default([]),
+  /** Stairs between storeys (E-44, version 12). */
+  stairs: z.array(stairSchema).default([]),
   /** What is revealed when a new scene starts on this map (painted in the Map Forge, E-26). */
   startFog: levelFogSchema.optional(),
   /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */

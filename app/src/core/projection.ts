@@ -11,6 +11,7 @@ import { clearArea, openArea } from './fogModel';
 import { polygonSchema, type Polygon } from './poly/types';
 import type { Scene } from './scene';
 import type { TransitionPlay } from './transition';
+import { stairsOn } from './stairs';
 import { tokensVisibleToPlayers, type LitSource } from './vision';
 import { intersection } from 'polyclip-ts';
 import { asGeom, fromClip } from './poly/polygon-clip';
@@ -118,6 +119,8 @@ export const StoreyFrameSchema = z.object({
   assets: z.array(z.object({ url: z.string(), video: z.boolean(), x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive(), rotation: z.number(), once: z.number().optional() })).default([]),
   /** The area this storey covers (E-40); none: everything. Outside it, the storey below shows. */
   storeyClip: z.array(polygonSchema).optional(),
+  /** Stairs on this storey (E-44): where and which way up – drawn under the fog like the map. */
+  stairs: z.array(z.object({ x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive(), dir: z.enum(['n', 'e', 's', 'w']) })).max(200).optional(),
 });
 
 /** What the TV shows: its storey, and the storeys below it nearest first, each with its own fog (E-40). */
@@ -215,6 +218,7 @@ export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFram
     lighting: playerLighting(scene, o.lights, clearArea(scene.fog, o.visible)),
     templates: scene.templates.map((t) => ({ shape: t.shape, x: t.x, y: t.y, angle: t.angle, sizeFt: t.sizeFt, color: t.color })),
     pings: scene.pings.map((p) => ({ x: p.x, y: p.y, age: Math.max(0, o.now - p.at) })),
+    ...(scene.map.stairs?.length ? { stairs: stairsOn(scene.map.stairs, scene.map.storey ?? '').map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h, dir: s.dir })) } : {}),
     assets: (o.assets ?? []).map((a) => ({ url: a.url, video: a.video, x: a.x, y: a.y, width: a.width, height: a.height, rotation: a.rotation, ...(a.once === undefined ? {} : { once: a.once }) })),
   };
 }

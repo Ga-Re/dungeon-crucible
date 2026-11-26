@@ -3,7 +3,7 @@ import type { Point, Segment } from './geometry';
 import type { GridConfig, DisplaySpec } from './grid';
 import type { FogEffect, LevelFog, Polygon } from './poly/types';
 import type { Condition } from './rules/rules2024';
-import type { InteriorTrigger, MapLayer, MapLook, MapStorey, MapVariant } from './sidecar';
+import type { InteriorTrigger, MapLayer, MapLook, MapStorey, MapVariant, Stair } from './sidecar';
 import type { Transition } from './transition';
 import type { BuildDoor, Masonry } from './build/masonry';
 import type { Cliff } from './build/cliffs';
@@ -205,6 +205,8 @@ export interface MapInfo {
   variants?: MapVariant[];
   /** Storeys above or below the map itself (E-40). */
   storeys?: MapStorey[];
+  /** Stairs between storeys (E-44). */
+  stairs?: Stair[];
   /** The storey this view shows (E-40); none: the map itself. */
   storey?: string;
   /** Drawn elements on other storeys – the map's and the scene's own – kept for saving (E-40). */

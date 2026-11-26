@@ -15,6 +15,7 @@ import { transitionLook, type TransitionPlay } from '../core/transition';
 import type { Polygon } from '../core/poly/types';
 import { fogOptions, lookFromWire } from '../render/fogOptions';
 import { bindMap } from '../render/mapBinding';
+import { stairShapes } from '../render/stairPicture';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
 import { templatePath } from '../render/shared';
 
@@ -161,7 +162,8 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
           void map?.setOver(f.map.drawn, cell);
         }
         r.setGrid(f.map.showGrid && f.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: f.map.grid.originX, offsetYPx: f.map.grid.originY, color: '#000000', alpha: 0.35 } : null);
-        r.setAssets(f.assets.map((a, i) => ({ ...a, id: `asset-${i}` })));
+        // Stairs (E-44) as pictures drawn here from their place – under the fog like the assets.
+        r.setAssets([...stairShapes(f.stairs ?? []), ...f.assets.map((a, i) => ({ ...a, id: `asset-${i}` }))]);
         r.setTokens(f.tokens.map((t): TokenShape => ({ id: t.id, name: t.label, x: t.x - (t.size * cell) / 2, y: t.y - (t.size * cell) / 2, width: t.size * cell, height: t.size * cell, color: t.ringColor, active: t.active })), { glide: 120 });
         r.setLighting(f.lighting.darkness > 0 || f.lighting.glows.length ? { ...f.lighting, softEdge: cell * 0.35 } : null);
         const look = lookFromWire(f.fog.look);

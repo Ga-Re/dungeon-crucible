@@ -11,6 +11,7 @@ import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, SoundSo
 import { isSoundRef } from '../core/sound';
 import { findLeaks, type Leak } from '../core/leaks';
 import { storeyFootprint, storeysBelow } from '../core/storeyShape';
+import { otherEnd, stairAt } from '../core/stairs';
 import { sceneMap } from '../core/build/sceneDrawing';
 import { DEFAULT_TRANSITION, type Transition, type TransitionKind, type TransitionPlay } from '../core/transition';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
@@ -37,7 +38,7 @@ import type { MonitorInfo } from '../platform/bridge';
 import { emptyScene } from '../core/emptyScene';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import type { AssetKind, AssetSidecar, Creature, MapLayer, MapLook, MapStorey, MapVariant, Player } from '../core/sidecar';
+import type { AssetKind, AssetSidecar, Creature, MapLayer, MapLook, MapStorey, MapVariant, Player, Stair } from '../core/sidecar';
 import { missingPartyTokens, tokenFromCreature } from '../core/party';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
@@ -60,7 +61,7 @@ export type ToolId =
   | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
   | 'cone' | 'sphere' | 'line' | 'cube' | 'light'
   /** The Map Forge's "Build" tab (E-33): edit, draw walls, place doors. */
-  | 'build-edit' | 'build-wall' | 'build-door' | 'build-cliff' | 'build-water' | 'build-floor' | 'build-generate';
+  | 'build-edit' | 'build-wall' | 'build-door' | 'build-cliff' | 'build-water' | 'build-floor' | 'build-generate' | 'stair';
 
 export interface LogEntry {
   at: number;
@@ -193,6 +194,10 @@ export interface AppState {
   placeOptions: Omit<PlaceOptions, 'variant'> & { snap: boolean };
   /** Houses a player character came into whose interior waits for the DM's yes (E-29; not saved). */
   interiorAsks: { id: string; name: string }[];
+  /** Figures set down on stairs, waiting for the DM's yes to change storey (E-44; not saved). */
+  stairAsks: { tokenId: string; name: string; to: string; toName: string }[];
+  /** The stair selected in the Map Forge (E-44). */
+  selectedStairId: string | null;
   /** Open documents as tabs (E-30, DC-034), in order; the active one is what `scene` shows. */
   tabs: DocTab[];
   /** The scene or map behind the tabs: a scene's path, or `map:<resource>` for a map open on its own. */
@@ -302,6 +307,8 @@ function initial(): AppState {
     currentLayer: BASE_LAYER,
     effectRuns: {},
     interiorAsks: [],
+    stairAsks: [],
+    selectedStairId: null,
     placing: null,
     leakCheck: null,
     lookCommand: null,
@@ -427,6 +434,9 @@ function restore(snap: string): void {
   const b = state.buildSelection;
   if (b && !(b.door ? [...state.scene.map.masonryDoors, ...state.scene.own.masonryDoors].some((d) => d.id === b.door) : (b.onMap || state.layer === 'map' ? state.scene.map : state.scene.own)[b.kind === 'wall' ? 'masonry' : b.kind === 'cliff' ? 'cliffs' : 'waters'].some((w) => w.id === b.wall))) state.buildSelection = null;
   if (state.selectedAssetId && !editableAssets().some((a) => a.id === state.selectedAssetId)) state.selectedAssetId = null;
+  // Stairs (E-44): a selection or a question that this step took away goes too.
+  if (state.selectedStairId && !state.scene.map.stairs?.some((s) => s.id === state.selectedStairId)) state.selectedStairId = null;
+  state.stairAsks = state.stairAsks.filter((a) => stairAskStands(a));
   // Who is in which house as of this step (E-29): stepping back into a house is no new entering.
   interiorInside = charactersInHouses();
   recomputeVision();
@@ -507,6 +517,8 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   layerInside = charactersInTriggers();
   interiorInside = charactersInHouses();
   state.interiorAsks = [];
+  state.stairAsks = [];
+  state.selectedStairId = null;
   state.effectRuns = {};
   // A scene of its own: its own undo history; the one before keeps its history in its tab.
   history = new History<string>(100);
@@ -919,6 +931,9 @@ export function refreshView(): void {
   state.selectedZoneId = null;
   state.selectedLightId = null;
   state.selectedSoundId = null;
+  state.selectedStairId = null;
+  // Another storey or view: open questions about stairs are moot (E-44).
+  state.stairAsks = [];
   clearWallEditing();
   recomputeVision();
 }
@@ -943,6 +958,8 @@ export function showLayer(layer: ViewLayer): void {
   layerInside = charactersInTriggers();
   interiorInside = charactersInHouses();
   state.interiorAsks = [];
+  state.stairAsks = [];
+  state.selectedStairId = null;
   clearHistory();
 }
 
@@ -1086,7 +1103,62 @@ export function moveToken(id: string, p: Point, final: boolean): void {
   if (final && t.kind === 'pc') applyLayerTriggers();
   // Likewise a house with an interior (E-29).
   if (final && t.kind === 'pc') applyInteriorTriggers();
+  // Set down on stairs in a scene (E-44): the DM is asked whether it goes to the other storey.
+  if (final) askStairs(t);
   emit();
+}
+
+/** A figure set down on stairs asks the DM (E-44); off them again, the question goes. */
+function askStairs(t: Token): void {
+  if (state.layer === 'map') return;
+  const here = state.scene.map.storey ?? '';
+  const stair = stairAt(state.scene.map.stairs ?? [], here, t);
+  state.stairAsks = state.stairAsks.filter((a) => a.tokenId !== t.id);
+  if (!stair) return;
+  const to = otherEnd(stair, here);
+  const toName = to ? (state.scene.map.storeys?.find((s) => s.id === to)?.name ?? to) : '';
+  state.stairAsks = [...state.stairAsks, { tokenId: t.id, name: t.name, to, toName }];
+}
+
+/**
+ * The DM's answer for a figure on stairs (E-44): yes puts it on the other storey; with all player
+ * characters there now, the TV follows them there (with its transition).
+ */
+export function answerStairAsk(tokenId: string, yes: boolean): void {
+  const ask = state.stairAsks.find((a) => a.tokenId === tokenId);
+  state.stairAsks = state.stairAsks.filter((a) => a.tokenId !== tokenId);
+  // Only while it still stands: the figure here, on stairs leading there (not removed, undone, moved off).
+  if (!ask || !yes || !stairAskStands(ask)) {
+    emit();
+    return;
+  }
+  const t = state.scene.tokens.find((x) => x.id === tokenId)!;
+  // One undoable step: the figure over, and the TV after it.
+  checkpoint();
+  putOnStorey(tokenId, ask.to);
+  log('log.tookStairs', { name: ask.name });
+  // The TV follows the player characters (not other figures): when all of them are there now.
+  const pcs = [...state.scene.tokens, ...(state.scene.offStoreyTokens ?? [])].filter((x) => x.kind === 'pc');
+  const allThere = t.kind === 'pc' && pcs.length > 0 && pcs.every((x) => (x.storey ?? '') === ask.to);
+  if (allThere && state.scenePath && state.scenePath === state.tvScenePath && (state.scene.tvStorey ?? '') !== ask.to) {
+    if (ask.to) state.scene.tvStorey = ask.to;
+    else delete state.scene.tvStorey;
+    if (state.layer === 'scene') cutTv(state.nextTransition ?? tvTransition().kind);
+    state.nextTransition = null;
+  }
+  markDirty();
+  recomputeVision();
+  emit();
+}
+
+/** Whether a question about stairs still stands: its figure on this storey, on stairs leading there. */
+function stairAskStands(a: { tokenId: string; to: string }): boolean {
+  const t = state.scene.tokens.find((x) => x.id === a.tokenId);
+  if (!t) return false;
+  if (a.to && !state.scene.map.storeys?.some((s) => s.id === a.to)) return false;
+  const here = state.scene.map.storey ?? '';
+  const stair = stairAt(state.scene.map.stairs ?? [], here, t);
+  return !!stair && otherEnd(stair, here) === a.to;
 }
 
 export function toggleDoor(id: string): void {
@@ -1245,6 +1317,7 @@ export function selectWall(id: string | null, toggle = false): void {
   const sel = state.selectedWallIds;
   if (id !== null) state.selectedAssetId = null;
   if (id !== null) state.selectedSoundId = null;
+  if (id !== null) state.selectedStairId = null;
   if (id === null) state.selectedWallIds = toggle ? sel : [];
   else if (toggle) state.selectedWallIds = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id];
   else state.selectedWallIds = [id];
@@ -1889,6 +1962,7 @@ export function selectPlacedAsset(id: string | null): void {
   state.selectedAssetId = id;
   if (id) {
     state.selectedSoundId = null;
+    state.selectedStairId = null;
     state.selectedWallIds = [];
     state.selectedZoneId = null;
   }
@@ -2395,6 +2469,7 @@ export function toggleCondition(id: string, c: Condition): void {
 export function selectToken(id: string | null): void {
   state.selectedTokenId = id;
   if (id) state.selectedSoundId = null;
+  if (id) state.selectedStairId = null;
   emit();
 }
 
@@ -2445,6 +2520,7 @@ export function removeLight(id: string): void {
 export function selectLight(id: string | null): void {
   state.selectedLightId = id;
   if (id) state.selectedSoundId = null;
+  if (id) state.selectedStairId = null;
   emit();
 }
 
@@ -2498,6 +2574,8 @@ export function deleteStorey(id: string): void {
     storeys: doc.storeys.filter((x) => x.id !== id),
     walls: keep(doc.walls), zones: keep(doc.zones), lights: keep(doc.lights), sounds: keep(doc.sounds), assets: keep(doc.assets),
     masonry, masonryDoors: doc.masonryDoors.filter((d) => walls.has(d.wall)), cliffs: keep(doc.cliffs), waters: keep(doc.waters), floors: keep(doc.floors),
+    // Stairs to or from it lead nowhere now (E-44).
+    stairs: doc.stairs.filter((x) => x.from !== id && x.to !== id),
   };
   state.storey = '';
   refreshView();
@@ -2529,14 +2607,22 @@ export function moveTokenToStorey(tokenId: string, id: string): void {
   if (!t || (state.scene.map.storey ?? '') === id) return;
   if (id && !state.scene.map.storeys?.some((x) => x.id === id)) return;
   checkpoint();
+  putOnStorey(tokenId, id);
+  markDirty();
+  recomputeVision();
+  emit();
+}
+
+/** Moves a figure of this storey onto storey `id` (no undo step of its own). */
+function putOnStorey(tokenId: string, id: string): void {
+  const t = state.scene.tokens.find((x) => x.id === tokenId);
+  if (!t) return;
   const moved = { ...t, ...(id ? { storey: id } : {}) };
   if (!id) delete moved.storey;
   state.scene.tokens = state.scene.tokens.filter((x) => x.id !== tokenId);
   state.scene.offStoreyTokens = [...(state.scene.offStoreyTokens ?? []), moved];
   if (state.selectedTokenId === tokenId) state.selectedTokenId = null;
-  markDirty();
-  recomputeVision();
-  emit();
+  state.stairAsks = state.stairAsks.filter((a) => a.tokenId !== tokenId);
 }
 
 /**
@@ -2575,6 +2661,82 @@ export function clearFootprint(): void {
   if (state.layer !== 'map' || !def || !def.footprint.length) return;
   checkpoint();
   def.footprint = [];
+  markDirty();
+  emit();
+}
+
+/* ---------- Stairs (DC-026, E-44) ---------- */
+
+/**
+ * New stairs over `rect` (Map Forge) from the storey worked on to the nearest storey above it
+ * (else below); selected at once. None without another storey to lead to.
+ */
+export function addStair(rect: { x: number; y: number; w: number; h: number }): string | null {
+  if (state.layer !== 'map') return null;
+  const storeys = state.scene.map.storeys ?? [];
+  const here = state.scene.map.storey ?? '';
+  const level = here ? (storeys.find((s) => s.id === here)?.level ?? 0) : 0;
+  const all = [{ id: '', level: 0 }, ...storeys].filter((s) => s.id !== here);
+  const above = all.filter((s) => s.level > level).sort((a, b) => a.level - b.level)[0];
+  const below = all.filter((s) => s.level < level).sort((a, b) => b.level - a.level)[0];
+  const target = above ?? below;
+  if (!target) {
+    log('log.stairNeedsStorey');
+    emit();
+    return null;
+  }
+  checkpoint();
+  const id = newId('stair', (x) => (state.scene.map.stairs ?? []).some((s) => s.id === x));
+  // The way up points towards the higher storey: from the lower end, "up" is north as drawn.
+  const [from, to] = target.level > level ? [here, target.id] : [target.id, here];
+  state.scene.map.stairs = [...(state.scene.map.stairs ?? []), { id, ...rect, ...(from ? { from } : {}), ...(to ? { to } : {}), dir: 'n' }];
+  state.selectedStairId = id;
+  markDirty();
+  emit();
+  return id;
+}
+
+/** The stair under `p` on the storey worked on (Map Forge). */
+export function stairUnder(p: Point): string | null {
+  return stairAt(state.scene.map.stairs ?? [], state.scene.map.storey ?? '', p)?.id ?? null;
+}
+
+export function selectStair(id: string | null): void {
+  state.selectedStairId = id;
+  if (id) {
+    state.selectedLightId = null;
+    state.selectedTokenId = null;
+    state.selectedWallIds = [];
+    state.selectedZoneId = null;
+    state.selectedAssetId = null;
+    state.selectedSoundId = null;
+  }
+  emit();
+}
+
+/** Changes a stair (Map Forge, one undoable step): its way up, or the storey at its other end. */
+export function updateStair(id: string, patch: Partial<Pick<Stair, 'dir' | 'from' | 'to'>>): void {
+  const s = state.scene.map.stairs?.find((x) => x.id === id);
+  if (state.layer !== 'map' || !s) return;
+  checkpoint();
+  Object.assign(s, patch);
+  // "from" stays the lower end; turned round, the way up turns with it.
+  const level = (id2: string | undefined) => (id2 ? (state.scene.map.storeys?.find((x) => x.id === id2)?.level ?? 0) : 0);
+  if (patch.dir === undefined && level(s.from) > level(s.to)) {
+    [s.from, s.to] = [s.to, s.from];
+    s.dir = ({ n: 's', s: 'n', e: 'w', w: 'e' } as const)[s.dir];
+  }
+  if (!s.from) delete s.from;
+  if (!s.to) delete s.to;
+  markDirty();
+  emit();
+}
+
+export function removeStair(id: string): void {
+  if (state.layer !== 'map' || !state.scene.map.stairs?.some((x) => x.id === id)) return;
+  checkpoint();
+  state.scene.map.stairs = state.scene.map.stairs.filter((x) => x.id !== id);
+  if (state.selectedStairId === id) state.selectedStairId = null;
   markDirty();
   emit();
 }
@@ -2832,6 +2994,7 @@ export function setSceneAmbientSound(v: { sound: string; volume: number } | 'non
 export function selectSound(id: string | null): void {
   state.selectedSoundId = id;
   if (id) {
+    state.selectedStairId = null;
     state.selectedTokenId = null;
     state.selectedLightId = null;
     state.selectedAssetId = null;
@@ -3013,6 +3176,7 @@ export function selectZone(id: string | null): void {
   // One kind of selection at a time in the Properties panel.
   if (id) {
     state.selectedSoundId = null;
+    state.selectedStairId = null;
     state.selectedWallIds = [];
     state.selectedAssetId = null;
   }

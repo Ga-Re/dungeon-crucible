@@ -20,7 +20,7 @@ export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' |
 /** Current version of each document kind. */
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
-  map: 11,
+  map: 12,
   scene: 12,
   creature: 1,
   asset: 3,
@@ -53,6 +53,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     9: (doc) => doc,
     // Version 11 adds turning, cutting and adjusting the picture (E-42) and variants (E-41): none yet.
     10: (doc) => doc,
+    // Version 12 adds stairs between storeys (E-44): none yet.
+    11: (doc) => doc,
   },
   // The same for the scene's own areas and its overrides of map areas.
   scene: {

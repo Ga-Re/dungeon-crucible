@@ -45,6 +45,8 @@ export interface OverlayState {
   selectedSoundId?: string | null;
   /** Where the placing mode would put a sound source (E-37). */
   soundGhost?: Point | null;
+  /** Stairs on the storey shown (E-44): their place, way up and the storey they lead to; the selected one. */
+  stairs?: { list: readonly { id: string; x: number; y: number; w: number; h: number; dir: 'n' | 'e' | 's' | 'w'; toName: string }[]; selected: string | null };
   /** The leak check (DC-025): what its test figure sees, the figure, and the leaks found. */
   leakCheck?: { figure: Point | null; sight: readonly Polygon[]; leaks: readonly Leak[] } | null;
   measure: { a: Point; b: Point; ft: number } | null;
@@ -320,6 +322,7 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     if (o.editMode || sel) drawSoundReach(g, s, s.radiusFt * ftPx, sel, px);
     drawSpeaker(g, s.x, s.y, Math.max(8 * px, cell * 0.18), sel, px);
   }
+  if (o.stairs && o.editMode) drawStairMarks(g, o.stairs, px);
   if (o.leakCheck) drawLeakCheck(g, o.leakCheck, Math.max(8 * px, cell * 0.3), px);
   if (o.soundGhost) {
     g.save();
@@ -615,6 +618,22 @@ function drawHidden(g: CanvasRenderingContext2D, h: HiddenElements, px: number):
     g.beginPath();
     g.arc(l.x, l.y, 9 * px, 0, Math.PI * 2);
     g.stroke();
+  }
+  g.restore();
+}
+
+/** Stairs for the DM (E-44): their outline and where they lead; the selected one highlighted. */
+function drawStairMarks(g: CanvasRenderingContext2D, st: NonNullable<OverlayState['stairs']>, px: number): void {
+  g.save();
+  for (const s of st.list) {
+    const sel = s.id === st.selected;
+    g.strokeStyle = sel ? '#3f9de2' : 'rgba(255, 215, 154, 0.9)';
+    g.lineWidth = (sel ? 3 : 2) * px;
+    g.setLineDash(sel ? [] : [6 * px, 4 * px]);
+    g.strokeRect(s.x, s.y, s.w, s.h);
+    g.fillStyle = '#ffd79a';
+    g.font = `600 ${12 * px}px 'JetBrains Mono', monospace`;
+    uprightText(g, `${s.toName} ${({ n: '↑', e: '→', s: '↓', w: '←' } as const)[s.dir]}`, s.x + 4 * px, s.y + 14 * px);
   }
   g.restore();
 }

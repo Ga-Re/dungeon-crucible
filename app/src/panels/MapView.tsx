@@ -34,6 +34,8 @@ import { drawDmOverlay, rotateHandleAt, SOUND_HANDLE_PX, type BuildOverlay, type
 import { isSoundRef } from '../core/sound';
 import { fitView, toMap, toScreen, viewAt, type View } from '../render/viewTransform';
 import { storeysBelow } from '../core/storeyShape';
+import { otherEnd, stairsOn } from '../core/stairs';
+import { stairShapes } from '../render/stairPicture';
 import { fogOptions } from '../render/fogOptions';
 import { DARKNESS } from '../core/projection';
 import { dmDrawing } from '../core/build/playerDrawing';
@@ -47,7 +49,7 @@ import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/r
 import { TableView, type FrameSource } from '../table/TableView';
 import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
-  addCreatureToken, addLight, lightAt, removeSound, selectSound, soundAt, updateSound, currentLeaks, testFigureSight, updateLeakCheck, shownLook, dmFramesBelow, workingFootprint, pictureOf, setCropping, updateLook, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
+  addCreatureToken, addLight, lightAt, removeSound, selectSound, soundAt, updateSound, currentLeaks, testFigureSight, updateLeakCheck, shownLook, addStair, answerStairAsk, removeStair, selectStair, stairUnder, dmFramesBelow, workingFootprint, pictureOf, setCropping, updateLook, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
   editableHere, shownInForge, activateAsset, placeHere, previewPlacing, stopPlacing, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, masonryDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
@@ -65,7 +67,7 @@ const HINTS: Partial<Record<string, MessageKey>> = {
   'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
   'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom', light: 'hint.light',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
-  'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor', 'build-cliff': 'hint.buildCliff', 'build-water': 'hint.buildWater', 'build-floor': 'hint.buildFloor', 'build-generate': 'hint.buildGenerate',
+  stair: 'hint.stair', 'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor', 'build-cliff': 'hint.buildCliff', 'build-water': 'hint.buildWater', 'build-floor': 'hint.buildFloor', 'build-generate': 'hint.buildGenerate',
 };
 
 type Drag =
@@ -85,6 +87,8 @@ type Drag =
   | { kind: 'leak-figure'; ox: number; oy: number }
   /** "Adjust picture": a cut dragged on the map (DC-022). */
   | { kind: 'crop'; a: Point; b: Point }
+  /** New stairs dragged over cells (E-44). */
+  | { kind: 'stair-rect'; a: Point; b: Point }
   | { kind: 'calib-box'; a: Point }
   | { kind: 'calib-move'; last: Point }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
@@ -215,7 +219,8 @@ function DmMap() {
       const ghost = pl?.at && !isSoundRef(pl.next.path) ? [{ id: '__placing', assetPath: pl.next.path, x: pl.at.x, y: pl.at.y, rotation: pl.at.rotation, scale: pl.next.scale, alpha: 0.55 }] : [];
       requestAssetUrls([...new Set([...placements.map((a) => a.assetPath), ...inner, ...ghost.map((g) => g.assetPath)])]);
       // In a scene, effects follow its state (switched off, played once); the Map Forge shows all.
-      r.setAssets(assetShapes([...drawn, ...ghost], state.assetInfo, sc.map.grid, inScene ? { effectsOn: sc.effectsOn, runs: state.effectRuns } : undefined));
+      // Stairs on this storey first (E-44), then the placed assets.
+      r.setAssets([...stairShapes(stairsOn(sc.map.stairs ?? [], sc.map.storey ?? '')), ...assetShapes([...drawn, ...ghost], state.assetInfo, sc.map.grid, inScene ? { effectsOn: sc.effectsOn, runs: state.effectRuns } : undefined)]);
       const active = state.ws === 'play' ? initiativeOrder()[state.turn]?.id : undefined;
       r.setTokens(
         sc.tokens.map((k): TokenShape => ({
@@ -342,6 +347,7 @@ function DmMap() {
         else if (state.selectedWallIds.length) deleteSelectedWalls();
         else if (state.selectedAssetId) deletePlacedAsset(state.selectedAssetId);
         else if (state.selectedSoundId) removeSound(state.selectedSoundId);
+        else if (state.selectedStairId) removeStair(state.selectedStairId);
       }
       // A selected placed asset (Map Forge): R / Shift+R turn by 15°, + / − scale, V next variant.
       const sel = state.selectedAssetId;
@@ -380,6 +386,7 @@ function DmMap() {
       selectedLightId: state.selectedLightId,
       selectedSoundId: state.selectedSoundId,
       soundGhost: state.placing?.at && isSoundRef(state.placing.next.path) ? state.placing.at : null,
+      stairs: { list: stairsOn(state.scene.map.stairs ?? [], state.scene.map.storey ?? '').map((s) => ({ ...s, toName: storeyName(otherEnd(s, state.scene.map.storey ?? '')) || t('storey.ground') })), selected: state.selectedStairId },
       leakCheck: state.ws === 'forge' && state.leakCheck ? { figure: state.leakCheck.figure, sight: testFigureSight(), leaks: currentLeaks() } : null,
       measure: d?.kind === 'measure' ? { a: d.a, b: d.b, ft: gridDistanceFeet(state.scene.map.grid, d.a, d.b) } : null,
       selectedWallIds: state.selectedWallIds,
@@ -389,7 +396,7 @@ function DmMap() {
       calibBox: state.calibration?.box ? { box: state.calibration.box, cells: state.calibration.cells } : null,
       draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
       // The generator's region, or a cut being dragged (DC-022): the same dashed frame.
-      genRect: d?.kind === 'gen-rect' || d?.kind === 'crop'
+      genRect: d?.kind === 'stair-rect' ? cellRect(d.a, d.b) : d?.kind === 'gen-rect' || d?.kind === 'crop'
         ? { x: Math.min(d.a.x, d.b.x), y: Math.min(d.a.y, d.b.y), w: Math.abs(d.b.x - d.a.x), h: Math.abs(d.b.y - d.a.y) }
         : state.buildCommand?.kind === 'generate' && state.buildCommand.region ? state.buildCommand.region : null,
       fogDraft,
@@ -614,6 +621,13 @@ function DmMap() {
             return;
           }
           selectPlacedAsset(null);
+          // Stairs (E-44): after everything that may stand on them, before the area they lie in.
+          const st = stairUnder(p);
+          if (st) {
+            selectStair(st);
+            return;
+          }
+          if (state.selectedStairId) selectStair(null);
         }
         selectZone(zoneAt(p));
         return;
@@ -683,6 +697,9 @@ function DmMap() {
       case 'build-generate':
         drag.current = { kind: 'gen-rect', a: p, b: p };
         return;
+      case 'stair':
+        drag.current = { kind: 'stair-rect', a: p, b: p };
+        return;
       case 'build-edit': {
         const tol = HANDLE_PX / view.current.zoom;
         const hit = buildHit(p, tol);
@@ -742,7 +759,7 @@ function DmMap() {
       if (!d.moved) checkpoint();
       d.moved = true;
       moveAssetTo(d.id, { x: p.x + d.ox, y: p.y + d.oy }, false);
-    } else if (d.kind === 'crop') {
+    } else if (d.kind === 'crop' || d.kind === 'stair-rect') {
       d.b = p;
     } else if (d.kind === 'leak-figure') {
       updateLeakCheck({ figure: { x: p.x + d.ox, y: p.y + d.oy } });
@@ -831,6 +848,10 @@ function DmMap() {
     } else if (d.kind === 'asset-turn') {
       const q = toWorld(e);
       if (d.moved) turnPlacedAssetTo(d.id, d.start + angleOf(d.pivot, q) - d.from, true);
+    } else if (d.kind === 'stair-rect') {
+      // Whole cells: from the cell pressed to the cell let go (a click: one cell).
+      const r = cellRect(d.a, d.b);
+      addStair(r);
     } else if (d.kind === 'crop') {
       // The cut lies inside the picture (its area starts at the map's origin).
       const m = state.scene.map;
@@ -919,6 +940,7 @@ function DmMap() {
       {/* The Map Forge without a map open: the map catalog over the canvas (E-32, DC-117). */}
       {catalog && <MapCatalogView />}
       {ws === 'play' && <InteriorAsks />}
+      {ws === 'play' && <StairAsks />}
       {ws === 'play' && <TvAsk />}
       <TvMapPending />
       {ws === 'forge' && <AreaCommandPanel />}
@@ -1078,6 +1100,43 @@ function InteriorAsks() {
       ))}
     </div>
   );
+}
+
+/** Figures set down on stairs (E-44): "Thorin up to the gallery?" – without blocking play. */
+function StairAsks() {
+  const { t } = useI18n();
+  const asks = useStore((s) => s.stairAsks);
+  if (!asks.length) return null;
+  return (
+    <div className="interior-asks" role="status">
+      {asks.map((a) => (
+        <div key={a.tokenId} className="interior-ask">
+          <span>{t('stair.ask', { name: a.name, storey: a.toName || t('storey.ground') })}</span>
+          <div className="library-buttons">
+            <button className="btn sm pri" onClick={() => answerStairAsk(a.tokenId, true)}>{t('stair.go')}</button>
+            <button className="btn sm" onClick={() => answerStairAsk(a.tokenId, false)}>{t('stair.stay')}</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The cells from `a` to `b` as one rectangle (map px). */
+function cellRect(a: Point, b: Point): { x: number; y: number; w: number; h: number } {
+  const g = state.scene.map.grid;
+  const cx = (v: number) => Math.floor((v - g.originX) / g.cellWidth);
+  const cy = (v: number) => Math.floor((v - g.originY) / g.cellHeight);
+  const x0 = Math.min(cx(a.x), cx(b.x));
+  const y0 = Math.min(cy(a.y), cy(b.y));
+  const x1 = Math.max(cx(a.x), cx(b.x)) + 1;
+  const y1 = Math.max(cy(a.y), cy(b.y)) + 1;
+  return { x: g.originX + x0 * g.cellWidth, y: g.originY + y0 * g.cellHeight, w: (x1 - x0) * g.cellWidth, h: (y1 - y0) * g.cellHeight };
+}
+
+/** A storey's name ("" the map itself). */
+function storeyName(id: string): string {
+  return id ? (state.scene.map.storeys?.find((s) => s.id === id)?.name ?? id) : '';
 }
 
 /** After switching tabs in the Orchestrator (E-30): "put this scene on the TV too?" – without blocking play. */

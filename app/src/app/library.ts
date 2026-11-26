@@ -3,7 +3,11 @@
  * for the Map Forge, finds which campaigns use one, opens one in a scene, moves one to the trash.
  */
 import { readDocument } from '../core/documents';
-import { mapSidecarPath } from '../core/persistence';
+import { DRAWN_RESOURCE, isDrawn, mapSidecarPath } from '../core/persistence';
+import { drawnBounds } from '../core/build/masonry';
+import { dmDrawing, type DmDrawing } from '../core/build/playerDrawing';
+import { DEFAULT_GRID } from '../core/grid';
+import { MAP_VERSION } from '../core/sidecar';
 import { CampaignManifestSchema, MapSidecarSchema, SceneOverrideSchema, type MapSidecar } from '../core/sidecar';
 import type { MapType } from '../core/scene';
 import type { MapFilter } from '../core/mapCatalog';
@@ -28,6 +32,10 @@ export interface LibraryMap {
   isVideo: boolean;
   /** A copy with its own map file (on a picture other maps may use too). */
   copy: boolean;
+  /** A drawn map (E-33): its own map file, no picture – its drawn walls are its picture. */
+  drawn: boolean;
+  /** A drawn map's drawing, for its preview in the catalog. */
+  drawing?: DmDrawing;
   /** The picture's file size and time (thumbnails). */
   size: number;
   mtimeMs: number;
@@ -63,6 +71,12 @@ export async function refreshLibraryMaps(): Promise<void> {
     if (e.name.endsWith(MAP_COPY_SUFFIX)) {
       const mapFile = `library/${e.name}`;
       const side = await readDoc(mapFile, 'map', MapSidecarSchema, { quiet: true });
+      if (side && isDrawn(side.resource)) {
+        // The map file's `biome` is its landscape (free text); cliffs look after the fog biome.
+        const drawing = dmDrawing({ ...side, biome: side.fogBiome, drawn: true }, {}) ?? undefined;
+        maps.push({ ...catalogEntry(mapFile, side.resource, side, e, false, scenes, true), drawing });
+        continue;
+      }
       const pic = side ? pictures.get(side.resource) : undefined;
       if (!side || !pic) {
         log('log.mapUnreadable', { file: e.name });
@@ -96,11 +110,12 @@ let libraryNames = new Set<string>();
 /** Copies that could not be read: their pictures are unknown, so no picture goes to the trash meanwhile. */
 let unreadableCopies = 0;
 
-function catalogEntry(mapFile: string, resource: string, side: MapSidecar | null, pic: { name: string; size: number; mtimeMs: number }, copy: boolean, scenes: MapScenes): LibraryMap {
+function catalogEntry(mapFile: string, resource: string, side: MapSidecar | null, pic: { name: string; size: number; mtimeMs: number }, copy: boolean, scenes: MapScenes, drawn = false): LibraryMap {
   return {
     mapFile,
     resource,
     copy,
+    drawn,
     name: side?.name ?? pic.name.replace(/\.[^.]+$/, ''),
     tags: side?.tags ?? [],
     region: side?.biome ?? '',
@@ -198,7 +213,7 @@ export async function mapUsage(mapFile: string): Promise<MapUsage[]> {
 
 /** Why a map cannot go to the trash (E-32): a copy scenes use, or a picture copies still use. */
 export function trashBlocked(m: LibraryMap, usage: readonly MapUsage[]): 'copyUsed' | 'pictureShared' | null {
-  if (m.copy) return usage.length > 0 ? 'copyUsed' : null;
+  if (m.copy || m.drawn) return usage.length > 0 ? 'copyUsed' : null;
   return unreadableCopies > 0 || state.libraryMaps.some((x) => x.copy && x.resource === m.resource) ? 'pictureShared' : null;
 }
 
@@ -212,7 +227,7 @@ export async function trashLibraryMap(mapFile: string): Promise<void> {
   if (!m) return;
   const usage = await mapUsage(mapFile);
   if (trashBlocked(m, usage)) return;
-  if (m.copy) {
+  if (m.copy || m.drawn) {
     await trashFile(mapFile, false);
     await refreshLibraryMaps();
     return;
@@ -251,5 +266,28 @@ export async function duplicateLibraryMap(mapFile: string, name: string, withCon
   await refreshLibraryMaps();
   state.mapSelected = file;
   emit();
+  return file;
+}
+
+/**
+ * "New drawn map" (E-33): a map file of its own without a picture – its drawn walls will be its
+ * picture. It starts as an empty area of the default grid and opens in a tab of the Map Forge.
+ */
+export async function createDrawnMap(name: string): Promise<string | null> {
+  if (!isDesktop() || !state.root?.root) return null;
+  const taken = new Set([...libraryNames, ...state.libraryMaps.map((m) => m.mapFile)]);
+  const file = mapFileFor(name, taken);
+  const area = drawnBounds([], DEFAULT_GRID.cellWidth, 0);
+  const doc: MapSidecar = {
+    kind: 'map', schemaVersion: MAP_VERSION, name, resource: DRAWN_RESOURCE, isVideo: false,
+    widthPx: area.w, heightPx: area.h, origin: { x: area.x, y: area.y },
+    tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
+    layers: [], walls: [], zones: [], pois: [], lights: [], ambient: 'dark', assets: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [],
+  };
+  await writeDoc(file, MapSidecarSchema, doc);
+  log('log.drawnMapCreated', { name });
+  await refreshLibraryMaps();
+  state.mapSelected = file;
+  await openMapTab(file);
   return file;
 }

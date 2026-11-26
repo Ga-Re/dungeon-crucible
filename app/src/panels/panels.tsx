@@ -7,6 +7,10 @@ import { d20Test } from '../core/rules/dice';
 import { playerOfToken } from '../core/party';
 import type { InteriorTrigger } from '../core/sidecar';
 import { useI18n } from '../i18n/i18n';
+import { deleteBuildSelection, flipCliff, flipWater, rerollCliff, rerollMasonry, setMapLook, setWaterAnimated, showHiddenDrawn, splitBuildWall, updateBuildDoor, updateCliff, updateMasonry, updateWater, type BuildSelection } from '../app/build';
+import { CliffFields, WaterFields } from './BuildCommandPanel';
+import { MASONRY_STYLES, type MasonryStyle } from '../core/build/masonry';
+import { defaultWallHeight } from '../render/drawnMap';
 import type { MessageKey } from '../i18n/en';
 import { TableView, type FrameSource } from '../table/TableView';
 import { BIOMES } from '../render/pixi/fog-living';
@@ -240,6 +244,8 @@ function MapProperties() {
   const zone = state.scene.zones.find((z) => z.id === selZone);
   const selWalls = useStore((s) => s.selectedWallIds);
   const placedAsset = useStore((s) => s.selectedAssetId);
+  const buildSel = useStore((s) => s.buildSelection);
+  const editable = useStore((s) => s.layer === 'map');
   const allWalls = useStore((s) => s.scene.walls);
   const walls = allWalls.filter((w) => selWalls.includes(w.id));
   return (
@@ -248,7 +254,7 @@ function MapProperties() {
       <div className="row"><label>{t('props.name')}</label><span>{map.name}</span></div>
       <div className="row"><label>{t('mapSettings.type')}</label><span>{t(`mapType.${map.mapType}` as MessageKey)}{map.region ? ` · ${map.region}` : ''}</span></div>
       {map.tags.length > 0 && <div className="row"><label>{t('props.tags')}</label><span className="prop-tags">{map.tags.map((tag) => <span key={tag} className="chip">{tag}</span>)}</span></div>}
-      <div className="row"><label>{t('props.file')}</label><span className="mono hint">{file}</span></div>
+      <div className="row"><label>{t('props.file')}</label>{map.drawn ? <span className="hint">{t('props.drawnMap')}</span> : <span className="mono hint">{file}</span>}</div>
       <div className="row"><label htmlFor="p-cell">{t('props.cellSize')}</label>
         <input id="p-cell" type="number" min={10} step={0.5} value={Number(map.grid.cellWidth.toFixed(2))} onChange={(e) => { const v = Number(e.target.value); if (v >= 10) { map.grid = { ...map.grid, cellWidth: v, cellHeight: v }; emit(); } }} />
       </div>
@@ -257,6 +263,11 @@ function MapProperties() {
       </div>
       {map.widthPx > 0 && <div className="row"><label /><span className="hint mono">{map.widthPx}×{map.heightPx} px · {tileCount(map.widthPx, map.heightPx)} GPU tiles</span></div>}
       <div className="row"><label>{t('map.ambient')}</label><span>{t(ambient === 'lit' ? 'ambient.lit' : 'ambient.dark')}</span></div>
+      {map.drawn && editable && <MapLook />}
+      {!editable && <SceneDrawnHidden />}
+      {map.waters.length > 0 && (
+        <label className="cmd-check"><input type="checkbox" checked={map.waterAnimated} disabled={!editable} onChange={(e) => setWaterAnimated(e.target.checked)} />{t('build.water.animated')}</label>
+      )}
       <button className="btn sm" onClick={() => openMapSettings()}><Icon name="sliders" />{t('tool.mapSettings')} …</button>
       {light && (
         <>
@@ -270,7 +281,9 @@ function MapProperties() {
         </>
       )}
       <div className="sec">{t('props.selection')}</div>
-      {placedAsset ? (
+      {buildSel ? (
+        <BuildProperties sel={buildSel} />
+      ) : placedAsset ? (
         <PlacedAssetProperties id={placedAsset} />
       ) : walls.length > 0 ? (
         <WallProperties walls={walls} />
@@ -283,6 +296,134 @@ function MapProperties() {
         </>
       ) : <p className="hint">{t('props.noSelection')}</p>}
     </div>
+  );
+}
+
+/** In a scene: how many drawn map elements it hides, and "show again" (DC-107c). */
+function SceneDrawnHidden() {
+  const { t } = useI18n();
+  const n = useStore((s) => s.scene.drawnHidden.length);
+  if (!n) return null;
+  return (
+    <div className="cmd-line">
+      <span className="hint">{t('build.scene.hidden', { n })}</span>
+      <button className="btn sm" onClick={showHiddenDrawn}><Icon name="eye" />{t('build.scene.showAgain')}</button>
+    </div>
+  );
+}
+
+/** Directions the light can fall towards (degrees, map coordinates: 0 to the right, 90 down). */
+const LIGHT_ANGLES = [45, 90, 135, 180, 225, 270, 315, 0] as const;
+
+/** A drawn map's look (E-35): where the light falls, automatic details. */
+function MapLook() {
+  const { t } = useI18n();
+  const map = useStore((s) => s.scene.map);
+  return (
+    <>
+      <div className="row"><label htmlFor="p-light">{t('build.light')}</label>
+        <select id="p-light" value={map.lightAngle} onChange={(e) => setMapLook({ lightAngle: Number(e.target.value) })}>
+          {LIGHT_ANGLES.map((a) => <option key={a} value={a}>{t(`build.light.${a}` as MessageKey)}</option>)}
+        </select>
+      </div>
+      <label className="cmd-check"><input type="checkbox" checked={map.autoShore} onChange={(e) => setMapLook({ autoShore: e.target.checked })} />{t('build.autoShore')}</label>
+      <label className="cmd-check"><input type="checkbox" checked={map.autoGrowth} onChange={(e) => setMapLook({ autoGrowth: e.target.checked })} />{t('build.autoGrowth')}</label>
+    </>
+  );
+}
+
+/** The drawn wall or door selected in the "Build" tab (E-33): style, thickness, look; door width, secret, crack. */
+function BuildProperties({ sel }: { sel: BuildSelection }) {
+  if (sel.onMap) return <MapDrawnInScene />;
+  return <OwnBuildProperties sel={sel} />;
+}
+
+/** A drawn element of the map, picked in a scene (DC-107c): it can only be hidden there. */
+function MapDrawnInScene() {
+  const { t } = useI18n();
+  return (
+    <>
+      <p className="hint">{t('build.scene.mapElement')}</p>
+      <button className="btn sm" onClick={() => deleteBuildSelection()}><Icon name="eyeoff" />{t('build.scene.hide')}</button>
+    </>
+  );
+}
+
+function OwnBuildProperties({ sel }: { sel: BuildSelection }) {
+  const { t } = useI18n();
+  // The map's in the Map Forge, the scene's own in a scene (DC-107c).
+  const lists = useStore((s) => (s.layer === 'map' ? s.scene.map : s.scene.own));
+  const wall = lists.masonry.find((w) => (sel.kind === 'wall' ? w.id === sel.wall : false));
+  const door = sel.door ? lists.masonryDoors.find((d) => d.id === sel.door) : undefined;
+  const grid = useStore((s) => s.scene.map.grid);
+  const cliff = sel.kind === 'cliff' ? lists.cliffs.find((c) => c.id === sel.wall) : undefined;
+  const water = sel.kind === 'water' ? lists.waters.find((w) => w.id === sel.wall) : undefined;
+  const animated = useStore((s) => s.scene.map.waterAnimated);
+  const ftPerPx = grid.feetPerCell / grid.cellWidth;
+  if (cliff)
+    return (
+      <>
+        <div className="row"><label>{t('props.name')}</label><span>{t('build.props.cliff')}</span></div>
+        <CliffFields
+          value={{ cliffKind: cliff.kind, form: cliff.form, steep: cliff.steep, widthFt: Math.round(cliff.width * ftPerPx), steps: cliff.steps, inside: cliff.inside, growth: cliff.growth }}
+          onChange={(p) => updateCliff(cliff.id, { ...(p.cliffKind ? { kind: p.cliffKind } : {}), ...(p.form ? { form: p.form } : {}), ...(p.steep !== undefined ? { steep: p.steep } : {}), ...(p.widthFt ? { width: p.widthFt / ftPerPx } : {}), ...(p.steps ? { steps: p.steps } : {}), ...(p.inside ? { inside: p.inside } : {}), ...(p.growth !== undefined ? { growth: p.growth } : {}) })}
+        />
+        <div className="cmd-line">
+          <button className="btn sm" onClick={() => flipCliff(cliff.id)}><Icon name="redo" />{t('build.cliff.flip')}</button>
+          <button className="btn sm" onClick={() => rerollCliff(cliff.id)}><Icon name="reset" />{t('build.reroll')}</button>
+        </div>
+        {sel.point !== null && <button className="btn sm" onClick={splitBuildWall}><Icon name="line" />{t('build.split')}</button>}
+        <button className="btn sm danger" onClick={() => deleteBuildSelection()}><Icon name="trash" />{t('build.delete')}</button>
+      </>
+    );
+  if (water)
+    return (
+      <>
+        <div className="row"><label>{t('props.name')}</label><span>{t(`build.water.kind.${water.kind}` as MessageKey)}</span></div>
+        <WaterFields kind={water.kind} widthFt={Math.round(water.width * ftPerPx)} onChange={(p) => updateWater(water.id, { ...(p.kind ? { kind: p.kind } : {}), ...(p.widthFt ? { width: p.widthFt / ftPerPx } : {}) })} />
+        <label className="cmd-check"><input type="checkbox" checked={animated} onChange={(e) => setWaterAnimated(e.target.checked)} />{t('build.water.animated')}</label>
+        <div className="cmd-line">
+          {water.kind === 'river' && <button className="btn sm" onClick={() => flipWater(water.id)}><Icon name="redo" />{t('build.water.flip')}</button>}
+          {sel.point !== null && water.kind === 'river' && <button className="btn sm" onClick={splitBuildWall}><Icon name="line" />{t('build.split')}</button>}
+        </div>
+        <button className="btn sm danger" onClick={() => deleteBuildSelection()}><Icon name="trash" />{t('build.delete')}</button>
+      </>
+    );
+  if (!wall) return <p className="hint">{t('props.noSelection')}</p>;
+  const ft = (px: number) => Math.round(px * ftPerPx * 100) / 100;
+  if (door)
+    return (
+      <>
+        <div className="row"><label>{t('props.name')}</label><span>{door.window ? t('build.opening.window') : t('build.props.door')}{door.secret ? ` · ${t('build.secret')}` : ''}</span></div>
+        <NumberRow id="bd-width" label={t('build.width')} value={ft(door.width)} step={0.5} min={0.5} onCommit={(v) => v > 0 && updateBuildDoor(door.id, { width: v / ftPerPx })} />
+        <label className="cmd-check"><input type="checkbox" checked={!!door.window} onChange={(e) => updateBuildDoor(door.id, { window: e.target.checked })} />{t('build.opening.window')}</label>
+        {!door.window && <label className="cmd-check"><input type="checkbox" checked={door.secret} onChange={(e) => updateBuildDoor(door.id, { secret: e.target.checked })} />{t('build.secret')}</label>}
+        {door.secret && !door.window && (
+          <>
+            <label className="cmd-check"><input type="checkbox" checked={door.crack} onChange={(e) => updateBuildDoor(door.id, { crack: e.target.checked })} />{t('build.crack')}</label>
+            <p className="hint">{t('build.crackAbout')}</p>
+          </>
+        )}
+        <button className="btn sm danger" onClick={() => deleteBuildSelection()}><Icon name="trash" />{t('build.delete')}</button>
+      </>
+    );
+  return (
+    <>
+      <div className="row"><label>{t('props.name')}</label><span>{t('build.props.wall')}{wall.closed ? ` · ${t('build.ring')}` : ''}</span></div>
+      <div className="row"><label htmlFor="bw-style">{t('build.style')}</label>
+        <select id="bw-style" value={wall.style} onChange={(e) => updateMasonry(wall.id, { style: e.target.value as MasonryStyle })}>
+          {MASONRY_STYLES.map((s) => <option key={s} value={s}>{t(`build.style.${s}` as MessageKey)}</option>)}
+        </select>
+      </div>
+      <NumberRow id="bw-thick" label={t('build.thickness')} value={ft(wall.thickness)} step={0.25} min={0.25} onCommit={(v) => v > 0 && updateMasonry(wall.id, { thickness: v / ftPerPx })} />
+      <NumberRow id="bw-height" label={t('build.height')} value={ft(wall.height ?? defaultWallHeight(wall, grid.cellWidth))} step={0.5} min={0.5} onCommit={(v) => v > 0 && updateMasonry(wall.id, { height: v / ftPerPx })} />
+      <label className="cmd-check"><input type="checkbox" checked={!!wall.fortified} onChange={(e) => updateMasonry(wall.id, { fortified: e.target.checked })} />{t('build.fortified')}</label>
+      <div className="cmd-line">
+        <button className="btn sm" onClick={() => rerollMasonry(wall.id)}><Icon name="reset" />{t('build.reroll')}</button>
+        {sel.point !== null && <button className="btn sm" onClick={splitBuildWall}><Icon name="line" />{t('build.split')}</button>}
+      </div>
+      <button className="btn sm danger" onClick={() => deleteBuildSelection()}><Icon name="trash" />{t('build.delete')}</button>
+    </>
   );
 }
 

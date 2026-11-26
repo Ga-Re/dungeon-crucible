@@ -1,7 +1,7 @@
 # Kontextsensitiver Karten-Editor – Wunsch des DM (2026-11-25)
 
-Stand: **Wunsch, noch nicht entschieden.** Wird als DC-107 nach DC-014 im Interview geklärt; das Datenmodell wird
-dann als Entscheidung (E-…) festgehalten. Bis dahin gelten `docs/PLAN.md` und `docs/TASKS.md`. Assets (Fässer,
+Stand: **Im Interview am 2026-11-25 entschieden: E-33** in `docs/TASKS.md`. Wo E-33 von der Spezifikation unten
+abweicht (z. B. Türen nur offen/zu/geheim, keine Größengrenze, Texturen für Teile), gilt E-33. Assets (Fässer,
 Felsen, Bäume …) sollen weiterhin frei platziert werden können (DC-041).
 
 Bezüge: DC-026 (parametrische Räume, Gelände), DC-027 (eigene Karten zeichnen), DC-041 (Props), DC-101

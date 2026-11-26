@@ -237,6 +237,35 @@ describe('player projection (fail-closed)', () => {
     expect(isInside(frame.fog.open, mid)).toBe(false);
     expect(isInside(frame.fog.clear, mid)).toBe(false);
   });
+  it('never sends an unfound secret door on a drawn wall (E-33)', () => {
+    const scene = createSampleScene();
+    scene.map.masonry = [{ id: 'm-a', points: [{ x: 0, y: 0 }, { x: 300, y: 0 }], closed: false, style: 'brick', thickness: 10, seed: 1 }];
+    scene.map.masonryDoors = [{ id: 'd-hidden', wall: 'm-a', at: 137, width: 40, secret: true, crack: false }];
+    const frame = buildPlayerFrame(scene, frameOpts(1, 0, visiblePolygons(updateVision(scene))));
+    expect(frame.map.drawn).toMatchObject({ doors: [], cracks: [] });
+    expect(JSON.stringify(frame)).not.toContain('137');
+    expect(JSON.stringify(frame)).not.toContain('d-hidden');
+    expect(parsePlayerFrame(frame, 0, 0).ok).toBe(true);
+  });  it("sends a scene's own drawing, not what it hides, not inactive layers; a crack only where it is on (review #5)", () => {
+    const scene = createSampleScene();
+    const wall = (id: string, y: number, layer?: string) => ({ id, points: [{ x: 0, y }, { x: 300, y }], closed: false, style: 'brick' as const, thickness: 10, seed: 1, ...(layer ? { layer } : {}) });
+    scene.map.layers = [{ id: 'upper', name: 'U', height: 1, defaultActive: false, editorHidden: false, locked: false }];
+    scene.map.masonry = [wall('m-shown', 0), wall('m-hidden', 100), wall('m-upper', 200, 'upper')];
+    scene.map.masonryDoors = [
+      { id: 'd-crack', wall: 'm-shown', at: 50, width: 40, secret: true, crack: true },
+      { id: 'd-nocrack', wall: 'm-shown', at: 250, width: 40, secret: true, crack: false },
+      { id: 'd-hidden-wall', wall: 'm-hidden', at: 150, width: 40, secret: false, crack: false },
+    ];
+    scene.own = { masonry: [wall('s-own', 400)], masonryDoors: [], cliffs: [], waters: [], floors: [] };
+    scene.drawnHidden = ['m-hidden'];
+    const frame = buildPlayerFrame(scene, frameOpts(1, 0, visiblePolygons(updateVision(scene))));
+    const d = frame.map.drawn!;
+    expect(d.masonry.map((w) => w.id).sort()).toEqual(['m-shown', 's-own']);
+    expect(d.doors).toEqual([]);
+    expect(d.cracks).toEqual([{ wall: 'm-shown', at: 50, width: 40 }]);
+    expect(JSON.stringify(frame)).not.toContain('m-hidden');
+    expect(JSON.stringify(frame)).not.toContain('m-upper');
+  });
 });
 
 function frameOpts(seq: number, now: number, visible: ReturnType<typeof visiblePolygons>) {

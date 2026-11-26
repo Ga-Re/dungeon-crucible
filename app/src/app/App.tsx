@@ -15,6 +15,7 @@ import {
   clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, startCalibration, startWallCommand, redo, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { stopAll } from './soundboard';
+import { startBuildCommand } from './build';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
 import { closeCampaign, closeTab, importMapIntoCampaign, newCreature, newSceneOnMap, putOnTv, refreshRoot, saveCampaign, setEditStart, showTab, startAutosave } from './campaign';
 import { ResetSceneDialog } from './ResetSceneDialog';
@@ -148,6 +149,11 @@ function Ribbon() {
     if (b.id === 'scene:toTv') return flags.onTv;
     if (b.id === 'area:create') return tool === 'area';
     if (b.id === 'walls:draw') return tool === 'wall';
+    if (b.id === 'build:wall') return tool === 'build-wall';
+    if (b.id === 'build:door') return tool === 'build-door';
+    if (b.id === 'build:cliff') return tool === 'build-cliff';
+    if (b.id === 'build:water') return tool === 'build-water';
+    if (b.id === 'build:floor') return tool === 'build-floor';
     if (b.id === 'grid:calibrate') return tool === 'calibrate';
     return false;
   };
@@ -175,6 +181,11 @@ function Ribbon() {
       case 'audio:stop': return stopAll();
       case 'fog:revealAll': return fogAll(true);
       case 'walls:draw': return startWallCommand();
+      case 'build:wall': return startBuildCommand('wall');
+      case 'build:door': return startBuildCommand('door');
+      case 'build:cliff': return startBuildCommand('cliff');
+      case 'build:water': return startBuildCommand('water');
+      case 'build:floor': return startBuildCommand('floor');
       case 'grid:calibrate': return startCalibration();
       case 'vault:import': return void importVaultAssets();
       case 'vault:pack': return void startPackImport();
@@ -293,7 +304,7 @@ function StatusBar() {
   const map = useStore((s) => s.scene.map);
   const round = useStore((s) => s.round);
   const grid = useStore((s) => s.scene.map.grid);
-  const explored = useMemo(() => Math.round(exploredShare(fog, visible, map.widthPx, map.heightPx) * 100), [fog, visible, map.widthPx, map.heightPx]);
+  const explored = useMemo(() => Math.round(exploredShare(fog, visible, map.widthPx, map.heightPx, 40, map.origin) * 100), [fog, visible, map.widthPx, map.heightPx, map.origin]);
   return (
     <footer className="statusbar">
       <span>{t(WORKSPACES[ws].name)}</span>

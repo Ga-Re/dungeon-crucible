@@ -10,7 +10,7 @@
  * references into the library are relative to the root (`library/x.webp.dm.json`), so both stay
  * valid in another root folder and in archives.
  */
-import { manifestFromState, mapSidecarFromScene, mapSidecarPath, resetToStart, sceneFromDocuments, sceneIssues, sceneOverrideFromScene, startOf, tableFromManifest, BUILTIN_PREFIX } from '../core/persistence';
+import { manifestFromState, mapSidecarFromScene, mapSidecarPath, resetToStart, sceneFromDocuments, sceneIssues, sceneOverrideFromScene, startOf, tableFromManifest, BUILTIN_PREFIX, isDrawn } from '../core/persistence';
 import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MAP_VERSION, MapSidecarSchema, SceneOverrideSchema, type Creature, type MapSidecar, type SceneOverride } from '../core/sidecar';
 import { keepUnknown, newId, readDocument, slugId, type DocumentKind } from '../core/documents';
 import { partyForNewScene } from '../core/party';
@@ -45,7 +45,9 @@ export function creaturePath(c: Pick<Creature, 'name'>): string {
   return `library/${slugId(c.name, 'creature')}${CREATURE_SUFFIX}`;
 }
 
-async function urlForResource(resource: string): Promise<string> {
+/** The URL the renderer loads a map picture from; none for a drawn map (E-33), which has no picture. */
+async function urlForResource(resource: string): Promise<string | null> {
+  if (isDrawn(resource)) return null;
   if (resource.startsWith(BUILTIN_PREFIX)) return resource;
   return assetUrl(await absolutePath(resource));
 }
@@ -741,9 +743,11 @@ export async function openMapResource(resource: string): Promise<void> {
 }
 
 /** Library map `resource` as in its sidecar, or a fresh sidecar for a picture that has none yet. */
-async function mapOf(resource: string, sidecar: MapSidecar | null): Promise<{ map: MapSidecar; url: string }> {
+async function mapOf(resource: string, sidecar: MapSidecar | null): Promise<{ map: MapSidecar; url: string | null }> {
   const url = await urlForResource(resource);
   if (sidecar) return { map: sidecar, url };
+  // A drawn map always has its map file; only a picture can come without one.
+  if (url === null) throw new Error(`Map file missing: ${resource}`);
   const isVideo = /\.(mp4|webm)$/i.test(resource);
   const { w, h } = await mediaSize(url, isVideo);
   const name = resource.split('/').pop()!.replace(/\.[^.]+$/, '');
@@ -751,7 +755,7 @@ async function mapOf(resource: string, sidecar: MapSidecar | null): Promise<{ ma
     url,
     map: {
       kind: 'map', schemaVersion: MAP_VERSION, name, resource, isVideo, widthPx: w, heightPx: h,
-      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark',
+      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], ambient: 'dark', masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [],
     },
   };
 }
@@ -824,11 +828,13 @@ export async function openMapInNewScene(resource: string, sidecar: MapSidecar | 
   const before = state.layer === 'scene' ? state.scene.tokens : (state.sceneDoc?.tokens ?? []);
   const ov = sceneOverrideFromScene(sceneFromDocuments(map, null, url, tvSettings(), 'scene'), map.name, mapFile, { round: 1, turn: 0 }, map);
   const taken = new Set<string>();
+  // The middle of the map's area (a drawn map's may start left of or above 0, E-33).
+  const mid = { x: (map.origin?.x ?? 0) + map.widthPx / 2, y: (map.origin?.y ?? 0) + map.heightPx / 2 };
   ov.tokens = state.players.length === 0
     // A campaign without players yet: the player characters of the scene so far come along.
-    ? before.filter((t) => t.kind === 'pc').map((t, i) => ({ ...structuredClone(t), x: map.widthPx / 2 + (i - 1) * map.grid.cellWidth, y: map.heightPx / 2 }))
+    ? before.filter((t) => t.kind === 'pc').map((t, i) => ({ ...structuredClone(t), x: mid.x + (i - 1) * map.grid.cellWidth, y: mid.y }))
     : partyForNewScene(state.players, state.creatures, before, {
-    at: { x: map.widthPx / 2, y: map.heightPx / 2 },
+    at: mid,
     cell: map.grid.cellWidth,
     newId: (prefix) => {
       const id = newId(prefix.slice(0, 40), (x) => taken.has(x));

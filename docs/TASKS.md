@@ -50,6 +50,9 @@ Geklärt im Interview mit dem DM (Skill `topic-interviewer`). „Wie DM“ heiß
 | E-30 | Dokument-Tabs und TV | **Alle Dokumente** werden Tabs, gestaffelt: DC-034 bringt die Tab-Leiste mit **Szenen und Karten**; Kreaturen, Assets, Notizen/Handouts folgen als eigene Aufgaben auf derselben Leiste. **Eine gemeinsame Tab-Leiste** (Titelleiste); ein Tab öffnet sich im passenden Arbeitsbereich, eine Szene bleibt im aktuellen Szenen-Bereich (Schmiede/Orchestrator). Jeder Tab behält seine Änderungen und sein Rückgängig. **TV nur per Befehl**: „Szene auf den TV“ (Menüband, Kontextmenü des Tabs), TV-Markierung am Tab; ein Tab-Wechsel ändert den TV nie – im Orchestrator fragt ein Hinweis „Auf den TV? Ja/Nein“ (blockiert nicht, ohne Antwort bleibt der TV). Die **TV-Szene läuft im Hintergrund** weiter (Sicht, Effekte, Darstellung), während ein anderer Tab bearbeitet wird. **Kartenänderungen** an der Karte der TV-Szene (Kartenschmiede) erreichen den TV erst über den Hinweis „Auf den TV übernehmen“ (löst E-25 ab); Szenenänderungen im Orchestrator gehen sofort hin. Schließen des Tabs der TV-Szene **fragt vorher**, danach ist der TV schwarz; eine Szene kommt **nie von selbst** auf den TV (DM-Entscheidung nach dem Review). Offene Tabs und TV-Szene werden **je Kampagne** als Geräte-Einstellung gemerkt; nach dem Start ist der TV **geschwärzt bis zur Freigabe**. | Alle Dokumente statt nur Szenen; TV-Szene live im Hintergrund statt nur bei aktivem Tab |
 | E-31 | Asset-Objekte und Varianten | **Objekte mit Varianten**: eine eigene **Objekt-Datei** neben den Bildern (z. B. `library/dorf/einfache-huette.object.json`, neue Dateiart „object“ Version 1) mit Name, Hauptvariante (Vorschaubild, Standard beim Platzieren), Varianten (Datei + Variantenname wie „Innen“, „Zerstört“) und den **gemeinsamen Feldern** Art, Unterart, Umgebungen, Größe, Sammlungen, Favorit; **je Variante** im Sidecar der Datei: Tags, Maske, Licht, Anker, Tür, Innenraum. Ein **Einzelbild bleibt ein einfaches Asset**; mit der zweiten Variante entsteht die Objekt-Datei. Bestehende **Gruppen werden automatisch zu Objekten** (ab zwei Dateien; Name = Gruppe, gemeinsame Felder und Hauptvariante von der ersten Datei); der Pack-Import legt Objekte an. Vault: **eine Karte je Objekt**, die Varianten rechts zum Auswählen/Bearbeiten. **Unterarten** im Browser unter ihrer Art (mit Anzahl). **Suche mit Vorschlägen** beim Tippen (Präfix, z. B. „Bre“ → „Brennend“) aus Tags, Art/Unterart, Umgebungen, Sammlungen und Namen; ein Objekt passt, wenn eine seiner Varianten passt. **Zufällige Variante**: Schalter im Assets-Panel (Geräte-Einstellung), jedes Ablegen eines Objekts legt eine zufällige Variante (keine, die als Innenansicht dient). **Drehgriff** am ausgewählten Asset auf der Karte: stufenlos um den Anker (sonst die Mitte), ein Rückgängig-Schritt. Platzierungen verweisen weiter auf die Variante (Datei). | Objekt-Datei statt Gruppe je Datei (löst E-27 „Varianten je Datei“ ab) |
 | E-32 | Kartenkatalog und Kartendateien | Die **Kartenschmiede** zeigt in der Mitte einen **Katalog aller Karten** der Bibliothek (Vorschaubilder), solange keine Karte offen ist; ein fester Tab **„Karten“** ganz links in der Tab-Leiste führt jederzeit dorthin. **Browser**: Kartentyp (mit Anzahl), Tags, Biom, benutzt/unbenutzt. **Details rechts**: Infos (Name, Typ, Tags direkt änderbar; Größe, Raster, Vorschau), **„Bearbeiten“** öffnet den Karteneditor (Karten-Tab) – ebenso Doppelklick und Rechtsklick › Öffnen; die Szenen der offenen Kampagne auf dieser Karte (Öffnen) plus Hinweis auf Szenen anderer Kampagnen; „Neue Szene auf dieser Karte“; Papierkorb (mit Hinweis, wo benutzt). **Kartenbilder sind fest**: eine neue Karte entsteht mit einem Bild, das nicht ausgetauscht wird. **Duplizieren** fragt „nur die Karte“ (Bild, Raster, Typ, Tags, Biom) oder „mit allem“ (auch Wände, Bereiche, Lichter, Assets, Ebenen, Start-Nebel; neue IDs); Szenen werden nicht kopiert. Eine Kopie ist eine **eigene Kartendatei `library/<name>.map.json`**, die auf das vorhandene Bild verweist (kein doppelter Speicher); bestehende Karten (`bild.dm.json`) bleiben gültig. | Kartenbild nicht ersetzbar; Duplikat als eigene Kartendatei statt Bildkopie |
+| E-33 | Karten-Editor (DC-107, `docs/KARTENEDITOR.md`) | **Gezeichnete Karten ohne Bild** (neue Kartendatei `library/<name>.map.json` ohne Bild) **und Zeichnen über Bildkarten**, mit denselben Werkzeugen (Ergänzung zu E-32). **Gezeichnete Mauern sind die Quelle**: Linienzüge mit Stil, Dicke und Seed; Sicht- und Bewegungs-Wände werden daraus abgeleitet. Die heutigen unsichtbaren Wände bleiben unverändert und überall als zweites Werkzeug (Fenster, Klippen, Barrieren); keine Umwandlung alter Karten. **Türen sitzen auf der Mauer** (Position, Breite), offen/zu/geheim; „verschlossen“ später einheitlich für alle Türen. Geheime Tür: unentdeckt auf dem TV Mauer – je Tür optional ein dezenter **Riss** (Schalter, neu aus; bewusste Ausnahme vom TV-Grundsatz). **Fläche wächst mit** (Gezeichnetes plus Rand, auf Felder gerundet), in alle Richtungen über einen gespeicherten **Ursprung** (Koordinaten bleiben, Szenen unberührt), **ohne Größengrenze**. **Untergrund**: außen Fels, innen passend zur nächsten Mauer mit weichem Übergang; ein **Boden-Pinsel** malt Böden mit sauberem Übergang an Mauern. **Stile**: Dungeon-Stein, Höhlenfels, Ziegel, Holz. **Optik**: Formen, Ecken, Kreuzungen, Durchbrüche, Zittern, Schatten und Übergänge im eigenen Code (Seeds, keine neue Abhängigkeit); **Texturen** für Flächen und Einzelteile (Ecksteine, Türrahmen, Pfeiler) mit Higgsfield erzeugt und mit der App ausgeliefert (DM: Rechte geklärt). **Zeichnen**: Klick-Klick, Doppelklick/Enter beendet, Startpunkt schließt den Ring; rastet an Feldecken und Mauern ein, Alt frei; Modi Raster/halbes Raster/Winkel/frei. **Bearbeiten**: Punkte ziehen, einfügen, löschen; teilen und verbinden; Stil, Dicke, Seed im Eigenschaften-Panel. **Menüband**: neuer Tab „Bauen“ in der Kartenschmiede. **Szenen** dürfen eigene gezeichnete Mauern haben (wie E-24) und speichern Türzustände. Format: Karte Version 6, Szene Version 8, mit Migration. Reihenfolge: DC-107a → b → c; Wege, Flüsse, Brücken, Räume, Dächer und Streuung danach. | Kein Bild nötig (E-32); Texturen im Repo |
+| E-34 | Gezeichnete Klippen und Abhänge (DC-107d) | **Wirkung wie heutige Klippen** (DC-014): Einweg-Sicht – von oben sieht man hinunter, von unten nicht hinauf; Bewegung darüber blockiert; ein flacher **Abhang** ist nur Optik. **Arten**: Felsklippe, Erdabhang, Grube/Senke, Plateau/Hügel, Schlucht/Graben, Geröllhalde, Terrassen/Stufen, Abgrund/Kluft. **Zeichnen**: offene Kante als Linie wie eine Mauer, die Oberseite per Pfeil („Richtung umdrehen“); ein geschlossener Ring ist Grube (innen tiefer) oder Plateau (innen höher); Schlucht: ein Strich mit Breite. **Aussehen nach Kartenbiom** (bzw. dem Biom eines Bereichs): Schnee, Moos, Sand – kein eigener Stil je Klippe. **Bewuchs** (Gras, Büsche, Moos) an der Oberkante automatisch nach Biom, mit festen Seeds, je Klippe abschaltbar. **Geröllhalde**: Optik und Markierung „schwieriges Gelände“ für den DM; Bewegungskosten kommen mit DC-026 und gelten dann auch hier. **Wirkung** (Klarstellung 2026-11-26): Einweg-Sicht; Bewegung blockiert die App bisher nirgends (auch nicht bei Wänden). **Untergrund** (DM 2026-11-26): fern von Mauern (über 3 Felder, außerhalb geschlossener Mauerringe) natürlicher Boden nach Biom – Gras/Erde, Schnee, Sand (Wüste, Küste), Asche, Sumpf; nahe Mauern weiter deren Boden; Feinarbeit mit dem Boden-Pinsel (DC-107b). | Ergänzung zu E-33 (DM-Wunsch mit Beispielbildern) |
+| E-35 | Karten-Editor wie Tiny Glade, Wasser, 2,5D (DC-107e–g) | Vorbild im Bedienen und in der Automatik (ziehen, das Programm denkt mit, Details entstehen von selbst, alles organisch formbar) – **ohne** Aussehen oder Inhalte des Spiels zu übernehmen. **Zeichnen** (ändert E-33): Ziehen mit gedrückter Maus zeichnet frei (geglättet, danach bearbeitbare Punkte), **Shift** zieht gerade Linien, Klick-Klick bleibt – für alle Werkzeuge. **Wasser**: Fluss/Bach (Strich mit Breite und Fließrichtung; Strömung, Schaum an Steinen und Ufern), See/Teich (Fläche; sanfte Wellen), Meer/Küste (Brandung, Wellen zum Ufer), **Wasserfall automatisch**, wo ein Fluss eine Klippe von oben nach unten kreuzt; Animation **je Karte** an/aus; Wasser ist **nur Optik** (keine Regelwirkung). **2,5D von oben**: die Karte bleibt Draufsicht (Raster, TV, Nebel, Sicht unverändert), Mauern, Klippen und Gebäude zeigen ihre Höhe (Krone versetzt, sichtbare Seitenfläche, Schatten); **Lichtrichtung je Karte** einstellbar. **Automatik**: Türme an Mauerecken, Zinnen und Mauerkrone, Ufer-Details (Steine, Schilf, Kies, Schaum nach Biom), weiche Übergänge (Gras an Mauerfüßen, ausgetretene Kanten, Böden fließen ineinander), jeweils abschaltbar. **Fenster** in gezeichneten Mauern und Häusern (wie Türen auf der Mauer); sie verdecken weder Sicht noch Licht, inneres Licht scheint hinaus. Reihenfolge: Pinsel (DC-107e) → Wasser (DC-107f) → 2,5D mit Automatik und Fenstern (DC-107g). **Ergänzung** (DM 2026-11-26): Türme und Zinnen nur an Mauern mit dem Schalter **„Wehrmauer“** (je Mauer); **Höhe** je Stil vorgegeben (Holz niedrig, Stein/Ziegel mittel, Wehrmauer hoch), je Mauer änderbar; **Fenster** im Tür-Werkzeug (Tür / Geheimtür / Fenster). | DM-Wunsch 2026-11-26 |
 
 **Bleibt aus Dungeon Crucible:** Pergament als drittes Theme, das eigene Docking mit echten Fenstern und
 Hover-Flyout (statt dockview und Kanten-Leisten), Export/Import ganzer Kampagnen als Archiv – beim Export wählbar:
@@ -331,6 +334,117 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Detailstreuung, daraus Sicht- und Bewegungsdaten. Assets bleiben frei platzierbar (DC-041). DM-Entscheidung
   (2026-11-25): eigenes Thema nach DC-014; zu Beginn Interview und Entscheidung zum Datenmodell (u. a. Wände als
   Linienzüge, Türen auf Wänden – heute einzelne Strecken, also Migration). Umfasst DC-026 und DC-027 ganz oder teilweise.
+  Interview 2026-11-25: E-33. Pakete:
+  - ◐ **DC-107a Mauern und Türen**: Datenmodell (Karte v6), Graph mit Ecken/Kreuzungen, Türen auf Mauern
+    (offen/zu/geheim, Riss-Schalter), Sicht und Bewegung abgeleitet, vier Stile mit Texturen, automatischer Untergrund,
+    mitwachsende Fläche, „Neue gezeichnete Karte“ im Katalog, Tab „Bauen“, Zeichnen und Bearbeiten.
+    Erledigt: Kern (`core/build/masonry.ts`: Linienzüge, Türen auf Mauern, abgeleitete Sicht-Wände, Graph, Umriss,
+    Ausdehnung mit Ursprung); Format: Karte Version 6 (`masonry`, `masonryDoors`, `origin`), gezeichnete Karte =
+    `library/<name>.map.json` mit `resource: "drawn:"`, im Katalog gelistet; Türzustände und „gefunden“
+    (`<id>:found`) im `doors` der Szene (keine neue Szenenversion); Duplizieren: bei einer gezeichneten Karte gehört
+    die Zeichnung zu „nur die Karte“, über einem Bild gezeichnete Mauern nur zu „mit allem“ (DM 2026-11-25).
+    Anschluss: Sicht, Licht und Nebel nehmen die abgeleiteten Wände (Ebenen der Szene); Türen per Klick, eine
+    geöffnete Geheimtür bleibt gefunden, ebenso beim Entdecken eines geheimen Bereichs. Gezeichnete Karten öffnen
+    ohne Bild; der Renderer legt Karte, Raster, Licht, Erinnerung und Nebel an den Ursprung (`render/pixi/origin.ts`),
+    über Bildkarten liegt die Zeichnung als eigene Ebene. TV: `map.drawn` im Frame (Version 4) nur mit Mauern aktiver
+    Ebenen, sichtbaren Türen und eingeschalteten Rissen – eine unentdeckte Geheimtür wird nie gesendet (Test).
+    Geprüft in der App (Kartenschmiede, Spiel, TV). Vorläufige flache Optik (`render/drawnMap.ts`).
+    Darstellung (`render/drawnMap.ts`, `render/build/textures.ts`, `core/build/handDrawn.ts`): Böden nach der nächsten
+    Mauer mit weichen Übergängen, Mauern mit Textur, zitterndem Umriss (ortsfest, flackert nicht), Schatten,
+    Lichtkante und Kontur, Ecksteine/Pfeiler an Knoten, Türen, Risse und die Geheimtür-Markierung des DM als eigene
+    kleine Bilder (ein Türklick malt die Karte nicht neu). Die Karte malt sich kachelweise (`PaintedImage`), also ohne
+    Canvas-Grenze; gemessen: 200 × 200 Felder, 400 Räume – Öffnen blockiert ≤ 0,7 s. Textur-Plätze (11) mit
+    erzeugten Mustern als Ersatz, bis die Higgsfield-Bilder da sind (DM lädt Credits auf; Free-Tarif: Rechte vor dem
+    Einchecken prüfen).
+    Tab „Bauen“ (`app/build.ts`, `core/build/editing.ts`, `panels/BuildCommandPanel.tsx`): Bearbeiten, Mauer, Tür,
+    Einrasten. Mauer: Befehls-Panel mit Stil, Dicke (ft) und Einrasten (Raster, halbes Raster, 45°, frei; Alt frei),
+    Klick für Klick, Doppelklick/Enter beendet, Klick auf den Anfang schließt den Ring, Rücktaste nimmt den letzten
+    Punkt zurück; jede Mauer ist ein Schritt. Tür: Klick auf eine Mauer, mittig auf einem Feld, „geheim“ im Panel.
+    Bearbeiten: Punkte ziehen (rasten an anderen Mauern ein), Klick auf die Linie der ausgewählten Mauer fügt einen
+    Punkt ein, ein Ende auf ein anderes gezogen verbindet (auf das eigene: Ring), Entf löscht Punkt/Tür/Mauer, Türen
+    entlang der Mauer ziehen; Türen behalten bei Änderungen ihren Platz. Eigenschaften: Stil, Dicke, „Neu würfeln“,
+    „Hier teilen“, Löschen; Tür: Breite, geheim, Riss. Die Fläche einer gezeichneten Karte folgt dem Gezeichneten.
+    Katalog: „Neue gezeichnete Karte“ (Karte mit offener Kampagne), Karte mit Mauer-Symbol statt Vorschaubild,
+    „Kartendatei: Gezeichnete Karte“. Geprüft in der App (Raum mit Tür, Höhlenwand, Auswahl, Speichern).
+    Texturen (2026-11-26): 11 Bilder mit Higgsfield (Seedream 5.5) erzeugt, als WebP (~650 KB) in
+    `app/src/render/build/textures/`; Herkunft dort im README; Rechte laut DM durch den Higgsfield-Tarif geklärt.
+    Mauern werden dunkler als jeder Boden gezeichnet (lesbar auch auf gleichem Stein).
+    Katalog: gezeichnete Karten mit gemaltem Vorschaubild (verkleinert gemalt, nie in voller Größe), Karte und Details.
+    Nur Geändertes neu malen (`core/build/dirty.ts`): eine Änderung malt nur den Bereich der geänderten Mauern, ihrer
+    Türen und der Böden mit neuer nächster Mauer neu (Renderer `repaint`); Umrisse werden je Gruppe sich berührender
+    Mauern zwischengespeichert. Gemessen (200 × 200 Felder, 400 Räume): eine Mauer zeichnen blockiert ~0,18 s (vorher
+    ~0,7 s); wächst die Fläche, wird alles neu gemalt.
+    Offen: `npm run bench` (braucht das 4K-Testvideo und den TV) – DM.
+  - ✓ **DC-107b Boden-Pinsel** mit sauberem Übergang an Mauern. DM 2026-11-26: Böden = die 4 Mauerböden, die 5
+    natürlichen und neu Teppich, Marmor, Kies, Lehmweg, Moos (Higgsfield); Rand weich, an Mauern sauber (endet unter
+    der Mauer); Ziehen malt, Alt radiert, Shift gerade Bahnen, Größe in Feldern; gleicher Boden verschmilzt.
+    Umgesetzt: Kern (`core/build/floors.ts`: gleicher Boden wird eine Fläche, Übermalen ersetzt, Radieren nimmt weg),
+    Karte Version 6 um `floors` erweitert, TV-Freigabe (aktive Ebenen), Änderungsbereich und Fläche der Karte;
+    Darstellung über den automatischen Böden mit weichem Rand, nahe Mauern scharf (dort deckt die Mauer ab);
+    Werkzeug „Boden“ im Tab „Bauen“ mit Boden, Pinselgröße und Pinselvorschau. 5 Texturen mit Higgsfield.
+    Nebenbei behoben: Alt löste in allen Bau-Werkzeugen einen Ping aus statt „frei“ bzw. „radieren“ (seit DC-107a).
+    Geprüft in der App (Teppich, Lehmweg mit Shift, Radieren mit Alt).
+  - ✓ **DC-107c Eigene Mauern in Szenen** (Szene v8). DM 2026-11-26: gezeichnet im Tab „Bauen“ des Spielleiters
+    (Spielstand, oder mit „Startzustand bearbeiten“ der Start); eine Szene darf Mauern/Türen/Fenster, Klippen, Wasser
+    und Böden haben und gezeichnete Elemente der Karte ausblenden. Umgesetzt: Szene Version 8 mit `drawing` im
+    Spielstand und im Start (eigene Zeichnung + `hidden`), „Szene zurücksetzen“ holt die des Starts zurück;
+    `core/build/sceneDrawing.ts` (was die Szene zeigt: Karte ohne Ausgeblendetes plus Eigenes) für Sicht, TV und
+    DM-Fenster; die Werkzeuge zeichnen in die Szene, die Karte bleibt unberührt (ihre Fläche wächst nicht mit);
+    Karten-Elemente werden in der Szene ausgewählt und mit Entf/„In dieser Szene ausblenden“ ausgeblendet,
+    „Wieder zeigen“ im Kartenbereich. Geprüft in der App (Barrikade nur in der Szene, auf dem TV, Karte
+    unverändert).
+  - Review (2026-11-26) behoben: Bearbeiten in einer Szene kopierte Karten-Elemente in die Szene (blockierend);
+    zurück auf eine unveränderte gezeichnete Karte blieb das Bild der vorigen Karte stehen (blockierend); Tür →
+    Fenster malte nicht neu; Türbilder und bewegtes Wasser außerhalb der Kartenfläche lagen nicht unter dem Nebel
+    (jetzt auf die Fläche begrenzt); leerer Rückgängig-Schritt beim Teilen eines Sees; Geröll-Markierung nach der
+    Szene; ausgeblendete Ids geprüft; `freshId` kennt alle gezeichneten Listen. Neue Tests dafür (auch auf
+    Frame-Ebene). Offen: Serialisieren je Frame bei sehr großen Karten (`npm run bench`, DM).
+  - ✓ **DC-107d Klippen und Abhänge** (E-34, DM-Wunsch 2026-11-26): Klippen, Abhänge, Gruben, Plateaus, Schluchten,
+    Geröllhalden, Terrassen und Abgründe zeichnen; Einweg-Sicht und Bewegungsblock wie die Klippen aus DC-014;
+    Aussehen nach Biom, Bewuchs an der Oberkante. Reihenfolge der Pakete b–d wählt der DM.
+    Stand 2026-11-26: Kern (`core/build/cliffs.ts`: Kanten mit Oberseite links, Schlucht, Terrassen, Ring als Grube
+    oder Plateau, Einweg-Sichtlinien), Karte Version 6 um `cliffs` erweitert (leer als Vorgabe), TV-Freigabe (aktive
+    Ebenen, Biom; Biom eines Bereichs, aber nie eines unentdeckten geheimen), Darstellung (`render/cliffsPaint.ts`:
+    Wand der Klippe, Schatten, Lippe, Geröll, Abgrund, Schnee, Bewuchs nach Biom), natürlicher Boden nach Biom fern von
+    Mauern, Werkzeug „Klippe“ im Tab „Bauen“ mit Befehls-Panel und Eigenschaften (Art, Form, steil, Breite, Stufen,
+    innen, Bewuchs, Richtung umdrehen, neu würfeln, teilen, löschen). 14 Texturen mit Higgsfield erzeugt.
+    Geröllhalde: im DM-Fenster als „schwieriges Gelände“ markiert (gestrichelt, nur DM). Eine Klippe wird auch auf
+    ihrer Wand getroffen, nicht nur an der Oberkante; nach einem Werkzeugwechsel ist nichts ausgewählt, der erste
+    Klick wählt aus (fügt nie einen Punkt ein). Geprüft in der App: alle Formen und Arten, Schnee-Biom, Zeichnen,
+    Auswählen und Eigenschaften im Tab „Bauen“, Markierung. ✓ bis auf die Abnahme durch den DM.
+  - ✓ **DC-107e Pinsel** (E-35): Ziehen zeichnet frei (geglättet zu bearbeitbaren Punkten), Shift gerade Linien,
+    Klick-Klick bleibt – für Mauer, Klippe und die folgenden Werkzeuge. Umgesetzt (`core/build/strokes.ts`,
+    `addBuildStroke`): ein Strich wird geglättet und auf wenige Punkte reduziert (Ramer–Douglas–Peucker, ein Achtel
+    Feld), seine Enden rasten an Punkten anderer Linien ein; endet er am Anfang, wird er ein Ring (Klippe: Grube);
+    für sich allein wird er sofort Mauer/Klippe, nach geklickten Punkten führt er die Linie fort. Shift + Ziehen:
+    gerades Stück, eingerastet wie Klicks. Ein Klick ohne Bewegung bleibt ein Punkt. Vorschau beim Ziehen. Geprüft in
+    der App (Wellenmauer, gerade Mauer mit Shift, Grube als Schleife).
+  - ◐ **DC-107f Wasser** (E-35): Fluss/Bach, See/Teich, Meer/Küste, automatische Wasserfälle an Klippen; animierte
+    Strömung, Wellen, Schaum und Brandung, je Karte abschaltbar; nur Optik. 60 FPS auf dem TV (`npm run bench`).
+    Umgesetzt: Kern (`core/build/water.ts`: Fluss als Linie mit Breite, See/Meer als Ring, Wasserfälle wo ein Fluss
+    eine steile Klippe von oben nach unten kreuzt, Rundung nach Chaikin), Karte Version 6 um `waters` und
+    `waterAnimated` (an) erweitert, TV-Freigabe (aktive Ebenen); Ruhebild (`render/waterPaint.ts`: nasses Ufer, beim
+    Meer Sandstreifen, zur Mitte tiefer, Schaumlinie, Wasserfall mit Gischt); bewegtes Wasser als eigene Ebene mit
+    Shadern (`render/pixi/water-layer.ts`: Strömung in Zeichenrichtung mit Schaum an Uferstellen, Wellen und
+    Glitzern, Wellen zum Ufer – Brandung beim Meer, sanft beim See –, fallendes Wasser), unter Figuren und Nebel;
+    Werkzeug „Wasser“ im Tab „Bauen“ (Pinsel, Shift, Klicks; See/Meer schließen sich selbst), Eigenschaften (Art,
+    Breite, Fließrichtung umdrehen, teilen, löschen), Schalter „Wasser bewegt sich (diese Karte)“. 3 Texturen mit
+    Higgsfield. Geprüft in der App (alle Arten, Wasserfall, Bewegung, Zeichnen). Offen: `npm run bench` – DM.
+  - ✓ **DC-107g 2,5D und Automatik** (E-35): Höhe und Seitenflächen von Mauern und Klippen, Lichtrichtung je Karte;
+    Türme an Ecken, Zinnen, Ufer-Details, weiche Übergänge (je abschaltbar); Fenster in Mauern und Häusern.
+    Umgesetzt: Karte Version 6 um `lightAngle` (45°), `autoShore`, `autoGrowth` erweitert, Mauern um `height` und
+    `fortified`, Türen um `window`. Fenster: Fenster-Wand in der Lücke (verdeckt weder Sicht noch Licht), nie geheim,
+    nie per Klick geöffnet, auf dem TV immer als Fenster. 2,5D (`render/drawnMap.ts`): Mauern stehen in ihrer Höhe
+    (je Stil, Wehrmauer höher, je Mauer änderbar) mit Seitenfläche und angehobener Krone, Schatten in Lichtrichtung;
+    Wehrmauern mit Zinnen und runden Türmen an Ecken, Enden und alle sechs Felder, nie in Toren oder Fenstern;
+    Klippenwände je nach Licht hell oder im Schatten. Automatik (`render/detailsPaint.ts`): Steine und Schilf an Ufern
+    (Meer nur Steine, kein Schilf in Schnee/Wüste), Bewuchs am Mauerfuß auf natürlichem Boden, ausgetretener Boden
+    vor Türen; weiche Übergänge der Böden gab es schon. Bedienung: Tür-Werkzeug mit Tür/Geheimtür/Fenster, Mauer-
+    Werkzeug mit „Wehrmauer“, Eigenschaften mit Höhe und Wehrmauer, Kartenbereich mit Lichtrichtung und den zwei
+    Automatik-Schaltern. 2 Texturen mit Higgsfield. Geprüft in der App (Burg mit Toren, Fenster, Licht aus zwei
+    Richtungen, Ufer). Hinweis: der Leistungstest in `cover.test.ts` schlägt unter starker Rechnerlast fehl, allein
+    läuft er durch.
+  - Danach (eigene Pakete): Wege/Flüsse/Brücken, Räume und Dächer, Detailstreuung, Wildnis-/Stadt-Modus.
 - **DC-015 Assets und Ebenen** – Props siehe DC-041, Stockwerke DC-020, Zeichenebenen DC-101 (E-18).
 
 ### 3.3 Kartenschmiede (weiter)

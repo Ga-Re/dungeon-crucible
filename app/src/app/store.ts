@@ -8,6 +8,8 @@ import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type Grid
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
+import { masonrySightWalls, toggledMasonryDoor, withMasonry } from '../core/build/sight';
+import type { BuildCommand, BuildSelection } from './build';
 import type { InteriorTrigger } from '../core/sidecar';
 import { randomChoices, rollPlacement, type PlaceOptions } from '../core/assetObjects';
 import { drawnPlacements, footprintPolygon, interiorChanges, interiorOf, interiorWalls } from '../core/interiors';
@@ -50,7 +52,9 @@ export type ToolId =
   | 'select' | 'pan' | 'measure' | 'ping' | 'calibrate'
   | 'area' | 'wall' | 'hide'
   | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
-  | 'cone' | 'sphere' | 'line' | 'cube' | 'light';
+  | 'cone' | 'sphere' | 'line' | 'cube' | 'light'
+  /** The Map Forge's "Build" tab (E-33): edit, draw walls, place doors. */
+  | 'build-edit' | 'build-wall' | 'build-door' | 'build-cliff' | 'build-water' | 'build-floor';
 
 export interface LogEntry {
   at: number;
@@ -97,6 +101,10 @@ export interface AppState {
   wallCommand: WallCommand | null;
   /** Selected walls of the map (Map Forge): one, several (Shift) or a chain (double-click). */
   selectedWallIds: string[];
+  /** Drawing walls or placing doors in the "Build" tab (E-33): options and the wall being drawn. */
+  buildCommand: BuildCommand | null;
+  /** The drawn wall selected (and one of its points), or a door on one (E-33). */
+  buildSelection: BuildSelection | null;
   log: LogEntry[];
   rolls: RollResult[];
   monitors: MonitorInfo[];
@@ -223,6 +231,8 @@ function initial(): AppState {
     calibration: null,
     wallCommand: null,
     selectedWallIds: [],
+    buildCommand: null,
+    buildSelection: null,
     log: [],
     rolls: [],
     monitors: [],
@@ -383,6 +393,9 @@ function restore(snap: string): void {
   // Selected walls that the step back (or forward) took away are no longer selected.
   const walls = new Set(state.scene.walls.map((w) => w.id));
   state.selectedWallIds = state.selectedWallIds.filter((id) => walls.has(id));
+  // Likewise a drawn wall or door (E-33).
+  const b = state.buildSelection;
+  if (b && !(b.door ? [...state.scene.map.masonryDoors, ...state.scene.own.masonryDoors].some((d) => d.id === b.door) : (b.onMap || state.layer === 'map' ? state.scene.map : state.scene.own)[b.kind === 'wall' ? 'masonry' : b.kind === 'cliff' ? 'cliffs' : 'waters'].some((w) => w.id === b.wall))) state.buildSelection = null;
   if (state.selectedAssetId && !editableAssets().some((a) => a.id === state.selectedAssetId)) state.selectedAssetId = null;
   // Who is in which house as of this step (E-29): stepping back into a house is no new entering.
   interiorInside = charactersInHouses();
@@ -410,9 +423,10 @@ export function clearHistory(): void {
 
 /** Replaces the whole scene (open campaign, switch scene, import map). */
 /** A new element id that no wall, area, light, template or token of the scene has (lowercase, random). */
-function freshId(prefix: string): string {
+export function freshId(prefix: string): string {
   const sc = state.scene;
-  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.ownAssets, ...sc.hidden.assets].map((x) => x.id));
+  const drawn = [sc.map, sc.own].flatMap((d) => [...d.masonry, ...d.masonryDoors, ...d.cliffs, ...d.waters, ...d.floors]);
+  const taken = new Set<string>([...sc.walls, ...sc.zones, ...sc.lights, ...sc.templates, ...sc.tokens, ...sc.map.assets, ...sc.ownAssets, ...sc.hidden.assets, ...drawn].map((x) => x.id));
   return newId(slugId(prefix, 'el').slice(0, 40), (id) => taken.has(id));
 }
 
@@ -873,6 +887,9 @@ export function setTool(tool: ToolId): void {
   // One command at a time: another tool ends "create area" and "draw walls".
   if (tool !== 'area') state.areaCommand = null;
   if (tool !== 'wall') state.wallCommand = null;
+  if (!['build-wall', 'build-door', 'build-cliff', 'build-water', 'build-floor'].includes(tool)) state.buildCommand = null;
+  // Another tool – also from drawing to editing – starts without a selection: the first click selects, it never adds a point.
+  if (tool !== state.tool) state.buildSelection = null;
   if (tool !== 'calibrate') dropCalibration();
   state.tool = tool;
   emit();
@@ -955,6 +972,16 @@ export function moveToken(id: string, p: Point, final: boolean): void {
 }
 
 export function toggleDoor(id: string): void {
+  const drawn = toggledMasonryDoor([...state.scene.map.masonryDoors, ...state.scene.own.masonryDoors], state.scene.masonryDoorsOpen, id);
+  if (drawn) {
+    // A door on a drawn wall (E-33): scene state.
+    checkpoint();
+    state.scene.masonryDoorsOpen = drawn;
+    log(drawn[id] ? 'log.doorOpened' : 'log.doorClosed');
+    recomputeVision();
+    emit();
+    return;
+  }
   if (assetDoors(state.scene).some((d) => d.id === id)) {
     // An asset's door (E-29): scene state.
     checkpoint();
@@ -1002,6 +1029,8 @@ function reversed<T extends Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>>(w: T): T {
 function clearWallEditing(): void {
   state.wallCommand = null;
   state.selectedWallIds = [];
+  state.buildCommand = null;
+  state.buildSelection = null;
   state.selectedAssetId = null;
   state.calibration = null;
 }
@@ -1552,11 +1581,25 @@ function applyInteriorTriggers(): void {
   }
 }
 
-/** The walls sight and light use (E-29): the scene's, cut open where placed assets bring doors, plus those doors. */
+/**
+ * The walls sight and light use: the scene's and those derived from drawn walls (E-33), cut open
+ * where placed assets bring doors, plus those doors (E-29).
+ */
 export function sightWalls(scene: Scene): readonly Wall[] {
   const placed = allPlacements(scene);
   const inner = interiorWalls(placed, state.assetInfo, scene.map.grid, scene.interiorsOn, scene.assetDoorsOpen);
-  return wallsWithAssetDoors(scene.walls, placed, state.assetInfo, scene.map.grid, scene.assetDoorsOpen, inner);
+  const walls = withMasonry(scene.walls, drawnWalls(scene));
+  return wallsWithAssetDoors(walls, placed, state.assetInfo, scene.map.grid, scene.assetDoorsOpen, inner);
+}
+
+/** The walls derived from the drawn walls (E-33): all layers in the Map Forge's own view, else the scene's active ones. */
+function drawnWalls(scene: Scene): Wall[] {
+  return masonrySightWalls(scene, scene === state.scene && state.layer === 'map');
+}
+
+/** The doors on drawn walls (E-33), as walls. */
+export function masonryDoors(scene: Scene): Wall[] {
+  return drawnWalls(scene).filter((w) => w.kind === 'door' || w.kind === 'secret-door');
 }
 
 /** The scene with the walls sight and light use (itself if no asset brings a door). */
@@ -2015,6 +2058,12 @@ export function discoverZone(id: string): void {
     const touches = [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }].some((p) => distanceToArea(z.shape, p) <= 1);
     if (touches) w.open = true;
   }
+  // Secret doors on drawn walls touching it (E-33): opened and found.
+  for (const w of masonryDoors(state.scene)) {
+    if (w.kind !== 'secret-door' || w.open) continue;
+    const touches = [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }].some((p) => distanceToArea(z.shape, p) <= 1);
+    if (touches) state.scene.masonryDoorsOpen = toggledMasonryDoor([...state.scene.map.masonryDoors, ...state.scene.own.masonryDoors], state.scene.masonryDoorsOpen, w.id) ?? state.scene.masonryDoorsOpen;
+  }
   recomputeVision();
   for (const part of z.shape) state.scene.fog = revealIn(state.scene.fog, part, [], true);
   state.fogQuick = false;
@@ -2024,7 +2073,7 @@ export function discoverZone(id: string): void {
 export function fogAll(reveal: boolean): void {
   checkpoint();
   const m = state.scene.map;
-  state.scene.fog = reveal ? revealAll(state.scene.fog, m.widthPx, m.heightPx, locked()) : hideAll();
+  state.scene.fog = reveal ? revealAll(state.scene.fog, m.widthPx, m.heightPx, locked(), m.origin) : hideAll();
   state.fogQuick = false;
   recomputeVision();
   state.fogQuick = false;
@@ -2306,7 +2355,7 @@ export function applyMapSettings(s: MapSettings): boolean {
 /** Where new tokens go: the centre of what the TV shows, else of the map. */
 function tableCentre(): Point {
   const m = state.scene.map;
-  return { x: state.scene.table.centerX || m.widthPx / 2, y: state.scene.table.centerY || m.heightPx / 2 };
+  return { x: state.scene.table.centerX || (m.origin?.x ?? 0) + m.widthPx / 2, y: state.scene.table.centerY || (m.origin?.y ?? 0) + m.heightPx / 2 };
 }
 
 /* ---------- Players of the campaign (DC-096) ---------- */

@@ -6,6 +6,10 @@ import { z } from 'zod';
 import { CHALLENGE_RATINGS, CONDITIONS } from './rules/rules2024';
 import { fogEffectSchema, levelFogSchema, polygonSchema } from './poly/types';
 import { idSchema } from './documents';
+import { MASONRY_STYLES } from './build/masonry';
+import { CLIFF_FORMS, CLIFF_KINDS } from './build/cliffs';
+import { WATER_KINDS } from './build/water';
+import { FLOOR_STYLES } from './build/floors';
 
 export const SIDECAR_SUFFIX = '.dm.json';
 export const SCENE_SUFFIX = '.scene.json';
@@ -49,6 +53,47 @@ export const mapAreaSchema = z.object({
   biome: biome.optional(),
   layer: layerRef,
 });
+/** A drawn wall (E-33): a polyline with a style, a thickness and a seed. */
+export const masonrySchema = z.object({
+  id,
+  points: z.array(z.object({ x: z.number(), y: z.number() })).min(2),
+  closed: z.boolean().default(false),
+  style: z.enum(MASONRY_STYLES),
+  thickness: z.number().positive(),
+  seed: z.number().int(),
+  layer: layerRef,
+  height: z.number().positive().optional(),
+  fortified: z.boolean().optional(),
+});
+/** A door on a drawn wall (E-33): its centre as the distance along the wall; open and found are scene state. */
+export const masonryDoorSchema = z.object({ id, wall: id, at: z.number().min(0), width: z.number().positive(), secret: z.boolean().default(false), crack: z.boolean().default(false), window: z.boolean().optional() });
+/** A drawn cliff or slope (E-34): its upper side is left of its direction (as in DC-014). */
+export const cliffSchema = z.object({
+  id,
+  points: z.array(z.object({ x: z.number(), y: z.number() })).min(2),
+  closed: z.boolean().default(false),
+  kind: z.enum(CLIFF_KINDS),
+  form: z.enum(CLIFF_FORMS).default('edge'),
+  steep: z.boolean().default(true),
+  width: z.number().positive(),
+  steps: z.number().int().min(1).max(12).default(3),
+  inside: z.enum(['low', 'high']).default('low'),
+  growth: z.boolean().default(true),
+  seed: z.number().int(),
+  layer: layerRef,
+});
+/** A painted floor (E-33, DC-107b): an area of one floor over the floors that follow the walls. */
+export const floorPatchSchema = z.object({ id, style: z.enum(FLOOR_STYLES), shape: z.array(polygonSchema).min(1), seed: z.number().int(), layer: layerRef });
+/** Drawn water (E-35): a river (a line with a width, flowing in its drawing direction), a lake or the sea (rings). */
+export const waterSchema = z.object({
+  id,
+  kind: z.enum(WATER_KINDS),
+  points: z.array(z.object({ x: z.number(), y: z.number() })).min(2),
+  closed: z.boolean().default(false),
+  width: z.number().positive(),
+  seed: z.number().int(),
+  layer: layerRef,
+});
 export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color, layer: layerRef });
 
 /**
@@ -71,9 +116,9 @@ export const mapLayerSchema = z.object({
 export type MapLayer = z.infer<typeof mapLayerSchema>;
 
 /** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 5;
+export const MAP_VERSION = 6;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
-export const SCENE_VERSION = 7;
+export const SCENE_VERSION = 8;
 
 /**
  * When a house's interior is shown (E-29): by the DM's click only, when a player character steps
@@ -121,6 +166,23 @@ export const MapSidecarSchema = z.object({
   /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */
   ambient: z.enum(['dark', 'lit']).default('dark'),
   assets: z.array(placementSchema).default([]),
+  /** Drawn walls and the doors on them (E-33, version 6). */
+  masonry: z.array(masonrySchema).default([]),
+  masonryDoors: z.array(masonryDoorSchema).default([]),
+  /** Drawn cliffs and slopes (E-34). */
+  cliffs: z.array(cliffSchema).default([]),
+  /** Drawn rivers, lakes and sea (E-35), and whether their water moves (per map). */
+  waters: z.array(waterSchema).default([]),
+  /** Painted floors (DC-107b). */
+  floors: z.array(floorPatchSchema).default([]),
+  waterAnimated: z.boolean().default(true),
+  /** Where the light falls towards in the 2.5D look (degrees, map coordinates; 45: to the lower right, E-35). */
+  lightAngle: z.number().default(45),
+  /** Automatic details (E-35): stones and reeds along shores, plants at the foot of walls on natural ground. */
+  autoShore: z.boolean().default(true),
+  autoGrowth: z.boolean().default(true),
+  /** Top left of a drawn map's area (map px; it grows left and up too). None: 0, 0. */
+  origin: z.object({ x: z.number(), y: z.number() }).optional(),
 });
 export type MapSidecar = z.infer<typeof MapSidecarSchema>;
 
@@ -289,6 +351,21 @@ const tokenSchema = z.object({
 });
 
 /** Per-session state on top of a map: fog, doors, tokens, combat. The map itself stays untouched. */
+/**
+ * A scene's own drawing (DC-107c): walls, doors, cliffs, water and floors of this scene only, and
+ * the map's drawn elements it hides. Part of the play state and of the start state.
+ */
+const sceneDrawingSchema = z.object({
+  masonry: z.array(masonrySchema).default([]),
+  masonryDoors: z.array(masonryDoorSchema).default([]),
+  cliffs: z.array(cliffSchema).default([]),
+  waters: z.array(waterSchema).default([]),
+  floors: z.array(floorPatchSchema).default([]),
+  hidden: z.array(id).default([]),
+});
+export type SceneDrawing = z.infer<typeof sceneDrawingSchema>;
+const EMPTY_SCENE_DRAWING = { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], hidden: [] };
+
 export const SceneOverrideSchema = z.object({
   kind: z.literal('scene'),
   schemaVersion: z.literal(SCENE_VERSION),
@@ -313,6 +390,8 @@ export const SceneOverrideSchema = z.object({
   layers: z.record(z.string(), z.boolean()).default({}),
   /** Houses showing their interior in this scene's play state (E-29), by placement id. Not listed: outside. */
   interiors: z.record(z.string(), z.boolean()).default({}),
+  /** The scene's own drawing in its play state (DC-107c, version 8). */
+  drawing: sceneDrawingSchema.default(EMPTY_SCENE_DRAWING),
   tokens: z.array(tokenSchema).default([]),
   templates: z.array(z.object({ id, shape: z.enum(['cone', 'sphere', 'line', 'cube']), x: z.number(), y: z.number(), angle: z.number(), sizeFt: z.number().positive(), color })).default([]),
   combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
@@ -337,6 +416,8 @@ export const SceneOverrideSchema = z.object({
     effects: z.record(z.string(), z.boolean()).default({}),
     layers: z.record(z.string(), z.boolean()).default({}),
     interiors: z.record(z.string(), z.boolean()).default({}),
+    /** The scene's own drawing at its start (DC-107c). */
+    drawing: sceneDrawingSchema.default(EMPTY_SCENE_DRAWING),
   }).optional(),
   /** Walls, areas and lights that exist only in this scene (E-24). */
   added: z.object({ walls: z.array(mapWallSchema).default([]), zones: z.array(mapAreaSchema).default([]), lights: z.array(mapLightSchema).default([]) }).default({ walls: [], zones: [], lights: [] }),

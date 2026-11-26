@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DcApi, LibraryEntry } from '../platform/desktop-api';
 import { DEFAULT_GRID } from '../core/grid';
 import { MAP_VERSION } from '../core/sidecar';
-import { duplicateLibraryMap, refreshLibraryMaps, trashBlocked, updateLibraryMap } from './library';
+import { createDrawnMap, duplicateLibraryMap, refreshLibraryMaps, trashBlocked, updateLibraryMap } from './library';
 import { state } from './store';
 
 /** Map copies in the library (E-32, DC-118), files kept in memory. */
@@ -58,5 +58,29 @@ describe('map copies', () => {
     await updateLibraryMap('library/hall-copy.map.json', { name: 'Cellar' });
     expect(JSON.parse(files.get('library/hall-copy.map.json')!).name).toBe('Cellar');
     expect(JSON.parse(files.get('library/hall.png.dm.json')!).name).toBe('Hall');
+  });
+});
+
+describe('drawn maps (E-33)', () => {
+  it('are listed in the catalog without a picture, as maps of their own', async () => {
+    files.set('library/cellar.map.json', JSON.stringify({ ...hall, name: 'Cellar', resource: 'drawn:', walls: [] }));
+    await refreshLibraryMaps();
+    const cellar = state.libraryMaps.find((m) => m.mapFile === 'library/cellar.map.json');
+    expect(cellar).toMatchObject({ name: 'Cellar', resource: 'drawn:', drawn: true, copy: false, isVideo: false });
+    // It shares no picture: it can go to the trash while no scene uses it.
+    expect(trashBlocked(cellar!, [])).toBeNull();
+    expect(trashBlocked(cellar!, [{ campaign: 'C', scene: 'S' }])).toBe('copyUsed');
+  });
+});
+
+describe('a new drawn map (E-33)', () => {
+  it('is a map file of its own without a picture, listed (opened in a tab with a campaign open)', async () => {
+    const file = await createDrawnMap('Keller');
+    expect(file).toBe('library/keller.map.json');
+    const doc = JSON.parse(files.get(file!)!);
+    expect(doc).toMatchObject({ kind: 'map', name: 'Keller', resource: 'drawn:', masonry: [], masonryDoors: [], origin: { x: 0, y: 0 } });
+    expect(state.libraryMaps.find((m) => m.mapFile === file)).toMatchObject({ drawn: true });
+    // A second one gets a free name.
+    expect(await createDrawnMap('Keller')).toBe('library/keller-2.map.json');
   });
 });

@@ -28,9 +28,15 @@ import { hasMap } from '../core/emptyScene';
 import { importMapIntoCampaign, putOnTv } from '../app/campaign';
 import { Icon } from '../ui/Icon';
 import type { MessageKey } from '../i18n/en';
-import { drawDmOverlay, rotateHandleAt, type OverlayState } from '../render/dmOverlay';
+import { drawDmOverlay, rotateHandleAt, type BuildOverlay, type OverlayState } from '../render/dmOverlay';
 import { fogOptions } from '../render/fogOptions';
 import { DARKNESS } from '../core/projection';
+import { dmDrawing } from '../core/build/playerDrawing';
+import { sceneMap } from '../core/build/sceneDrawing';
+import { doorSpan, pointAt } from '../core/build/masonry';
+import { activeLayers, elementLayer } from '../core/layers';
+import { addBuildPoint, addBuildStroke, paintFloorStroke, buildHit, buildTarget, deleteBuildSelection, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, slideBuildDoor, undoBuildPoint } from '../app/build';
+import { BuildCommandPanel } from './BuildCommandPanel';
 import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
 import { TableView, type FrameSource } from '../table/TableView';
@@ -38,7 +44,7 @@ import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
   addCreatureToken, addLight, lightAt, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
-  editableHere, shownInForge, activateAsset, placeHere, previewPlacing, stopPlacing, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
+  editableHere, shownInForge, activateAsset, placeHere, previewPlacing, stopPlacing, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, masonryDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
 } from '../app/store';
 
@@ -54,6 +60,7 @@ const HINTS: Partial<Record<string, MessageKey>> = {
   'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
   'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom', light: 'hint.light',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
+  'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor', 'build-cliff': 'hint.buildCliff', 'build-water': 'hint.buildWater', 'build-floor': 'hint.buildFloor',
 };
 
 type Drag =
@@ -70,7 +77,11 @@ type Drag =
   | { kind: 'calib-move'; last: Point }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
   | { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; invert: boolean; circle: boolean }
-  | { kind: 'fog-path'; tool: 'fog-lasso' | 'fog-brush'; path: Point[]; invert: boolean };
+  | { kind: 'fog-path'; tool: 'fog-lasso' | 'fog-brush'; path: Point[]; invert: boolean }
+  | { kind: 'build-point'; line: { kind: 'wall' | 'cliff' | 'water'; wall: string }; index: number; to: Point; moved: boolean }
+  | { kind: 'build-door'; id: string; moved: boolean }
+  /** A stroke while drawing a wall or cliff (E-35): freehand, or straight with Shift; a click if it barely moved. */
+  | { kind: 'build-stroke'; path: Point[]; straight: boolean; alt: boolean; floor?: boolean };
 
 export function MapView() {
   const viewAsPlayer = useStore((s) => s.viewAsPlayer);
@@ -119,7 +130,9 @@ function DmMap() {
         return;
       }
       const z = Math.min((s.width - 40) / m.widthPx, (s.height - 40) / m.heightPx);
-      view.current = { zoom: z, x: (s.width - m.widthPx * z) / 2, y: (s.height - m.heightPx * z) / 2 };
+      // A drawn map's area may start left of or above 0 (E-33).
+      const o = m.origin ?? { x: 0, y: 0 };
+      view.current = { zoom: z, x: (s.width - m.widthPx * z) / 2 - o.x * z, y: (s.height - m.heightPx * z) / 2 - o.y * z };
     };
     mapCommands.fit = fit;
     // The middle of what the map view shows, in map pixels (placing from the keyboard).
@@ -142,7 +155,15 @@ function DmMap() {
     const push = (r: Renderer) => {
       const sc = state.scene;
       const cell = sc.map.grid.cellWidth;
-      void map?.set(sc.map.imageUrl, sc.map.isVideo);
+      // Drawn walls (E-33): a drawn map's picture, or drawn over the picture map; in a scene those of its active layers.
+      const drawing = dmDrawing(sceneMap(sc), sc.masonryDoorsOpen, state.layer === 'map' ? undefined : sc.layersOn, sc.zones);
+      // Moving water, when the map's water is animated (E-35).
+      r.setWater(drawing && drawing.waterAnimated && drawing.waters.length ? { waters: drawing.waters, cliffs: drawing.cliffs, cell } : null);
+      if (sc.map.drawn && drawing) void map?.setDrawn(drawing, cell);
+      else {
+        void map?.set(sc.map.imageUrl, sc.map.isVideo);
+        void map?.setOver(drawing, cell);
+      }
       // While calibrating, the grid is always shown: it is what is being adjusted.
       r.setGrid((state.showGrid || state.calibration) && sc.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: sc.map.grid.originX, offsetYPx: sc.map.grid.originY, alpha: 0.18 } : null);
       // Placed assets: their files' URLs are looked up once, the first time they are shown.
@@ -209,7 +230,7 @@ function DmMap() {
       }
       const g = overlay.getContext('2d');
       // Doors of placed assets are drawn like drawn doors (E-29); in a scene with their gaps.
-      if (g) drawDmOverlay(g, state.ws === 'forge' ? shownLayers({ ...state.scene, walls: [...state.scene.walls, ...assetDoors(state.scene)] }) : withAssetDoors(state.scene), state.vision, view.current, dpr, overlayState(), Date.now());
+      if (g) drawDmOverlay(g, state.ws === 'forge' ? shownLayers({ ...state.scene, walls: [...state.scene.walls, ...assetDoors(state.scene), ...masonryDoors(state.scene)] }) : withAssetDoors(state.scene), state.vision, view.current, dpr, overlayState(), Date.now());
     };
     raf = requestAnimationFrame(tick);
     return () => {
@@ -247,7 +268,11 @@ function DmMap() {
         drag.current = null;
         polygonDraft.current = [];
         if (state.calibration) cancelCalibration();
-        else if (state.wallCommand) {
+        else if (state.buildCommand) {
+          // A wall being drawn ends first (kept with two points or more, like a chain of walls); then the command.
+          if (state.buildCommand.points.length) finishBuildWall();
+          else endBuildCommand(false);
+        } else if (state.wallCommand) {
           // A chain being drawn ends first; then the command.
           if (state.wallCommand.start) endWallChain();
           else cancelWallCommand();
@@ -256,6 +281,7 @@ function DmMap() {
       if (e.key === 'Enter') {
         if (polygonDraft.current.length > 0) finishPolygon(e.altKey);
         else if (state.areaCommand) finishAreaCommand();
+        else if (state.buildCommand) finishBuildWall();
         else if (state.wallCommand) finishWallCommand();
         else if (state.calibration) finishCalibration();
       }
@@ -268,6 +294,8 @@ function DmMap() {
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (state.wallCommand) undoWallPoint();
+        else if (state.buildCommand?.points.length) undoBuildPoint();
+        else if (state.buildSelection) deleteBuildSelection();
         else if (state.selectedTokenId) removeToken(state.selectedTokenId);
         else if (state.selectedWallIds.length) deleteSelectedWalls();
         else if (state.selectedAssetId) deletePlacedAsset(state.selectedAssetId);
@@ -311,10 +339,12 @@ function DmMap() {
       selectedWallIds: state.selectedWallIds,
       wallDraft: wallDraftOf(),
       wallEnds: d?.kind === 'wall-ends' ? d.to : null,
-      brush: state.tool === 'fog-brush' ? { p: mouse.current, r: state.brushCells * cell } : null,
+      brush: state.tool === 'fog-brush' ? { p: mouse.current, r: state.brushCells * cell } : state.tool === 'build-floor' && state.buildCommand ? { p: mouse.current, r: (state.buildCommand.brushCells * cell) / 2 } : null,
       calibBox: state.calibration?.box ? { box: state.calibration.box, cells: state.calibration.cells } : null,
       draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
       fogDraft,
+      build: buildOverlayOf(),
+      difficult: difficultOf(),
       areaDraft: areaDraftOf(d),
       assets: [
         ...allPlacements(state.scene).filter((a) => state.ws !== 'forge' || shownInForge(a)).map((a) => placementLook(a, false)),
@@ -342,6 +372,42 @@ function DmMap() {
     const drafted = state.wallCommand?.walls.map((w, i) => ({ ...w, id: `draft-${i}` })) ?? [];
     const others = [...state.scene.walls, ...drafted].filter((w) => !skip?.has(w.id));
     return nearestEnd(others, p, HANDLE_PX / view.current.zoom) ?? snapCorner(p);
+  };
+
+  /** Scree slopes on the shown layers (E-34): difficult terrain, marked for the DM. */
+  const difficultOf = (): OverlayState['difficult'] => {
+    // In the Map Forge every layer, in a scene those it has on.
+    const active = state.layer === 'map' ? null : activeLayers(state.scene.map.layers, state.scene.layersOn);
+    const scree = sceneMap(state.scene).cliffs.filter((c) => c.kind === 'scree' && (!active || active.has(elementLayer(c))));
+    if (!scree.length) return null;
+    const depth = state.scene.map.grid.cellWidth;
+    return { lines: scree.map((c) => ({ points: c.points, closed: c.closed, depth })), label: t('build.cliff.difficult') };
+  };
+
+  /** "Build" (E-33): the wall being drawn with its next point (snapped as it will be), the selection. */
+  const buildOverlayOf = (): BuildOverlay | null => {
+    const c = state.buildCommand;
+    const sel = state.buildSelection;
+    if (!c && !sel) return null;
+    const pxPerFt = state.scene.map.grid.cellWidth / state.scene.map.grid.feetPerCell;
+    const d = drag.current;
+    const stroke = d?.kind === 'build-stroke' ? (d.straight ? [d.path[0], mouse.current] : [...d.path, mouse.current]) : [];
+    const draft = c && c.kind !== 'door' && c.kind !== 'floor' ? [...c.points, ...stroke] : [];
+    const next = draft.length && !stroke.length ? buildTarget(mouse.current, altHeld.current, HANDLE_PX / view.current.zoom) : null;
+    // The map's drawing, or in a scene its own (DC-107c).
+    const lists = !sel || sel.onMap || state.layer === 'map' ? state.scene.map : state.scene.own;
+    const w = sel?.kind === 'wall' ? lists.masonry.find((x) => x.id === sel.wall) : undefined;
+    const cl = sel?.kind === 'cliff' ? lists.cliffs.find((x) => x.id === sel.wall) : sel?.kind === 'water' ? lists.waters.find((x) => x.id === sel.wall) : undefined;
+    const door = sel?.door ? lists.masonryDoors.find((x) => x.id === sel.door) : undefined;
+    const span = w && door ? doorSpan(w, door) : null;
+    const line = w ?? cl;
+    return {
+      draft,
+      handles: c?.points.length ?? 0,
+      next,
+      thickness: c?.kind === 'cliff' ? 6 : (c?.thicknessFt ?? 1) * pxPerFt,
+      selected: line ? { points: line.points, closed: line.closed, thickness: w ? w.thickness : 6, point: sel!.point, door: w && span ? { a: pointAt(w.points, w.closed, span.from), b: pointAt(w.points, w.closed, span.to) } : null } : null,
+    };
   };
 
   /** "Create area": the shape so far and the part being drawn (snapped as it will be). */
@@ -392,8 +458,9 @@ function DmMap() {
       drag.current = { kind: 'pan', sx: e.clientX - r.left, sy: e.clientY - r.top, vx: view.current.x, vy: view.current.y };
       return;
     }
-    // Alt pings, except where it changes a drawing tool (fog: the other mode; area: no snapping).
-    if ((e.altKey && !state.tool.startsWith('fog-') && state.tool !== 'area' && state.tool !== 'wall') || state.tool === 'ping') {
+    // Alt pings, except where it changes a drawing tool (fog: the other mode; area, walls, build: no
+    // snapping; the floor brush: erasing).
+    if ((e.altKey && !state.tool.startsWith('fog-') && !state.tool.startsWith('build-') && state.tool !== 'area' && state.tool !== 'wall') || state.tool === 'ping') {
       addPing(p);
       return;
     }
@@ -522,6 +589,35 @@ function DmMap() {
       case 'wall':
         addWallPoint(wallTarget(p, e.altKey));
         return;
+      case 'build-wall':
+      case 'build-cliff':
+      case 'build-water':
+        // Decided on release: a click adds a point, a drag draws a stroke.
+        drag.current = { kind: 'build-stroke', path: [p], straight: e.shiftKey, alt: e.altKey };
+        return;
+      case 'build-door':
+        placeBuildDoor(p, e.altKey, HANDLE_PX / view.current.zoom);
+        return;
+      case 'build-floor':
+        drag.current = { kind: 'build-stroke', path: [p], straight: e.shiftKey, alt: e.altKey, floor: true };
+        return;
+      case 'build-edit': {
+        const tol = HANDLE_PX / view.current.zoom;
+        const hit = buildHit(p, tol);
+        const sel = state.buildSelection;
+        if (hit?.point != null) {
+          selectBuild(hit);
+          drag.current = { kind: 'build-point', line: hit, index: hit.point, to: p, moved: false };
+        } else if (hit?.door && !hit.onMap) {
+          selectBuild(hit);
+          drag.current = { kind: 'build-door', id: hit.door, moved: false };
+        } else if (hit && !hit.onMap && sel && !sel.onMap && sel.kind === hit.kind && sel.wall === hit.wall && !sel.door) {
+          // A click on the selected line: a new point there, dragged at once.
+          const index = insertBuildPoint(hit, p);
+          drag.current = { kind: 'build-point', line: hit, index, to: p, moved: true };
+        } else selectBuild(hit);
+        return;
+      }
       case 'calibrate': {
         // Inside the box: move it with the grid; elsewhere: drag a new box.
         const b = state.calibration?.box;
@@ -574,6 +670,20 @@ function DmMap() {
       d.moved = true;
       d.to = wallTarget(p, e.altKey, new Set(d.ends.map((x) => x.id)));
       moveWallEnds(d.ends, d.to, false);
+    } else if (d.kind === 'build-point') {
+      // The whole drag is one undoable step (an inserted point already set it).
+      if (!d.moved) checkpoint();
+      d.moved = true;
+      d.to = buildTarget(p, e.altKey, HANDLE_PX / view.current.zoom, d.line.wall);
+      moveBuildPoint(d.line, d.index, d.to, false, HANDLE_PX / view.current.zoom);
+    } else if (d.kind === 'build-stroke') {
+      const last = d.path[d.path.length - 1];
+      if (Math.hypot(last.x - p.x, last.y - p.y) * view.current.zoom > 3) d.path.push(p);
+      d.straight = d.straight || e.shiftKey;
+    } else if (d.kind === 'build-door') {
+      if (!d.moved) checkpoint();
+      d.moved = true;
+      slideBuildDoor(d.id, p, e.altKey, false);
     } else if (d.kind === 'fog-path' || d.kind === 'area-path') {
       const last = d.path[d.path.length - 1];
       if (Math.hypot(last.x - p.x, last.y - p.y) * view.current.zoom > 4) d.path.push(p);
@@ -601,6 +711,19 @@ function DmMap() {
       moveAreaCorner(d.at, cornerTarget(toWorld(e), e.altKey), true);
     } else if (d.kind === 'wall-ends') {
       if (d.moved) moveWallEnds(d.ends, d.to, true);
+    } else if (d.kind === 'build-point') {
+      if (d.moved) moveBuildPoint(d.line, d.index, d.to, true, HANDLE_PX / view.current.zoom);
+    } else if (d.kind === 'build-door') {
+      if (d.moved) slideBuildDoor(d.id, toWorld(e), e.altKey, true);
+    } else if (d.kind === 'build-stroke' && d.floor) {
+      paintFloorStroke([...d.path, toWorld(e)], d.straight || e.shiftKey, d.alt || e.altKey);
+    } else if (d.kind === 'build-stroke') {
+      const tol = HANDLE_PX / view.current.zoom;
+      const end = toWorld(e);
+      const start = d.path[0];
+      // Barely moved: a click, a point as before.
+      if (Math.hypot(end.x - start.x, end.y - start.y) * view.current.zoom < 6 && d.path.length < 3) addBuildPoint(buildTarget(start, d.alt, tol), tol);
+      else addBuildStroke([...d.path, end], d.straight || e.shiftKey, tol);
     } else if (d.kind === 'asset-move') {
       const q = toWorld(e);
       if (d.moved) moveAssetTo(d.id, { x: q.x + d.ox, y: q.y + d.oy }, true);
@@ -641,6 +764,7 @@ function DmMap() {
         onDoubleClick={(e) => {
           if (state.tool === 'fog-polygon' || state.tool === 'area') finishPolygon(e.altKey);
           else if (state.tool === 'wall') endWallChain();
+          else if (state.tool === 'build-wall' || state.tool === 'build-cliff' || state.tool === 'build-water') finishBuildWall();
           // Map Forge: a double-click on a wall selects its chain, on an area edits it.
           else if (state.tool === 'select' && state.layer === 'map') {
             const p = toWorld(e);
@@ -682,6 +806,8 @@ function DmMap() {
       {ws === 'forge' && <AreaCommandPanel />}
       {(ws === 'forge' || ws === 'play') && <PlacingPanel />}
       {ws === 'forge' && <WallCommandPanel />}
+      {/* The Build tab draws into the map in the Map Forge, into the scene in the Orchestrator (DC-107c). */}
+      <BuildCommandPanel />
       {ws === 'forge' && <CalibrationPanel />}
       {!mapPresent && !catalog && (
         <div className="map-empty">

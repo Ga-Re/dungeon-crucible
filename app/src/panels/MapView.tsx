@@ -14,6 +14,8 @@ import { WallCommandPanel } from './WallCommandPanel';
 import { assetShapes, footprintOf, hitsPlacement, ROTATE_STEP } from '../core/placement';
 import { drawnPlacements } from '../core/interiors';
 import { PlacingPanel } from './PlacingPanel';
+import { LeakCheckPanel } from './LeakCheckPanel';
+import { LookPanel } from './LookPanel';
 import { MapCatalogView } from './MapCatalog';
 import { allPlacements } from '../core/persistence';
 import { ASSET_DRAG } from './VaultPanels';
@@ -30,6 +32,8 @@ import { Icon } from '../ui/Icon';
 import type { MessageKey } from '../i18n/en';
 import { drawDmOverlay, rotateHandleAt, SOUND_HANDLE_PX, type BuildOverlay, type OverlayState } from '../render/dmOverlay';
 import { isSoundRef } from '../core/sound';
+import { fitView, toMap, toScreen, viewAt, type View } from '../render/viewTransform';
+import { storeysBelow } from '../core/storeyShape';
 import { fogOptions } from '../render/fogOptions';
 import { DARKNESS } from '../core/projection';
 import { dmDrawing } from '../core/build/playerDrawing';
@@ -43,7 +47,7 @@ import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/r
 import { TableView, type FrameSource } from '../table/TableView';
 import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
-  addCreatureToken, addLight, lightAt, removeSound, selectSound, soundAt, updateSound, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
+  addCreatureToken, addLight, lightAt, removeSound, selectSound, soundAt, updateSound, currentLeaks, testFigureSight, updateLeakCheck, shownLook, dmFramesBelow, workingFootprint, pictureOf, setCropping, updateLook, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
   editableHere, shownInForge, activateAsset, placeHere, previewPlacing, stopPlacing, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, masonryDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
@@ -53,7 +57,7 @@ import {
 export const CREATURE_DRAG = 'application/x-dc-creature';
 
 /** Commands other UI parts can trigger on the active map view. */
-export const mapCommands: { fit: () => void; centre: () => Point | null } = { fit: () => undefined, centre: () => null };
+export const mapCommands: { fit: () => void; centre: () => Point | null; show: (p: Point) => void } = { fit: () => undefined, centre: () => null, show: () => undefined };
 
 const HINTS: Partial<Record<string, MessageKey>> = {
   select: 'hint.select', pan: 'hint.pan', measure: 'hint.measure', ping: 'hint.ping', calibrate: 'hint.calibrate',
@@ -77,6 +81,10 @@ type Drag =
   /** A sound source (E-37): moved, or its radius dragged at the handle on its edge. */
   | { kind: 'sound-move'; id: string; ox: number; oy: number; moved: boolean }
   | { kind: 'sound-radius'; id: string; moved: boolean }
+  /** The leak check's test figure (DC-025), dragged around. */
+  | { kind: 'leak-figure'; ox: number; oy: number }
+  /** "Adjust picture": a cut dragged on the map (DC-022). */
+  | { kind: 'crop'; a: Point; b: Point }
   | { kind: 'calib-box'; a: Point }
   | { kind: 'calib-move'; last: Point }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
@@ -104,10 +112,25 @@ function DmMap() {
   const editStart = useStore((s) => s.editStart);
   const campaignOpen = useStore((s) => !!s.campaign);
   const dmFogHidden = useStore((s) => s.dmFogHidden);
+  // Another command panel open: the leak check waits behind it (one panel at a time).
+  const otherCommand = useStore((s) => !!(s.placing || s.wallCommand || s.areaCommand || s.buildCommand || s.calibration || s.lookCommand));
+  const hasBelow = useStore((s) => storeysBelow(s.scene.map.storeys ?? [], s.scene.map.storey ?? '').length > 0);
+  // The storeys below as frames, placed by this window's camera (E-40).
+  const belowSource = useMemo<FrameSource>(() => ({
+    current: () => {
+      const wrap = wrapRef.current;
+      if (!wrap) return null;
+      const v = view.current;
+      const s = { width: Math.max(1, wrap.clientWidth), height: Math.max(1, wrap.clientHeight) };
+      const c = toMap(v, { x: s.width / 2, y: s.height / 2 });
+      const frame = dmFramesBelow({ centerX: c.x, centerY: c.y, zoom: v.zoom, rotation: v.rot, ...s });
+      return frame ? { frame, receivedAt: Date.now() } : null;
+    },
+  }), []);
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
-  const view = useRef({ zoom: 0.4, x: 20, y: 20 });
+  const view = useRef<View>({ zoom: 0.4, x: 20, y: 20, rot: 0 });
   const drag = useRef<Drag | null>(null);
   const polygonDraft = useRef<Point[]>([]);
   const mouse = useRef<Point>({ x: 0, y: 0 });
@@ -131,20 +154,27 @@ function DmMap() {
       const s = size();
       const m = state.scene.map;
       if (!hasMap(state.scene)) {
-        view.current = { zoom: 1, x: 0, y: 0 };
+        view.current = { zoom: 1, x: 0, y: 0, rot: 0 };
         return;
       }
-      const z = Math.min((s.width - 40) / m.widthPx, (s.height - 40) / m.heightPx);
-      // A drawn map's area may start left of or above 0 (E-33).
+      // A drawn map's area may start left of or above 0 (E-33); a cut picture shows only its cut,
+      // a turned map turned (E-42).
+      const look = shownLook();
       const o = m.origin ?? { x: 0, y: 0 };
-      view.current = { zoom: z, x: (s.width - m.widthPx * z) / 2 - o.x * z, y: (s.height - m.heightPx * z) / 2 - o.y * z };
+      const box = look?.crop ? look.crop : { x: o.x, y: o.y, w: m.widthPx, h: m.heightPx };
+      view.current = fitView(box, s, look?.rotation ?? 0);
     };
     mapCommands.fit = fit;
     // The middle of what the map view shows, in map pixels (placing from the keyboard).
     mapCommands.centre = () => {
       const s = size();
+      return toMap(view.current, { x: s.width / 2, y: s.height / 2 });
+    };
+    // Brings `p` to the middle of the view, at the zoom there is (a leak in the list, DC-025).
+    mapCommands.show = (p) => {
+      const s = size();
       const v = view.current;
-      return { x: (s.width / 2 - v.x) / v.zoom, y: (s.height / 2 - v.y) / v.zoom };
+      view.current = viewAt(p, { x: s.width / 2, y: s.height / 2 }, v.zoom, v.rot);
     };
     fit();
 
@@ -166,7 +196,8 @@ function DmMap() {
       r.setWater(drawing && drawing.waterAnimated && drawing.waters.length ? { waters: drawing.waters, cliffs: drawing.cliffs, cell } : null);
       if (sc.map.drawn && drawing) void map?.setDrawn(drawing, cell);
       else {
-        void map?.set(sc.map.imageUrl, sc.map.isVideo);
+        const pic = pictureOf(sc);
+        void map?.set(pic.url, pic.isVideo, shownLook());
         void map?.setOver(drawing, cell);
       }
       // While calibrating, the grid is always shown: it is what is being adjusted.
@@ -221,11 +252,17 @@ function DmMap() {
           pushed = v;
           push(r);
         }
+        // The map turned another way (E-42): fitted anew.
+        if ((shownLook()?.rotation ?? 0) !== view.current.rot) fit();
         const v2 = view.current;
-        const camKey = `${v2.zoom}|${v2.x}|${v2.y}|${s.width}|${s.height}`;
+        // On a storey (E-40) the map is cut to its footprint; the storeys below show around it.
+        const fp = workingFootprint();
+        const camKey = `${v2.zoom}|${v2.x}|${v2.y}|${v2.rot}|${s.width}|${s.height}|${getVersion()}`;
         if (camKey !== lastCam) {
           lastCam = camKey;
-          r.setCamera({ centerX: (s.width / 2 - v2.x) / v2.zoom, centerY: (s.height / 2 - v2.y) / v2.zoom, zoom: v2.zoom, rotation: 0 });
+          canvas.style.clipPath = fp ? `path(evenodd, '${screenPath(fp, v2)}')` : '';
+          const c = toMap(v2, { x: s.width / 2, y: s.height / 2 });
+          r.setCamera({ centerX: c.x, centerY: c.y, zoom: v2.zoom, rotation: v2.rot });
         }
       }
       const dpr = window.devicePixelRatio || 1;
@@ -343,6 +380,7 @@ function DmMap() {
       selectedLightId: state.selectedLightId,
       selectedSoundId: state.selectedSoundId,
       soundGhost: state.placing?.at && isSoundRef(state.placing.next.path) ? state.placing.at : null,
+      leakCheck: state.ws === 'forge' && state.leakCheck ? { figure: state.leakCheck.figure, sight: testFigureSight(), leaks: currentLeaks() } : null,
       measure: d?.kind === 'measure' ? { a: d.a, b: d.b, ft: gridDistanceFeet(state.scene.map.grid, d.a, d.b) } : null,
       selectedWallIds: state.selectedWallIds,
       wallDraft: wallDraftOf(),
@@ -350,7 +388,8 @@ function DmMap() {
       brush: state.tool === 'fog-brush' ? { p: mouse.current, r: state.brushCells * cell } : state.tool === 'build-floor' && state.buildCommand ? { p: mouse.current, r: (state.buildCommand.brushCells * cell) / 2 } : null,
       calibBox: state.calibration?.box ? { box: state.calibration.box, cells: state.calibration.cells } : null,
       draftTemplate: d?.kind === 'template' ? templateDraft(d.shape, d.a, d.b) : null,
-      genRect: d?.kind === 'gen-rect'
+      // The generator's region, or a cut being dragged (DC-022): the same dashed frame.
+      genRect: d?.kind === 'gen-rect' || d?.kind === 'crop'
         ? { x: Math.min(d.a.x, d.b.x), y: Math.min(d.a.y, d.b.y), w: Math.abs(d.b.x - d.a.x), h: Math.abs(d.b.y - d.a.y) }
         : state.buildCommand?.kind === 'generate' && state.buildCommand.region ? state.buildCommand.region : null,
       fogDraft,
@@ -432,8 +471,7 @@ function DmMap() {
 
   const toWorld = (e: { clientX: number; clientY: number }): Point => {
     const r = canvasRef.current!.getBoundingClientRect();
-    const v = view.current;
-    return { x: (e.clientX - r.left - v.x) / v.zoom, y: (e.clientY - r.top - v.y) / v.zoom };
+    return toMap(view.current, { x: e.clientX - r.left, y: e.clientY - r.top });
   };
 
   /** A press on the turning handle of the selected asset (DC-113): it turns, freely, about its anchor. */
@@ -476,6 +514,17 @@ function DmMap() {
       return;
     }
     const cell = state.scene.map.grid.cellWidth;
+    // "Adjust picture": dragging the cut (DC-022).
+    if (state.lookCommand?.cropping) {
+      drag.current = { kind: 'crop', a: p, b: p };
+      return;
+    }
+    // The leak check's test figure (DC-025) is grabbed with the select tool.
+    const fig = state.ws === 'forge' ? state.leakCheck?.figure : null;
+    if (fig && state.tool === 'select' && Math.hypot(fig.x - p.x, fig.y - p.y) < cell * 0.4) {
+      drag.current = { kind: 'leak-figure', ox: fig.x - p.x, oy: fig.y - p.y };
+      return;
+    }
     switch (state.tool) {
       case 'select': {
         const tk = [...state.scene.tokens].reverse().find((k) => Math.hypot(k.x - p.x, k.y - p.y) < (cell * k.size) / 2);
@@ -693,6 +742,10 @@ function DmMap() {
       if (!d.moved) checkpoint();
       d.moved = true;
       moveAssetTo(d.id, { x: p.x + d.ox, y: p.y + d.oy }, false);
+    } else if (d.kind === 'crop') {
+      d.b = p;
+    } else if (d.kind === 'leak-figure') {
+      updateLeakCheck({ figure: { x: p.x + d.ox, y: p.y + d.oy } });
     } else if (d.kind === 'sound-move') {
       if (!d.moved) checkpoint();
       d.moved = true;
@@ -778,6 +831,16 @@ function DmMap() {
     } else if (d.kind === 'asset-turn') {
       const q = toWorld(e);
       if (d.moved) turnPlacedAssetTo(d.id, d.start + angleOf(d.pivot, q) - d.from, true);
+    } else if (d.kind === 'crop') {
+      // The cut lies inside the picture (its area starts at the map's origin).
+      const m = state.scene.map;
+      const o = m.origin ?? { x: 0, y: 0 };
+      const x = Math.max(o.x, Math.min(d.a.x, d.b.x));
+      const y = Math.max(o.y, Math.min(d.a.y, d.b.y));
+      const w = Math.min(o.x + m.widthPx, Math.max(d.a.x, d.b.x)) - x;
+      const h = Math.min(o.y + m.heightPx, Math.max(d.a.y, d.b.y)) - y;
+      if (w > 4 && h > 4) updateLook({ crop: { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) } });
+      setCropping(false);
     } else if (d.kind === 'gen-rect') {
       setGenerateRegion(d.a, d.b);
     } else if (d.kind === 'template') {
@@ -797,12 +860,18 @@ function DmMap() {
     const my = e.clientY - r.top;
     const w = toWorld(e);
     const zoom = Math.max(1 / 64, Math.min(16, view.current.zoom * Math.exp(-e.deltaY * 0.0015)));
-    view.current = { zoom, x: mx - w.x * zoom, y: my - w.y * zoom };
+    view.current = viewAt(w, { x: mx, y: my }, zoom, view.current.rot);
   };
 
   const hintKey = tool === 'select' && ws === 'forge' ? 'hint.selectForge' : HINTS[tool];
   return (
     <div ref={wrapRef} className="map-wrap">
+      {/* The storeys below the one worked on (E-40): blurred under it, everything shown. */}
+      {hasBelow && (
+        <div className="storey-underlay" aria-hidden="true">
+          <TableView source={belowSource} depth={1} />
+        </div>
+      )}
       <canvas ref={canvasRef} aria-hidden="true" />
       <canvas
         ref={overlayRef}
@@ -855,6 +924,8 @@ function DmMap() {
       {ws === 'forge' && <AreaCommandPanel />}
       {(ws === 'forge' || ws === 'play') && <PlacingPanel />}
       {ws === 'forge' && <WallCommandPanel />}
+      {ws === 'forge' && !otherCommand && <LeakCheckPanel />}
+      {ws === 'forge' && <LookPanel />}
       {/* The Build tab draws into the map in the Map Forge, into the scene in the Orchestrator (DC-107c). */}
       <BuildCommandPanel />
       {ws === 'forge' && <CalibrationPanel />}
@@ -930,6 +1001,11 @@ function elementAt(p: Point, tol: number): string | null {
   const asset = placementAt(p);
   if (asset) return asset;
   return [...sc.zones, ...sc.hidden.zones].reverse().find((z) => areaContains(z.shape, p))?.id ?? null;
+}
+
+/** An SVG path of `polys` on screen in this view (CSS px). */
+function screenPath(polys: readonly Polygon[], v: View): string {
+  return polys.map((p) => [p.outer, ...p.holes].map((ring) => `M${ring.map(([x, y]) => { const q = toScreen(v, { x, y }); return `${q.x.toFixed(1)} ${q.y.toFixed(1)}`; }).join('L')}Z`).join('')).join('');
 }
 
 /** A dragged radius in feet: whole 5 ft steps (Alt: whole feet), at least one step. */

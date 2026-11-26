@@ -20,8 +20,8 @@ export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' |
 /** Current version of each document kind. */
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
-  map: 10,
-  scene: 11,
+  map: 11,
+  scene: 12,
   creature: 1,
   asset: 3,
   object: 1,
@@ -51,6 +51,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     8: (doc) => doc,
     // Version 10 adds the scene transition (E-38): none yet, the default applies.
     9: (doc) => doc,
+    // Version 11 adds turning, cutting and adjusting the picture (E-42) and variants (E-41): none yet.
+    10: (doc) => doc,
   },
   // The same for the scene's own areas and its overrides of map areas.
   scene: {
@@ -85,6 +87,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     9: (doc) => doc,
     // Version 11 adds the scene's own sound sources (E-37): none yet.
     10: (doc) => doc,
+    // Version 12 adds the map variant a scene shows (E-41): none yet, the map's own picture.
+    11: (doc) => doc,
   },
   creature: {},
   // The first asset format (variants with props, never used by files) → E-27 (DC-040).

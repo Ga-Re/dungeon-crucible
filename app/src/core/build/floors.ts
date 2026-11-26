@@ -18,6 +18,8 @@ export interface FloorPatch {
   shape: Polygon[];
   seed: number;
   layer?: string;
+  /** The storey it is on (E-40); none: the map itself. */
+  storey?: string;
 }
 
 function minus(shape: readonly Polygon[], area: Polygon): Polygon[] {

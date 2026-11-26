@@ -6,9 +6,12 @@ import type { RescueCopy } from '../core/rescue';
 import { useSyncExternalStore } from 'react';
 import type { Point } from '../core/geometry';
 import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
-import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
+import { buildPlayerFrame, type PlayerFrame, type StoreyFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, SoundSource, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { isSoundRef } from '../core/sound';
+import { findLeaks, type Leak } from '../core/leaks';
+import { storeyFootprint, storeysBelow } from '../core/storeyShape';
+import { sceneMap } from '../core/build/sceneDrawing';
 import { DEFAULT_TRANSITION, type Transition, type TransitionKind, type TransitionPlay } from '../core/transition';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
 import { masonrySightWalls, toggledMasonryDoor, withMasonry } from '../core/build/sight';
@@ -22,7 +25,7 @@ import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
 import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision, type VisionExtras } from '../core/vision';
 import { placementCovers, placementLights } from '../core/cover';
-import { forgetIn, hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
+import { rectPolygon, forgetIn, hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
 import { lockedAreas } from '../core/persistence';
 import { newId, slugId } from '../core/documents';
 import { chainOf, moveEnds, removeWalls, withoutDegenerate, type WallEnd } from '../core/walls';
@@ -34,12 +37,12 @@ import type { MonitorInfo } from '../platform/bridge';
 import { emptyScene } from '../core/emptyScene';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import type { AssetKind, AssetSidecar, Creature, MapLayer, Player } from '../core/sidecar';
+import type { AssetKind, AssetSidecar, Creature, MapLayer, MapLook, MapStorey, MapVariant, Player } from '../core/sidecar';
 import { missingPartyTokens, tokenFromCreature } from '../core/party';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
-import { activeLayers, BASE_LAYER, drawOrder, triggerChanges } from '../core/layers';
+import { activeLayers, BASE_LAYER, drawOrder, elementLayer, triggerChanges } from '../core/layers';
 import { allPlacements, elementsFromSidecar, resetElement, sceneChanges, sceneIssues, withoutOrphans, type ElementChange } from '../core/persistence';
 import { commitStart, layerOf, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, startOf, type ViewLayer } from '../core/persistence';
 import type { MapSidecar, SceneOverride } from '../core/sidecar';
@@ -180,6 +183,12 @@ export interface AppState {
   effectRuns: Record<string, number>;
   /** The placing mode while on (E-31, DC-116): an asset placed with each click, previewed under the pointer. */
   placing: Placing | null;
+  /** The Map Forge's leak check (DC-025): open, with its test figure (not saved). */
+  leakCheck: { figure: Point | null; darkvisionFt: number } | null;
+  /** "Adjust picture" (DC-022): open with its preview, or not. */
+  lookCommand: LookCommand | null;
+  /** The storey the DM works on (E-40); "": the map itself. Not saved; the TV's is the scene's. */
+  storey: string;
   /** The placing mode's options as last used (kept for the next time, this session). */
   placeOptions: Omit<PlaceOptions, 'variant'> & { snap: boolean };
   /** Houses a player character came into whose interior waits for the DM's yes (E-29; not saved). */
@@ -294,6 +303,9 @@ function initial(): AppState {
     effectRuns: {},
     interiorAsks: [],
     placing: null,
+    leakCheck: null,
+    lookCommand: null,
+    storey: '',
     placeOptions: { randomRotation: false, rotationStep: 90, rotation: 0, randomScale: false, scaleSpread: 0.1, snap: true },
     tabs: [],
     activeTab: null,
@@ -402,7 +414,7 @@ function restore(snap: string): void {
   // The scene file too: it holds what the view does not show (orphaned changes, the other state).
   if (ov) state.sceneDoc = ov;
   const keepTable = state.scene.table;
-  state.scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, keepTable, state.layer);
+  state.scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, keepTable, state.layer, state.storey);
   state.scene.table = keepTable;
   if (ov) {
     state.round = ov.combat.round;
@@ -470,6 +482,9 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   const tabId = opts.scenePath ?? (opts.mapTab ? mapTabId(mapFile) : null);
   if (state.activeTab && state.activeTab !== tabId) stashSession();
   state.activeTab = tabId;
+  // Another document: no draft of the old one carries over, the DM works on its map itself (E-40).
+  dropMapDrafts();
+  state.storey = '';
   // A map or scene opened: the Map Forge shows it, not the catalog (E-32); none: the catalog.
   state.forgeCatalog = tabId === null;
   state.scene = scene;
@@ -661,6 +676,9 @@ export function activateSession(tabId: string): boolean {
   state.canUndo = history.canUndo;
   state.canRedo = history.canRedo;
   const table = { ...state.scene.table, centerX: s.center.x, centerY: s.center.y };
+  // Another tab: the DM works on its map itself first (E-40), with no draft of the tab before.
+  state.storey = '';
+  dropMapDrafts();
   if (mapDoc) {
     state.scene = sceneFromDocuments(mapDoc, s.sceneDoc, s.imageUrl, table, state.layer);
     state.scene.table = table;
@@ -800,10 +818,14 @@ function currentMapOf(scenePath: string): MapSidecar | null {
 function snapshotTvMap(): void {
   const map = state.tvScenePath ? currentMapOf(state.tvScenePath) : null;
   tvMap = map ? structuredClone(map) : null;
+  tvMapVersion++;
   state.tvMapPending = false;
   tvCache = null;
   backgroundTv = null;
 }
+
+/** Counts the maps the TV took over: what is drawn from them is rebuilt then. */
+let tvMapVersion = 0;
 
 /** "On the TV": the changes of the TV scene's map go there (E-30). */
 export function applyMapToTv(): void {
@@ -887,7 +909,7 @@ export function refreshView(): void {
   if (!state.mapDoc) return;
   viewVersion++;
   const table = state.scene.table;
-  state.scene = sceneFromDocuments(state.mapDoc, state.sceneDoc, state.scene.map.imageUrl, table, state.layer);
+  state.scene = sceneFromDocuments(state.mapDoc, state.sceneDoc, state.scene.map.imageUrl, table, state.layer, state.storey);
   state.scene.table = table;
   if (state.sceneDoc && state.layer === 'scene') {
     state.round = state.sceneDoc.combat.round;
@@ -910,7 +932,7 @@ export function showLayer(layer: ViewLayer): void {
   viewVersion++;
   if (!state.mapDoc) return;
   const table = state.scene.table;
-  state.scene = sceneFromDocuments(state.mapDoc, state.sceneDoc, state.scene.map.imageUrl, table, layer);
+  state.scene = sceneFromDocuments(state.mapDoc, state.sceneDoc, state.scene.map.imageUrl, table, layer, state.storey);
   state.scene.table = table;
   state.selectedTokenId = null;
   state.selectedZoneId = null;
@@ -924,7 +946,14 @@ export function showLayer(layer: ViewLayer): void {
   clearHistory();
 }
 
+/** Drafts and checks of the Map Forge that belong to the map shown (DC-022, DC-025). */
+function dropMapDrafts(): void {
+  state.lookCommand = null;
+  state.leakCheck = null;
+}
+
 export function setWorkspace(ws: WorkspaceId): void {
+  if (ws !== state.ws) dropMapDrafts();
   // The Map Forge or the Orchestrator was the last place for scenes and maps (tabs go back there).
   if (ws === 'forge' || ws === 'play') state.sceneWs = ws;
   // A map on its own is edited in the Map Forge only (E-30): the Orchestrator shows a scene – the
@@ -1380,8 +1409,15 @@ export function finishAreaCommand(): boolean {
 /* ---------- Layers in the Map Forge (E-28, DC-101) ---------- */
 
 /** New elements of the Map Forge go on the current layer (none: the base layer). */
-function onCurrentLayer(): { layer?: string } {
-  return state.layer === 'map' && state.currentLayer !== BASE_LAYER && state.scene.map.layers.some((l) => l.id === state.currentLayer) ? { layer: state.currentLayer } : {};
+function onCurrentLayer(): { layer?: string; storey?: string } {
+  const layer = state.layer === 'map' && state.currentLayer !== BASE_LAYER && state.scene.map.layers.some((l) => l.id === state.currentLayer) ? { layer: state.currentLayer } : {};
+  // New elements go on the storey the DM works on (E-40).
+  return { ...layer, ...onCurrentStorey() };
+}
+
+/** The storey new elements and figures go on (E-40). */
+function onCurrentStorey(): { storey?: string } {
+  return state.scene.map.storey ? { storey: state.scene.map.storey } : {};
 }
 
 /** Whether an element can be seen and changed in the Map Forge: its layer is neither hidden in the editor nor locked. */
@@ -2412,6 +2448,311 @@ export function selectLight(id: string | null): void {
   emit();
 }
 
+/* ---------- Storeys (DC-020, E-40) ---------- */
+
+/** Works on storey `id` ("": the map itself) – in the Map Forge and in scenes alike. Nothing is changed. */
+export function setWorkingStorey(id: string): void {
+  if (!state.mapDoc || (state.storey === id && (state.scene.map.storey ?? '') === id)) return;
+  commitView();
+  state.storey = id;
+  refreshView();
+  emit();
+}
+
+/** A new storey above the highest (`up`) or below the lowest, worked on at once (Map Forge, one undoable step). */
+export function addStorey(name: string, up: boolean): void {
+  if (state.layer !== 'map') return;
+  checkpoint();
+  const storeys = state.scene.map.storeys ?? [];
+  const levels = storeys.map((s) => s.level);
+  const level = up ? Math.max(0, ...levels) + 1 : Math.min(0, ...levels) - 1;
+  const id = newId('storey', (x) => storeys.some((s) => s.id === x));
+  state.scene.map.storeys = [...storeys, { id, name: name.trim() || (up ? `+${level}` : `${level}`), level, footprint: [] }];
+  commitView();
+  state.storey = id;
+  refreshView();
+  markDirty();
+  emit();
+}
+
+export function renameStorey(id: string, name: string): void {
+  const s = state.scene.map.storeys?.find((x) => x.id === id);
+  if (state.layer !== 'map' || !s || !name.trim() || s.name === name.trim()) return;
+  checkpoint();
+  s.name = name.trim();
+  markDirty();
+  emit();
+}
+
+/** Removes a storey and everything on it (Map Forge, one undoable step); the DM works on the map itself then. */
+export function deleteStorey(id: string): void {
+  if (state.layer !== 'map' || !state.scene.map.storeys?.some((x) => x.id === id)) return;
+  checkpoint();
+  commitView();
+  const doc = state.mapDoc!;
+  const keep = <T extends { storey?: string }>(xs: T[]) => xs.filter((x) => x.storey !== id);
+  const masonry = keep(doc.masonry);
+  const walls = new Set(masonry.map((w) => w.id));
+  state.mapDoc = {
+    ...doc,
+    storeys: doc.storeys.filter((x) => x.id !== id),
+    walls: keep(doc.walls), zones: keep(doc.zones), lights: keep(doc.lights), sounds: keep(doc.sounds), assets: keep(doc.assets),
+    masonry, masonryDoors: doc.masonryDoors.filter((d) => walls.has(d.wall)), cliffs: keep(doc.cliffs), waters: keep(doc.waters), floors: keep(doc.floors),
+  };
+  state.storey = '';
+  refreshView();
+  markDirty();
+  emit();
+}
+
+/**
+ * Shows storey `id` ("": the map itself) on the TV (E-40): for the start while preparing, else for
+ * the play state; on the TV it changes with a transition. One undoable step.
+ */
+export function setTvStorey(id: string): void {
+  if (state.layer === 'map' || !state.mapDoc || (state.scene.tvStorey ?? '') === id) return;
+  if (id && !state.scene.map.storeys?.some((x) => x.id === id)) return;
+  checkpoint();
+  if (id) state.scene.tvStorey = id;
+  else delete state.scene.tvStorey;
+  markDirty();
+  if (state.layer === 'scene' && state.scenePath && state.scenePath === state.tvScenePath) {
+    cutTv(state.nextTransition ?? tvTransition().kind);
+    state.nextTransition = null;
+  }
+  emit();
+}
+
+/** Puts a figure of this storey on storey `id` (E-40); it leaves the view of this one. One undoable step. */
+export function moveTokenToStorey(tokenId: string, id: string): void {
+  const t = state.scene.tokens.find((x) => x.id === tokenId);
+  if (!t || (state.scene.map.storey ?? '') === id) return;
+  if (id && !state.scene.map.storeys?.some((x) => x.id === id)) return;
+  checkpoint();
+  const moved = { ...t, ...(id ? { storey: id } : {}) };
+  if (!id) delete moved.storey;
+  state.scene.tokens = state.scene.tokens.filter((x) => x.id !== tokenId);
+  state.scene.offStoreyTokens = [...(state.scene.offStoreyTokens ?? []), moved];
+  if (state.selectedTokenId === tokenId) state.selectedTokenId = null;
+  markDirty();
+  recomputeVision();
+  emit();
+}
+
+/**
+ * Adds area `zoneId` to the footprint of the storey worked on (E-40) and removes the area – it was
+ * drawn for that (Map Forge, one undoable step).
+ */
+export function areaToFootprint(zoneId: string): void {
+  const m = state.scene.map;
+  const def = m.storey ? m.storeys?.find((x) => x.id === m.storey) : undefined;
+  const zone = state.scene.zones.find((z) => z.id === zoneId);
+  if (state.layer !== 'map' || !def || !zone) return;
+  checkpoint();
+  def.footprint = [...def.footprint, ...structuredClone(zone.shape)];
+  state.scene.zones = state.scene.zones.filter((z) => z.id !== zoneId);
+  if (state.selectedZoneId === zoneId) state.selectedZoneId = null;
+  markDirty();
+  recomputeVision();
+  emit();
+}
+
+/** Sets (or, with null, removes) the picture of storey `id` (Map Forge, one undoable step). */
+export function setStoreyImage(id: string, image: string | null): void {
+  const def = state.scene.map.storeys?.find((x) => x.id === id);
+  if (state.layer !== 'map' || !def || (def.image ?? null) === image) return;
+  checkpoint();
+  if (image) def.image = image;
+  else delete def.image;
+  markDirty();
+  emit();
+}
+
+/** Clears the hand-drawn part of the footprint of the storey worked on (Map Forge, one undoable step). */
+export function clearFootprint(): void {
+  const m = state.scene.map;
+  const def = m.storey ? m.storeys?.find((x) => x.id === m.storey) : undefined;
+  if (state.layer !== 'map' || !def || !def.footprint.length) return;
+  checkpoint();
+  def.footprint = [];
+  markDirty();
+  emit();
+}
+
+/* ---------- Map variants (DC-023, E-41) ---------- */
+
+/** Library pictures by path → their URL (null: cannot be shown); looked up once. */
+const pictures = new Map<string, string | null>();
+let resolvePicture: ((path: string) => Promise<string | null>) | null = null;
+
+/** How a library picture becomes a URL the renderer loads (set by the campaign layer). */
+export function setPictureResolver(fn: (path: string) => Promise<string | null>): void {
+  resolvePicture = fn;
+}
+
+const VIDEO_FILE = /\.(mp4|webm|m4v|mov)$/i;
+
+/**
+ * The picture a scene shows: its variant's (E-41) or the map's own. A variant's picture not looked
+ * up yet shows nothing (black) until it is – never the other picture for a moment.
+ */
+export function pictureOf(scene: Pick<Scene, 'map' | 'variant'>): { url: string | null; isVideo: boolean } {
+  // A storey (E-40) shows its own picture, if it has one – never the map's beneath it.
+  const storey = scene.map.storey ? scene.map.storeys?.find((x) => x.id === scene.map.storey) : undefined;
+  if (scene.map.storey) return storey?.image ? libraryPicture(storey.image) : { url: null, isVideo: false };
+  const v = scene.variant ? scene.map.variants?.find((x) => x.id === scene.variant) : undefined;
+  if (!v) return { url: scene.map.imageUrl, isVideo: scene.map.isVideo };
+  return libraryPicture(v.image);
+}
+
+/** A library picture's URL once looked up (none until then, never another picture meanwhile). */
+function libraryPicture(image: string): { url: string | null; isVideo: boolean } {
+  const isVideo = VIDEO_FILE.test(image);
+  if (pictures.has(image)) return { url: pictures.get(image) ?? null, isVideo };
+  if (resolvePicture) {
+    pictures.set(image, null);
+    const path = image;
+    void resolvePicture(path)
+      .catch(() => null)
+      .then((url) => {
+        pictures.set(path, url);
+        if (!url) log('log.variantMissing', { file: path });
+        emit();
+      });
+  }
+  return { url: null, isVideo };
+}
+
+/** The scene with the picture it shows in place of the map's (for the TV's frame). */
+function withPicture(scene: Scene): Scene {
+  if (!scene.variant && !scene.map.storey) return scene;
+  const p = pictureOf(scene);
+  return { ...scene, map: { ...scene.map, imageUrl: p.url, isVideo: p.isVideo } };
+}
+
+/**
+ * Shows a variant of the map in this scene, or the map's own picture (null): for the start while
+ * preparing, else for the play state. Its light counts; on the TV it changes with a transition.
+ */
+export function setSceneVariant(id: string | null): void {
+  if (state.layer === 'map' || !state.mapDoc) return;
+  const v = id ? state.scene.map.variants?.find((x) => x.id === id) : undefined;
+  if ((v?.id ?? undefined) === state.scene.variant) return;
+  checkpoint();
+  if (v) state.scene.variant = v.id;
+  else delete state.scene.variant;
+  state.scene.ambient = v?.ambient ?? state.mapDoc.ambient;
+  markDirty();
+  recomputeVision();
+  if (state.layer === 'scene' && state.scenePath && state.scenePath === state.tvScenePath) {
+    cutTv(state.nextTransition ?? tvTransition().kind);
+    state.nextTransition = null;
+  }
+  emit();
+}
+
+/* ---------- The picture's look (DC-022, E-42) ---------- */
+
+/** "Adjust picture": the look as edited (a preview until OK) and as it was. */
+export interface LookCommand {
+  draft: MapLook;
+  /** A cut is being dragged on the map. */
+  cropping?: boolean;
+}
+
+/** The look the DM window shows: the one being edited, else the map's. */
+export function shownLook(): MapLook | undefined {
+  return state.lookCommand?.draft ?? state.scene.map.look;
+}
+
+export function startLookCommand(): void {
+  if (state.layer !== 'map') return;
+  state.areaCommand = null;
+  state.wallCommand = null;
+  state.placing = null;
+  state.lookCommand = { draft: structuredClone(state.scene.map.look ?? { rotation: 0 }) };
+  emit();
+}
+
+/** Changes the preview (nothing saved yet). */
+export function updateLook(patch: Partial<MapLook>): void {
+  if (!state.lookCommand) return;
+  state.lookCommand = { draft: { ...state.lookCommand.draft, ...patch } };
+  emit();
+}
+
+/** Starts (or ends) dragging a cut on the map. */
+export function setCropping(on: boolean): void {
+  if (!state.lookCommand) return;
+  state.lookCommand = { ...state.lookCommand, cropping: on };
+  emit();
+}
+
+/** OK: the look as one undoable step; unchanged parts (no turn, no cut, no adjustment) are left out. */
+export function finishLookCommand(): void {
+  const c = state.lookCommand;
+  if (!c) return;
+  if (state.layer !== 'map') {
+    state.lookCommand = null;
+    emit();
+    return;
+  }
+  state.lookCommand = null;
+  checkpoint();
+  const plain = c.draft.rotation === 0 && !c.draft.crop && !c.draft.adjust;
+  if (plain) delete state.scene.map.look;
+  else state.scene.map.look = structuredClone(c.draft);
+  markDirty();
+  emit();
+}
+
+export function cancelLookCommand(): void {
+  state.lookCommand = null;
+  emit();
+}
+
+/* ---------- Leak check (DC-025, E-43) ---------- */
+
+/** Opens or closes the leak check (Map Forge). */
+export function setLeakCheck(open: boolean): void {
+  state.leakCheck = open ? (state.leakCheck ?? { figure: null, darkvisionFt: 60 }) : null;
+  emit();
+}
+
+/** Puts the test figure at `p` (none: away) or changes its darkvision. Nothing of it is saved. */
+export function updateLeakCheck(patch: Partial<NonNullable<AppState['leakCheck']>>): void {
+  if (!state.leakCheck) return;
+  state.leakCheck = { ...state.leakCheck, ...patch };
+  emit();
+}
+
+let leaksCache: { walls: readonly Wall[]; cell: number; leaks: Leak[] } | null = null;
+
+/** The leaks of the walls sight uses (drawn walls and asset doors included); computed when they change. */
+export function currentLeaks(): Leak[] {
+  const walls = sightWalls(state.scene);
+  const cell = state.scene.map.grid.cellWidth;
+  if (leaksCache?.walls !== walls || leaksCache.cell !== cell) leaksCache = { walls, cell, leaks: findLeaks(walls, cell / 2) };
+  return leaksCache.leaks;
+}
+
+let sightCache: { key: string; walls: readonly Wall[]; lights: unknown; sight: Polygon[] } | null = null;
+
+/** What the test figure sees now: as a player character there would (light, darkvision, walls). */
+export function testFigureSight(): Polygon[] {
+  const lc = state.leakCheck;
+  if (!lc?.figure) return [];
+  // The same while figure, walls and lights stay: the overlay asks every frame.
+  const key = `${lc.figure.x},${lc.figure.y},${lc.darkvisionFt},${state.scene.ambient}`;
+  const walls = sightWalls(state.scene);
+  if (sightCache?.key === key && sightCache.walls === walls && sightCache.lights === state.scene.lights) return sightCache.sight;
+  const probe: Token = { id: '__test', name: '', label: '', kind: 'pc', x: lc.figure.x, y: lc.figure.y, size: 1, ringColor: '#ffffff', visionFt: lc.darkvisionFt, hp: 1, maxHp: 1, ac: 10, initiative: 0, conditions: [] };
+  const seen = withAssetDoors(state.scene);
+  const sight = visiblePolygons(updateVision({ ...seen, tokens: [probe] }, assetExtras(state.scene)));
+  sightCache = { key, walls, lights: state.scene.lights, sight };
+  return sight;
+}
+
 /* ---------- Sound sources (E-37, DC-104) ---------- */
 
 /** Places a sound source (a library audio file or `builtin:<key>`) and selects it; returns its id. */
@@ -2533,6 +2874,8 @@ export interface MapSettings {
   ambientSound: { sound: string; volume: number } | null;
   /** How the TV changes to a scene on this map (E-38). */
   transition: Transition;
+  /** Other pictures of the map (E-41). */
+  variants: MapVariant[];
 }
 
 export function openMapSettings(open = true): void {
@@ -2542,7 +2885,7 @@ export function openMapSettings(open = true): void {
 
 export function currentMapSettings(): MapSettings {
   const m = state.scene.map;
-  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient, ambientSound: m.ambientSound ? { ...m.ambientSound } : null, transition: { ...(m.transition ?? DEFAULT_TRANSITION) } };
+  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient, ambientSound: m.ambientSound ? { ...m.ambientSound } : null, transition: { ...(m.transition ?? DEFAULT_TRANSITION) }, variants: (m.variants ?? []).map((v) => ({ ...v })) };
 }
 
 /** Applies the dialog as one undoable step; only in the Map Forge (the map's data). */
@@ -2559,6 +2902,8 @@ export function applyMapSettings(s: MapSettings): boolean {
   if (s.ambientSound) m.ambientSound = { ...s.ambientSound };
   else delete m.ambientSound;
   // Written only when it is not the default, so maps keep no field they do not need.
+  // A variant without a name would make the map file unreadable: its picture's name then.
+  m.variants = s.variants.map((v) => ({ ...v, name: v.name.trim() || v.image.split('/').pop()!.replace(/\.[^.]+$/, '') || v.id }));
   const plain = s.transition.kind === DEFAULT_TRANSITION.kind && s.transition.seconds === DEFAULT_TRANSITION.seconds;
   if (plain && !m.transition) delete m.transition;
   else m.transition = { ...s.transition };
@@ -2614,14 +2959,15 @@ export function placeParty(): void {
     return;
   }
   const c = snapPoint(tableCentre());
-  const added = missingPartyTokens(state.players, state.creatures, state.scene.tokens, { at: c, cell: state.scene.map.grid.cellWidth, newId: freshId });
+  // Figures on other storeys count too: never a second copy of a character (E-40).
+  const added = missingPartyTokens(state.players, state.creatures, [...state.scene.tokens, ...(state.scene.offStoreyTokens ?? [])], { at: c, cell: state.scene.map.grid.cellWidth, newId: freshId });
   if (added.length === 0) {
     log('log.partyComplete');
     emit();
     return;
   }
   checkpoint();
-  state.scene.tokens.push(...added);
+  state.scene.tokens.push(...added.map((t) => ({ ...t, ...onCurrentStorey() })));
   log('log.partyPlaced', { count: added.length });
   recomputeVision();
   emit();
@@ -2640,7 +2986,7 @@ export function addCreatureToken(index: number, at?: Point): void {
   checkpoint();
   const same = state.scene.tokens.filter((t) => t.creatureId === c.id).length;
   const id = freshId(c.id);
-  state.scene.tokens.push(tokenFromCreature(c, id, snapPoint(at ?? tableCentre()), same));
+  state.scene.tokens.push({ ...tokenFromCreature(c, id, snapPoint(at ?? tableCentre()), same), ...onCurrentStorey() });
   state.selectedTokenId = id;
   log('log.tokenAdded', { name: c.name });
   recomputeVision();
@@ -2727,7 +3073,19 @@ export function produceFrame(now: number): PlayerFrame {
   state.frameSeq++;
   // No scene on the TV: black, and nothing of any scene in the frame.
   const tv = tvView() ?? { scene: emptyScene({ ...state.scene.table, blackout: true }), visible: [], lights: [], turn: 0, resource: '', runs: {} };
-  state.frame = buildPlayerFrame(tv.scene, {
+  const top = frameOf(tv, now, state.ws === 'play' && tv.scene === state.scene ? initiativeOrder()[tv.turn]?.id ?? null : null);
+  // A storey on the TV (E-40): it covers its footprint; the storeys below show outside it, each
+  // with its own fog only.
+  const st = tv.scene.map.storey;
+  const def = st ? tv.scene.map.storeys?.find((x) => x.id === st) : undefined;
+  state.frame = def ? { ...top, storeyClip: tvFootprint(tv.scene, def), below: framesBelow(tv, now) } : top;
+  return state.frame;
+}
+
+/** The TV's frame of one view: its storey with its own fog, light and figures. */
+function frameOf(tv: TvView, now: number, activeTokenId: string | null): PlayerFrame {
+  // The picture the scene shows: a variant's or the map's own (E-41).
+  return buildPlayerFrame(withPicture(tv.scene), {
     seq: state.frameSeq,
     now,
     showGrid: state.showGrid,
@@ -2737,7 +3095,7 @@ export function produceFrame(now: number): PlayerFrame {
     look: lookToWire(state.fogLook),
     visible: tv.visible,
     quick: state.fogQuick,
-    activeTokenId: state.ws === 'play' && tv.scene === state.scene ? initiativeOrder()[tv.turn]?.id ?? null : null,
+    activeTokenId,
     seedKey: tv.resource,
     lights: tv.lights,
     // Only the scene's shown placements: assets it hides never reach the TV.
@@ -2746,7 +3104,118 @@ export function produceFrame(now: number): PlayerFrame {
     covers: assetExtras(tv.scene).covers,
     cut: state.tvCut,
   });
-  return state.frame;
+}
+
+let belowCache: { key: string; views: TvView[] } | null = null;
+
+/**
+ * The frames of the storeys below the TV's (E-40), nearest first: each built from the scene file
+ * like the TV's own, with its own fog – only what players found there. Rebuilt when anything changed.
+ */
+function framesBelow(tv: TvView, now: number): StoreyFrame[] {
+  const storeys = tv.scene.map.storeys ?? [];
+  const ids = storeysBelow(storeys, tv.scene.map.storey ?? '');
+  if (!ids.length) return [];
+  // Storeys below change with the documents only, never with a pointer move.
+  // The DM working in the TV's scene on a storey below it (fog, figures): every change goes to the
+  // TV at once – never an old picture with more revealed than now.
+  const live = state.layer === 'scene' && state.tvScenePath === state.scenePath && ids.includes(state.storey) ? version : '';
+  const key = `${viewVersion}|${tvMapVersion}|${state.tvScenePath}|${state.tvMapPending}|${live}|${ids.join(',')}`;
+  if (belowCache?.key !== key) {
+    const docs = tvDocs();
+    belowCache = {
+      key,
+      views: docs
+        ? ids.map((id) => {
+            const scene = sceneFromDocuments(docs.map, docs.ov, tv.scene.map.imageUrl, tv.scene.table, 'scene', id);
+            const extras = assetExtras(scene);
+            const seen = withAssetDoors(scene);
+            const vision = updateVision(seen, extras);
+            return { scene, visible: visiblePolygons(vision), lights: litSources(seen, extras), turn: 0, resource: tv.resource, runs: tv.runs };
+          })
+        : [],
+    };
+  }
+  return belowCache.views.map((v) => {
+    const def = storeys.find((x) => x.id === v.scene.map.storey);
+    const f = frameOf(v, now, null);
+    return def ? { ...f, storeyClip: tvFootprint(v.scene, def) } : f;
+  });
+}
+
+const footprints = new WeakMap<object, { key: string; fp: Polygon[] }>();
+
+/**
+ * The footprint of a storey as the TV may show it (E-40): only from what players may know there –
+ * walls on active layers and not hidden in the scene, the scene's own drawing, its floors – and the
+ * area drawn by hand. Kept while its lists stay the same.
+ */
+function tvFootprint(scene: Scene, def: MapStorey): Polygon[] {
+  const d = sceneMap(scene);
+  const active = activeLayers(scene.map.layers, scene.layersOn);
+  const on = <T extends { layer?: string }>(x: T) => active.has(elementLayer(x));
+  const key = JSON.stringify([def.footprint, scene.layersOn, d.floors.length, d.masonry.length]);
+  const hit = footprints.get(d.masonry);
+  if (hit?.key === key) return hit.fp;
+  const fp = storeyFootprint(def, d.masonry.filter(on), d.floors.filter(on));
+  footprints.set(d.masonry, { key, fp });
+  return fp;
+}
+
+let dmBelow: { key: string; frames: StoreyFrame[] } | null = null;
+let dmSeq = 0;
+
+/**
+ * For the DM window (E-40): the storeys below the one the DM works on, as frames with nothing
+ * fogged (the DM sees all), placed by the DM window's camera `cam` (CSS px). Null: none below.
+ */
+export function dmFramesBelow(cam: { centerX: number; centerY: number; zoom: number; rotation: 0 | 90 | 180 | 270; width: number; height: number }): PlayerFrame | null {
+  const ids = storeysBelow(state.scene.map.storeys ?? [], state.scene.map.storey ?? '');
+  if (!ids.length || !state.mapDoc) return null;
+  const key = `${viewVersion}|${state.storey}|${state.layer}|${ids.join(',')}`;
+  if (dmBelow?.key !== key) {
+    const docs = docsFromView();
+    const m = state.scene.map;
+    const o = m.origin ?? { x: 0, y: 0 };
+    const all = rectPolygon(o.x, o.y, o.x + m.widthPx, o.y + m.heightPx);
+    dmSeq++;
+    dmBelow = {
+      key,
+      frames: ids.map((id) => {
+        const scene = sceneFromDocuments(docs.map, docs.ov, state.scene.map.imageUrl, state.scene.table, state.layer, id);
+        // The DM sees everything there: no fog, no darkness.
+        scene.fog = { revealed: [all], remembered: [] };
+        scene.ambient = 'lit';
+        const def = scene.map.storeys?.find((x) => x.id === id);
+        // Its own counter, no transitions of the TV's (DM window only).
+        const f = { ...frameOf({ scene, visible: [all], lights: [], turn: 0, resource: state.mapResource, runs: {} }, Date.now(), null), seq: dmSeq, cut: { n: 0, play: 'cut' as const, ms: 0 } };
+        return def ? { ...f, storeyClip: storeyFootprint(def, scene.map.masonry, scene.map.floors) } : f;
+      }),
+    };
+  }
+  const now = Date.now();
+  // Placed as the DM window shows the map; fresh, so the view never takes them as stale.
+  const frames = dmBelow.frames.map((f) => ({ ...f, issuedAt: now, zoom: cam.zoom, center: { x: cam.centerX, y: cam.centerY }, rotation: cam.rotation, display: { widthPx: Math.max(1, Math.round(cam.width)), heightPx: Math.max(1, Math.round(cam.height)) }, blackout: false }));
+  return { ...frames[0], below: frames };
+}
+
+/** The footprint of the storey the DM works on (E-40); none for the map itself. */
+export function workingFootprint(): Polygon[] | null {
+  const m = state.scene.map;
+  const def = m.storey ? m.storeys?.find((x) => x.id === m.storey) : undefined;
+  return def ? storeyFootprint(def, m.masonry, m.floors) : null;
+}
+
+/** The files of the TV's scene, as the TV has them: the map it was put there with, the scene as it is. */
+function tvDocs(): { map: MapSidecar; ov: SceneOverride | null } | null {
+  if (state.tvScenePath && state.tvScenePath !== state.scenePath) {
+    const s = sessions.get(state.tvScenePath);
+    const map = s ? (tvMap ?? openMaps.get(s.mapFile) ?? s.mapDoc) : null;
+    return s && map ? { map, ov: s.sceneDoc } : null;
+  }
+  if (!state.mapDoc) return null;
+  const docs = docsFromView();
+  return { map: state.tvMapPending && tvMap ? tvMap : docs.map, ov: docs.ov };
 }
 
 interface TvView {
@@ -2774,9 +3243,12 @@ function tvView(): TvView | null {
   if (state.tvScenePath && state.tvScenePath !== state.scenePath) return backgroundView(state.tvScenePath);
   const own = { turn: state.turn, resource: state.mapResource, runs: state.effectRuns };
   const pending = state.tvMapPending && tvMap;
-  if (!state.mapDoc || (state.layer === 'scene' && !pending)) return { scene: state.scene, visible: state.visible, lights: state.lights, ...own };
+  // The DM may work on another storey than the TV shows (E-40): then the TV's is built apart.
+  const otherStorey = (state.scene.map.storey ?? '') !== (state.scene.tvStorey ?? '');
+  if (!state.mapDoc || (state.layer === 'scene' && !pending && !otherStorey)) return { scene: state.scene, visible: state.visible, lights: state.lights, ...own };
   // The scene as shown (its state changes go to the TV at once), on the map the TV has.
-  const stamp = pending ? `p${version}` : `v${viewVersion}`;
+  // Working on another storey changes nothing of the TV's: rebuilt with the view, not every move.
+  const stamp = pending ? `p${version}` : otherStorey ? `s${viewVersion}|${state.scene.tvStorey ?? ''}|${state.scene.table.blackout}` : `v${viewVersion}`;
   if (!tvCache || tvCache.version !== stamp) {
     // Editing the map or the start state: the TV shows the play state, with the map as the TV
     // has it (its changes wait for the DM, E-30) and the scene's changes as they are being edited.
@@ -2786,7 +3258,7 @@ function tvView(): TvView | null {
       const fromView = sceneOverrideFromScene(state.scene, state.sceneName, ov.mapSidecar, { round: state.round, turn: state.turn }, map, layerOf(ov));
       ov = { ...ov, overrides: fromView.overrides, added: fromView.added };
     }
-    const scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, state.scene.table, 'scene');
+    const scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, state.scene.table, 'scene', ov?.tvStorey ?? '');
     const extras = assetExtras(scene);
     const seen = withAssetDoors(scene);
     const vision = updateVision(seen, extras);
@@ -2804,7 +3276,7 @@ function backgroundView(scenePath: string): TvView | null {
   const map = tvMap ?? openMaps.get(s.mapFile) ?? s.mapDoc;
   if (!map) return null;
   if (!backgroundTv || backgroundTv.session !== s || backgroundTv.info !== state.assetInfo || backgroundTv.map !== map) {
-    const scene = sceneFromDocuments(map, s.sceneDoc, s.imageUrl, state.scene.table, 'scene');
+    const scene = sceneFromDocuments(map, s.sceneDoc, s.imageUrl, state.scene.table, 'scene', s.sceneDoc?.tvStorey ?? '');
     const extras = assetExtras(scene);
     const seen = withAssetDoors(scene);
     const vision = updateVision(seen, extras);

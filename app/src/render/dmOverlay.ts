@@ -9,12 +9,31 @@ import { labelPoint } from '../core/areas';
 import type { Polygon } from '../core/poly/types';
 import type { HiddenElements, Scene, Wall, WallKind } from '../core/scene';
 import type { ViewerVision } from '../core/vision';
+import type { Leak } from '../core/leaks';
 import { drawTemplate, hexToRgba, type TemplateLike } from './shared';
+
+/** The map's turn in the view being drawn: labels are turned back by it (E-42). */
+let textTurn = 0;
+
+/** Text at a map point, upright on screen however the map is turned. */
+function uprightText(g: CanvasRenderingContext2D, text: string, x: number, y: number): void {
+  if (!textTurn) {
+    g.fillText(text, x, y);
+    return;
+  }
+  g.save();
+  g.translate(x, y);
+  g.rotate((-textTurn * Math.PI) / 180);
+  g.fillText(text, 0, 0);
+  g.restore();
+}
 
 export interface OverlayView {
   zoom: number;
   x: number;
   y: number;
+  /** The map's turn (E-42); none: upright. */
+  rot?: 0 | 90 | 180 | 270;
 }
 
 export interface OverlayState {
@@ -26,6 +45,8 @@ export interface OverlayState {
   selectedSoundId?: string | null;
   /** Where the placing mode would put a sound source (E-37). */
   soundGhost?: Point | null;
+  /** The leak check (DC-025): what its test figure sees, the figure, and the leaks found. */
+  leakCheck?: { figure: Point | null; sight: readonly Polygon[]; leaks: readonly Leak[] } | null;
   measure: { a: Point; b: Point; ft: number } | null;
   /** Walls selected in the Map Forge (DC-014). */
   selectedWallIds: readonly string[];
@@ -71,7 +92,7 @@ function drawDifficult(g: CanvasRenderingContext2D, d: NonNullable<OverlayState[
     const i = Math.floor((l.points.length - 1) / 2);
     const a = l.points[i];
     const b = l.points[Math.min(l.points.length - 1, i + 1)];
-    g.fillText(d.label, (a.x + b.x) / 2, (a.y + b.y) / 2 + l.depth * 0.6);
+    uprightText(g, d.label, (a.x + b.x) / 2, (a.y + b.y) / 2 + l.depth * 0.6);
   }
   g.restore();
 }
@@ -159,7 +180,11 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
   const cell = scene.map.grid.cellWidth;
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, g.canvas.width, g.canvas.height);
-  g.setTransform(dpr * view.zoom, 0, 0, dpr * view.zoom, dpr * view.x, dpr * view.y);
+  // Turned with the map (E-42), as the renderer's camera; texts stay upright.
+  textTurn = view.rot ?? 0;
+  const a = ((view.rot ?? 0) * Math.PI) / 180;
+  const k = dpr * view.zoom;
+  g.setTransform(Math.round(Math.cos(a)) * k, Math.round(Math.sin(a)) * k, -Math.round(Math.sin(a)) * k, Math.round(Math.cos(a)) * k, dpr * view.x, dpr * view.y);
   const px = 1 / view.zoom;
 
   g.strokeStyle = 'rgba(255,255,255,.15)';
@@ -186,7 +211,7 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     g.fillStyle = hexToRgba(z.color, o.editMode ? 1 : 0.7);
     g.textBaseline = 'top';
     const at = labelOf(z.shape);
-    g.fillText(`${z.secret ? '◆ ' : ''}${z.name.toUpperCase()}`, at.x, at.y);
+    uprightText(g, `${z.secret ? '◆ ' : ''}${z.name.toUpperCase()}`, at.x, at.y);
     g.restore();
   }
 
@@ -295,6 +320,7 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     if (o.editMode || sel) drawSoundReach(g, s, s.radiusFt * ftPx, sel, px);
     drawSpeaker(g, s.x, s.y, Math.max(8 * px, cell * 0.18), sel, px);
   }
+  if (o.leakCheck) drawLeakCheck(g, o.leakCheck, Math.max(8 * px, cell * 0.3), px);
   if (o.soundGhost) {
     g.save();
     g.globalAlpha = 0.55;
@@ -457,10 +483,15 @@ function drawCalibBox(g: CanvasRenderingContext2D, b: GridBox, cells: number, px
 function label(g: CanvasRenderingContext2D, text: string, x: number, y: number, px: number): void {
   g.font = `600 ${13 * px}px 'JetBrains Mono', monospace`;
   const w = g.measureText(text).width;
+  // Upright however the map is turned (E-42), its backing with it.
+  g.save();
+  g.translate(x, y);
+  g.rotate((-textTurn * Math.PI) / 180);
   g.fillStyle = 'rgba(20,20,20,.85)';
-  g.fillRect(x - 6 * px, y - 16 * px, w + 12 * px, 22 * px);
+  g.fillRect(-6 * px, -16 * px, w + 12 * px, 22 * px);
   g.fillStyle = '#ffd79a';
-  g.fillText(text, x, y);
+  g.fillText(text, 0, 0);
+  g.restore();
 }
 
 /** Selection colour of the map (the theme's `--sel`). */
@@ -584,6 +615,54 @@ function drawHidden(g: CanvasRenderingContext2D, h: HiddenElements, px: number):
     g.beginPath();
     g.arc(l.x, l.y, 9 * px, 0, Math.PI * 2);
     g.stroke();
+  }
+  g.restore();
+}
+
+/** The leak check (DC-025): the test figure's sight lit, the figure, the leaks in red. */
+function drawLeakCheck(g: CanvasRenderingContext2D, lc: NonNullable<OverlayState['leakCheck']>, r: number, px: number): void {
+  g.save();
+  if (lc.sight.length) {
+    g.fillStyle = 'rgba(140, 210, 255, 0.16)';
+    g.strokeStyle = 'rgba(140, 210, 255, 0.85)';
+    g.lineWidth = 1.5 * px;
+    const path = areaPath(lc.sight);
+    g.fill(path, 'evenodd');
+    g.stroke(path);
+  }
+  g.strokeStyle = '#e2554c';
+  g.fillStyle = 'rgba(226, 85, 76, 0.25)';
+  g.lineWidth = 3 * px;
+  for (const l of lc.leaks) {
+    if (l.to) {
+      g.beginPath();
+      g.moveTo(l.at.x, l.at.y);
+      g.lineTo(l.to.x, l.to.y);
+      g.stroke();
+    }
+    const c = l.to ? { x: (l.at.x + l.to.x) / 2, y: (l.at.y + l.to.y) / 2 } : l.at;
+    g.beginPath();
+    g.arc(c.x, c.y, 10 * px, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+  }
+  if (lc.figure) {
+    g.fillStyle = 'rgba(18,24,30,.9)';
+    g.strokeStyle = '#8cd2ff';
+    g.lineWidth = 3 * px;
+    g.beginPath();
+    g.arc(lc.figure.x, lc.figure.y, r, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    // An eye: what it sees.
+    g.lineWidth = 2 * px;
+    g.beginPath();
+    g.ellipse(lc.figure.x, lc.figure.y, r * 0.55, r * 0.32, 0, 0, Math.PI * 2);
+    g.stroke();
+    g.fillStyle = '#8cd2ff';
+    g.beginPath();
+    g.arc(lc.figure.x, lc.figure.y, r * 0.16, 0, Math.PI * 2);
+    g.fill();
   }
   g.restore();
 }

@@ -10,6 +10,9 @@ import { FOG_BIOMES, type MapType } from '../core/scene';
 import { useI18n } from '../i18n/i18n';
 import type { MessageKey } from '../i18n/en';
 import { applyMapSettings, currentMapSettings, useStore } from './store';
+import { pickVariantPicture } from './campaign';
+import { newId } from '../core/documents';
+import { Icon } from '../ui/Icon';
 import { SoundSelect } from '../panels/SoundPanels';
 import { TRANSITION_KINDS, type TransitionKind } from '../core/transition';
 import './start.css';
@@ -20,6 +23,20 @@ export function MapSettingsDialog({ onClose }: { onClose: () => void }) {
   const library = useStore((s) => s.libraryMaps);
   const [draft, setDraft] = useState(currentMapSettings);
   const [tagInput, setTagInput] = useState('');
+  const [variantError, setVariantError] = useState<string | null>(null);
+  const picture = useStore((s) => !!s.scene.map.imageUrl);
+  const addVariant = async () => {
+    setVariantError(null);
+    const r = await pickVariantPicture();
+    if (!r) return;
+    if ('error' in r) {
+      setVariantError(r.error === 'variant.wrongSize' ? t('variant.wrongSize', { w: Math.round(r.w ?? 0), h: Math.round(r.h ?? 0), mw: Math.round(draftSize.w), mh: Math.round(draftSize.h) }) : t('variant.unreadable'));
+      return;
+    }
+    const name = r.path.split('/').pop()!.replace(/\.[^.]+$/, '');
+    setDraft((d) => ({ ...d, variants: [...d.variants, { id: newId('variant', (id) => d.variants.some((v) => v.id === id)), name, image: r.path }] }));
+  };
+  const draftSize = useStore((s) => ({ w: s.scene.map.widthPx, h: s.scene.map.heightPx }));
   useEffect(() => {
     const esc = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', esc);
@@ -138,6 +155,24 @@ export function MapSettingsDialog({ onClose }: { onClose: () => void }) {
               onChange={(e) => { const v = Number(e.target.value); if (v > 0 && v <= 10) set('transition', { ...draft.transition, seconds: v }); }} />
           </label>
         </div>
+        {picture && (
+          <div className="start-field">
+            <span>{t('variant.title')}</span>
+            {draft.variants.map((v, i) => (
+              <div key={v.id} className="ms-row ms-variant">
+                <input aria-label={t('variant.name')} value={v.name} onChange={(e) => set('variants', draft.variants.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+                <select aria-label={t('variant.ambient')} value={v.ambient ?? ''} onChange={(e) => set('variants', draft.variants.map((x, j) => (j === i ? { ...x, ambient: (e.target.value || undefined) as typeof x.ambient } : x)))}>
+                  <option value="">{t('variant.ambientMap')}</option>
+                  <option value="dark">{t('ambient.dark')}</option>
+                  <option value="lit">{t('ambient.lit')}</option>
+                </select>
+                <button type="button" className="ab-btn" title={t('variant.remove')} aria-label={`${t('variant.remove')}: ${v.name}`} onClick={() => set('variants', draft.variants.filter((_, j) => j !== i))}><Icon name="trash" /></button>
+              </div>
+            ))}
+            <div><button type="button" className="btn sm" onClick={() => void addVariant()}><Icon name="plus" />{t('variant.add')}</button></div>
+            {variantError ? <p className="hint" role="alert">{variantError}</p> : <p className="hint">{t('variant.hint')}</p>}
+          </div>
+        )}
         <div className="start-buttons">
           <button type="button" className="btn" onClick={onClose}>{t('start.cancel')}</button>
           <button type="submit" className="btn pri" disabled={!draft.name.trim()}>{t('mapSettings.apply')}</button>

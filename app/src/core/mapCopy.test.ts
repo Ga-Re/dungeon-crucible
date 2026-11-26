@@ -11,8 +11,10 @@ const map = MapSidecarSchema.parse({
   walls: [{ id: 'w1', kind: 'wall', x1: 0, y1: 0, x2: 1, y2: 0, layer: 'inside' }],
   zones: [{ id: 'tent', name: 'Tent', color: '#88aa55', shape: [{ outer: [[0, 0], [1, 0], [1, 1]], holes: [] }] }],
   lights: [{ id: 'lamp', x: 1, y: 1, brightFt: 10, dimFt: 20, color: '#ffaa00', layer: 'roof' }],
-  sounds: [{ id: 'brook', sound: 'library/brook.ogg', x: 2, y: 2, radiusFt: 20, volume: 0.5, layer: 'roof' }],
+  sounds: [{ id: 'brook', sound: 'library/brook.ogg', x: 2, y: 2, radiusFt: 20, volume: 0.5, layer: 'roof', storey: 'loft' }],
   ambientSound: { sound: 'builtin:wind', volume: 0.3 },
+  storeys: [{ id: 'loft', name: 'Loft', level: 1 }],
+  variants: [{ id: 'night', name: 'Night', image: 'library/camp-night.png' }],
   assets: [{ id: 'a1', assetPath: 'library/barrel.png', x: 5, y: 5, layer: 'inside' }],
   startFog: { revealed: [{ outer: [[0, 0], [1, 0], [1, 1]], holes: [] }], remembered: [] },
 });
@@ -24,6 +26,9 @@ describe('duplicating a map', () => {
     const c = duplicateMap(map, 'Camp (copy)', false, fresh);
     expect(c).toMatchObject({ name: 'Camp (copy)', resource: 'library/camp.png', grid: { cellWidth: 100 }, tags: ['woods'], biome: 'Forest', mapType: 'region', walls: [], zones: [], lights: [], sounds: [], assets: [], layers: [] });
     expect(c.startFog).toBeUndefined();
+    expect(c.storeys).toEqual([]);
+    expect(c.variants.map((v) => v.name)).toEqual(['Night']);
+    expect(c.variants[0].id).not.toBe('night');
     // The map's sound belongs to its look, like the fog's (E-37).
     expect(c.ambientSound).toEqual({ sound: 'builtin:wind', volume: 0.3 });
   });
@@ -39,6 +44,10 @@ describe('duplicating a map', () => {
     expect(c.walls[0].layer).toBe(inside.id);
     expect(c.lights[0].layer).toBe(roof.id);
     expect(c.sounds[0]).toMatchObject({ sound: 'library/brook.ogg', layer: roof.id });
+    // Storeys get new ids; what is on them follows (E-40).
+    expect(c.storeys[0].id).not.toBe('loft');
+    expect(c.sounds[0].storey).toBe(c.storeys[0].id);
+    expect(c.variants[0].id).not.toBe('night');
     expect(c.assets[0].layer).toBe(inside.id);
     expect(c.startFog!.revealed).toHaveLength(1);
     // The original is untouched.

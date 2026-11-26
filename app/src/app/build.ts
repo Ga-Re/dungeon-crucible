@@ -157,7 +157,7 @@ function regenerate(): void {
   const layer = onCurrentLayer();
   // In a region the rock only hugs what was carved (DC-119f); it never buries the rest of the map.
   const els = generatedElements(gen, { x: c.region.x, y: c.region.y }, cell, c.genStyle, c.genSeed, freshId, cell * 2.5);
-  const withLayer = <T,>(xs: T[]): T[] => (layer.layer ? xs.map((x) => ({ ...x, ...layer })) : xs);
+  const withLayer = <T,>(xs: T[]): T[] => (layer.layer || layer.storey ? xs.map((x) => ({ ...x, ...layer })) : xs);
   apply({ masonry: [...genBefore.masonry, ...withLayer(els.walls)], doors: [...genBefore.doors, ...els.doors] }, undefined, true, undefined, [...genBefore.floors, ...withLayer(els.floors)]);
   emit();
 }
@@ -286,7 +286,7 @@ export function paintFloorStroke(stroke: readonly Point[], straight: boolean, er
   if (!area) return false;
   checkpoint();
   const m = target();
-  const floors = paintFloor(m.floors, area, c.floorStyle, erase, () => freshId('floor'), newSeed()).map((f) => (f.layer || !onCurrentLayer().layer ? f : { ...f, ...onCurrentLayer() }));
+  const floors = paintFloor(m.floors, area, c.floorStyle, erase, () => freshId('floor'), newSeed()).map((f) => (f.layer || f.storey || (!onCurrentLayer().layer && !onCurrentLayer().storey) ? f : { ...f, ...onCurrentLayer() }));
   apply({ masonry: m.masonry, doors: m.masonryDoors }, m.cliffs, true, m.waters, floors);
   emit();
   return true;
@@ -674,8 +674,10 @@ function target(): OwnDrawing {
   return state.layer === 'map' ? state.scene.map : state.scene.own;
 }
 
-function onCurrentLayer(): { layer?: string } {
-  if (state.layer !== 'map') return {};
+function onCurrentLayer(): { layer?: string; storey?: string } {
+  // New drawing goes on the storey the DM works on (E-40), in the Map Forge and in scenes.
+  const storey = state.scene.map.storey ? { storey: state.scene.map.storey } : {};
+  if (state.layer !== 'map') return storey;
   const layer = state.currentLayer;
-  return layer && state.scene.map.layers.some((l) => l.id === layer) ? { layer } : {};
+  return { ...(layer && state.scene.map.layers.some((l) => l.id === layer) ? { layer } : {}), ...storey };
 }

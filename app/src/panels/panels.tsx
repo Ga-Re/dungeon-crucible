@@ -18,10 +18,11 @@ import { FADE_MAX_SECONDS, FADE_STEP_SECONDS, FOG_EDGE, FOG_MOTION, FOG_QUALITIE
 import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import { SceneSound, SoundProperties, useSoundName } from './SoundPanels';
+import { StoreyList } from './StoreyList';
 import { TRANSITION_KINDS, type TransitionKind } from '../core/transition';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  openCreatureTab, setElementsLayer, setPlacementInteriorTrigger, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, setNextTransition, toggleCondition, updateTable, useStore,
+  openCreatureTab, setElementsLayer, setPlacementInteriorTrigger, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, setSceneVariant, setNextTransition, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { switchScene } from '../app/campaign';
@@ -71,6 +72,7 @@ export function BrowserPanel() {
   if (ws === 'atlas') return <div className="panel-body hint">{t('soon.atlas')}</div>;
   return (
     <div className="panel-body">
+      {(ws === 'forge' || ws === 'play') && <StoreyList />}
       {(ws === 'forge' || ws === 'play') && <LayerList />}
       <ul className="tree">
         {campaign && (
@@ -94,6 +96,16 @@ export function BrowserPanel() {
             </button>
           ) : (
             <div className="tn"><Icon name="map" /><span className="nm">{scene.map.name}</span></div>
+          )}
+          {/* The variant this scene shows (E-41): start or play state as being edited. */}
+          {ws !== 'forge' && (scene.map.variants?.length ?? 0) > 0 && (
+            <div className="row browser-variant">
+              <label htmlFor="b-variant">{t('variant.label')}</label>
+              <select id="b-variant" value={scene.variant ?? ''} onChange={(e) => setSceneVariant(e.target.value || null)}>
+                <option value="">{t('variant.base')}</option>
+                {scene.map.variants!.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+            </div>
           )}
           <ul>
             {scene.zones.map((z) => (

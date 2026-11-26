@@ -113,6 +113,40 @@ describe('persistence', () => {
     expect(sceneFromDocuments(without, null, null).map.transition).toBeUndefined();
   });
 
+  it('a map\'s look (turn, cut, adjustment) goes into the map file and back (DC-022)', () => {
+    const forge = createSampleScene();
+    forge.map.look = { rotation: 90, crop: { x: 10, y: 20, w: 300, h: 200 }, adjust: { brightness: 1.2, contrast: 1, saturation: 0.8, hue: 15 } };
+    const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(forge, 'builtin:crypt'))));
+    expect(map.look).toEqual(forge.map.look);
+    expect(sceneFromDocuments(map, null, null).map.look).toEqual(forge.map.look);
+  });
+
+  it('a scene picks a variant of its map: its light counts, the map keeps its own; start and play apart (DC-023)', () => {
+    const forge = createSampleScene();
+    forge.ambient = 'lit';
+    forge.map.variants = [{ id: 'night', name: 'Night', image: 'library/crypt-night.png', ambient: 'dark' }];
+    const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(forge, 'builtin:crypt'))));
+    expect(map.variants).toEqual(forge.map.variants);
+    const path = mapSidecarPath('builtin:crypt');
+    const day = sceneFromDocuments(map, null, null);
+    expect(day.variant).toBeUndefined();
+    expect(day.ambient).toBe('lit');
+    const night = { ...day, variant: 'night' };
+    let ov = SceneOverrideSchema.parse(JSON.parse(JSON.stringify(sceneOverrideFromScene(night, 'S', path, { round: 1, turn: 0 }, map))));
+    expect(ov.variant).toBe('night');
+    const back = sceneFromDocuments(map, ov, null);
+    expect(back.variant).toBe('night');
+    expect(back.ambient).toBe('dark');
+    // Saving the map from the scene keeps the map's own light.
+    expect(mapSidecarFromScene(back, 'builtin:crypt', 'scene', map).ambient).toBe('lit');
+    // The start shows the map's own picture; reset brings it back.
+    ov = { ...ov, start: { ...startOf(ov), variant: undefined } };
+    expect(sceneFromDocuments(map, ov, null, undefined, 'start').variant).toBeUndefined();
+    expect(sceneFromDocuments(map, resetToStart(ov), null).variant).toBeUndefined();
+    // A variant the map no longer has: the map's own picture.
+    expect(sceneFromDocuments({ ...map, variants: [] }, { ...ov, variant: 'night' }, null).variant).toBeUndefined();
+  });
+
   it('keeps secret zones locked on a fresh scene', () => {
     const scene = createSampleScene();
     const map = mapSidecarFromScene(scene, 'builtin:crypt');

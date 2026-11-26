@@ -42,7 +42,9 @@ export const GridSchema = z.object({
 /** Map elements as built in the Map Forge (`open` of doors is scene state, kept only for old files). */
 /** The layer an element is on (E-28); none: the base layer. */
 const layerRef = z.string().optional();
-export const mapWallSchema = z.object({ id, kind: z.enum(['wall', 'door', 'secret-door', 'window', 'cliff']), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(), open: z.boolean().optional(), layer: layerRef });
+/** The storey an element or figure is on (E-40); none: the map itself (the ground floor). */
+const storeyRef = z.string().optional();
+export const mapWallSchema = z.object({ id, kind: z.enum(['wall', 'door', 'secret-door', 'window', 'cliff']), x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(), open: z.boolean().optional(), layer: layerRef, storey: storeyRef });
 /** An area (DC-013): polygons with holes in map pixels, possibly several parts; secret or not. */
 export const mapAreaSchema = z.object({
   id,
@@ -51,7 +53,7 @@ export const mapAreaSchema = z.object({
   secret: z.boolean().default(false),
   color,
   biome: biome.optional(),
-  layer: layerRef,
+  layer: layerRef, storey: storeyRef,
 });
 /** A drawn wall (E-33): a polyline with a style, a thickness and a seed. */
 export const masonrySchema = z.object({
@@ -61,7 +63,7 @@ export const masonrySchema = z.object({
   style: z.enum(MASONRY_STYLES),
   thickness: z.number().positive(),
   seed: z.number().int(),
-  layer: layerRef,
+  layer: layerRef, storey: storeyRef,
   height: z.number().positive().optional(),
   fortified: z.boolean().optional(),
   /** How decayed it looks, 0–1 (DC-119b): cracks, missing stones, scree at the foot. */
@@ -85,12 +87,12 @@ export const cliffSchema = z.object({
   inside: z.enum(['low', 'high']).default('low'),
   growth: z.boolean().default(true),
   seed: z.number().int(),
-  layer: layerRef,
+  layer: layerRef, storey: storeyRef,
   /** How decayed it looks, 0–1 (DC-119b): extra cracks and scree at the foot. */
   decay: z.number().min(0).max(1).optional(),
 });
 /** A painted floor (E-33, DC-107b): an area of one floor over the floors that follow the walls. */
-export const floorPatchSchema = z.object({ id, style: z.enum(FLOOR_STYLES), shape: z.array(polygonSchema).min(1), seed: z.number().int(), layer: layerRef });
+export const floorPatchSchema = z.object({ id, style: z.enum(FLOOR_STYLES), shape: z.array(polygonSchema).min(1), seed: z.number().int(), layer: layerRef, storey: storeyRef });
 /** Drawn water (E-35): a river (a line with a width, flowing in its drawing direction), a lake or the sea (rings). */
 export const waterSchema = z.object({
   id,
@@ -99,9 +101,9 @@ export const waterSchema = z.object({
   closed: z.boolean().default(false),
   width: z.number().positive(),
   seed: z.number().int(),
-  layer: layerRef,
+  layer: layerRef, storey: storeyRef,
 });
-export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color, layer: layerRef });
+export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color, layer: layerRef, storey: storeyRef });
 
 /** A sound: a library audio file (relative to the root folder) or a built-in one (`builtin:<key>`). */
 const soundRef = z.string().min(1);
@@ -109,7 +111,43 @@ const soundRef = z.string().min(1);
  * A sound source on the map (E-37, DC-104): heard within `radiusFt` of a player character,
  * quieter towards the edge when `fade`. Plays only in the Orchestrator, never on the TV.
  */
-export const mapSoundSchema = z.object({ id, sound: soundRef, x: z.number(), y: z.number(), radiusFt: z.number().positive(), volume: z.number().min(0).max(1), fade: z.boolean().default(true), layer: layerRef });
+export const mapSoundSchema = z.object({ id, sound: soundRef, x: z.number(), y: z.number(), radiusFt: z.number().positive(), volume: z.number().min(0).max(1), fade: z.boolean().default(true), layer: layerRef, storey: storeyRef });
+/**
+ * How a map's picture is shown (DC-022, E-42), never changing the file: turned in 90° steps (the
+ * whole map turns, everything on it with it), cut to a rectangle (picture px), and adjusted.
+ */
+export const mapLookSchema = z.object({
+  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).default(0),
+  crop: z.object({ x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }).optional(),
+  /** 1 = unchanged; hue in degrees. */
+  adjust: z.object({ brightness: z.number().min(0).max(3), contrast: z.number().min(0).max(3), saturation: z.number().min(0).max(3), hue: z.number().min(-180).max(180) }).optional(),
+});
+export type MapLook = z.infer<typeof mapLookSchema>;
+
+/**
+ * A variant of a map (DC-023, E-41): another picture of the same size (day/night, destroyed,
+ * flooded) and, if it differs, its own ambient light. Walls, areas and fog stay the map's.
+ */
+export const mapVariantSchema = z.object({ id, name: z.string().min(1), image: z.string().min(1), ambient: z.enum(['dark', 'lit']).optional() });
+export type MapVariant = z.infer<typeof mapVariantSchema>;
+
+/**
+ * A storey of a map (DC-020, E-40): above the map itself (level 1, 2 …) or below it (a cellar,
+ * level −1 …), in the same coordinates. Its elements carry its id; it may bring its own picture
+ * (with transparency) and covers its footprint (from its closed walls and floors, plus `footprint`
+ * drawn by hand); outside it, the storey below shows blurred. `startFog`: what a new scene reveals
+ * on it.
+ */
+export const mapStoreySchema = z.object({
+  id,
+  name: z.string().min(1),
+  level: z.number().int(),
+  image: z.string().optional(),
+  footprint: z.array(polygonSchema).default([]),
+  startFog: levelFogSchema.optional(),
+});
+export type MapStorey = z.infer<typeof mapStoreySchema>;
+
 /** How the TV changes to a scene on this map (DC-105, E-38): fade, through black or a hard cut, and how long. */
 export const transitionSchema = z.object({ kind: z.enum(['fade', 'black', 'cut']), seconds: z.number().min(0).max(10) });
 /** A map's sound everywhere (E-37): wind, a snowstorm. */
@@ -137,9 +175,9 @@ export const mapLayerSchema = z.object({
 export type MapLayer = z.infer<typeof mapLayerSchema>;
 
 /** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 10;
+export const MAP_VERSION = 11;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
-export const SCENE_VERSION = 11;
+export const SCENE_VERSION = 12;
 
 /**
  * When a house's interior is shown (E-29): by the DM's click only, when a player character steps
@@ -158,7 +196,7 @@ export type InteriorTrigger = z.infer<typeof interiorTriggerSchema>;
  * An asset placed on a map or in a scene (DC-041, DC-110): its file, centre, turn and scale; a
  * house may trigger its interior differently from its asset (E-29).
  */
-export const placementSchema = z.object({ id, assetPath: z.string(), variant: z.string().optional(), x: z.number(), y: z.number(), rotation: z.number().default(0), scale: z.number().positive().default(1), layer: layerRef, interiorTrigger: interiorTriggerSchema.optional() });
+export const placementSchema = z.object({ id, assetPath: z.string(), variant: z.string().optional(), x: z.number(), y: z.number(), rotation: z.number().default(0), scale: z.number().positive().default(1), layer: layerRef, storey: storeyRef, interiorTrigger: interiorTriggerSchema.optional() });
 
 export const MapSidecarSchema = z.object({
   kind: z.literal('map'),
@@ -188,6 +226,12 @@ export const MapSidecarSchema = z.object({
   ambientSound: ambientSoundSchema.optional(),
   /** How the TV changes to a scene on this map (E-38, version 10); none: a one-second fade. */
   transition: transitionSchema.optional(),
+  /** How the picture is shown (E-42, version 11): turned, cut, adjusted; none: as it is. */
+  look: mapLookSchema.optional(),
+  /** Other pictures of the map (E-41, version 11); a scene picks one. */
+  variants: z.array(mapVariantSchema).default([]),
+  /** Storeys above (or cellars below) the map itself (E-40, version 11). */
+  storeys: z.array(mapStoreySchema).default([]),
   /** What is revealed when a new scene starts on this map (painted in the Map Forge, E-26). */
   startFog: levelFogSchema.optional(),
   /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */
@@ -360,6 +404,8 @@ export function creatureIdFromName(name: string): string {
 
 const tokenSchema = z.object({
   id,
+  /** The storey it stands on (E-40); none: the map itself. */
+  storey: storeyRef,
   name: z.string(),
   label: z.string().max(4),
   kind: z.enum(['pc', 'npc', 'monster']),
@@ -426,6 +472,12 @@ export const SceneOverrideSchema = z.object({
   combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
   ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
   ambientSound: sceneAmbientSound,
+  /** The map's variant this scene shows (E-41, version 12); none: the map's own picture. */
+  variant: z.string().optional(),
+  /** Fog of the storeys by id (E-40, version 12); the map itself keeps `fog`. */
+  storeyFog: z.record(z.string(), levelFogSchema).default({}),
+  /** The storey the TV shows (E-40); none: the map itself. */
+  tvStorey: z.string().optional(),
   /** Sound source id → its volume in this scene (DC-104c); not listed: the map's. */
   soundLevels: z.record(z.string(), z.number().min(0).max(1)).default({}),
   /** Changes of the map for this scene only, by element id: the fields that differ (E-2). Hiding is state: `hidden`. */
@@ -442,6 +494,9 @@ export const SceneOverrideSchema = z.object({
     discoveredZones: z.array(z.string()).default([]),
     ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
     ambientSound: sceneAmbientSound,
+    variant: z.string().optional(),
+    storeyFog: z.record(z.string(), levelFogSchema).default({}),
+    tvStorey: z.string().optional(),
     soundLevels: z.record(z.string(), z.number().min(0).max(1)).default({}),
     /** Map elements hidden from the start (prepared, e.g. a buried corridor). */
     hidden: z.array(z.string()).default([]),

@@ -39,7 +39,8 @@ export const fogLookSchema = z.object({
 });
 export type FogLookWire = z.infer<typeof fogLookSchema>;
 
-export const PlayerFrameSchema = z.object({
+/** One storey's picture on the TV (E-40): the frame itself, and those of the storeys below it. */
+export const StoreyFrameSchema = z.object({
   version: z.literal(FRAME_VERSION),
   /**
    * The TV's last change of picture (DC-105, E-38): a counter, what to play and how long. Only
@@ -74,6 +75,8 @@ export const PlayerFrameSchema = z.object({
     showGrid: z.boolean(),
     /** A map's drawn walls (E-33), only what players may know (`playerDrawing`). */
     drawn: drawingSchema.nullable(),
+    /** How the picture is cut and adjusted (E-42); its turn is in `rotation`. Numbers only. */
+    look: z.object({ crop: z.object({ x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }).optional(), adjust: z.object({ brightness: z.number(), contrast: z.number(), saturation: z.number(), hue: z.number() }).optional() }).optional(),
   }),
   fog: z.object({
     /** Not covered by opaque fog. */
@@ -113,9 +116,15 @@ export const PlayerFrameSchema = z.object({
   pings: z.array(z.object({ x: z.number(), y: z.number(), age: z.number().nonnegative() })),
   /** Placed assets (DC-041): under the fog like the map; assets a scene hides are never sent. */
   assets: z.array(z.object({ url: z.string(), video: z.boolean(), x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive(), rotation: z.number(), once: z.number().optional() })).default([]),
+  /** The area this storey covers (E-40); none: everything. Outside it, the storey below shows. */
+  storeyClip: z.array(polygonSchema).optional(),
 });
 
+/** What the TV shows: its storey, and the storeys below it nearest first, each with its own fog (E-40). */
+export const PlayerFrameSchema = StoreyFrameSchema.extend({ below: z.array(StoreyFrameSchema).max(16).optional() });
+
 export type PlayerFrame = z.infer<typeof PlayerFrameSchema>;
+export type StoreyFrame = z.infer<typeof StoreyFrameSchema>;
 
 export interface ProjectionOptions {
   seq: number;
@@ -167,7 +176,8 @@ export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFram
     seq: o.seq,
     issuedAt: o.now,
     blackout: scene.table.blackout,
-    rotation: scene.table.rotation,
+    // The TV's turn and the map's own (E-42) together.
+    rotation: (((scene.table.rotation + (scene.map.look?.rotation ?? 0)) % 360) as 0 | 90 | 180 | 270),
     zoom: o.zoom,
     display: { widthPx: scene.table.display.widthPx, heightPx: scene.table.display.heightPx },
     center: { x: scene.table.centerX, y: scene.table.centerY },
@@ -180,6 +190,7 @@ export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFram
       grid: { type: g.type, cellWidth: g.cellWidth, cellHeight: g.cellHeight, originX: g.originX, originY: g.originY, rotationDeg: g.rotationDeg, feetPerCell: g.feetPerCell },
       showGrid: o.showGrid,
       drawn: playerDrawing(sceneMap(scene), scene.masonryDoorsOpen, scene.layersOn, scene.zones),
+      ...(scene.map.look?.crop || scene.map.look?.adjust ? { look: { ...(scene.map.look.crop ? { crop: { ...scene.map.look.crop } } : {}), ...(scene.map.look.adjust ? { adjust: { ...scene.map.look.adjust } } : {}) } } : {}),
     },
     fog: {
       open: copy(openArea(scene.fog, o.visible)),

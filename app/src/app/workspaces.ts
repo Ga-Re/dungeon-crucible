@@ -139,7 +139,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
         label: 'tab.map',
         groups: [
           { label: 'group.create', buttons: [{ id: 'map:import', icon: 'import', label: 'tool.importMap' }] },
-          { label: 'group.mapData', buttons: [{ id: 'map:settings', icon: 'sliders', label: 'tool.mapSettings' }] },
+          { label: 'group.mapData', buttons: [{ id: 'map:settings', icon: 'sliders', label: 'tool.mapSettings' }, { id: 'map:look', icon: 'rotate', label: 'tool.adjustPicture' }] },
           {
             label: 'group.grid',
             buttons: [
@@ -165,6 +165,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
             ],
           },
           { label: 'group.light', buttons: [{ id: 'tool:light', icon: 'light', label: 'tool.light', tool: 'light' }] },
+          { label: 'group.check', buttons: [{ id: 'leak:check', icon: 'eye', label: 'tool.leakCheck' }] },
         ],
       },
       buildTools,

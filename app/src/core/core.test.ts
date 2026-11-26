@@ -227,6 +227,15 @@ describe('player projection (fail-closed)', () => {
     const json = JSON.stringify(buildPlayerFrame(scene, frameOpts(1, 0, visiblePolygons(updateVision(scene)))));
     for (const word of ['sound', 'storm', 'dragon-breath', 'sound-lair']) expect(json).not.toContain(word);
   });
+  it('the map\'s turn adds to the TV\'s; its cut and adjustment go along, nothing else of its look (DC-022)', () => {
+    const scene = createSampleScene();
+    scene.table.rotation = 270;
+    scene.map.look = { rotation: 180, crop: { x: 0, y: 0, w: 100, h: 50 }, adjust: { brightness: 1.1, contrast: 1, saturation: 1, hue: 0 } };
+    const frame = buildPlayerFrame(scene, frameOpts(1, 0, visiblePolygons(updateVision(scene))));
+    expect(frame.rotation).toBe(90);
+    expect(frame.map.look).toEqual({ crop: { x: 0, y: 0, w: 100, h: 50 }, adjust: { brightness: 1.1, contrast: 1, saturation: 1, hue: 0 } });
+    expect(parsePlayerFrame(frame, 0, 0).ok).toBe(true);
+  });
   it('rejects stale, out-of-order and malformed frames', () => {
     const scene = createSampleScene();
     const frame = buildPlayerFrame(scene, frameOpts(5, 0, visiblePolygons(updateVision(scene))));

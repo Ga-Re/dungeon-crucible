@@ -536,14 +536,15 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       g.restore();
     }
     // The face: the rock at ground level, darkened; the top covers all of it but a strip.
-    g.fillStyle = sheetPattern(g, slot, tex, cell, styleSeed(rock.style) + 3, 5) ?? '#5b5650';
+    const stone = sheetPattern(g, slot, tex, cell, styleSeed(rock.style) + 3, 5) ?? '#5b5650';
+    g.fillStyle = stone;
     g.fill(rock.shape, 'evenodd');
     g.fillStyle = `rgba(14,11,8,${0.42 - sideLit * 0.22})`;
     g.fill(rock.shape, 'evenodd');
     // The top, raised: the stone's own sheet, a touch lighter than the floor below.
     g.save();
     g.translate(0, -up);
-    g.fillStyle = sheetPattern(g, slot, tex, cell, styleSeed(rock.style) + 3, 5) ?? '#6a645c';
+    g.fillStyle = stone;
     g.fill(rock.shape, 'evenodd');
     g.fillStyle = 'rgba(255,240,220,.05)';
     g.fill(rock.shape, 'evenodd');
@@ -764,7 +765,7 @@ function scaled<D extends Drawing | DmDrawing>(d: D, k: number): D {
     origin: { x: d.origin.x * k, y: d.origin.y * k },
     width: d.width * k,
     height: d.height * k,
-    masonry: d.masonry.map((w) => ({ ...w, thickness: w.thickness * k, points: w.points.map((p) => ({ x: p.x * k, y: p.y * k })) })),
+    masonry: d.masonry.map((w) => ({ ...w, thickness: w.thickness * k, points: w.points.map((p) => ({ x: p.x * k, y: p.y * k })), ...(w.solidReach ? { solidReach: w.solidReach * k } : {}) })),
     doors: d.doors.map((x) => ({ ...x, at: x.at * k, width: x.width * k })),
     cracks: d.cracks.map((x) => ({ ...x, at: x.at * k, width: x.width * k })),
     cliffs: d.cliffs.map((c) => ({ ...c, width: c.width * k, points: c.points.map((p) => ({ x: p.x * k, y: p.y * k })) })),

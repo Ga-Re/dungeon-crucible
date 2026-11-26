@@ -205,3 +205,13 @@ describe('generated rock (DC-119f)', () => {
     expect(els.walls.map((w) => w.solid).sort()).toEqual(['inside', 'outside']);
   });
 });
+
+describe('generated rock in a large cave (DC-119f review)', () => {
+  it('holes of a cave come out as rock blocks', () => {
+    const g = generate({ cols: 120, rows: 80, density: 0.6, seed: 3, style: 'cave' });
+    let n = 0;
+    const els = generatedElements(g, { x: 0, y: 0 }, 70, 'cave', 3, (p) => `${p}-${n++}`);
+    expect(els.walls.filter((w) => w.solid === 'outside')).toHaveLength(1);
+    expect(els.walls.filter((w) => w.solid === 'inside').length).toBeGreaterThan(0);
+  });
+});

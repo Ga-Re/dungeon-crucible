@@ -54,3 +54,15 @@ describe('solid rock beside drawn walls (DC-119f)', () => {
     expect(inRock(r, 25, 25)).toBe(true);
   });
 });
+
+describe('solid rock: robustness (DC-119f review)', () => {
+  it('does not depend on which way round a ring runs', () => {
+    const cw = rockArea([ring('a', square(300, 300, 200), { solid: 'outside', solidReach: 100 })], area);
+    const ccw = rockArea([ring('a', [...square(300, 300, 200)].reverse(), { solid: 'outside', solidReach: 100 })], area);
+    for (const [x, y] of [[400, 400], [250, 400], [100, 100], [560, 560]]) expect(inRock(ccw, x, y)).toBe(inRock(cw, x, y));
+  });
+
+  it('a ring without area carries no rock', () => {
+    expect(rockArea([ring('flat', [[0, 0], [100, 0], [200, 0]], { solid: 'outside', solidReach: 50 })], area)).toEqual([]);
+  });
+});

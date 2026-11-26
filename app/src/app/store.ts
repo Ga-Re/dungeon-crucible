@@ -55,7 +55,7 @@ export type ToolId =
   | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
   | 'cone' | 'sphere' | 'line' | 'cube' | 'light'
   /** The Map Forge's "Build" tab (E-33): edit, draw walls, place doors. */
-  | 'build-edit' | 'build-wall' | 'build-door' | 'build-cliff' | 'build-water' | 'build-floor';
+  | 'build-edit' | 'build-wall' | 'build-door' | 'build-cliff' | 'build-water' | 'build-floor' | 'build-generate';
 
 export interface LogEntry {
   at: number;
@@ -884,6 +884,9 @@ export function setWorkspace(ws: WorkspaceId): void {
   emit();
 }
 
+/** Hooks the build module registers (no import the other way round). */
+export const buildHooks: { cancelPreview: (() => void) | null } = { cancelPreview: null };
+
 export function setTool(tool: ToolId): void {
   // Another tool ends the placing mode (DC-116); a map open behind the catalog comes to the front.
   state.placing = null;
@@ -891,7 +894,11 @@ export function setTool(tool: ToolId): void {
   // One command at a time: another tool ends "create area" and "draw walls".
   if (tool !== 'area') state.areaCommand = null;
   if (tool !== 'wall') state.wallCommand = null;
-  if (!['build-wall', 'build-door', 'build-cliff', 'build-water', 'build-floor'].includes(tool)) state.buildCommand = null;
+  if (!['build-wall', 'build-door', 'build-cliff', 'build-water', 'build-floor', 'build-generate'].includes(tool)) {
+    // A generator preview on the map goes back before the command is dropped (DC-119d).
+    if (state.buildCommand?.kind === 'generate') buildHooks.cancelPreview?.();
+    state.buildCommand = null;
+  }
   // Another tool – also from drawing to editing – starts without a selection: the first click selects, it never adds a point.
   if (tool !== state.tool) state.buildSelection = null;
   if (tool !== 'calibrate') dropCalibration();

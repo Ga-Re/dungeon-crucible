@@ -59,7 +59,7 @@ const HINTS: Partial<Record<string, MessageKey>> = {
   'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
   'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom', light: 'hint.light',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
-  'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor', 'build-cliff': 'hint.buildCliff',
+  'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor', 'build-cliff': 'hint.buildCliff', 'build-water': 'hint.buildWater',
 };
 
 type Drag =
@@ -77,7 +77,7 @@ type Drag =
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
   | { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; invert: boolean; circle: boolean }
   | { kind: 'fog-path'; tool: 'fog-lasso' | 'fog-brush'; path: Point[]; invert: boolean }
-  | { kind: 'build-point'; line: { kind: 'wall' | 'cliff'; wall: string }; index: number; to: Point; moved: boolean }
+  | { kind: 'build-point'; line: { kind: 'wall' | 'cliff' | 'water'; wall: string }; index: number; to: Point; moved: boolean }
   | { kind: 'build-door'; id: string; moved: boolean }
   /** A stroke while drawing a wall or cliff (E-35): freehand, or straight with Shift; a click if it barely moved. */
   | { kind: 'build-stroke'; path: Point[]; straight: boolean; alt: boolean };
@@ -394,7 +394,7 @@ function DmMap() {
     const draft = c && c.kind !== 'door' ? [...c.points, ...stroke] : [];
     const next = draft.length && !stroke.length ? buildTarget(mouse.current, altHeld.current, HANDLE_PX / view.current.zoom) : null;
     const w = sel?.kind === 'wall' ? state.scene.map.masonry.find((x) => x.id === sel.wall) : undefined;
-    const cl = sel?.kind === 'cliff' ? state.scene.map.cliffs.find((x) => x.id === sel.wall) : undefined;
+    const cl = sel?.kind === 'cliff' ? state.scene.map.cliffs.find((x) => x.id === sel.wall) : sel?.kind === 'water' ? state.scene.map.waters.find((x) => x.id === sel.wall) : undefined;
     const door = sel?.door ? state.scene.map.masonryDoors.find((x) => x.id === sel.door) : undefined;
     const span = w && door ? doorSpan(w, door) : null;
     const line = w ?? cl;
@@ -587,6 +587,7 @@ function DmMap() {
         return;
       case 'build-wall':
       case 'build-cliff':
+      case 'build-water':
         // Decided on release: a click adds a point, a drag draws a stroke.
         drag.current = { kind: 'build-stroke', path: [p], straight: e.shiftKey, alt: e.altKey };
         return;
@@ -754,7 +755,7 @@ function DmMap() {
         onDoubleClick={(e) => {
           if (state.tool === 'fog-polygon' || state.tool === 'area') finishPolygon(e.altKey);
           else if (state.tool === 'wall') endWallChain();
-          else if (state.tool === 'build-wall' || state.tool === 'build-cliff') finishBuildWall();
+          else if (state.tool === 'build-wall' || state.tool === 'build-cliff' || state.tool === 'build-water') finishBuildWall();
           // Map Forge: a double-click on a wall selects its chain, on an area edits it.
           else if (state.tool === 'select' && state.layer === 'map') {
             const p = toWorld(e);

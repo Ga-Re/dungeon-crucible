@@ -155,6 +155,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
               { id: 'build:wall', icon: 'wall', label: 'tool.buildWall' },
               { id: 'build:door', icon: 'door', label: 'tool.buildDoor' },
               { id: 'build:cliff', icon: 'cliff', label: 'tool.buildCliff' },
+              { id: 'build:water', icon: 'water', label: 'tool.buildWater' },
             ],
           },
           { label: 'group.grid', buttons: [{ id: 'toggle:snap', icon: 'magnet', label: 'tool.snap' }] },

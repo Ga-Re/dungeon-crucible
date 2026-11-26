@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addBuildPoint, addBuildStroke, buildHit, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
+import { addBuildPoint, addBuildStroke, buildHit, flipWater, setWaterAnimated, updateWater, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
 import { checkpoint, setWorkspace, sightWalls, state, undo } from './store';
 
 /** The "Build" tab (E-33, DC-107a) in the Map Forge, on the sample crypt (cells of 70 px, 5 ft). */
@@ -202,5 +202,50 @@ describe('drawing with the brush (E-35, DC-107e)', () => {
     addBuildStroke(wobbly(12000), false, 8);
     expect(state.scene.map.masonry).toHaveLength(0);
     expect(state.buildCommand!.points.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('water in the build tab (E-35, DC-107f)', () => {
+  beforeEach(() => {
+    setWorkspace('forge');
+    state.scene.map.masonry = [];
+    state.scene.map.masonryDoors = [];
+    state.scene.map.cliffs = [];
+    state.scene.map.waters = [];
+    state.buildSelection = null;
+  });
+
+  it('a river is a line that flows in its drawing direction; flipped it flows back; it blocks no sight', () => {
+    const before = sightWalls(state.scene).length;
+    startBuildCommand('water');
+    updateBuildCommand({ waterKind: 'river', riverWidthFt: 15 });
+    addBuildPoint({ x: 0, y: 13000 }, 8);
+    addBuildPoint({ x: 420, y: 13000 }, 8);
+    finishBuildWall();
+    const [w] = state.scene.map.waters;
+    expect(w).toMatchObject({ kind: 'river', closed: false, width: 210 });
+    expect(sightWalls(state.scene)).toHaveLength(before);
+    flipWater(w.id);
+    expect(state.scene.map.waters[0].points[0]).toEqual({ x: 420, y: 13000 });
+  });
+
+  it('a lake closes by itself and is picked anywhere on it', () => {
+    startBuildCommand('water');
+    updateBuildCommand({ waterKind: 'lake' });
+    for (const p of [{ x: 0, y: 14000 }, { x: 420, y: 14000 }, { x: 420, y: 14420 }]) addBuildPoint(p, 8);
+    finishBuildWall();
+    const [w] = state.scene.map.waters;
+    expect(w).toMatchObject({ kind: 'lake', closed: true });
+    endBuildCommand(false);
+    expect(buildHit({ x: 300, y: 14100 }, 8)).toEqual({ kind: 'water', wall: w.id, point: null, door: null });
+    updateWater(w.id, { kind: 'sea' });
+    expect(state.scene.map.waters[0]).toMatchObject({ kind: 'sea', closed: true });
+  });
+
+  it('the map switch stops the water moving; undone it moves again', () => {
+    setWaterAnimated(false);
+    expect(state.scene.map.waterAnimated).toBe(false);
+    undo();
+    expect(state.scene.map.waterAnimated).toBe(true);
   });
 });

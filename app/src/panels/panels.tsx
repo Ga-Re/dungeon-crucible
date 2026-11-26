@@ -7,8 +7,8 @@ import { d20Test } from '../core/rules/dice';
 import { playerOfToken } from '../core/party';
 import type { InteriorTrigger } from '../core/sidecar';
 import { useI18n } from '../i18n/i18n';
-import { deleteBuildSelection, flipCliff, rerollCliff, rerollMasonry, splitBuildWall, updateBuildDoor, updateCliff, updateMasonry, type BuildSelection } from '../app/build';
-import { CliffFields } from './BuildCommandPanel';
+import { deleteBuildSelection, flipCliff, flipWater, rerollCliff, rerollMasonry, setWaterAnimated, splitBuildWall, updateBuildDoor, updateCliff, updateMasonry, updateWater, type BuildSelection } from '../app/build';
+import { CliffFields, WaterFields } from './BuildCommandPanel';
 import { MASONRY_STYLES, type MasonryStyle } from '../core/build/masonry';
 import type { MessageKey } from '../i18n/en';
 import { TableView, type FrameSource } from '../table/TableView';
@@ -244,6 +244,7 @@ function MapProperties() {
   const selWalls = useStore((s) => s.selectedWallIds);
   const placedAsset = useStore((s) => s.selectedAssetId);
   const buildSel = useStore((s) => s.buildSelection);
+  const editable = useStore((s) => s.layer === 'map');
   const allWalls = useStore((s) => s.scene.walls);
   const walls = allWalls.filter((w) => selWalls.includes(w.id));
   return (
@@ -261,6 +262,9 @@ function MapProperties() {
       </div>
       {map.widthPx > 0 && <div className="row"><label /><span className="hint mono">{map.widthPx}×{map.heightPx} px · {tileCount(map.widthPx, map.heightPx)} GPU tiles</span></div>}
       <div className="row"><label>{t('map.ambient')}</label><span>{t(ambient === 'lit' ? 'ambient.lit' : 'ambient.dark')}</span></div>
+      {map.waters.length > 0 && (
+        <label className="cmd-check"><input type="checkbox" checked={map.waterAnimated} disabled={!editable} onChange={(e) => setWaterAnimated(e.target.checked)} />{t('build.water.animated')}</label>
+      )}
       <button className="btn sm" onClick={() => openMapSettings()}><Icon name="sliders" />{t('tool.mapSettings')} …</button>
       {light && (
         <>
@@ -299,6 +303,8 @@ function BuildProperties({ sel }: { sel: BuildSelection }) {
   const door = useStore((s) => (sel.door ? s.scene.map.masonryDoors.find((d) => d.id === sel.door) : undefined));
   const grid = useStore((s) => s.scene.map.grid);
   const cliff = useStore((s) => (sel.kind === 'cliff' ? s.scene.map.cliffs.find((c) => c.id === sel.wall) : undefined));
+  const water = useStore((s) => (sel.kind === 'water' ? s.scene.map.waters.find((w) => w.id === sel.wall) : undefined));
+  const animated = useStore((s) => s.scene.map.waterAnimated);
   const ftPerPx = grid.feetPerCell / grid.cellWidth;
   if (cliff)
     return (
@@ -313,6 +319,19 @@ function BuildProperties({ sel }: { sel: BuildSelection }) {
           <button className="btn sm" onClick={() => rerollCliff(cliff.id)}><Icon name="reset" />{t('build.reroll')}</button>
         </div>
         {sel.point !== null && <button className="btn sm" onClick={splitBuildWall}><Icon name="line" />{t('build.split')}</button>}
+        <button className="btn sm danger" onClick={() => deleteBuildSelection()}><Icon name="trash" />{t('build.delete')}</button>
+      </>
+    );
+  if (water)
+    return (
+      <>
+        <div className="row"><label>{t('props.name')}</label><span>{t(`build.water.kind.${water.kind}` as MessageKey)}</span></div>
+        <WaterFields kind={water.kind} widthFt={Math.round(water.width * ftPerPx)} onChange={(p) => updateWater(water.id, { ...(p.kind ? { kind: p.kind } : {}), ...(p.widthFt ? { width: p.widthFt / ftPerPx } : {}) })} />
+        <label className="cmd-check"><input type="checkbox" checked={animated} onChange={(e) => setWaterAnimated(e.target.checked)} />{t('build.water.animated')}</label>
+        <div className="cmd-line">
+          {water.kind === 'river' && <button className="btn sm" onClick={() => flipWater(water.id)}><Icon name="redo" />{t('build.water.flip')}</button>}
+          {sel.point !== null && water.kind === 'river' && <button className="btn sm" onClick={splitBuildWall}><Icon name="line" />{t('build.split')}</button>}
+        </div>
         <button className="btn sm danger" onClick={() => deleteBuildSelection()}><Icon name="trash" />{t('build.delete')}</button>
       </>
     );

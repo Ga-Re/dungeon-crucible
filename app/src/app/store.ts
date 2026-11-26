@@ -54,7 +54,7 @@ export type ToolId =
   | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
   | 'cone' | 'sphere' | 'line' | 'cube' | 'light'
   /** The Map Forge's "Build" tab (E-33): edit, draw walls, place doors. */
-  | 'build-edit' | 'build-wall' | 'build-door' | 'build-cliff';
+  | 'build-edit' | 'build-wall' | 'build-door' | 'build-cliff' | 'build-water';
 
 export interface LogEntry {
   at: number;
@@ -395,7 +395,7 @@ function restore(snap: string): void {
   state.selectedWallIds = state.selectedWallIds.filter((id) => walls.has(id));
   // Likewise a drawn wall or door (E-33).
   const b = state.buildSelection;
-  if (b && !(b.door ? state.scene.map.masonryDoors.some((d) => d.id === b.door) : (b.kind === 'wall' ? state.scene.map.masonry : state.scene.map.cliffs).some((w) => w.id === b.wall))) state.buildSelection = null;
+  if (b && !(b.door ? state.scene.map.masonryDoors.some((d) => d.id === b.door) : (b.kind === 'wall' ? state.scene.map.masonry : b.kind === 'cliff' ? state.scene.map.cliffs : state.scene.map.waters).some((w) => w.id === b.wall))) state.buildSelection = null;
   if (state.selectedAssetId && !editableAssets().some((a) => a.id === state.selectedAssetId)) state.selectedAssetId = null;
   // Who is in which house as of this step (E-29): stepping back into a house is no new entering.
   interiorInside = charactersInHouses();
@@ -886,7 +886,7 @@ export function setTool(tool: ToolId): void {
   // One command at a time: another tool ends "create area" and "draw walls".
   if (tool !== 'area') state.areaCommand = null;
   if (tool !== 'wall') state.wallCommand = null;
-  if (tool !== 'build-wall' && tool !== 'build-door' && tool !== 'build-cliff') state.buildCommand = null;
+  if (tool !== 'build-wall' && tool !== 'build-door' && tool !== 'build-cliff' && tool !== 'build-water') state.buildCommand = null;
   // Another tool – also from drawing to editing – starts without a selection: the first click selects, it never adds a point.
   if (tool !== state.tool) state.buildSelection = null;
   if (tool !== 'calibrate') dropCalibration();

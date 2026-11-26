@@ -8,6 +8,7 @@ import type { KeyboardEvent } from 'react';
 import type { BuildSnap } from '../core/build/editing';
 import { MASONRY_STYLES } from '../core/build/masonry';
 import { CLIFF_FORMS, CLIFF_KINDS, type CliffForm, type CliffKind } from '../core/build/cliffs';
+import { WATER_KINDS, type WaterKind } from '../core/build/water';
 import type { MessageKey } from '../i18n/en';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
@@ -26,7 +27,7 @@ export function BuildCommandPanel() {
       endBuildCommand(true);
     }
   };
-  const title = t(c.kind === 'wall' ? 'build.cmd.wall' : c.kind === 'cliff' ? 'build.cmd.cliff' : 'build.cmd.door');
+  const title = t(c.kind === 'wall' ? 'build.cmd.wall' : c.kind === 'cliff' ? 'build.cmd.cliff' : c.kind === 'water' ? 'build.cmd.water' : 'build.cmd.door');
   return (
     <form
       className="command-panel"
@@ -42,7 +43,22 @@ export function BuildCommandPanel() {
         <button type="button" className="ab-btn" title={t('build.done')} aria-label={t('build.done')} onClick={() => endBuildCommand(true)}><Icon name="close" /></button>
       </div>
       <div className="cmd-body">
-        {c.kind === 'cliff' ? (
+        {c.kind === 'water' ? (
+          <>
+            <WaterFields kind={c.waterKind} widthFt={c.riverWidthFt} onChange={(p) => updateBuildCommand({ ...(p.kind ? { waterKind: p.kind } : {}), ...(p.widthFt ? { riverWidthFt: p.widthFt } : {}) })} />
+            <label className="cmd-field">
+              <span>{t('build.snap')}</span>
+              <select value={c.snap} onChange={(e) => updateBuildCommand({ snap: e.target.value as BuildSnap })}>
+                {SNAPS.map((s) => <option key={s} value={s}>{t(`build.snap.${s}` as MessageKey)}</option>)}
+              </select>
+            </label>
+            <p className="hint">{t('hint.buildWater')}</p>
+            <div className="cmd-line">
+              <span className="hint" role="status">{t('build.points', { n: c.points.length })}</span>
+              <button type="button" className="btn sm" disabled={c.points.length === 0} onClick={undoBuildPoint}><Icon name="undo" />{t('build.undoPoint')}</button>
+            </div>
+          </>
+        ) : c.kind === 'cliff' ? (
           <>
             <CliffFields value={c} onChange={updateBuildCommand} />
             <label className="cmd-field">
@@ -145,6 +161,27 @@ export function CliffFields({ value, onChange }: { value: { cliffKind: CliffKind
         <label className="cmd-check"><input type="checkbox" checked={v.steep} onChange={(e) => onChange({ steep: e.target.checked })} />{t('build.cliff.steep')}</label>
       )}
       <label className="cmd-check"><input type="checkbox" checked={v.growth} onChange={(e) => onChange({ growth: e.target.checked })} />{t('build.cliff.growth')}</label>
+    </>
+  );
+}
+
+/** Water's settings (E-35), in the command panel and in the Properties panel. */
+export function WaterFields({ kind, widthFt, onChange }: { kind: WaterKind; widthFt: number; onChange: (patch: { kind?: WaterKind; widthFt?: number }) => void }) {
+  const { t } = useI18n();
+  return (
+    <>
+      <label className="cmd-field">
+        <span>{t('build.water.kind')}</span>
+        <select value={kind} onChange={(e) => onChange({ kind: e.target.value as WaterKind })}>
+          {WATER_KINDS.map((k) => <option key={k} value={k}>{t(`build.water.kind.${k}` as MessageKey)}</option>)}
+        </select>
+      </label>
+      {kind === 'river' && (
+        <label className="cmd-field">
+          <span>{t('build.water.width')}</span>
+          <input type="number" min={1} step={1} value={widthFt} onChange={(e) => Number(e.target.value) > 0 && onChange({ widthFt: Number(e.target.value) })} />
+        </label>
+      )}
     </>
   );
 }

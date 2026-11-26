@@ -106,3 +106,12 @@ describe('walls between (E-37, DC-104b)', () => {
     expect(r.gain).toBeCloseTo(sourceLevel(src({ volume: 1 }), [{ x: -20, y: 0 }], FT));
   });
 });
+
+describe('a scene\'s own sound everywhere (DC-104c)', () => {
+  it('replaces the map\'s, or silences it', () => {
+    const scene = { ...createSampleScene(), sounds: [] };
+    scene.map.ambientSound = { sound: 'builtin:wind', volume: 0.4 };
+    expect(mapSoundMix({ ...scene, ambientOverride: { sound: 'builtin:storm', volume: 0.9 } })).toEqual([{ key: 'ambient', sound: 'builtin:storm', gain: 0.9, muffle: 0 }]);
+    expect(mapSoundMix({ ...scene, ambientOverride: 'none' })).toEqual([]);
+  });
+});

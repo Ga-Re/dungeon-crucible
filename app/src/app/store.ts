@@ -2371,10 +2371,36 @@ export function addSound(p: Point, sound: string): string {
   return id;
 }
 
-/** The sound source under `p` (one that can be edited here), if any. */
+/** The sound source under `p` (one that can be edited here; in a scene also a switched-off one), if any. */
 export function soundAt(p: Point): string | null {
   const r = state.scene.map.grid.cellWidth * 0.45;
-  return [...state.scene.sounds].reverse().find((x) => editableHere(x) && Math.hypot(x.x - p.x, x.y - p.y) < r)?.id ?? null;
+  const sc = state.scene;
+  const all = state.layer === 'map' ? sc.sounds : [...sc.hidden.sounds, ...sc.sounds];
+  return [...all].reverse().find((x) => editableHere(x) && Math.hypot(x.x - p.x, x.y - p.y) < r)?.id ?? null;
+}
+
+/**
+ * Switches a sound source on or off in the scene (DC-104c): off is hidden, as other map elements
+ * are (DC-103) – for the start while preparing, else for the play state. It stays selected.
+ */
+export function setSoundPlaying(id: string, on: boolean): void {
+  if (state.layer === 'map' || state.scene.sounds.some((x) => x.id === id) === on) return;
+  toggleHidden(id);
+  state.selectedTokenId = null;
+  selectSound(id);
+}
+
+/**
+ * The scene's sound everywhere (DC-104c): its own, `"none"` for silence, or null for the map's.
+ * One undoable step; in a scene only (the Map Forge sets the map's in Map settings).
+ */
+export function setSceneAmbientSound(v: { sound: string; volume: number } | 'none' | null): void {
+  if (state.layer === 'map') return;
+  checkpoint();
+  if (v === null) delete state.scene.ambientOverride;
+  else state.scene.ambientOverride = v === 'none' ? 'none' : { ...v };
+  markDirty();
+  emit();
 }
 
 export function selectSound(id: string | null): void {

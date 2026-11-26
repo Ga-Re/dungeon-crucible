@@ -188,6 +188,7 @@ function Ribbon() {
       case 'fogmode:hide': return setFogMode('hide');
       case 'panel:fog': return focusPanel('fog');
       case 'panel:sound': return focusPanel('sound');
+      case 'panel:mapSound': return focusPanel('mapSound');
       case 'audio:stop': return stopAll();
       case 'fog:revealAll': return fogAll(true);
       case 'walls:draw': return startWallCommand();

@@ -35,3 +35,32 @@ describe('sound sources', () => {
     stopPlacing();
   });
 });
+
+describe('sound sources in a scene (DC-104c)', () => {
+  it('switched off and on (hidden in the scene), a volume of its own, the scene\'s sound everywhere – each undoable', async () => {
+    const { setSceneAmbientSound, setSoundPlaying } = await import('./store');
+    setWorkspace('forge');
+    const id = addSound({ x: 1400, y: 1400 }, 'builtin:brook');
+    setWorkspace('play');
+    expect(state.layer).not.toBe('map');
+    const playing = () => state.scene.sounds.some((x) => x.id === id);
+    expect(playing()).toBe(true);
+    setSoundPlaying(id, false);
+    expect(playing()).toBe(false);
+    expect(state.scene.hidden.sounds.some((x) => x.id === id)).toBe(true);
+    expect(state.selectedSoundId).toBe(id);
+    expect(soundAt({ x: 1400, y: 1400 })).toBe(id);
+    undo();
+    expect(playing()).toBe(true);
+    updateSound(id, { volume: 0.3 });
+    expect(state.scene.sounds.find((x) => x.id === id)!.volume).toBe(0.3);
+    setSceneAmbientSound('none');
+    expect(state.scene.ambientOverride).toBe('none');
+    setSceneAmbientSound({ sound: 'builtin:storm', volume: 0.7 });
+    expect(state.scene.ambientOverride).toEqual({ sound: 'builtin:storm', volume: 0.7 });
+    undo();
+    expect(state.scene.ambientOverride).toBe('none');
+    setSceneAmbientSound(null);
+    expect(state.scene.ambientOverride).toBeUndefined();
+  });
+});

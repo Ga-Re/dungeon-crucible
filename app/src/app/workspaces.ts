@@ -22,7 +22,7 @@ export interface RibbonTab {
 
 export type PanelId =
   | 'map' | 'browser' | 'properties' | 'fog' | 'initiative' | 'preview' | 'table'
-  | 'dice' | 'log' | 'encounter' | 'creature' | 'atlas' | 'vault' | 'asset' | 'assets' | 'sound' | 'party';
+  | 'dice' | 'log' | 'encounter' | 'creature' | 'atlas' | 'vault' | 'asset' | 'assets' | 'sound' | 'party' | 'mapSound';
 
 export interface DefaultLayout {
   center: PanelId;
@@ -264,6 +264,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
             label: 'group.audio',
             buttons: [
               { id: 'panel:sound', icon: 'music', label: 'panel.sound' },
+              { id: 'panel:mapSound', icon: 'music', label: 'panel.mapSound' },
               { id: 'audio:stop', icon: 'pause', label: 'audio.stopAll' },
             ],
           },
@@ -273,7 +274,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
     layout: {
       center: 'map',
       left: ['browser', 'assets', 'fog'],
-      right: ['initiative', 'party', 'table'],
+      right: ['initiative', 'party', 'mapSound', 'table'],
       bottom: ['sound', 'dice', 'log'],
       floating: [{ id: 'preview', width: 360, height: 260 }],
     },
@@ -300,4 +301,5 @@ export const PANEL_TITLES: Record<PanelId, MessageKey> = {
   assets: 'panel.assets',
   sound: 'panel.sound',
   party: 'panel.party',
+  mapSound: 'panel.mapSound',
 };

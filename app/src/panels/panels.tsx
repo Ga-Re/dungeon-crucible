@@ -17,7 +17,7 @@ import { BIOMES } from '../render/pixi/fog-living';
 import { FADE_MAX_SECONDS, FADE_STEP_SECONDS, FOG_EDGE, FOG_MOTION, FOG_QUALITIES, FOG_SPEED, speedOfStep, stepOfSpeed } from '../app/fog-settings';
 import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
-import { SoundProperties } from './SoundPanels';
+import { SceneSound, SoundProperties, useSoundName } from './SoundPanels';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
   openCreatureTab, setElementsLayer, setPlacementInteriorTrigger, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
@@ -175,12 +175,17 @@ function SceneChanges() {
   const sceneDoc = useStore((s) => s.sceneDoc);
   const assetInfo = useStore((s) => s.assetInfo);
   const [confirm, setConfirm] = useState(false);
+  const soundName = useSoundName();
   const issues = useMemo(() => (mapDoc && sceneDoc ? sceneIssues(mapDoc, sceneDoc) : { orphaned: [], invalid: [] }), [mapDoc, sceneDoc]);
   const stale = [...issues.orphaned, ...issues.invalid];
   if (changes.length === 0 && stale.length === 0) return null;
   const nameOf = (c: ElementChange): string => {
     if (c.kind === 'zones') return [...scene.zones, ...scene.hidden.zones].find((z) => z.id === c.id)?.name ?? c.id;
     if (c.kind === 'lights') return t('changes.light');
+    if (c.kind === 'sounds') {
+      const x = [...scene.sounds, ...scene.hidden.sounds].find((q) => q.id === c.id);
+      return x ? soundName(x.sound) : t('sound.title');
+    }
     if (c.kind === 'assets') {
       const a = [...scene.map.assets, ...scene.ownAssets, ...scene.hidden.assets].find((x) => x.id === c.id);
       return (a && assetInfo[a.assetPath]?.name) ?? t('panel.asset');
@@ -195,7 +200,7 @@ function SceneChanges() {
         {changes.map((c) => (
           <li key={c.id}>
             <div className="tn">
-              <Icon name={c.kind === 'walls' ? 'wall' : c.kind === 'zones' ? 'zone' : c.kind === 'assets' ? 'box' : 'light'} />
+              <Icon name={c.kind === 'walls' ? 'wall' : c.kind === 'zones' ? 'zone' : c.kind === 'assets' ? 'box' : c.kind === 'sounds' ? 'music' : 'light'} />
               <span className="nm">{nameOf(c)}</span>
               <span className="meta">{t(`changes.${c.status}` as MessageKey)}</span>
               {c.status === 'hidden' && <button className="ab-btn" title={t('changes.show')} aria-label={`${t('changes.show')}: ${nameOf(c)}`} onClick={() => toggleHidden(c.id)}><Icon name="eye" /></button>}
@@ -267,6 +272,7 @@ function MapProperties() {
       <div className="row"><label>{t('map.ambient')}</label><span>{t(ambient === 'lit' ? 'ambient.lit' : 'ambient.dark')}</span></div>
       {map.drawn && editable && <MapLook />}
       {!editable && <SceneDrawnHidden />}
+      {!editable && <SceneSound />}
       {map.waters.length > 0 && (
         <label className="cmd-check"><input type="checkbox" checked={map.waterAnimated} disabled={!editable} onChange={(e) => setWaterAnimated(e.target.checked)} />{t('build.water.animated')}</label>
       )}

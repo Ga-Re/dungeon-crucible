@@ -102,12 +102,13 @@ export interface MixEntry {
  * What the map plays now: its sound everywhere and every shown source at its level; `walls`:
  * those sight uses (drawn walls included), which damp the sources behind them.
  */
-export function mapSoundMix(scene: Pick<Scene, 'map' | 'sounds' | 'tokens' | 'table'>, walls: readonly Wall[] = []): MixEntry[] {
+export function mapSoundMix(scene: Pick<Scene, 'map' | 'sounds' | 'tokens' | 'table' | 'ambientOverride'>, walls: readonly Wall[] = []): MixEntry[] {
   const g = scene.map.grid;
   const ftPx = g.cellWidth / g.feetPerCell;
   const at = hearingPoints(scene);
   const out: MixEntry[] = [];
-  const amb = scene.map.ambientSound;
+  // The scene's own sound everywhere, or silence, before the map's (DC-104c).
+  const amb = scene.ambientOverride === 'none' ? undefined : (scene.ambientOverride ?? scene.map.ambientSound);
   if (amb) out.push({ key: 'ambient', sound: amb.sound, gain: amb.volume, muffle: 0 });
   for (const s of scene.sounds) out.push({ key: s.id, sound: s.sound, ...sourceHearing(s, at, ftPx, walls) });
   return out;

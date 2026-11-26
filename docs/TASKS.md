@@ -323,8 +323,15 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     die Spielerfigur, die die Quelle am lautesten hört – der freie Weg schlägt den näheren durch die Wand. Rein in
     `core/sound.ts` (Tests); in der App geprüft (Wasserfall hinter der Wand neben Thorin: 1512 Hz, offene Quellen
     20 kHz).
-  - **DC-104c Szenen-Steuerung**: Quelle an/aus (Ausblenden, Ebenen), Lautstärke je Szene, globalen Sound
-    überschreiben oder stumm, szeneneigene Quellen; Start und Spiel getrennt; Szene v11.
+  - ✓ **DC-104c Szenen-Steuerung**: Quelle an/aus (Ausblenden, Ebenen), Lautstärke je Szene, globalen Sound
+    überschreiben oder stumm, szeneneigene Quellen; Start und Spiel getrennt; Szene v11. Erledigt: neues Panel
+    **„Kartenklänge“** im Orchestrator (rechts; Menüband Audio): Klang der Szene (wie die Karte / stumm / eigener
+    Klang mit Lautstärke; Szenendatei `ambientSound`, im Start getrennt, „Szene zurücksetzen“ holt den Start), alle
+    Quellen mit An/Aus (= Ausblenden in der Szene, DC-103) und Lautstärke je Szene (Override), Klick auf den Namen
+    markiert die Quelle auf der Karte. Ausgeschaltete Quellen lassen sich auf der Karte anklicken. Szeneneigene
+    Quellen über das Assets-Panel im Orchestrator (`added.sounds`); Ebenen schalten Quellen wie andere Elemente.
+    Das Eigenschaften-Panel zeigt dieselbe Bedienung, wenn es eingeblendet ist. Das Soundboard-Panel ist für eine
+    weitere Spalte zu schmal (dort überlappen schon die drei Spalten – eigener Punkt, nicht Teil dieser Aufgabe).
 - **DC-105 Szenenübergang** (T-135): Übergang beim Szenenwechsel auf dem TV (z. B. Ausblenden über Schwarz, Dauer),
   danach als Standard je Karte (T-176b).
 - **DC-012 Kartenkatalog der Bibliothek** – geht in DC-093 auf.

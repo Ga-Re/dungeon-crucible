@@ -3,6 +3,7 @@
  * (stored as `dc.dock.<workspace>`) whose canvas is the workspace's central panel.
  */
 import type { ReactNode } from 'react';
+import { MapSoundPanel } from '../panels/SoundPanels';
 import { DockManager } from '../dock/manager';
 import type { DefaultSpec } from '../dock/persist';
 import { translate, type Locale } from '../i18n/i18n';
@@ -35,6 +36,7 @@ export const PANEL_CONTENT: Record<PanelId, () => ReactNode> = {
   assets: () => <AssetPicker />,
   sound: () => <SoundPanel />,
   party: () => <PartyPanel />,
+  mapSound: () => <MapSoundPanel />,
 };
 
 function storage(): Storage | null {

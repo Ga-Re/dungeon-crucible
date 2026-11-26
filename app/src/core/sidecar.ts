@@ -112,6 +112,8 @@ const soundRef = z.string().min(1);
 export const mapSoundSchema = z.object({ id, sound: soundRef, x: z.number(), y: z.number(), radiusFt: z.number().positive(), volume: z.number().min(0).max(1), fade: z.boolean().default(true), layer: layerRef });
 /** A map's sound everywhere (E-37): wind, a snowstorm. */
 export const ambientSoundSchema = z.object({ sound: soundRef, volume: z.number().min(0).max(1) });
+/** A scene's own sound everywhere instead of the map's (E-37), or `"none"`: silent. Missing: the map's. */
+const sceneAmbientSound = z.union([ambientSoundSchema, z.literal('none')]).optional();
 
 /**
  * A layer of a map (E-28): elements on it count in a scene only while it is active there. Height
@@ -419,6 +421,7 @@ export const SceneOverrideSchema = z.object({
   templates: z.array(z.object({ id, shape: z.enum(['cone', 'sphere', 'line', 'cube']), x: z.number(), y: z.number(), angle: z.number(), sizeFt: z.number().positive(), color })).default([]),
   combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
   ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
+  ambientSound: sceneAmbientSound,
   /** Changes of the map for this scene only, by element id: the fields that differ (E-2). Hiding is state: `hidden`. */
   overrides: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
   /**
@@ -432,6 +435,7 @@ export const SceneOverrideSchema = z.object({
     lights: z.record(z.string(), z.boolean()).default({}),
     discoveredZones: z.array(z.string()).default([]),
     ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
+    ambientSound: sceneAmbientSound,
     /** Map elements hidden from the start (prepared, e.g. a buried corridor). */
     hidden: z.array(z.string()).default([]),
     /** Assets placed for the start (prepared, e.g. a campfire). */

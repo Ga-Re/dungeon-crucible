@@ -58,6 +58,7 @@ export function startOf(ov: SceneOverride): SceneStart {
     lights: { ...ov.lights },
     discoveredZones: [...ov.discoveredZones],
     ambience: ov.ambience.map((a) => ({ ...a })),
+    ...copyAmbientSound(ov.ambientSound),
     hidden: [...ov.hidden],
     assets: ov.assets.map((a) => ({ ...a })),
     effects: { ...ov.effects },
@@ -96,6 +97,7 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
       lights: fromView.lights,
       discoveredZones: fromView.discoveredZones,
       ambience: ambience.map((a) => ({ ...a })),
+      ...copyAmbientSound(fromView.ambientSound),
       hidden: fromView.hidden,
       assets: fromView.assets,
       effects: fromView.effects,
@@ -113,9 +115,10 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
  */
 export function resetToStart(ov: SceneOverride): SceneOverride {
   const start = startOf(ov);
-  const { fogEffect: _fe, ...rest } = ov;
+  const { fogEffect: _fe, ambientSound: _as, ...rest } = ov;
   return {
     ...rest,
+    ...copyAmbientSound(start.ambientSound),
     fog: copyFog(start.fog),
     tokens: start.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
     doors: { ...start.doors },
@@ -258,9 +261,15 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     templates: scene.templates.map((t) => ({ ...t })),
     combat: { ...combat },
     ambience: [],
+    ...copyAmbientSound(scene.ambientOverride),
     overrides: layer.overrides,
     added: layer.added,
   };
+}
+
+/** A scene's own sound everywhere (E-37) as a field to spread: none when the map's counts. */
+function copyAmbientSound(a: SceneOverride['ambientSound']): Pick<SceneOverride, 'ambientSound'> {
+  return a === undefined ? {} : { ambientSound: a === 'none' ? 'none' : { ...a } };
 }
 
 function copyFloor(f: FloorPatch): FloorPatch {
@@ -302,7 +311,8 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const onMap = layer === 'map';
   // The start state shows the scene's start instead of its play state.
   const st = layer === 'start' && override ? startOf(override) : null;
-  const state = st ? { ...override!, ...st, templates: [], fogEffect: undefined } : override;
+  // The start's own sound everywhere, not the play state's (E-37).
+  const state = st ? { ...override!, ...st, ambientSound: st.ambientSound, templates: [], fogEffect: undefined } : override;
   const discovered = new Set(state?.discoveredZones ?? []);
   const elements = onMap ? elementsFromSidecar(map) : resolveElements(elementsFromSidecar(map), layerOf(override)).elements;
   const zones: Zone[] = elements.zones.map((z) => ({ ...z, shape: copyShape(z.shape), discovered: !z.secret || (!onMap && discovered.has(z.id)) }));
@@ -376,6 +386,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     own: drawing ? { masonry: drawing.masonry, masonryDoors: drawing.masonryDoors, cliffs: drawing.cliffs, waters: drawing.waters, floors: drawing.floors } : emptyOwnDrawing(),
     drawnHidden: drawing ? drawing.hidden : [],
     effectsOn: onMap ? {} : { ...(state?.effects ?? {}) },
+    ...(onMap || state?.ambientSound === undefined ? {} : { ambientOverride: copyAmbientSound(state.ambientSound).ambientSound }),
     ambient: map.ambient,
     tokens: onMap ? [] : (state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: onMap ? [] : (state?.templates ?? []).map((t) => ({ ...t })),

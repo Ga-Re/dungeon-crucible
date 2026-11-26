@@ -255,6 +255,8 @@ export interface Scene {
   lights: LightSource[];
   /** Sound sources (E-37): heard in the Orchestrator only, never sent to the TV. */
   sounds: SoundSource[];
+  /** This scene's sound everywhere instead of the map's, or "none" (E-37); missing: the map's. */
+  ambientOverride?: { sound: string; volume: number } | 'none';
   ambient: AmbientLight;
   /** Polygon fog in map pixels (Dungeon-Manager's model): revealed and remembered. */
   fog: LevelFog;

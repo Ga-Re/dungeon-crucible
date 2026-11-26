@@ -8,6 +8,7 @@ import { activeLayers, elementLayer } from '../layers';
 import type { Scene, Wall } from '../scene';
 import { deriveWalls, foundKey, type BuildDoor } from './masonry';
 import { cliffSightWalls } from './cliffs';
+import { sceneMap } from './sceneDrawing';
 
 const derived = new WeakMap<object, { key: string; out: Wall[] }>();
 
@@ -23,8 +24,9 @@ function masonryKey(masonry: Scene['map']['masonry']): string {
 }
 const NONE: Wall[] = [];
 
-export function masonrySightWalls(scene: Pick<Scene, 'map' | 'masonryDoorsOpen' | 'layersOn'>, allLayers: boolean): Wall[] {
-  const { masonry, masonryDoors, layers, cliffs } = scene.map;
+export function masonrySightWalls(scene: Pick<Scene, 'map' | 'masonryDoorsOpen' | 'layersOn'> & Partial<Pick<Scene, 'own' | 'drawnHidden'>>, allLayers: boolean): Wall[] {
+  // What this scene shows: the map's drawing without what it hides, plus its own (DC-107c).
+  const { masonry, masonryDoors, layers, cliffs } = sceneMap(scene);
   if (!masonry.length && !cliffs.length) return NONE;
   const active = allLayers ? null : activeLayers(layers, scene.layersOn);
   const key = `${masonryKey(masonry)}#${JSON.stringify([masonryDoors, scene.masonryDoorsOpen, active && [...active], cliffs])}`;

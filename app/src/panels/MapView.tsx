@@ -32,6 +32,7 @@ import { drawDmOverlay, rotateHandleAt, type BuildOverlay, type OverlayState } f
 import { fogOptions } from '../render/fogOptions';
 import { DARKNESS } from '../core/projection';
 import { dmDrawing } from '../core/build/playerDrawing';
+import { sceneMap } from '../core/build/sceneDrawing';
 import { doorSpan, pointAt } from '../core/build/masonry';
 import { activeLayers, elementLayer } from '../core/layers';
 import { addBuildPoint, addBuildStroke, paintFloorStroke, buildHit, buildTarget, deleteBuildSelection, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, slideBuildDoor, undoBuildPoint } from '../app/build';
@@ -155,7 +156,7 @@ function DmMap() {
       const sc = state.scene;
       const cell = sc.map.grid.cellWidth;
       // Drawn walls (E-33): a drawn map's picture, or drawn over the picture map; in a scene those of its active layers.
-      const drawing = dmDrawing(sc.map, sc.masonryDoorsOpen, state.layer === 'map' ? undefined : sc.layersOn, sc.zones);
+      const drawing = dmDrawing(sceneMap(sc), sc.masonryDoorsOpen, state.layer === 'map' ? undefined : sc.layersOn, sc.zones);
       // Moving water, when the map's water is animated (E-35).
       r.setWater(drawing && drawing.waterAnimated && drawing.waters.length ? { waters: drawing.waters, cliffs: drawing.cliffs, cell } : null);
       if (sc.map.drawn && drawing) void map?.setDrawn(drawing, cell);

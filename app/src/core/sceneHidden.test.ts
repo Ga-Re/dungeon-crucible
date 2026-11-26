@@ -58,7 +58,7 @@ describe('hidden elements in a view', () => {
   });
 
   it('the start view uses the start list; the Map Forge hides nothing', () => {
-    const doc = sceneDoc({ hidden: ['w1'], start: { fog: { revealed: [], remembered: [] }, tokens: [], doors: {}, lights: {}, discoveredZones: [], ambience: [], hidden: ['d1'], assets: [], effects: {}, layers: {}, interiors: {} } });
+    const doc = sceneDoc({ hidden: ['w1'], start: { fog: { revealed: [], remembered: [] }, tokens: [], doors: {}, lights: {}, discoveredZones: [], ambience: [], hidden: ['d1'], assets: [], effects: {}, layers: {}, interiors: {}, drawing: { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], hidden: [] } } });
     expect(sceneFromDocuments(map, doc, null, undefined, 'start').hidden.walls.map((w) => w.id)).toEqual(['d1']);
     expect(sceneFromDocuments(map, doc, null, undefined, 'map').hidden.walls).toEqual([]);
   });
@@ -115,7 +115,7 @@ describe('orphaned changes', () => {
   const doc = sceneDoc({
     overrides: { gone: { dimFt: 5 }, l1: { dimFt: 30 } },
     hidden: ['w1', 'lost'],
-    start: { fog: { revealed: [], remembered: [] }, tokens: [], doors: {}, lights: {}, discoveredZones: [], ambience: [], hidden: ['lost2'], assets: [], effects: {}, layers: {}, interiors: {} },
+    start: { fog: { revealed: [], remembered: [] }, tokens: [], doors: {}, lights: {}, discoveredZones: [], ambience: [], hidden: ['lost2'], assets: [], effects: {}, layers: {}, interiors: {}, drawing: { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], hidden: [] } },
   });
 
   it('are reported: overrides and hidden ids whose element the map has no more', () => {

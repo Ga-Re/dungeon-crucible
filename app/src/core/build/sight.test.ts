@@ -93,3 +93,15 @@ describe('windows are not doors', () => {
     expect(toggledMasonryDoor([{ id: 'w', wall: 'm-a', at: 50, width: 40, secret: false, crack: false, window: true }], {}, 'w')).toBeNull();
   });
 });
+
+describe('sight in a scene with its own drawing (DC-107c)', () => {
+  it("counts the scene's own walls and leaves out the map walls it hides", () => {
+    const s = scene();
+    s.own = { masonry: [{ id: 's-x', points: [{ x: 0, y: 300 }, { x: 200, y: 300 }], closed: false, style: 'wood', thickness: 8, seed: 3 }], masonryDoors: [], cliffs: [], waters: [], floors: [] };
+    s.drawnHidden = ['m-a'];
+    const walls = masonrySightWalls(s, true);
+    expect(walls.some((w) => w.id.startsWith('s-x#'))).toBe(true);
+    expect(walls.some((w) => w.id.startsWith('m-a#'))).toBe(false);
+    expect(walls.some((w) => w.id === 'd-a')).toBe(false);
+  });
+});

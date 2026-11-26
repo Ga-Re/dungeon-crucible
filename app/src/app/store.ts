@@ -971,7 +971,7 @@ export function moveToken(id: string, p: Point, final: boolean): void {
 }
 
 export function toggleDoor(id: string): void {
-  const drawn = toggledMasonryDoor(state.scene.map.masonryDoors, state.scene.masonryDoorsOpen, id);
+  const drawn = toggledMasonryDoor([...state.scene.map.masonryDoors, ...state.scene.own.masonryDoors], state.scene.masonryDoorsOpen, id);
   if (drawn) {
     // A door on a drawn wall (E-33): scene state.
     checkpoint();
@@ -2061,7 +2061,7 @@ export function discoverZone(id: string): void {
   for (const w of masonryDoors(state.scene)) {
     if (w.kind !== 'secret-door' || w.open) continue;
     const touches = [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }].some((p) => distanceToArea(z.shape, p) <= 1);
-    if (touches) state.scene.masonryDoorsOpen = toggledMasonryDoor(state.scene.map.masonryDoors, state.scene.masonryDoorsOpen, w.id) ?? state.scene.masonryDoorsOpen;
+    if (touches) state.scene.masonryDoorsOpen = toggledMasonryDoor([...state.scene.map.masonryDoors, ...state.scene.own.masonryDoors], state.scene.masonryDoorsOpen, w.id) ?? state.scene.masonryDoorsOpen;
   }
   recomputeVision();
   for (const part of z.shape) state.scene.fog = revealIn(state.scene.fog, part, [], true);

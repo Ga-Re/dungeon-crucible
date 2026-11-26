@@ -2,6 +2,7 @@
  * Sample scene "Crypt of Vhal'Durn" used for the first run and in tests.
  * Pure data: no DOM access, so it works in unit tests.
  */
+import { emptyOwnDrawing } from '../core/build/sceneDrawing';
 import { EMPTY_LEVEL_FOG, rectPolygon, revealIn } from '../core/fogModel';
 import { DEFAULT_GRID } from '../core/grid';
 import { DEFAULT_TABLE, noHidden, type Scene, type Token, type Wall, type Zone } from '../core/scene';
@@ -136,6 +137,8 @@ export function createSampleScene(): Scene {
     assetDoorsOpen: {},
     interiorsOn: {},
     masonryDoorsOpen: {},
+    own: emptyOwnDrawing(),
+    drawnHidden: [],
     effectsOn: {},
     tokens,
     templates: [],

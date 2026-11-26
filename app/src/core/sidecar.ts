@@ -118,7 +118,7 @@ export type MapLayer = z.infer<typeof mapLayerSchema>;
 /** Version 2: areas are polygons (DC-013). */
 export const MAP_VERSION = 6;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
-export const SCENE_VERSION = 7;
+export const SCENE_VERSION = 8;
 
 /**
  * When a house's interior is shown (E-29): by the DM's click only, when a player character steps
@@ -351,6 +351,21 @@ const tokenSchema = z.object({
 });
 
 /** Per-session state on top of a map: fog, doors, tokens, combat. The map itself stays untouched. */
+/**
+ * A scene's own drawing (DC-107c): walls, doors, cliffs, water and floors of this scene only, and
+ * the map's drawn elements it hides. Part of the play state and of the start state.
+ */
+const sceneDrawingSchema = z.object({
+  masonry: z.array(masonrySchema).default([]),
+  masonryDoors: z.array(masonryDoorSchema).default([]),
+  cliffs: z.array(cliffSchema).default([]),
+  waters: z.array(waterSchema).default([]),
+  floors: z.array(floorPatchSchema).default([]),
+  hidden: z.array(z.string()).default([]),
+});
+export type SceneDrawing = z.infer<typeof sceneDrawingSchema>;
+const EMPTY_SCENE_DRAWING = { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], hidden: [] };
+
 export const SceneOverrideSchema = z.object({
   kind: z.literal('scene'),
   schemaVersion: z.literal(SCENE_VERSION),
@@ -375,6 +390,8 @@ export const SceneOverrideSchema = z.object({
   layers: z.record(z.string(), z.boolean()).default({}),
   /** Houses showing their interior in this scene's play state (E-29), by placement id. Not listed: outside. */
   interiors: z.record(z.string(), z.boolean()).default({}),
+  /** The scene's own drawing in its play state (DC-107c, version 8). */
+  drawing: sceneDrawingSchema.default(EMPTY_SCENE_DRAWING),
   tokens: z.array(tokenSchema).default([]),
   templates: z.array(z.object({ id, shape: z.enum(['cone', 'sphere', 'line', 'cube']), x: z.number(), y: z.number(), angle: z.number(), sizeFt: z.number().positive(), color })).default([]),
   combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
@@ -399,6 +416,8 @@ export const SceneOverrideSchema = z.object({
     effects: z.record(z.string(), z.boolean()).default({}),
     layers: z.record(z.string(), z.boolean()).default({}),
     interiors: z.record(z.string(), z.boolean()).default({}),
+    /** The scene's own drawing at its start (DC-107c). */
+    drawing: sceneDrawingSchema.default(EMPTY_SCENE_DRAWING),
   }).optional(),
   /** Walls, areas and lights that exist only in this scene (E-24). */
   added: z.object({ walls: z.array(mapWallSchema).default([]), zones: z.array(mapAreaSchema).default([]), lights: z.array(mapLightSchema).default([]) }).default({ walls: [], zones: [], lights: [] }),

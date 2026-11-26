@@ -7,6 +7,7 @@ import type { InteriorTrigger, MapLayer } from './sidecar';
 import type { BuildDoor, Masonry } from './build/masonry';
 import type { Cliff } from './build/cliffs';
 import type { Water } from './build/water';
+import type { OwnDrawing } from './build/sceneDrawing';
 import type { FloorPatch } from './build/floors';
 
 /** A cliff or gallery is one way: one sees down from its upper side, not up from below (DC-014). */
@@ -226,6 +227,10 @@ export interface Scene {
   interiorsOn: Record<string, boolean>;
   /** Doors on drawn walls (E-33) by id → open, and by `foundKey(id)` → a secret one was found. Not listed: closed, not found. */
   masonryDoorsOpen: Record<string, boolean>;
+  /** The scene's own drawing (DC-107c); empty in the Map Forge. */
+  own: OwnDrawing;
+  /** Drawn elements of the map this scene hides, by id. */
+  drawnHidden: string[];
   tokens: Token[];
   templates: AreaTemplate[];
   pings: Ping[];

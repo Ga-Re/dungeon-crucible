@@ -129,3 +129,29 @@ describe('water in the map file (E-35)', () => {
     expect(MapSidecarSchema.parse(without)).toMatchObject({ waters: [], waterAnimated: true });
   });
 });
+
+describe('a scene with its own drawing (scene version 8, DC-107c)', () => {
+  it('round-trips its own walls and what it hides; reset brings the start drawing back; old scenes read with none', async () => {
+    const { SCENE_VERSION } = await import('../sidecar');
+    const { resetToStart, startOf } = await import('../persistence');
+    expect(SCENE_VERSION).toBe(8);
+    const map = drawnMap();
+    const scene = sceneFromDocuments(map, null, null);
+    expect(scene.own.masonry).toEqual([]);
+    scene.own.masonry = [{ id: 's-a', points: [{ x: 0, y: 500 }, { x: 140, y: 500 }], closed: false, style: 'wood', thickness: 8, seed: 2 }];
+    scene.drawnHidden = ['m-a'];
+    const ov = SceneOverrideSchema.parse(JSON.parse(JSON.stringify(sceneOverrideFromScene(scene, 'S', mapSidecarPath('builtin:crypt'), { round: 1, turn: 0 }, map))));
+    expect(ov.drawing.masonry.map((w) => w.id)).toEqual(['s-a']);
+    expect(ov.drawing.hidden).toEqual(['m-a']);
+    const back = sceneFromDocuments(map, ov, null);
+    expect(back.own.masonry.map((w) => w.id)).toEqual(['s-a']);
+    expect(back.drawnHidden).toEqual(['m-a']);
+    // The start had none: reset takes them away again.
+    const withStart = { ...ov, start: { ...startOf(ov), drawing: { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], hidden: [] } } };
+    expect(resetToStart(withStart).drawing.masonry).toEqual([]);
+    // The Map Forge shows the map alone.
+    expect(sceneFromDocuments(map, ov, null, undefined, 'map').own.masonry).toEqual([]);
+    const v7 = readDocument('scene', SceneOverrideSchema, JSON.stringify({ kind: 'scene', schemaVersion: 7, name: 'S', mapSidecar: 'm', fog: { revealed: [], remembered: [] } }));
+    expect(v7.ok && v7.value.drawing).toEqual({ masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], hidden: [] });
+  });
+});

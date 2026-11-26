@@ -21,7 +21,7 @@ export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' |
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
   map: 6,
-  scene: 7,
+  scene: 8,
   creature: 1,
   asset: 3,
   object: 1,
@@ -69,6 +69,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     5: (doc) => doc,
     // Version 7 adds the houses showing their interior (E-29): none yet.
     6: (doc) => doc,
+    // Version 8 adds the scene's own drawing (DC-107c): none yet.
+    7: (doc) => doc,
   },
   creature: {},
   // The first asset format (variants with props, never used by files) → E-27 (DC-040).

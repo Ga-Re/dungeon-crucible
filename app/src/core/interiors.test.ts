@@ -26,7 +26,7 @@ describe('files', () => {
     expect(m.ok && m.value).toMatchObject({ schemaVersion: MAP_VERSION });
     expect(m.ok && m.value.assets[0].interiorTrigger).toBeUndefined();
     const s = readDocument('scene', SceneOverrideSchema, JSON.stringify({ kind: 'scene', schemaVersion: 6, name: 'S', mapSidecar: 'm', fog: { revealed: [], remembered: [] } }));
-    expect(s.ok && s.value).toMatchObject({ schemaVersion: 7, interiors: {} });
+    expect(s.ok && s.value).toMatchObject({ schemaVersion: SCENE_VERSION, interiors: {} });
   });
 
   it('an interior keeps its trigger defaults', () => {

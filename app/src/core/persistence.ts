@@ -17,7 +17,8 @@ import type { FloorPatch } from './build/floors';
 import { activeLayers, drawOrder, elementLayer } from './layers';
 import { DEFAULT_TABLE, type HiddenElements, type MapAssetPlacement, type Scene, type Zone } from './scene';
 import { diffElements, resolveElements, type MapElements, type SceneLayer } from './mapLayers';
-import { MAP_VERSION, SCENE_VERSION, SCHEMA_VERSION, type CampaignManifest, type MapSidecar, type Player, type SceneOverride } from './sidecar';
+import { MAP_VERSION, SCENE_VERSION, SCHEMA_VERSION, type CampaignManifest, type MapSidecar, type Player, type SceneDrawing, type SceneOverride } from './sidecar';
+import { emptyOwnDrawing } from './build/sceneDrawing';
 
 export const BUILTIN_PREFIX = 'builtin:';
 /** The resource of a drawn map (E-33): it has no picture, its drawn walls are its picture. */
@@ -62,6 +63,19 @@ export function startOf(ov: SceneOverride): SceneStart {
     effects: { ...ov.effects },
     layers: { ...ov.layers },
     interiors: { ...ov.interiors },
+    drawing: copySceneDrawing(ov.drawing),
+  };
+}
+
+/** A scene's own drawing, copied (DC-107c). */
+function copySceneDrawing(d: SceneDrawing): SceneDrawing {
+  return {
+    masonry: d.masonry.map(copyMasonry),
+    masonryDoors: d.masonryDoors.map((x) => ({ ...x })),
+    cliffs: d.cliffs.map(copyCliff),
+    waters: d.waters.map(copyWater),
+    floors: d.floors.map(copyFloor),
+    hidden: [...d.hidden],
   };
 }
 
@@ -87,6 +101,7 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
       effects: fromView.effects,
       layers: fromView.layers,
       interiors: fromView.interiors,
+      drawing: fromView.drawing,
     },
   };
 }
@@ -110,6 +125,7 @@ export function resetToStart(ov: SceneOverride): SceneOverride {
     hidden: [...start.hidden],
     assets: start.assets.map((a) => ({ ...a })),
     effects: { ...start.effects },
+    drawing: copySceneDrawing(start.drawing),
     layers: { ...start.layers },
     interiors: { ...start.interiors },
     templates: [],
@@ -214,8 +230,8 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
   const ofPlacement = (key: string) => placements.has(key.replace(/:(door|in\d+)$/, ''));
   const assetDoors = Object.fromEntries(Object.entries(scene.assetDoorsOpen).filter(([k]) => ofPlacement(k)));
   const interiors = Object.fromEntries(Object.entries(scene.interiorsOn).filter(([k]) => placements.has(k)));
-  // States of drawn doors (open, found) are left out once the door is gone (E-33).
-  const drawnDoors = new Set(scene.map.masonryDoors.map((d) => d.id));
+  // States of drawn doors (open, found) are left out once the door is gone (E-33) – the map's and the scene's own.
+  const drawnDoors = new Set([...scene.map.masonryDoors, ...scene.own.masonryDoors].map((d) => d.id));
   const masonryDoors = Object.fromEntries(Object.entries(scene.masonryDoorsOpen).filter(([k]) => drawnDoors.has(k.replace(/:found$/, ''))));
   return {
     kind: 'scene',
@@ -232,6 +248,7 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     effects: { ...scene.effectsOn },
     layers: { ...scene.layersOn },
     interiors,
+    drawing: copySceneDrawing({ ...scene.own, hidden: scene.drawnHidden }),
     tokens: scene.tokens.map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: scene.templates.map((t) => ({ ...t })),
     combat: { ...combat },
@@ -303,8 +320,10 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const assetLightsOn = Object.fromEntries(Object.entries(lightsOn).filter(([id]) => id.endsWith(':light')));
   // Likewise doors of assets with the map doors, by `<placement>:door` and `<placement>:in<n>` (E-29).
   const assetDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => /:(door|in\d+)$/.test(id)));
+  // The scene's own drawing (DC-107c): none in the Map Forge.
+  const drawing = onMap || !state ? null : copySceneDrawing(state.drawing);
   // And doors on drawn walls by their id, found secret ones by `<id>:found` (E-33).
-  const drawnDoors = new Set(map.masonryDoors.map((d) => d.id));
+  const drawnDoors = new Set([...map.masonryDoors, ...(drawing?.masonryDoors ?? [])].map((d) => d.id));
   const masonryDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => drawnDoors.has(id.replace(/:found$/, ''))));
   return {
     map: {
@@ -346,6 +365,8 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     assetLightsOn,
     assetDoorsOpen,
     masonryDoorsOpen,
+    own: drawing ? { masonry: drawing.masonry, masonryDoors: drawing.masonryDoors, cliffs: drawing.cliffs, waters: drawing.waters, floors: drawing.floors } : emptyOwnDrawing(),
+    drawnHidden: drawing ? drawing.hidden : [],
     effectsOn: onMap ? {} : { ...(state?.effects ?? {}) },
     ambient: map.ambient,
     tokens: onMap ? [] : (state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),

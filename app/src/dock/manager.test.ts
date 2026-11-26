@@ -37,6 +37,23 @@ describe('DockManager', () => {
     expect(findPanel(l, 'map')).toBeNull();
   });
 
+  it('panels a workspace does not offer leave its layout, and come back when offered again (DC-120)', () => {
+    const { dock } = setup();
+    dock.useWorkspace(WS_A);
+    dock.setExcluded(['map', 'fog', 'dice']);
+    const l = dock.getLayout();
+    expect(findPanel(l, 'fog')).toBeNull();
+    expect(findPanel(l, 'dice')).toBeNull();
+    expect(dock.isVisible('browser')).toBe(true);
+    // Not offered: it cannot be shown either.
+    dock.focus('dice');
+    expect(dock.isVisible('dice')).toBe(false);
+    dock.setExcluded(['map']);
+    // Back: a default panel at its default place, any other hidden until opened.
+    expect(dock.isVisible('fog')).toBe(true);
+    expect(dock.getLayout().hidden).toContain('dice');
+  });
+
   it('saves 500 ms after the last change, once', () => {
     const { dock, storage } = setup();
     dock.useWorkspace(WS_A);

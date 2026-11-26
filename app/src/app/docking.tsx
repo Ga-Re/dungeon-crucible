@@ -17,6 +17,7 @@ import { AssetPropertiesPanel, VaultPanel } from '../panels/VaultPanels';
 import { AssetPicker } from '../panels/AssetPicker';
 import type { WorkspaceId } from './store';
 import { PANEL_TITLES, WORKSPACES, type PanelId } from './workspaces';
+import { excludedPanels, offeredPanels, setOffered } from './panelChoice';
 
 export const PANEL_CONTENT: Record<PanelId, () => ReactNode> = {
   map: () => <MapView />,
@@ -80,7 +81,8 @@ export function activateWorkspaceLayout(ws: WorkspaceId): void {
   dock.useWorkspace({
     key: `dc.dock.${ws}`,
     defaults: workspaceDefaults(ws),
-    exclude: [WORKSPACES[ws].layout.center],
+    // The canvas, and the panels the DM does not want in this workspace (DC-120).
+    exclude: excludedPanels(ws, storage()),
     place: (i, width) => ({
       x: window.screenX + window.outerWidth - GROUP_SIZES.right - width - 40 - 40 * i,
       y: window.screenY + 180 + 40 * i,
@@ -88,9 +90,24 @@ export function activateWorkspaceLayout(ws: WorkspaceId): void {
   });
 }
 
-/** Shows a panel: brings a closed one back, expands it and its zone. The canvas is always shown. */
-export function focusPanel(id: PanelId): void {
+/**
+ * Shows a panel: brings a closed one back, expands it and its zone. The canvas is always shown.
+ * Asked for by a ribbon button in `ws`, a panel the workspace does not offer is offered again.
+ */
+export function focusPanel(id: PanelId, ws?: WorkspaceId): void {
+  if (ws && !offeredPanels(ws, storage()).includes(id)) offerPanel(ws, id, true);
   dock.focus(id);
+}
+
+/** The panels workspace `ws` offers on this device (DC-120). */
+export function workspacePanels(ws: WorkspaceId): PanelId[] {
+  return offeredPanels(ws, storage());
+}
+
+/** Offers panel `id` in workspace `ws` or not; `id` null: its default again. The active layout follows. */
+export function offerPanel(ws: WorkspaceId, id: PanelId | null, on: boolean): void {
+  setOffered(ws, id, on, storage());
+  if (dock.workspaceKey() === `dc.dock.${ws}`) dock.setExcluded(excludedPanels(ws, storage()));
 }
 
 /** Layouts of the former dockview-based docking; no longer read. */

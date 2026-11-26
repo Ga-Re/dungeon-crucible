@@ -91,6 +91,22 @@ export class DockManager<C = unknown> {
     if (this.layout !== loaded) this.scheduleSave();
   }
 
+  /** The storage key of the active workspace's layout, if any. */
+  workspaceKey(): string | null {
+    return this.config?.key ?? null;
+  }
+
+  /**
+   * Changes which panels the active workspace leaves out (its canvas and those the user does not
+   * want there, DC-120): left-out panels leave its layout; panels offered again come back – at their
+   * default place if the workspace has one for them, else hidden.
+   */
+  setExcluded(exclude: readonly string[]): void {
+    if (!this.config) return;
+    this.config = { ...this.config, exclude };
+    this.commit(loadLayout(JSON.stringify(this.layout), { known: this.known(), defaults: this.defaults() }));
+  }
+
   private defaults(): DockLayout {
     const c = this.config;
     if (!c) return this.layout;

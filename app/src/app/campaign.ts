@@ -578,17 +578,19 @@ export async function switchScene(scenePath: string): Promise<void> {
 
 /** Puts an open scene on the TV (E-30); the soundboard plays its ambience. */
 export async function putOnTv(scenePath: string | null): Promise<void> {
-  // Putting a scene on the TV releases it after the start (E-30).
-  if (scenePath && state.blackUntilRelease) {
+  // Putting a scene on the TV releases it after the start (E-30); it then fades in from black (E-38).
+  const released = !!scenePath && state.blackUntilRelease;
+  if (released) {
     state.blackUntilRelease = false;
     state.scene.table.blackout = false;
   }
   if (scenePath === state.tvScenePath) {
-    emit();
+    if (released) setTvScene(scenePath, true);
+    else emit();
     return;
   }
   await saveCampaign();
-  setTvScene(scenePath);
+  setTvScene(scenePath, released);
   await applyTvAmbience();
   await saveCampaign(true);
 }

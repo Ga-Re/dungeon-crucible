@@ -18,9 +18,10 @@ import { FADE_MAX_SECONDS, FADE_STEP_SECONDS, FOG_EDGE, FOG_MOTION, FOG_QUALITIE
 import { tileCount } from '../render/mapImages';
 import { Icon } from '../ui/Icon';
 import { SceneSound, SoundProperties, useSoundName } from './SoundPanels';
+import { TRANSITION_KINDS, type TransitionKind } from '../core/transition';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  openCreatureTab, setElementsLayer, setPlacementInteriorTrigger, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, toggleCondition, updateTable, useStore,
+  openCreatureTab, setElementsLayer, setPlacementInteriorTrigger, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, setNextTransition, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { switchScene } from '../app/campaign';
@@ -785,6 +786,7 @@ export function TablePanel() {
   const ppi = pixelsPerInch(table.display) * table.ppiCorrection;
   const fit = cellsVisibleOnTable(table.display, table.inchesPerCell / table.ppiCorrection);
   const [chosen, setChosen] = useState<number>(tableMonitor ?? monitors.find((m) => m.index !== 0)?.index ?? 0);
+  const nextTransition = useStore((s) => s.nextTransition);
   return (
     <div className="panel-body">
       <div className="sec">{t('panel.table')}</div>
@@ -799,6 +801,13 @@ export function TablePanel() {
       </div>
       <div className="row"><label>{t('table.rotation')}</label>
         <div className="seg">{([0, 90, 180, 270] as TableRotation[]).map((r) => <button key={r} className={table.rotation === r ? 'on' : ''} onClick={() => setTableRotation(r)}>{r}°</button>)}</div>
+      </div>
+      {/* The next change of scene only (E-38): otherwise the new map's transition. */}
+      <div className="row"><label htmlFor="t-next">{t('transition.next')}</label>
+        <select id="t-next" value={nextTransition ?? ''} onChange={(e) => setNextTransition((e.target.value || null) as TransitionKind | null)}>
+          <option value="">{t('transition.asMap')}</option>
+          {TRANSITION_KINDS.map((k) => <option key={k} value={k}>{t(`transition.${k}` as MessageKey)}</option>)}
+        </select>
       </div>
       <div className="sec">{t('table.physical')}</div>
       <div className="row"><label htmlFor="t-diag">{t('table.diagonal')}</label><input id="t-diag" type="number" min={10} step={0.1} value={table.display.diagonalInches} onChange={(e) => { const v = Number(e.target.value); if (v > 0) updateTable({ display: { ...table.display, diagonalInches: v } }); }} /></div>

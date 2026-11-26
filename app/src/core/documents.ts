@@ -20,7 +20,7 @@ export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' |
 /** Current version of each document kind. */
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
-  map: 9,
+  map: 10,
   scene: 11,
   creature: 1,
   asset: 3,
@@ -49,6 +49,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     7: (doc) => doc,
     // Version 9 adds sound sources and the map's sound (E-37): none yet.
     8: (doc) => doc,
+    // Version 10 adds the scene transition (E-38): none yet, the default applies.
+    9: (doc) => doc,
   },
   // The same for the scene's own areas and its overrides of map areas.
   scene: {

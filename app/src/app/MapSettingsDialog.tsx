@@ -1,6 +1,7 @@
 /**
  * "Map settings" (DC-011): the open map's name, type, landscape, tags, default fog, ambient
- * light and its sound everywhere (E-37). Edits a draft; OK applies it as one undoable step.
+ * light, its sound everywhere (E-37) and how the TV changes to its scenes (E-38). Edits a draft;
+ * OK applies it as one undoable step.
  */
 import { MAP_TYPES } from '../core/mapCatalog';
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
@@ -10,6 +11,7 @@ import { useI18n } from '../i18n/i18n';
 import type { MessageKey } from '../i18n/en';
 import { applyMapSettings, currentMapSettings, useStore } from './store';
 import { SoundSelect } from '../panels/SoundPanels';
+import { TRANSITION_KINDS, type TransitionKind } from '../core/transition';
 import './start.css';
 
 
@@ -121,6 +123,19 @@ export function MapSettingsDialog({ onClose }: { onClose: () => void }) {
             <span>{t('mapSettings.soundVolume')}</span>
             <input type="range" min={0} max={100} disabled={!draft.ambientSound} value={Math.round((draft.ambientSound?.volume ?? 0.5) * 100)}
               onChange={(e) => draft.ambientSound && set('ambientSound', { ...draft.ambientSound, volume: Number(e.target.value) / 100 })} />
+          </label>
+        </div>
+        <div className="ms-row">
+          <label className="start-field">
+            <span>{t('transition.title')}</span>
+            <select value={draft.transition.kind} onChange={(e) => set('transition', { ...draft.transition, kind: e.target.value as TransitionKind })}>
+              {TRANSITION_KINDS.map((k) => <option key={k} value={k}>{t(`transition.${k}` as MessageKey)}</option>)}
+            </select>
+          </label>
+          <label className="start-field">
+            <span>{t('transition.seconds')}</span>
+            <input type="number" min={0.1} max={10} step={0.1} disabled={draft.transition.kind === 'cut'} value={draft.transition.seconds}
+              onChange={(e) => { const v = Number(e.target.value); if (v > 0 && v <= 10) set('transition', { ...draft.transition, seconds: v }); }} />
           </label>
         </div>
         <div className="start-buttons">

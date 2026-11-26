@@ -103,6 +103,16 @@ describe('persistence', () => {
     expect(map.sounds[0].volume).toBe(0.7);
   });
 
+  it('a map\'s scene transition goes into the map file and back (DC-105)', () => {
+    const forge = createSampleScene();
+    forge.map.transition = { kind: 'black', seconds: 2 };
+    const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(forge, 'builtin:crypt'))));
+    expect(map.transition).toEqual({ kind: 'black', seconds: 2 });
+    expect(sceneFromDocuments(map, null, null).map.transition).toEqual({ kind: 'black', seconds: 2 });
+    const { transition: _t, ...without } = map;
+    expect(sceneFromDocuments(without, null, null).map.transition).toBeUndefined();
+  });
+
   it('keeps secret zones locked on a fresh scene', () => {
     const scene = createSampleScene();
     const map = mapSidecarFromScene(scene, 'builtin:crypt');

@@ -158,7 +158,7 @@ function touchingGroups(walls: Masonry[]): Masonry[][] {
 }
 
 function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: number, walls: Masonry[]): Geometry {
-  const key = JSON.stringify([drawing.origin, drawing.width, drawing.height, drawing.masonry, drawing.doors.map((d) => [d.wall, d.at, d.width]), withGround, cell]);
+  const key = JSON.stringify([drawing.origin, drawing.width, drawing.height, drawing.masonry, drawing.doors.map((d) => [d.wall, d.at, d.width, 'window' in d ? d.window ?? false : false]), withGround, cell]);
   const hit = geometries.get(key);
   if (hit) return hit;
   const { x: ox, y: oy } = drawing.origin;

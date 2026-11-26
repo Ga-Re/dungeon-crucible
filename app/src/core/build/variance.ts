@@ -266,7 +266,6 @@ export function lineStrips(points: readonly Point[], closed: boolean, spacing: n
       into = d + spacing - len;
     }
     u += len;
-    if (into > len) into -= len;
   }
   const last = out[out.length - 1];
   if (!last || u - last.u > spacing / 2) {

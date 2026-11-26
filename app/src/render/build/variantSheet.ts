@@ -32,7 +32,10 @@ const KINDS: Partial<Record<SurfaceSlot, Kind>> = {
 const kindOf = (slot: SurfaceSlot): Kind => KINDS[slot] ?? { dressed: false, rotations: 4 };
 
 const cache = new Map<string, HTMLCanvasElement>();
-const KEEP = 24;
+/** The kept sheets stay under ~96 MB of pixels (a 16-cell sheet at 200 px/cell is 40 MB alone). */
+const KEEP_BYTES = 96 << 20;
+let cacheBytes = 0;
+const bytesOf = (c: HTMLCanvasElement) => c.width * c.height * 4;
 
 /** Mean brightness of a picture (0–255), sampled small. */
 function meanLuma(src: HTMLCanvasElement): number {
@@ -58,7 +61,12 @@ export function surfaceSheet(slot: SurfaceSlot, tex: BuildTextures, cellPx: numb
   }
   const sheet = compose(slot, tex, cell, seed);
   cache.set(key, sheet);
-  if (cache.size > KEEP) cache.delete(cache.keys().next().value!);
+  cacheBytes += bytesOf(sheet);
+  while (cacheBytes > KEEP_BYTES && cache.size > 1) {
+    const oldest = cache.keys().next().value!;
+    cacheBytes -= bytesOf(cache.get(oldest)!);
+    cache.delete(oldest);
+  }
   return sheet;
 }
 
@@ -197,4 +205,5 @@ function compose(slot: SurfaceSlot, tex: BuildTextures, cell: number, seed: numb
 /** Tests and hot reload: forget the composed sheets. */
 export function resetSheetsForTests(): void {
   cache.clear();
+  cacheBytes = 0;
 }

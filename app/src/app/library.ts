@@ -281,8 +281,10 @@ export async function generateLibraryMap(name: string, opts: Omit<MapGenOptions,
   const file = mapFileFor(name, taken);
   const cell = DEFAULT_GRID.cellWidth;
   const gen = generateMap(opts);
+  // New ids are random, as the file rules ask; a counter only breaks ties.
   let n = 0;
-  const els = mapGenElements(gen, cell, opts.style, opts.seed, (prefix) => `${prefix}-${++n}`);
+  const rid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 8)}${++n}`;
+  const els = mapGenElements(gen, cell, opts.style, opts.seed, rid);
   const area = drawnBounds(els.walls, cell, 2, [...els.waters, ...els.floors.map((f) => ({ points: f.shape.flatMap((s) => s.outer.map(([x, y]) => ({ x, y }))), width: 1 }))]);
   const doc: MapSidecar = {
     kind: 'map', schemaVersion: MAP_VERSION, name, resource: DRAWN_RESOURCE, isVideo: false,
@@ -290,7 +292,7 @@ export async function generateLibraryMap(name: string, opts: Omit<MapGenOptions,
     tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
     layers: [], walls: [], zones: [], pois: [],
     // Torches make their own light; with none the map stays plainly lit.
-    lights: els.lights.map((l) => ({ id: `light-${++n}`, x: l.x, y: l.y, brightFt: 20, dimFt: 40, color: '#ffb35c' })),
+    lights: els.lights.map((l) => ({ id: rid('light'), x: l.x, y: l.y, brightFt: 20, dimFt: 40, color: '#ffb35c' })),
     ambient: opts.lights && els.lights.length ? 'dark' : 'lit',
     assets: [], masonry: els.walls, masonryDoors: els.doors, cliffs: [], waters: els.waters, waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: els.floors,
     generated: { style: opts.style, density: opts.density, seed: opts.seed, water: opts.water, lights: opts.lights, details: opts.details },

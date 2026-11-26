@@ -86,7 +86,7 @@ export function paintWater(g: CanvasRenderingContext2D, waters: readonly WiredWa
       const groundSrc = tex.surface[w.kind === 'sea' ? 'ground-sand' : 'floor-gravel'];
       const bandShape = (r: number) => {
         const b = path(ring);
-        for (const q of [path(offsetPolyline(ring, true, inward * r))]) b.addPath(q);
+        b.addPath(path(offsetPolyline(ring, true, inward * r)));
         return b;
       };
       g.fillStyle = pattern(g, groundSrc, cell, 3, w.seed + 9);

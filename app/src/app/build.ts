@@ -93,6 +93,8 @@ export function editableWaters(): Water[] {
 
 /** Starts drawing walls or cliffs, or placing doors (one command at a time). */
 export function startBuildCommand(kind: BuildCommand['kind']): void {
+  // A stale snapshot from an interrupted preview must never restore over another map.
+  if (kind === 'generate') genBefore = null;
   state.buildCommand = { kind, ...last, genSeed: newSeed(), region: null, points: [] };
   state.wallCommand = null;
   state.areaCommand = null;
@@ -159,13 +161,37 @@ function regenerate(): void {
   emit();
 }
 
-/** The preview goes back to what the map was (tool switch, discard). */
+/** The preview goes back to what the map was (tool switch, discard, undo, leaving the context). */
 function dropGeneratePreview(): void {
   if (!genBefore) return;
   apply({ masonry: genBefore.masonry, doors: genBefore.doors }, undefined, true, undefined, genBefore.floors);
   genBefore = null;
+  // The command, where it stays open, starts over: a region must be dragged anew.
+  const c = state.buildCommand;
+  if (c?.kind === 'generate' && c.region) state.buildCommand = { ...c, region: null };
 }
 buildHooks.cancelPreview = dropGeneratePreview;
+buildHooks.hasPreview = () => genBefore !== null;
+/**
+ * A save takes the preview out and puts it back afterwards (DC-119d): what lands on disk is
+ * always the map without the uncommitted preview.
+ */
+buildHooks.parkPreview = () => {
+  if (!genBefore) return null;
+  const m = target();
+  const preview = { masonry: m.masonry, doors: m.masonryDoors, floors: m.floors };
+  const before = genBefore;
+  apply({ masonry: before.masonry, doors: before.doors }, undefined, true, undefined, before.floors);
+  genBefore = null;
+  return () => {
+    // Put back only while the command still waits with its region (not discarded meanwhile).
+    const c = state.buildCommand;
+    if (c?.kind !== 'generate' || !c.region) return;
+    genBefore = before;
+    apply({ masonry: preview.masonry, doors: preview.doors }, undefined, true, undefined, preview.floors);
+    emit();
+  };
+};
 
 /** "Übernehmen": the preview becomes one undoable step; "Verwerfen": the map stays as it was. */
 function endGenerate(keep: boolean): void {

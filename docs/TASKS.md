@@ -408,8 +408,20 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     Werkzeug „Wasser“ im Tab „Bauen“ (Pinsel, Shift, Klicks; See/Meer schließen sich selbst), Eigenschaften (Art,
     Breite, Fließrichtung umdrehen, teilen, löschen), Schalter „Wasser bewegt sich (diese Karte)“. 3 Texturen mit
     Higgsfield. Geprüft in der App (alle Arten, Wasserfall, Bewegung, Zeichnen). Offen: `npm run bench` – DM.
-  - **DC-107g 2,5D und Automatik** (E-35): Höhe und Seitenflächen von Mauern und Klippen, Lichtrichtung je Karte;
+  - ✓ **DC-107g 2,5D und Automatik** (E-35): Höhe und Seitenflächen von Mauern und Klippen, Lichtrichtung je Karte;
     Türme an Ecken, Zinnen, Ufer-Details, weiche Übergänge (je abschaltbar); Fenster in Mauern und Häusern.
+    Umgesetzt: Karte Version 6 um `lightAngle` (45°), `autoShore`, `autoGrowth` erweitert, Mauern um `height` und
+    `fortified`, Türen um `window`. Fenster: Fenster-Wand in der Lücke (verdeckt weder Sicht noch Licht), nie geheim,
+    nie per Klick geöffnet, auf dem TV immer als Fenster. 2,5D (`render/drawnMap.ts`): Mauern stehen in ihrer Höhe
+    (je Stil, Wehrmauer höher, je Mauer änderbar) mit Seitenfläche und angehobener Krone, Schatten in Lichtrichtung;
+    Wehrmauern mit Zinnen und runden Türmen an Ecken, Enden und alle sechs Felder, nie in Toren oder Fenstern;
+    Klippenwände je nach Licht hell oder im Schatten. Automatik (`render/detailsPaint.ts`): Steine und Schilf an Ufern
+    (Meer nur Steine, kein Schilf in Schnee/Wüste), Bewuchs am Mauerfuß auf natürlichem Boden, ausgetretener Boden
+    vor Türen; weiche Übergänge der Böden gab es schon. Bedienung: Tür-Werkzeug mit Tür/Geheimtür/Fenster, Mauer-
+    Werkzeug mit „Wehrmauer“, Eigenschaften mit Höhe und Wehrmauer, Kartenbereich mit Lichtrichtung und den zwei
+    Automatik-Schaltern. 2 Texturen mit Higgsfield. Geprüft in der App (Burg mit Toren, Fenster, Licht aus zwei
+    Richtungen, Ufer). Hinweis: der Leistungstest in `cover.test.ts` schlägt unter starker Rechnerlast fehl, allein
+    läuft er durch.
   - Danach (eigene Pakete): Wege/Flüsse/Brücken, Räume und Dächer, Detailstreuung, Wildnis-/Stadt-Modus.
 - **DC-015 Assets und Ebenen** – Props siehe DC-041, Stockwerke DC-020, Zeichenebenen DC-101 (E-18).
 

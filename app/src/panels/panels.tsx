@@ -7,9 +7,10 @@ import { d20Test } from '../core/rules/dice';
 import { playerOfToken } from '../core/party';
 import type { InteriorTrigger } from '../core/sidecar';
 import { useI18n } from '../i18n/i18n';
-import { deleteBuildSelection, flipCliff, flipWater, rerollCliff, rerollMasonry, setWaterAnimated, splitBuildWall, updateBuildDoor, updateCliff, updateMasonry, updateWater, type BuildSelection } from '../app/build';
+import { deleteBuildSelection, flipCliff, flipWater, rerollCliff, rerollMasonry, setMapLook, setWaterAnimated, splitBuildWall, updateBuildDoor, updateCliff, updateMasonry, updateWater, type BuildSelection } from '../app/build';
 import { CliffFields, WaterFields } from './BuildCommandPanel';
 import { MASONRY_STYLES, type MasonryStyle } from '../core/build/masonry';
+import { defaultWallHeight } from '../render/drawnMap';
 import type { MessageKey } from '../i18n/en';
 import { TableView, type FrameSource } from '../table/TableView';
 import { BIOMES } from '../render/pixi/fog-living';
@@ -262,6 +263,7 @@ function MapProperties() {
       </div>
       {map.widthPx > 0 && <div className="row"><label /><span className="hint mono">{map.widthPx}×{map.heightPx} px · {tileCount(map.widthPx, map.heightPx)} GPU tiles</span></div>}
       <div className="row"><label>{t('map.ambient')}</label><span>{t(ambient === 'lit' ? 'ambient.lit' : 'ambient.dark')}</span></div>
+      {map.drawn && editable && <MapLook />}
       {map.waters.length > 0 && (
         <label className="cmd-check"><input type="checkbox" checked={map.waterAnimated} disabled={!editable} onChange={(e) => setWaterAnimated(e.target.checked)} />{t('build.water.animated')}</label>
       )}
@@ -293,6 +295,26 @@ function MapProperties() {
         </>
       ) : <p className="hint">{t('props.noSelection')}</p>}
     </div>
+  );
+}
+
+/** Directions the light can fall towards (degrees, map coordinates: 0 to the right, 90 down). */
+const LIGHT_ANGLES = [45, 90, 135, 180, 225, 270, 315, 0] as const;
+
+/** A drawn map's look (E-35): where the light falls, automatic details. */
+function MapLook() {
+  const { t } = useI18n();
+  const map = useStore((s) => s.scene.map);
+  return (
+    <>
+      <div className="row"><label htmlFor="p-light">{t('build.light')}</label>
+        <select id="p-light" value={map.lightAngle} onChange={(e) => setMapLook({ lightAngle: Number(e.target.value) })}>
+          {LIGHT_ANGLES.map((a) => <option key={a} value={a}>{t(`build.light.${a}` as MessageKey)}</option>)}
+        </select>
+      </div>
+      <label className="cmd-check"><input type="checkbox" checked={map.autoShore} onChange={(e) => setMapLook({ autoShore: e.target.checked })} />{t('build.autoShore')}</label>
+      <label className="cmd-check"><input type="checkbox" checked={map.autoGrowth} onChange={(e) => setMapLook({ autoGrowth: e.target.checked })} />{t('build.autoGrowth')}</label>
+    </>
   );
 }
 
@@ -340,10 +362,11 @@ function BuildProperties({ sel }: { sel: BuildSelection }) {
   if (door)
     return (
       <>
-        <div className="row"><label>{t('props.name')}</label><span>{t('build.props.door')}{door.secret ? ` · ${t('build.secret')}` : ''}</span></div>
+        <div className="row"><label>{t('props.name')}</label><span>{door.window ? t('build.opening.window') : t('build.props.door')}{door.secret ? ` · ${t('build.secret')}` : ''}</span></div>
         <NumberRow id="bd-width" label={t('build.width')} value={ft(door.width)} step={0.5} min={0.5} onCommit={(v) => v > 0 && updateBuildDoor(door.id, { width: v / ftPerPx })} />
-        <label className="cmd-check"><input type="checkbox" checked={door.secret} onChange={(e) => updateBuildDoor(door.id, { secret: e.target.checked })} />{t('build.secret')}</label>
-        {door.secret && (
+        <label className="cmd-check"><input type="checkbox" checked={!!door.window} onChange={(e) => updateBuildDoor(door.id, { window: e.target.checked })} />{t('build.opening.window')}</label>
+        {!door.window && <label className="cmd-check"><input type="checkbox" checked={door.secret} onChange={(e) => updateBuildDoor(door.id, { secret: e.target.checked })} />{t('build.secret')}</label>}
+        {door.secret && !door.window && (
           <>
             <label className="cmd-check"><input type="checkbox" checked={door.crack} onChange={(e) => updateBuildDoor(door.id, { crack: e.target.checked })} />{t('build.crack')}</label>
             <p className="hint">{t('build.crackAbout')}</p>
@@ -361,6 +384,8 @@ function BuildProperties({ sel }: { sel: BuildSelection }) {
         </select>
       </div>
       <NumberRow id="bw-thick" label={t('build.thickness')} value={ft(wall.thickness)} step={0.25} min={0.25} onCommit={(v) => v > 0 && updateMasonry(wall.id, { thickness: v / ftPerPx })} />
+      <NumberRow id="bw-height" label={t('build.height')} value={ft(wall.height ?? defaultWallHeight(wall, grid.cellWidth))} step={0.5} min={0.5} onCommit={(v) => v > 0 && updateMasonry(wall.id, { height: v / ftPerPx })} />
+      <label className="cmd-check"><input type="checkbox" checked={!!wall.fortified} onChange={(e) => updateMasonry(wall.id, { fortified: e.target.checked })} />{t('build.fortified')}</label>
       <div className="cmd-line">
         <button className="btn sm" onClick={() => rerollMasonry(wall.id)}><Icon name="reset" />{t('build.reroll')}</button>
         {sel.point !== null && <button className="btn sm" onClick={splitBuildWall}><Icon name="line" />{t('build.split')}</button>}

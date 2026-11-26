@@ -94,6 +94,7 @@ export function BuildCommandPanel() {
                 {SNAPS.map((s) => <option key={s} value={s}>{t(`build.snap.${s}` as MessageKey)}</option>)}
               </select>
             </label>
+            <label className="cmd-check"><input type="checkbox" checked={c.fortified} onChange={(e) => updateBuildCommand({ fortified: e.target.checked })} />{t('build.fortified')}</label>
             <p className="hint">{t('hint.buildWall')}</p>
             <div className="cmd-line">
               <span className="hint" role="status">{t('build.points', { n: c.points.length })}</span>
@@ -102,11 +103,15 @@ export function BuildCommandPanel() {
           </>
         ) : (
           <>
-            <label className="cmd-check">
-              <input type="checkbox" checked={c.secret} onChange={(e) => updateBuildCommand({ secret: e.target.checked })} />
-              {t('build.secret')}
+            <label className="cmd-field">
+              <span>{t('build.opening')}</span>
+              <select value={c.window ? 'window' : c.secret ? 'secret' : 'door'} onChange={(e) => updateBuildCommand({ window: e.target.value === 'window', secret: e.target.value === 'secret' })}>
+                <option value="door">{t('build.opening.door')}</option>
+                <option value="secret">{t('build.opening.secret')}</option>
+                <option value="window">{t('build.opening.window')}</option>
+              </select>
             </label>
-            <p className="hint">{t('hint.buildDoor')}</p>
+            <p className="hint">{t(c.window ? 'build.windowAbout' : 'hint.buildDoor')}</p>
           </>
         )}
       </div>

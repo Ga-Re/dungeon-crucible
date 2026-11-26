@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addBuildPoint, addBuildStroke, buildHit, flipWater, setWaterAnimated, updateWater, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
+import { addBuildPoint, addBuildStroke, buildHit, setMapLook, flipWater, setWaterAnimated, updateWater, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
 import { checkpoint, setWorkspace, sightWalls, state, undo } from './store';
 
 /** The "Build" tab (E-33, DC-107a) in the Map Forge, on the sample crypt (cells of 70 px, 5 ft). */
@@ -247,5 +247,36 @@ describe('water in the build tab (E-35, DC-107f)', () => {
     expect(state.scene.map.waterAnimated).toBe(false);
     undo();
     expect(state.scene.map.waterAnimated).toBe(true);
+  });
+});
+
+describe('windows, fortified walls and the map look (E-35, DC-107g)', () => {
+  beforeEach(() => {
+    setWorkspace('forge');
+    state.scene.map.masonry = [];
+    state.scene.map.masonryDoors = [];
+    state.buildSelection = null;
+  });
+
+  it('draws a fortified wall and puts a window in it, which blocks no sight', () => {
+    startBuildCommand('wall');
+    updateBuildCommand({ fortified: true });
+    addBuildPoint({ x: 0, y: 15000 }, 8);
+    addBuildPoint({ x: 350, y: 15000 }, 8);
+    finishBuildWall();
+    expect(state.scene.map.masonry[0].fortified).toBe(true);
+    startBuildCommand('door');
+    updateBuildCommand({ window: true, secret: true });
+    placeBuildDoor({ x: 120, y: 15005 }, false, 20);
+    const [d] = state.scene.map.masonryDoors;
+    expect(d).toMatchObject({ window: true, secret: false });
+    expect(sightWalls(state.scene).find((w) => w.id === d.id)?.kind).toBe('window');
+  });
+
+  it('changes the light and the automatic details as one step each', () => {
+    setMapLook({ lightAngle: 135, autoShore: false });
+    expect(state.scene.map).toMatchObject({ lightAngle: 135, autoShore: false });
+    undo();
+    expect(state.scene.map).toMatchObject({ lightAngle: 45, autoShore: true });
   });
 });

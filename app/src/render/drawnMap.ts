@@ -59,8 +59,13 @@ interface PreparedStyle {
 const STYLE_HEIGHT: Record<MasonryStyle, number> = { 'dungeon-stone': 0.45, 'cave-rock': 0.35, brick: 0.45, wood: 0.3 };
 const FORTIFIED_HEIGHT = 1.6;
 
+/** How high a wall stands by its style and fortification, when it has no height of its own. */
+export function defaultWallHeight(w: Pick<Masonry, 'style' | 'fortified'>, cell: number): number {
+  return STYLE_HEIGHT[w.style] * cell * (w.fortified ? FORTIFIED_HEIGHT : 1);
+}
+
 function heightOf(w: Masonry, cell: number): number {
-  return w.height ?? STYLE_HEIGHT[w.style] * cell * (w.fortified ? FORTIFIED_HEIGHT : 1);
+  return w.height ?? defaultWallHeight(w, cell);
 }
 
 function surfacePattern(g: CanvasRenderingContext2D, source: HTMLCanvasElement, cell: number, cells: number, seed: number): CanvasPattern | null {

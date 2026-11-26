@@ -21,6 +21,10 @@ export interface BuildCommand {
   snap: BuildSnap;
   /** Doors placed are secret. */
   secret: boolean;
+  /** Openings placed are windows (E-35). */
+  window: boolean;
+  /** Walls drawn are fortified: towers and battlements (E-35). */
+  fortified: boolean;
   /** Cliffs (E-34): what they are and how they are shaped. */
   cliffKind: CliffKind;
   form: CliffForm;
@@ -54,7 +58,7 @@ type Options = Omit<BuildCommand, 'kind' | 'points'>;
 const MARGIN_CELLS = 2;
 
 /** Options kept between commands, per window. */
-let last: Options = { style: 'dungeon-stone', thicknessFt: 1, snap: 'grid', secret: false, cliffKind: 'rock', form: 'edge', steep: true, widthFt: 10, steps: 3, inside: 'low', growth: true, waterKind: 'river', riverWidthFt: 10 };
+let last: Options = { style: 'dungeon-stone', thicknessFt: 1, snap: 'grid', secret: false, window: false, fortified: false, cliffKind: 'rock', form: 'edge', steep: true, widthFt: 10, steps: 3, inside: 'low', growth: true, waterKind: 'river', riverWidthFt: 10 };
 
 const pxPerFt = () => state.scene.map.grid.cellWidth / state.scene.map.grid.feetPerCell;
 const newSeed = () => Math.floor(Math.random() * 1_000_000);
@@ -208,7 +212,7 @@ export function finishBuildWall(closed = false): void {
     state.buildSelection = { kind: 'cliff', wall: cliff.id, point: null, door: null };
     log('log.cliffAdded');
   } else {
-    const wall: Masonry = { id: freshId('masonry'), points, closed: closed && points.length >= 3, style: c.style, thickness: Math.max(1, c.thicknessFt * pxPerFt()), seed: newSeed(), ...onCurrentLayer() };
+    const wall: Masonry = { id: freshId('masonry'), points, closed: closed && points.length >= 3, style: c.style, thickness: Math.max(1, c.thicknessFt * pxPerFt()), seed: newSeed(), ...(c.fortified ? { fortified: true } : {}), ...onCurrentLayer() };
     apply({ masonry: [...m.masonry, wall], doors: m.masonryDoors });
     state.buildSelection = { kind: 'wall', wall: wall.id, point: null, door: null };
     log('log.masonryAdded');
@@ -236,7 +240,7 @@ export function placeBuildDoor(p: Point, free: boolean, tolPx: number): boolean 
   const at = doorPlacement(editableMasonry(), p, free || !state.snap ? null : state.scene.map.grid, tolPx);
   if (!at) return false;
   checkpoint();
-  const door: BuildDoor = { id: freshId('door'), wall: at.wall, at: at.at, width: state.scene.map.grid.cellWidth, secret: c.secret, crack: false };
+  const door: BuildDoor = { id: freshId(c.window ? 'window' : 'door'), wall: at.wall, at: at.at, width: state.scene.map.grid.cellWidth, secret: !c.window && c.secret, crack: false, ...(c.window ? { window: true } : {}) };
   apply({ masonry: state.scene.map.masonry, doors: [...state.scene.map.masonryDoors, door] });
   state.buildSelection = { kind: 'wall', wall: at.wall, point: null, door: door.id };
   log('log.doorAdded');
@@ -378,7 +382,7 @@ export function splitBuildWall(): void {
   emit();
 }
 
-export function updateMasonry(id: string, patch: Partial<Pick<Masonry, 'style' | 'thickness' | 'seed'>>): void {
+export function updateMasonry(id: string, patch: Partial<Pick<Masonry, 'style' | 'thickness' | 'seed' | 'height' | 'fortified'>>): void {
   if (state.layer !== 'map') return;
   checkpoint();
   apply({ masonry: state.scene.map.masonry.map((w) => (w.id === id ? { ...w, ...patch } : w)), doors: state.scene.map.masonryDoors });
@@ -390,10 +394,11 @@ export function rerollMasonry(id: string): void {
   updateMasonry(id, { seed: newSeed() });
 }
 
-export function updateBuildDoor(id: string, patch: Partial<Pick<BuildDoor, 'width' | 'secret' | 'crack'>>): void {
+export function updateBuildDoor(id: string, patch: Partial<Pick<BuildDoor, 'width' | 'secret' | 'crack' | 'window'>>): void {
   if (state.layer !== 'map') return;
   checkpoint();
-  const doors = state.scene.map.masonryDoors.map((d) => (d.id === id ? { ...d, ...patch, ...(patch.secret === false ? { crack: false } : {}) } : d));
+  // A window is never secret; a door that stops being secret loses its crack.
+  const doors = state.scene.map.masonryDoors.map((d) => (d.id === id ? { ...d, ...patch, ...(patch.secret === false || patch.window ? { crack: false } : {}), ...(patch.window ? { secret: false } : {}) } : d));
   apply({ masonry: state.scene.map.masonry, doors });
   emit();
 }
@@ -451,6 +456,15 @@ export function flipWater(id: string): void {
   if (state.layer !== 'map' || !m.waters.some((x) => x.id === id)) return;
   checkpoint();
   apply({ masonry: m.masonry, doors: m.masonryDoors }, m.cliffs, true, m.waters.map((x) => (x.id === id ? { ...x, points: [...x.points].reverse() } : x)));
+  emit();
+}
+
+/** The map's look (E-35): where the light falls towards, and its automatic details (one step). */
+export function setMapLook(patch: Partial<{ lightAngle: number; autoShore: boolean; autoGrowth: boolean }>): void {
+  if (state.layer !== 'map') return;
+  checkpoint();
+  Object.assign(state.scene.map, patch);
+  markDirty();
   emit();
 }
 

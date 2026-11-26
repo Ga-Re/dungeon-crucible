@@ -621,8 +621,13 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
 - **DC-022 Zuschneiden, Drehen, Bildanpassung** nicht-destruktiv (T-192, E-42). Branch `feature/map-forge-more`.
 - **DC-023 Kartenvarianten** je Ebene (Tag/Nacht/zerstört) (T-191, E-41). Branch `feature/map-forge-more`.
 - **DC-024 UVTT-Import** mit Raster, Wänden, Türen, Lichtern (T-198). **Zurückgestellt** (DM 2026-11-26).
-- **DC-025 Testfigur und Leck-Prüfung** für Wände (T-194, E-43); automatische Wände aus Bereichen (T-141) später.
-  Branch `feature/map-forge-more`.
+- ✓ **DC-025 Testfigur und Leck-Prüfung** für Wände (T-194, E-43); automatische Wände aus Bereichen (T-141) später.
+  Branch `feature/map-forge-more`. Erledigt: `core/leaks.ts` (offene Wandenden, Lücken bis ½ Feld als eine
+  Lücke, Türen ohne Anschluss; Klippen ausgenommen; Tests); Kartenschmiede › Hindernisse › „Leck-Prüfung“ öffnet
+  ein Befehls-Panel mit Liste (Klick zeigt die Stelle) und Schalter „Testfigur“ mit Dunkelsicht; die Testfigur
+  ist ziehbar, ihre Sicht wird wie die einer Spielerfigur gerechnet (Wände inkl. gezeichneter Mauern und
+  Asset-Türen, Licht, Dunkelsicht) und hell gezeigt; Lücken rot markiert. Nichts davon wird gespeichert oder an
+  den TV geschickt. In der App geprüft (Beispielkarte: keine Lücken, Sicht durch die Durchgänge).
 - **DC-026 Parametrische Räume, Gelände mit Bewegungskosten, Treppen zwischen Ebenen** (T-195–197).
 - **DC-027 Karte aus Kacheln, eigene Karten zeichnen** (T-190, Stufe 6) – geht in DC-107 (Zeichnen) und DC-119 (Generator) auf.
 - **DC-028 Einzelkarte teilen als `.dmmap`** (T-148).

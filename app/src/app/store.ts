@@ -9,6 +9,7 @@ import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type Grid
 import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, SoundSource, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { isSoundRef } from '../core/sound';
+import { findLeaks, type Leak } from '../core/leaks';
 import { DEFAULT_TRANSITION, type Transition, type TransitionKind, type TransitionPlay } from '../core/transition';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
 import { masonrySightWalls, toggledMasonryDoor, withMasonry } from '../core/build/sight';
@@ -180,6 +181,8 @@ export interface AppState {
   effectRuns: Record<string, number>;
   /** The placing mode while on (E-31, DC-116): an asset placed with each click, previewed under the pointer. */
   placing: Placing | null;
+  /** The Map Forge's leak check (DC-025): open, with its test figure (not saved). */
+  leakCheck: { figure: Point | null; darkvisionFt: number } | null;
   /** The placing mode's options as last used (kept for the next time, this session). */
   placeOptions: Omit<PlaceOptions, 'variant'> & { snap: boolean };
   /** Houses a player character came into whose interior waits for the DM's yes (E-29; not saved). */
@@ -294,6 +297,7 @@ function initial(): AppState {
     effectRuns: {},
     interiorAsks: [],
     placing: null,
+    leakCheck: null,
     placeOptions: { randomRotation: false, rotationStep: 90, rotation: 0, randomScale: false, scaleSpread: 0.1, snap: true },
     tabs: [],
     activeTab: null,
@@ -2410,6 +2414,48 @@ export function selectLight(id: string | null): void {
   state.selectedLightId = id;
   if (id) state.selectedSoundId = null;
   emit();
+}
+
+/* ---------- Leak check (DC-025, E-43) ---------- */
+
+/** Opens or closes the leak check (Map Forge). */
+export function setLeakCheck(open: boolean): void {
+  state.leakCheck = open ? (state.leakCheck ?? { figure: null, darkvisionFt: 60 }) : null;
+  emit();
+}
+
+/** Puts the test figure at `p` (none: away) or changes its darkvision. Nothing of it is saved. */
+export function updateLeakCheck(patch: Partial<NonNullable<AppState['leakCheck']>>): void {
+  if (!state.leakCheck) return;
+  state.leakCheck = { ...state.leakCheck, ...patch };
+  emit();
+}
+
+let leaksCache: { walls: readonly Wall[]; cell: number; leaks: Leak[] } | null = null;
+
+/** The leaks of the walls sight uses (drawn walls and asset doors included); computed when they change. */
+export function currentLeaks(): Leak[] {
+  const walls = sightWalls(state.scene);
+  const cell = state.scene.map.grid.cellWidth;
+  if (leaksCache?.walls !== walls || leaksCache.cell !== cell) leaksCache = { walls, cell, leaks: findLeaks(walls, cell / 2) };
+  return leaksCache.leaks;
+}
+
+let sightCache: { key: string; walls: readonly Wall[]; lights: unknown; sight: Polygon[] } | null = null;
+
+/** What the test figure sees now: as a player character there would (light, darkvision, walls). */
+export function testFigureSight(): Polygon[] {
+  const lc = state.leakCheck;
+  if (!lc?.figure) return [];
+  // The same while figure, walls and lights stay: the overlay asks every frame.
+  const key = `${lc.figure.x},${lc.figure.y},${lc.darkvisionFt},${state.scene.ambient}`;
+  const walls = sightWalls(state.scene);
+  if (sightCache?.key === key && sightCache.walls === walls && sightCache.lights === state.scene.lights) return sightCache.sight;
+  const probe: Token = { id: '__test', name: '', label: '', kind: 'pc', x: lc.figure.x, y: lc.figure.y, size: 1, ringColor: '#ffffff', visionFt: lc.darkvisionFt, hp: 1, maxHp: 1, ac: 10, initiative: 0, conditions: [] };
+  const seen = withAssetDoors(state.scene);
+  const sight = visiblePolygons(updateVision({ ...seen, tokens: [probe] }, assetExtras(state.scene)));
+  sightCache = { key, walls, lights: state.scene.lights, sight };
+  return sight;
 }
 
 /* ---------- Sound sources (E-37, DC-104) ---------- */

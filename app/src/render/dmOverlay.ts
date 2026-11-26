@@ -9,6 +9,7 @@ import { labelPoint } from '../core/areas';
 import type { Polygon } from '../core/poly/types';
 import type { HiddenElements, Scene, Wall, WallKind } from '../core/scene';
 import type { ViewerVision } from '../core/vision';
+import type { Leak } from '../core/leaks';
 import { drawTemplate, hexToRgba, type TemplateLike } from './shared';
 
 export interface OverlayView {
@@ -26,6 +27,8 @@ export interface OverlayState {
   selectedSoundId?: string | null;
   /** Where the placing mode would put a sound source (E-37). */
   soundGhost?: Point | null;
+  /** The leak check (DC-025): what its test figure sees, the figure, and the leaks found. */
+  leakCheck?: { figure: Point | null; sight: readonly Polygon[]; leaks: readonly Leak[] } | null;
   measure: { a: Point; b: Point; ft: number } | null;
   /** Walls selected in the Map Forge (DC-014). */
   selectedWallIds: readonly string[];
@@ -295,6 +298,7 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     if (o.editMode || sel) drawSoundReach(g, s, s.radiusFt * ftPx, sel, px);
     drawSpeaker(g, s.x, s.y, Math.max(8 * px, cell * 0.18), sel, px);
   }
+  if (o.leakCheck) drawLeakCheck(g, o.leakCheck, Math.max(8 * px, cell * 0.3), px);
   if (o.soundGhost) {
     g.save();
     g.globalAlpha = 0.55;
@@ -584,6 +588,54 @@ function drawHidden(g: CanvasRenderingContext2D, h: HiddenElements, px: number):
     g.beginPath();
     g.arc(l.x, l.y, 9 * px, 0, Math.PI * 2);
     g.stroke();
+  }
+  g.restore();
+}
+
+/** The leak check (DC-025): the test figure's sight lit, the figure, the leaks in red. */
+function drawLeakCheck(g: CanvasRenderingContext2D, lc: NonNullable<OverlayState['leakCheck']>, r: number, px: number): void {
+  g.save();
+  if (lc.sight.length) {
+    g.fillStyle = 'rgba(140, 210, 255, 0.16)';
+    g.strokeStyle = 'rgba(140, 210, 255, 0.85)';
+    g.lineWidth = 1.5 * px;
+    const path = areaPath(lc.sight);
+    g.fill(path, 'evenodd');
+    g.stroke(path);
+  }
+  g.strokeStyle = '#e2554c';
+  g.fillStyle = 'rgba(226, 85, 76, 0.25)';
+  g.lineWidth = 3 * px;
+  for (const l of lc.leaks) {
+    if (l.to) {
+      g.beginPath();
+      g.moveTo(l.at.x, l.at.y);
+      g.lineTo(l.to.x, l.to.y);
+      g.stroke();
+    }
+    const c = l.to ? { x: (l.at.x + l.to.x) / 2, y: (l.at.y + l.to.y) / 2 } : l.at;
+    g.beginPath();
+    g.arc(c.x, c.y, 10 * px, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+  }
+  if (lc.figure) {
+    g.fillStyle = 'rgba(18,24,30,.9)';
+    g.strokeStyle = '#8cd2ff';
+    g.lineWidth = 3 * px;
+    g.beginPath();
+    g.arc(lc.figure.x, lc.figure.y, r, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    // An eye: what it sees.
+    g.lineWidth = 2 * px;
+    g.beginPath();
+    g.ellipse(lc.figure.x, lc.figure.y, r * 0.55, r * 0.32, 0, 0, Math.PI * 2);
+    g.stroke();
+    g.fillStyle = '#8cd2ff';
+    g.beginPath();
+    g.arc(lc.figure.x, lc.figure.y, r * 0.16, 0, Math.PI * 2);
+    g.fill();
   }
   g.restore();
 }

@@ -13,7 +13,7 @@ import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, 
 import { choosablePanels } from './panelChoice';
 import type { DocTab } from './store';
 import {
-  clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, startCalibration, startWallCommand, redo, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
+  clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, startCalibration, setLeakCheck, startWallCommand, redo, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { stopAll } from './soundboard';
 import { startBuildCommand } from './build';
@@ -134,7 +134,7 @@ function Ribbon() {
   const { t } = useI18n();
   const ws = useStore((s) => s.ws);
   const tool = useStore((s) => s.tool);
-  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart, onTv: !!s.scenePath && s.scenePath === s.tvScenePath }));
+  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart, onTv: !!s.scenePath && s.scenePath === s.tvScenePath, leakCheck: !!s.leakCheck }));
   const [resetting, setResetting] = useState(false);
   const mapSettings = useStore((s) => s.mapSettingsOpen);
   const [tab, setTab] = useState(0);
@@ -159,6 +159,7 @@ function Ribbon() {
     if (b.id === 'scene:toTv') return flags.onTv;
     if (b.id === 'area:create') return tool === 'area';
     if (b.id === 'walls:draw') return tool === 'wall';
+    if (b.id === 'leak:check') return flags.leakCheck;
     if (b.id === 'build:wall') return tool === 'build-wall';
     if (b.id === 'build:door') return tool === 'build-door';
     if (b.id === 'build:cliff') return tool === 'build-cliff';
@@ -193,6 +194,7 @@ function Ribbon() {
       case 'audio:stop': return stopAll();
       case 'fog:revealAll': return fogAll(true);
       case 'walls:draw': return startWallCommand();
+      case 'leak:check': return setLeakCheck(!state.leakCheck);
       case 'build:wall': return startBuildCommand('wall');
       case 'build:door': return startBuildCommand('door');
       case 'build:cliff': return startBuildCommand('cliff');

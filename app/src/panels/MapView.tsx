@@ -14,6 +14,7 @@ import { WallCommandPanel } from './WallCommandPanel';
 import { assetShapes, footprintOf, hitsPlacement, ROTATE_STEP } from '../core/placement';
 import { drawnPlacements } from '../core/interiors';
 import { PlacingPanel } from './PlacingPanel';
+import { LeakCheckPanel } from './LeakCheckPanel';
 import { MapCatalogView } from './MapCatalog';
 import { allPlacements } from '../core/persistence';
 import { ASSET_DRAG } from './VaultPanels';
@@ -43,7 +44,7 @@ import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/r
 import { TableView, type FrameSource } from '../table/TableView';
 import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
-  addCreatureToken, addLight, lightAt, removeSound, selectSound, soundAt, updateSound, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
+  addCreatureToken, addLight, lightAt, removeSound, selectSound, soundAt, updateSound, currentLeaks, testFigureSight, updateLeakCheck, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
   editableHere, shownInForge, activateAsset, placeHere, previewPlacing, stopPlacing, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, masonryDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
@@ -53,7 +54,7 @@ import {
 export const CREATURE_DRAG = 'application/x-dc-creature';
 
 /** Commands other UI parts can trigger on the active map view. */
-export const mapCommands: { fit: () => void; centre: () => Point | null } = { fit: () => undefined, centre: () => null };
+export const mapCommands: { fit: () => void; centre: () => Point | null; show: (p: Point) => void } = { fit: () => undefined, centre: () => null, show: () => undefined };
 
 const HINTS: Partial<Record<string, MessageKey>> = {
   select: 'hint.select', pan: 'hint.pan', measure: 'hint.measure', ping: 'hint.ping', calibrate: 'hint.calibrate',
@@ -77,6 +78,8 @@ type Drag =
   /** A sound source (E-37): moved, or its radius dragged at the handle on its edge. */
   | { kind: 'sound-move'; id: string; ox: number; oy: number; moved: boolean }
   | { kind: 'sound-radius'; id: string; moved: boolean }
+  /** The leak check's test figure (DC-025), dragged around. */
+  | { kind: 'leak-figure'; ox: number; oy: number }
   | { kind: 'calib-box'; a: Point }
   | { kind: 'calib-move'; last: Point }
   | { kind: 'template'; shape: TemplateShape; a: Point; b: Point }
@@ -104,6 +107,8 @@ function DmMap() {
   const editStart = useStore((s) => s.editStart);
   const campaignOpen = useStore((s) => !!s.campaign);
   const dmFogHidden = useStore((s) => s.dmFogHidden);
+  // Another command panel open: the leak check waits behind it (one panel at a time).
+  const otherCommand = useStore((s) => !!(s.placing || s.wallCommand || s.areaCommand || s.buildCommand || s.calibration));
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -145,6 +150,12 @@ function DmMap() {
       const s = size();
       const v = view.current;
       return { x: (s.width / 2 - v.x) / v.zoom, y: (s.height / 2 - v.y) / v.zoom };
+    };
+    // Brings `p` to the middle of the view, at the zoom there is (a leak in the list, DC-025).
+    mapCommands.show = (p) => {
+      const s = size();
+      const v = view.current;
+      view.current = { ...v, x: s.width / 2 - p.x * v.zoom, y: s.height / 2 - p.y * v.zoom };
     };
     fit();
 
@@ -343,6 +354,7 @@ function DmMap() {
       selectedLightId: state.selectedLightId,
       selectedSoundId: state.selectedSoundId,
       soundGhost: state.placing?.at && isSoundRef(state.placing.next.path) ? state.placing.at : null,
+      leakCheck: state.ws === 'forge' && state.leakCheck ? { figure: state.leakCheck.figure, sight: testFigureSight(), leaks: currentLeaks() } : null,
       measure: d?.kind === 'measure' ? { a: d.a, b: d.b, ft: gridDistanceFeet(state.scene.map.grid, d.a, d.b) } : null,
       selectedWallIds: state.selectedWallIds,
       wallDraft: wallDraftOf(),
@@ -476,6 +488,12 @@ function DmMap() {
       return;
     }
     const cell = state.scene.map.grid.cellWidth;
+    // The leak check's test figure (DC-025) is grabbed with the select tool.
+    const fig = state.ws === 'forge' ? state.leakCheck?.figure : null;
+    if (fig && state.tool === 'select' && Math.hypot(fig.x - p.x, fig.y - p.y) < cell * 0.4) {
+      drag.current = { kind: 'leak-figure', ox: fig.x - p.x, oy: fig.y - p.y };
+      return;
+    }
     switch (state.tool) {
       case 'select': {
         const tk = [...state.scene.tokens].reverse().find((k) => Math.hypot(k.x - p.x, k.y - p.y) < (cell * k.size) / 2);
@@ -693,6 +711,8 @@ function DmMap() {
       if (!d.moved) checkpoint();
       d.moved = true;
       moveAssetTo(d.id, { x: p.x + d.ox, y: p.y + d.oy }, false);
+    } else if (d.kind === 'leak-figure') {
+      updateLeakCheck({ figure: { x: p.x + d.ox, y: p.y + d.oy } });
     } else if (d.kind === 'sound-move') {
       if (!d.moved) checkpoint();
       d.moved = true;
@@ -855,6 +875,7 @@ function DmMap() {
       {ws === 'forge' && <AreaCommandPanel />}
       {(ws === 'forge' || ws === 'play') && <PlacingPanel />}
       {ws === 'forge' && <WallCommandPanel />}
+      {ws === 'forge' && !otherCommand && <LeakCheckPanel />}
       {/* The Build tab draws into the map in the Map Forge, into the scene in the Orchestrator (DC-107c). */}
       <BuildCommandPanel />
       {ws === 'forge' && <CalibrationPanel />}

@@ -9,7 +9,8 @@ import { Icon } from '../ui/Icon';
 import { mapCommands } from '../panels/MapView';
 import { MonitorMenu } from '../panels/panels';
 import { PANEL_TITLES, WORKSPACES, WORKSPACE_ORDER, type PanelId, type RibbonButton } from './workspaces';
-import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, focusPanel, removeLegacyLayouts } from './docking';
+import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, focusPanel, offerPanel, removeLegacyLayouts, workspacePanels } from './docking';
+import { choosablePanels } from './panelChoice';
 import type { DocTab } from './store';
 import {
   clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, startCalibration, startWallCommand, redo, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
@@ -186,9 +187,9 @@ function Ribbon() {
       case 'fog:dmHide': return toggleDmFog();
       case 'fogmode:reveal': return setFogMode('reveal');
       case 'fogmode:hide': return setFogMode('hide');
-      case 'panel:fog': return focusPanel('fog');
-      case 'panel:sound': return focusPanel('sound');
-      case 'panel:mapSound': return focusPanel('mapSound');
+      case 'panel:fog': return focusPanel('fog', state.ws);
+      case 'panel:sound': return focusPanel('sound', state.ws);
+      case 'panel:mapSound': return focusPanel('mapSound', state.ws);
       case 'audio:stop': return stopAll();
       case 'fog:revealAll': return fogAll(true);
       case 'walls:draw': return startWallCommand();
@@ -206,8 +207,8 @@ function Ribbon() {
       case 'table:open': return void openTable();
       case 'table:rotate': return rotateTable();
       case 'table:move': return setMenu(el.getBoundingClientRect());
-      case 'panel:table': return focusPanel('table');
-      case 'panel:encounter': return focusPanel('encounter');
+      case 'panel:table': return focusPanel('table', state.ws);
+      case 'panel:encounter': return focusPanel('encounter', state.ws);
       case 'map:import':
         void importMapIntoCampaign().then((handled) => { if (!handled) fileRef.current?.click(); });
         return;
@@ -261,14 +262,16 @@ function Ribbon() {
   );
 }
 
-/** Menu "Windows": every panel with its state; a click shows a closed one or closes an open one. */
+/**
+ * Menu "Windows": the panels this workspace offers, with their state – a click shows a closed one
+ * or closes an open one. "Choose panels …" sets which panels the workspace offers (DC-120).
+ */
 function PanelsMenu({ anchor, onClose }: { anchor: DOMRect; onClose: () => void }) {
   const { t } = useI18n();
   const ws = useStore((s) => s.ws);
   useSyncExternalStore(dock.subscribe, dock.getLayout);
-  const l = WORKSPACES[ws].layout;
-  const mine = [...l.left, ...l.right, ...l.bottom, ...(l.floating ?? []).map((f) => f.id)];
-  const others = (Object.keys(PANEL_TITLES) as PanelId[]).filter((id) => id !== l.center && !mine.includes(id));
+  const [choosing, setChoosing] = useState(false);
+  const offered = workspacePanels(ws);
   useEffect(() => {
     const close = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest('.menu')) onClose(); };
     const id = setTimeout(() => document.addEventListener('click', close), 0);
@@ -282,13 +285,28 @@ function PanelsMenu({ anchor, onClose }: { anchor: DOMRect; onClose: () => void 
       </button>
     );
   };
+  if (choosing) {
+    return (
+      <div className="menu" style={{ left: Math.max(8, anchor.left), top: anchor.bottom + 4 }}>
+        <div className="mh">{t('panels.chooseTitle', { ws: t(WORKSPACES[ws].name) })}</div>
+        {choosablePanels(ws).map((id) => (
+          <label key={id} className="menu-check">
+            <input type="checkbox" checked={offered.includes(id)} onChange={(e) => offerPanel(ws, id, e.target.checked)} />
+            <span>{t(PANEL_TITLES[id])}</span>
+          </label>
+        ))}
+        <div className="mh" />
+        <button onClick={() => offerPanel(ws, null, true)}><Icon name="undo" /><span>{t('panels.chooseDefault')}</span></button>
+        <button onClick={() => setChoosing(false)}><Icon name="check" /><span>{t('panels.chooseDone')}</span></button>
+      </div>
+    );
+  }
   return (
     <div className="menu" style={{ left: Math.max(8, anchor.left), top: anchor.bottom + 4 }}>
       <div className="mh">{t('panels.workspace')}</div>
-      {mine.map(item)}
-      <div className="mh">{t('panels.more')}</div>
-      {others.map(item)}
+      {offered.map(item)}
       <div className="mh" />
+      <button onClick={() => setChoosing(true)}><Icon name="sliders" /><span>{t('panels.choose')}</span></button>
       <button onClick={() => { dock.resetLayout(); onClose(); }}><Icon name="undo" /><span>{t('panels.reset')}</span></button>
     </div>
   );

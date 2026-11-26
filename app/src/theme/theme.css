@@ -233,6 +233,10 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .menu button:hover { background: var(--panel-2); }
 .menu button.on { color: var(--accent); background: var(--accent-soft); }
 .menu small { display: block; color: var(--fg-dim); font-size: 10.5px; }
+/* "Choose panels" (DC-120): one row per panel with a checkbox. */
+.menu .menu-check { display: flex; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 3px; cursor: pointer; }
+.menu .menu-check:hover { background: var(--panel-2); }
+.menu .menu-check input { accent-color: var(--accent); }
 
 /* Initiative */
 .init-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }

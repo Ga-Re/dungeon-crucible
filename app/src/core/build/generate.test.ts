@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contours, generate, generatedElements } from './generate';
+import { contours, generate, generatedElements, generateMap, mapGenElements } from './generate';
 
 const opts = { cols: 40, rows: 30, density: 0.6, seed: 7 };
 
@@ -127,5 +127,56 @@ describe('generated elements (DC-119d)', () => {
     expect(els.floors[0].style).toBe('cave-rock');
     const offGrid = els.walls[0].points.filter((p) => p.x % 35 !== 0 || p.y % 35 !== 0);
     expect(offGrid.length).toBeGreaterThan(0);
+  });
+});
+
+describe('whole-map generation (DC-119e)', () => {
+  const mopts = { cols: 60, rows: 45, density: 0.6, seed: 11 };
+
+  it('a cave with water gets ponds inside the cavern, away from the walls', () => {
+    const g = generateMap({ ...mopts, style: 'cave', water: true, lights: false, details: false });
+    const wet = [...g.water].reduce((s, v) => s + v, 0);
+    expect(wet).toBeGreaterThan(0);
+    for (let y = 0; y < g.rows; y++)
+      for (let x = 0; x < g.cols; x++) {
+        if (!g.water[y * g.cols + x]) continue;
+        expect(g.open[y * g.cols + x]).toBe(1);
+        // No pond cell touches a wall cell.
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) expect(g.open[(y + dy) * g.cols + (x + dx)]).toBe(1);
+      }
+    expect(generateMap({ ...mopts, style: 'cave', water: false, lights: false, details: false }).water.every((v) => v === 0)).toBe(true);
+  });
+
+  it('a dungeon with lights gets them in rooms, on floor beside a wall', () => {
+    const g = generateMap({ ...mopts, style: 'dungeon', water: false, lights: true, details: false });
+    expect(g.lightSpots.length).toBeGreaterThan(0);
+    for (const l of g.lightSpots) {
+      expect(g.open[l.y * g.cols + l.x]).toBe(1);
+      expect(g.rooms.some((r) => l.x >= r.x && l.x < r.x + r.w && l.y >= r.y && l.y < r.y + r.h)).toBe(true);
+      expect([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !g.open[(l.y + dy) * g.cols + (l.x + dx)])).toBe(true);
+    }
+  });
+
+  it('details scatter on open floor; everything is deterministic', () => {
+    const g = generateMap({ ...mopts, style: 'cave', water: true, lights: true, details: true });
+    expect(g.detailSpots.length).toBeGreaterThan(0);
+    for (const d of g.detailSpots) expect(g.open[d.y * g.cols + d.x]).toBe(1);
+    expect(generateMap({ ...mopts, style: 'cave', water: true, lights: true, details: true })).toEqual(g);
+  });
+
+  it('mapGenElements adds lakes, light spots in px and detail floor patches', () => {
+    const g = generateMap({ ...mopts, style: 'cave', water: true, lights: true, details: true });
+    let n = 0;
+    const els = mapGenElements(g, 70, 'cave', 11, (p) => `${p}-${n++}`);
+    expect(els.waters.length).toBeGreaterThan(0);
+    for (const w of els.waters) {
+      expect(w.kind).toBe('lake');
+      expect(w.closed).toBe(true);
+      expect(w.points.length).toBeGreaterThanOrEqual(4);
+    }
+    expect(els.lights.length).toBe(g.lightSpots.length);
+    // The open-shape floor plus one patch per detail spot.
+    expect(els.floors.length).toBe(1 + g.detailSpots.length);
+    expect(els.floors.slice(1).every((f) => f.style === 'moss')).toBe(true);
   });
 });

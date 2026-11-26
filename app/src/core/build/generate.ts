@@ -7,7 +7,8 @@
 import type { Point } from '../geometry';
 import type { FloorPatch } from './floors';
 import type { BuildDoor, Masonry } from './masonry';
-import { smoothLine } from './water';
+import { smoothLine, type Water } from './water';
+import { noise2 } from './handDrawn';
 
 export type GenStyle = 'dungeon' | 'cave';
 
@@ -302,4 +303,134 @@ function nearestOnRing(points: readonly Point[], p: Point): { at: number; dist: 
     walked += len;
   }
   return { at, dist };
+}
+
+/* ---------------------------------------------------------------- whole maps (DC-119e) */
+
+export interface MapGenOptions extends GenOptions {
+  /** Ponds in a cave's low spots (caves only). */
+  water: boolean;
+  /** Torch spots in rooms (dungeon) or along cave walls. */
+  lights: boolean;
+  /** Scattered patches of moss or rubble on the floor. */
+  details: boolean;
+}
+
+export interface GeneratedMap extends Generated {
+  /** 1 = a pond lies on this open cell. */
+  water: Uint8Array;
+  lightSpots: { x: number; y: number }[];
+  detailSpots: { x: number; y: number; r: number }[];
+}
+
+/** How many open steps a cell is from the nearest wall (4-neighbours). */
+function depthFromWalls(open: Uint8Array, cols: number, rows: number): Int16Array {
+  const depth = new Int16Array(open.length).fill(-1);
+  const queue: number[] = [];
+  for (let i = 0; i < open.length; i++)
+    if (!open[i]) {
+      depth[i] = 0;
+      queue.push(i);
+    }
+  for (let q = 0; q < queue.length; q++) {
+    const i = queue[q];
+    const x = i % cols;
+    const y = Math.floor(i / cols);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx;
+      const ny = y + dy;
+      const n = ny * cols + nx;
+      if (nx >= 0 && ny >= 0 && nx < cols && ny < rows && depth[n] < 0) {
+        depth[n] = depth[i] + 1;
+        queue.push(n);
+      }
+    }
+  }
+  return depth;
+}
+
+/** A whole map's generation: the dungeon or cave, plus ponds, torch spots and detail patches. */
+export function generateMap(opts: MapGenOptions): GeneratedMap {
+  const gen = generate(opts);
+  const { cols, rows, open } = gen;
+  const rand = rng(opts.seed * 5 + 3);
+  const water = new Uint8Array(open.length);
+  if (opts.water && opts.style === 'cave') {
+    // Ponds gather in the deep middle of hollows: wet where a soft noise dips, never at a wall.
+    const depth = depthFromWalls(open, cols, rows);
+    const wet: number[] = [];
+    for (let y = 0; y < rows; y++)
+      for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        if (open[i] && depth[i] >= 2 && noise2(x / 7, y / 7, opts.seed * 5 + 4) > 0.15) {
+          water[i] = 1;
+          wet.push(i);
+        }
+      }
+    // Lone wet cells dry up (a pond is at least a few cells).
+    for (const i of wet) {
+      const x = i % cols;
+      const y = Math.floor(i / cols);
+      let n = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) n += water[(y + dy) * cols + (x + dx)] ?? 0;
+      if (n === 0) water[i] = 0;
+    }
+  }
+  const lightSpots: GeneratedMap['lightSpots'] = [];
+  if (opts.lights) {
+    const wallSide = (x: number, y: number) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !open[(y + dy) * cols + (x + dx)]);
+    if (opts.style === 'dungeon') {
+      for (const r of gen.rooms) {
+        const edge: { x: number; y: number }[] = [];
+        for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) if (open[y * cols + x] && wallSide(x, y)) edge.push({ x, y });
+        const count = Math.min(edge.length, r.w * r.h > 20 ? 2 : 1);
+        for (let k = 0; k < count; k++) lightSpots.push(edge[Math.floor(rand() * edge.length)]);
+      }
+    } else {
+      // Sparse torches along the cavern wall.
+      for (let y = 1; y < rows - 1; y++)
+        for (let x = 1; x < cols - 1; x++)
+          if (open[y * cols + x] && wallSide(x, y) && rand() < 0.02) lightSpots.push({ x, y });
+    }
+  }
+  const detailSpots: GeneratedMap['detailSpots'] = [];
+  if (opts.details) {
+    const openCells: number[] = [];
+    for (let i = 0; i < open.length; i++) if (open[i] && !water[i]) openCells.push(i);
+    const count = Math.round(openCells.length / 55);
+    for (let k = 0; k < count; k++) {
+      const i = openCells[Math.floor(rand() * openCells.length)];
+      detailSpots.push({ x: i % cols, y: Math.floor(i / cols), r: 0.8 + rand() * 1 });
+    }
+  }
+  return { ...gen, water, lightSpots, detailSpots };
+}
+
+export interface MapGenElements extends GeneratedElements {
+  waters: Water[];
+  /** Torch places in map px. */
+  lights: Point[];
+}
+
+/** The whole map's generation as elements: walls, doors and floors, plus lakes and torch places. */
+export function mapGenElements(gen: GeneratedMap, cell: number, style: GenStyle, seed: number, freshId: (prefix: string) => string): MapGenElements {
+  const base = generatedElements(gen, { x: 0, y: 0 }, cell, style, seed, freshId);
+  const waters: Water[] = contours(gen.water, gen.cols, gen.rows).map((ring, i) => ({
+    id: freshId('water'),
+    kind: 'lake' as const,
+    points: ring.map(([x, y]) => ({ x: x * cell, y: y * cell })),
+    closed: true,
+    width: cell,
+    seed: seed * 17 + i,
+  })).filter((w) => w.points.length >= 4);
+  const detail = (style === 'cave' ? 'moss' : 'gravel') as FloorPatch['style'];
+  for (const d of gen.detailSpots) {
+    const cx = (d.x + 0.5) * cell;
+    const cy = (d.y + 0.5) * cell;
+    const r = d.r * cell;
+    const ring: [number, number][] = [];
+    for (let k = 0; k < 10; k++) ring.push([cx + Math.cos((k / 10) * Math.PI * 2) * r, cy + Math.sin((k / 10) * Math.PI * 2) * r]);
+    base.floors.push({ id: freshId('floor'), style: detail, shape: [{ outer: ring, holes: [] }], seed: seed * 23 + base.floors.length });
+  }
+  return { ...base, waters, lights: gen.lightSpots.map((l) => ({ x: (l.x + 0.5) * cell, y: (l.y + 0.5) * cell })) };
 }

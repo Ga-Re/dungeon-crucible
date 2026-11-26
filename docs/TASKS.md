@@ -505,9 +505,16 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     Form. „Fertig“ backt als **einen** Undo-Schritt ein, „Verwerfen“ (auch Werkzeugwechsel) stellt die Karte
     zurück. Kern pur mit Tests (`core/build/generate.ts`: Determinismus, Zusammenhang, Konturen, Elemente); Lichter
     und Seed-Notiz an der Karte folgen mit DC-119e.
-  - **DC-119e Ganz-Karten-Generator**: „Karte generieren …“ im Kartenkatalog, Live-Regler (Worker, verkleinerte
-    Vorschau), Stile Dungeon und Höhle, erzeugt auch Ausstattung und Lichter; Übernehmen legt die Karte in die
-    Bibliothek.
+  - ✓ **DC-119e Ganz-Karten-Generator**: „Karte generieren …“ im Kartenkatalog öffnet einen Dialog mit Name,
+    Stil (Dungeon/Höhle), Größe in Feldern, Dichte, Seed + „Neu würfeln“ und Schaltern für **Tümpel** (Höhle:
+    Mulden abseits der Wände, nur zusammenhängende Teiche), **Fackeln** (Dungeon: 1–2 je Raum an der Wand; Höhle:
+    sparsam an der Wand; mit Fackeln steht die Karte auf „Dunkel“) und **Verstreute Details** (Moos- bzw.
+    Geröllflecken). Eine schematische **Live-Vorschau** zeichnet bei jeder Änderung neu. „Karte erzeugen“ backt
+    alles als neue gezeichnete Karte in die Bibliothek (Mauern, Türen, Böden, Seen, Lichter) und öffnet sie;
+    **Seed+Parameter** stehen als Notiz `generated` an der Karte (optionales Feld in v7). **Abweichung mit
+    DM-Entscheid (2026-11-26): ohne Worker** – gemessen ~10 ms (Dungeon) / ~3 ms (Höhle) bei 120×90 Feldern,
+    ein Worker käme erst, wenn ein Stil spürbar teurer wird. Klippen und Außen-Stile (Gebäude, Wildnis) folgen
+    später als eigene Stile.
 - **DC-020 Ebenen (Stockwerke)**: anlegen, umbenennen, eigenes Bild gleicher Größe, Arbeitsebene vs. TV-Ebene,
   Freigabe, Nebel je Ebene (T-118a/c/d).
 - ✓ **DC-021 Rastereinmessung per N×N-Box** statt 3-Punkt, als Befehls-Panel; Raster verschieben; Schwenken während

@@ -185,6 +185,8 @@ export const MapSidecarSchema = z.object({
   /** Automatic details (E-35): stones and reeds along shores, plants at the foot of walls on natural ground. */
   autoShore: z.boolean().default(true),
   autoGrowth: z.boolean().default(true),
+  /** How a generated map was made (DC-119e): style, settings and seed – a note for re-rolling later. */
+  generated: z.object({ style: z.enum(['dungeon', 'cave']), density: z.number().min(0).max(1), seed: z.number().int(), water: z.boolean(), lights: z.boolean(), details: z.boolean() }).optional(),
   /** Top left of a drawn map's area (map px; it grows left and up too). None: 0, 0. */
   origin: z.object({ x: z.number(), y: z.number() }).optional(),
 });

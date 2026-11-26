@@ -15,6 +15,7 @@ import {
   createDrawnMap, duplicateLibraryMap, mapIsOpen, mapUsage, openLibraryMap, refreshLibraryMaps, selectCatalogMap, setMapFilter, trashBlocked, trashLibraryMap, updateLibraryMap, type LibraryMap, type MapUsage,
 } from '../app/library';
 import { useThumbnail } from './VaultPanels';
+import { GenerateMapDialog } from '../app/GenerateMapDialog';
 import { drawingPreview } from '../render/drawnMap';
 import { buildTextures } from '../render/build/textures';
 
@@ -40,6 +41,7 @@ export function MapCatalogView() {
   const thumbPx = useStore((s) => s.vault.thumbPx);
   const shown = useShownMaps();
   const [menu, setMenu] = useState<{ mapFile: string; x: number; y: number } | null>(null);
+  const [generating, setGenerating] = useState(false);
   useEffect(() => {
     void refreshLibraryMaps();
   }, []);
@@ -49,6 +51,8 @@ export function MapCatalogView() {
         <input type="search" value={filter.query ?? ''} placeholder={t('library.search')} aria-label={t('library.search')} onChange={(e) => setMapFilter({ query: e.target.value })} />
         <span className="hint">{t('mapCatalog.count', { n: shown.length, total: maps.length })}</span>
         <button className="btn sm" onClick={() => void createDrawnMap(t('mapCatalog.drawnName'))}><Icon name="wall" />{t('mapCatalog.newDrawn')}</button>
+        <button className="btn sm" onClick={() => setGenerating(true)}><Icon name="dice" />{t('mapCatalog.generate')}</button>
+        {generating && <GenerateMapDialog onClose={() => setGenerating(false)} />}
       </div>
       {maps.length === 0 ? (
         <p className="vault-empty hint">{t('library.empty')}</p>

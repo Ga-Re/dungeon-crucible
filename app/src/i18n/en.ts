@@ -899,6 +899,8 @@ export const en = {
   'storey.deleteConfirm': 'Delete "{name}" and everything on it (walls, areas, lights, sounds, assets, drawing)?',
   'storey.addUp': 'Storey above',
   'storey.addDown': 'Cellar below',
+  'storey.picture': 'Picture for this storey … (same size as the map, transparency allowed)',
+  'storey.noPicture': 'Remove the picture of this storey',
   'storey.toTv': 'Show this storey on the TV',
   'storey.moveToken': 'Put the selected figure on this storey',
   'storey.addArea': 'Area into the footprint',

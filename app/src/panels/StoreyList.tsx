@@ -6,7 +6,8 @@
 import { useState } from 'react';
 import { useI18n } from '../i18n/i18n';
 import { Icon } from '../ui/Icon';
-import { addStorey, areaToFootprint, clearFootprint, deleteStorey, moveTokenToStorey, renameStorey, setTvStorey, setWorkingStorey, useStore } from '../app/store';
+import { pickVariantPicture } from '../app/campaign';
+import { addStorey, setStoreyImage, areaToFootprint, clearFootprint, deleteStorey, moveTokenToStorey, renameStorey, setTvStorey, setWorkingStorey, useStore } from '../app/store';
 
 export function StoreyList() {
   const { t } = useI18n();
@@ -18,6 +19,17 @@ export function StoreyList() {
   const selectedZone = useStore((s) => (s.layer === 'map' && s.scene.map.storey ? s.selectedZoneId : null));
   const handDrawn = useStore((s) => (s.scene.map.storeys ?? []).find((x) => x.id === s.scene.map.storey)?.footprint.length ?? 0);
   const [editing, setEditing] = useState<string | null>(null);
+  const [pictureError, setPictureError] = useState<string | null>(null);
+  const images = useStore((s) => Object.fromEntries((s.scene.map.storeys ?? []).map((x) => [x.id, x.image ?? null])));
+  const size = useStore((s) => ({ w: s.scene.map.widthPx, h: s.scene.map.heightPx }));
+  // The picture of a storey (E-40): of the map's size, like a variant's.
+  const pickPicture = async (id: string) => {
+    setPictureError(null);
+    const r = await pickVariantPicture();
+    if (!r) return;
+    if ('error' in r) setPictureError(r.error === 'variant.wrongSize' ? t('variant.wrongSize', { w: Math.round(r.w ?? 0), h: Math.round(r.h ?? 0), mw: Math.round(size.w), mh: Math.round(size.h) }) : t('variant.unreadable'));
+    else setStoreyImage(id, r.path);
+  };
   const [confirm, setConfirm] = useState<string | null>(null);
   // In a scene there is nothing to choose on a map without storeys.
   if (!forge && storeys.length === 0) return null;
@@ -49,6 +61,9 @@ export function StoreyList() {
               {selectedToken && here !== r.id && (
                 <button className="ab-btn" title={t('storey.moveToken')} aria-label={`${t('storey.moveToken')}: ${r.name}`} onClick={() => moveTokenToStorey(selectedToken, r.id)}><Icon name="token" /></button>
               )}
+              {forge && r.id && (images[r.id]
+                ? <button className="ab-btn on" title={t('storey.noPicture')} aria-label={`${t('storey.noPicture')}: ${r.name}`} onClick={() => setStoreyImage(r.id, null)}><Icon name="map" /></button>
+                : <button className="ab-btn" title={t('storey.picture')} aria-label={`${t('storey.picture')}: ${r.name}`} onClick={() => void pickPicture(r.id)}><Icon name="import" /></button>)}
               {forge && r.id && <button className="ab-btn" title={t('storey.delete')} aria-label={`${t('storey.delete')}: ${r.name}`} onClick={() => setConfirm(r.id)}><Icon name="trash" /></button>}
             </div>
             {confirm === r.id && (
@@ -63,6 +78,7 @@ export function StoreyList() {
           </li>
         ))}
       </ul>
+      {pictureError && <p className="hint" role="alert">{pictureError}</p>}
       {forge && here && (
         <div className="library-buttons">
           <button className="btn sm" disabled={!selectedZone} title={t('storey.areaHint')} onClick={() => selectedZone && areaToFootprint(selectedZone)}><Icon name="zone" />{t('storey.addArea')}</button>

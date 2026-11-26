@@ -899,6 +899,8 @@ export const de: Partial<Record<MessageKey, string>> = {
   'storey.deleteConfirm': '„{name}“ und alles darauf löschen (Wände, Bereiche, Lichter, Klänge, Assets, Zeichnung)?',
   'storey.addUp': 'Stockwerk darüber',
   'storey.addDown': 'Keller darunter',
+  'storey.picture': 'Bild für dieses Stockwerk … (Kartengröße, Transparenz erlaubt)',
+  'storey.noPicture': 'Bild dieses Stockwerks entfernen',
   'storey.toTv': 'Dieses Stockwerk auf den TV',
   'storey.moveToken': 'Ausgewählte Figur auf dieses Stockwerk',
   'storey.addArea': 'Bereich zur Grundfläche',

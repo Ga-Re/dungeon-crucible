@@ -2538,6 +2538,17 @@ export function areaToFootprint(zoneId: string): void {
   emit();
 }
 
+/** Sets (or, with null, removes) the picture of storey `id` (Map Forge, one undoable step). */
+export function setStoreyImage(id: string, image: string | null): void {
+  const def = state.scene.map.storeys?.find((x) => x.id === id);
+  if (state.layer !== 'map' || !def || (def.image ?? null) === image) return;
+  checkpoint();
+  if (image) def.image = image;
+  else delete def.image;
+  markDirty();
+  emit();
+}
+
 /** Clears the hand-drawn part of the footprint of the storey worked on (Map Forge, one undoable step). */
 export function clearFootprint(): void {
   const m = state.scene.map;

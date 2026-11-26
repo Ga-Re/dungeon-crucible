@@ -617,8 +617,8 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   darunter weichgezeichnet und schneidet oben auf die Grundfläche; DM-Fenster dieselbe Unterlage ohne Nebel.
   (c) „Dieses Stockwerk auf den TV“ (mit Übergang), ausgewählte Figur auf ein anderes Stockwerk setzen, Bereich zur
   Grundfläche übernehmen / gezeichnete Grundfläche leeren. In der App geprüft (Turm über der Krypta: unten
-  weichgezeichnet mit eigenem Nebel, oben eigener Nebel). Offen: Bild eines Stockwerks wählen (Feld ist da, noch
-  keine Bedienung), Varianten je Stockwerk, Treppen (DC-026); die Grundfläche eines Stockwerks ist auf dem TV als
+  weichgezeichnet mit eigenem Nebel, oben eigener Nebel). Bild je Stockwerk in der Kartenschmiede (Kartengröße, geprüft).
+  Offen: Varianten je Stockwerk, Treppen (DC-026); die Grundfläche eines Stockwerks ist auf dem TV als
   Umriss erkennbar (folgt aus E-40).
 - ✓ **DC-021 Rastereinmessung per N×N-Box** statt 3-Punkt, als Befehls-Panel; Raster verschieben; Schwenken während
   des Einmessens (T-177, T-251). Erledigt: Befehls-Panel „Raster einmessen“ (Menüband Karte › Raster): Felder je

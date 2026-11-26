@@ -22,6 +22,10 @@ export interface OverlayState {
   selectedTokenId: string | null;
   selectedZoneId: string | null;
   selectedLightId: string | null;
+  /** The selected sound source (E-37): its radius and the handle to change it. */
+  selectedSoundId?: string | null;
+  /** Where the placing mode would put a sound source (E-37). */
+  soundGhost?: Point | null;
   measure: { a: Point; b: Point; ft: number } | null;
   /** Walls selected in the Map Forge (DC-014). */
   selectedWallIds: readonly string[];
@@ -280,6 +284,21 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
         g.stroke();
       }
     }
+    g.restore();
+  }
+
+  // Sound sources (E-37): a speaker, and their reach in the forge or when selected – DM window only.
+  for (const s of scene.sounds) if (o.changed.has(s.id)) drawChangedMark(g, s.x + cell * 0.25, s.y - cell * 0.25, px);
+  const ftPx = cell / scene.map.grid.feetPerCell;
+  for (const s of scene.sounds) {
+    const sel = s.id === o.selectedSoundId;
+    if (o.editMode || sel) drawSoundReach(g, s, s.radiusFt * ftPx, sel, px);
+    drawSpeaker(g, s.x, s.y, Math.max(8 * px, cell * 0.18), sel, px);
+  }
+  if (o.soundGhost) {
+    g.save();
+    g.globalAlpha = 0.55;
+    drawSpeaker(g, o.soundGhost.x, o.soundGhost.y, Math.max(8 * px, cell * 0.18), false, px);
     g.restore();
   }
 
@@ -561,9 +580,75 @@ function drawHidden(g: CanvasRenderingContext2D, h: HiddenElements, px: number):
     g.lineTo(w.x2, w.y2);
   }
   g.stroke();
-  for (const l of h.lights) {
+  for (const l of [...h.lights, ...h.sounds]) {
     g.beginPath();
     g.arc(l.x, l.y, 9 * px, 0, Math.PI * 2);
+    g.stroke();
+  }
+  g.restore();
+}
+
+const SOUND_COLOR = '#7cc4e4';
+
+/** A sound source's reach (dashed); the selected one with a handle on its edge to change it. */
+function drawSoundReach(g: CanvasRenderingContext2D, s: { x: number; y: number; fade: boolean }, r: number, sel: boolean, px: number): void {
+  g.save();
+  g.strokeStyle = SOUND_COLOR;
+  g.globalAlpha = sel ? 0.9 : 0.5;
+  g.lineWidth = (sel ? 2 : 1) * px;
+  g.setLineDash([3 * px, 6 * px]);
+  g.beginPath();
+  g.arc(s.x, s.y, r, 0, Math.PI * 2);
+  g.stroke();
+  // Fading: a second ring halfway, where it is already much quieter.
+  if (s.fade) {
+    g.globalAlpha *= 0.5;
+    g.beginPath();
+    g.arc(s.x, s.y, r / 2, 0, Math.PI * 2);
+    g.stroke();
+  }
+  if (sel) {
+    const h = SOUND_HANDLE_PX * px;
+    g.setLineDash([]);
+    g.globalAlpha = 1;
+    g.fillStyle = '#fff';
+    g.strokeStyle = '#3f9de2';
+    g.lineWidth = 2 * px;
+    g.fillRect(s.x + r - h / 2, s.y - h / 2, h, h);
+    g.strokeRect(s.x + r - h / 2, s.y - h / 2, h, h);
+  }
+  g.restore();
+}
+
+/** Size of the radius handle in screen pixels. */
+export const SOUND_HANDLE_PX = 10;
+
+/** A sound source's mark: a dark disc with a speaker and two sound waves. */
+function drawSpeaker(g: CanvasRenderingContext2D, x: number, y: number, r: number, sel: boolean, px: number): void {
+  g.save();
+  g.fillStyle = 'rgba(18,24,30,.85)';
+  g.strokeStyle = sel ? '#3f9de2' : SOUND_COLOR;
+  g.lineWidth = (sel ? 3 : 2) * px;
+  g.beginPath();
+  g.arc(x, y, r, 0, Math.PI * 2);
+  g.fill();
+  g.stroke();
+  const u = r / 10;
+  g.fillStyle = SOUND_COLOR;
+  g.beginPath();
+  g.moveTo(x - 6 * u, y - 2.5 * u);
+  g.lineTo(x - 3 * u, y - 2.5 * u);
+  g.lineTo(x + 1 * u, y - 6 * u);
+  g.lineTo(x + 1 * u, y + 6 * u);
+  g.lineTo(x - 3 * u, y + 2.5 * u);
+  g.lineTo(x - 6 * u, y + 2.5 * u);
+  g.closePath();
+  g.fill();
+  g.strokeStyle = SOUND_COLOR;
+  g.lineWidth = 1.5 * px;
+  for (const w of [3.5, 6.5]) {
+    g.beginPath();
+    g.arc(x + 1 * u, y, w * u, -Math.PI / 4, Math.PI / 4);
     g.stroke();
   }
   g.restore();

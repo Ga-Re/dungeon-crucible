@@ -220,6 +220,13 @@ describe('player projection (fail-closed)', () => {
     expect(frame.tokens.every((t) => t.label.length <= 4)).toBe(true);
     expect(parsePlayerFrame(frame, 1000, 0).ok).toBe(true);
   });
+  it('never sends sound sources or the map\'s sound (E-37)', () => {
+    const scene = createSampleScene();
+    scene.map.ambientSound = { sound: 'library/secret-storm.ogg', volume: 1 };
+    scene.sounds = [{ id: 'sound-lair', sound: 'library/dragon-breath.ogg', x: 10, y: 10, radiusFt: 30, volume: 1, fade: true }];
+    const json = JSON.stringify(buildPlayerFrame(scene, frameOpts(1, 0, visiblePolygons(updateVision(scene)))));
+    for (const word of ['sound', 'storm', 'dragon-breath', 'sound-lair']) expect(json).not.toContain(word);
+  });
   it('rejects stale, out-of-order and malformed frames', () => {
     const scene = createSampleScene();
     const frame = buildPlayerFrame(scene, frameOpts(5, 0, visiblePolygons(updateVision(scene))));

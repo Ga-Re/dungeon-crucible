@@ -103,6 +103,16 @@ export const waterSchema = z.object({
 });
 export const mapLightSchema = z.object({ id, x: z.number(), y: z.number(), brightFt: z.number().min(0), dimFt: z.number().min(0), color, layer: layerRef });
 
+/** A sound: a library audio file (relative to the root folder) or a built-in one (`builtin:<key>`). */
+const soundRef = z.string().min(1);
+/**
+ * A sound source on the map (E-37, DC-104): heard within `radiusFt` of a player character,
+ * quieter towards the edge when `fade`. Plays only in the Orchestrator, never on the TV.
+ */
+export const mapSoundSchema = z.object({ id, sound: soundRef, x: z.number(), y: z.number(), radiusFt: z.number().positive(), volume: z.number().min(0).max(1), fade: z.boolean().default(true), layer: layerRef });
+/** A map's sound everywhere (E-37): wind, a snowstorm. */
+export const ambientSoundSchema = z.object({ sound: soundRef, volume: z.number().min(0).max(1) });
+
 /**
  * A layer of a map (E-28): elements on it count in a scene only while it is active there. Height
  * orders drawing (higher lies above); a counter layer goes off when this one comes on and back.
@@ -123,9 +133,9 @@ export const mapLayerSchema = z.object({
 export type MapLayer = z.infer<typeof mapLayerSchema>;
 
 /** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 8;
+export const MAP_VERSION = 9;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
-export const SCENE_VERSION = 10;
+export const SCENE_VERSION = 11;
 
 /**
  * When a house's interior is shown (E-29): by the DM's click only, when a player character steps
@@ -168,6 +178,10 @@ export const MapSidecarSchema = z.object({
   pois: z.array(z.object({ id, name: z.string(), x: z.number(), y: z.number(), icon: z.string().default('flag') })).default([]),
   /** Placed light sources; whether each is on is per scene. */
   lights: z.array(mapLightSchema).default([]),
+  /** Sound sources (E-37, version 9); whether each plays is per scene. */
+  sounds: z.array(mapSoundSchema).default([]),
+  /** The map's sound everywhere (E-37); none: silent. */
+  ambientSound: ambientSoundSchema.optional(),
   /** What is revealed when a new scene starts on this map (painted in the Map Forge, E-26). */
   startFog: levelFogSchema.optional(),
   /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */
@@ -428,8 +442,8 @@ export const SceneOverrideSchema = z.object({
     /** The scene's own drawing at its start (DC-107c). */
     drawing: sceneDrawingSchema.default(EMPTY_SCENE_DRAWING),
   }).optional(),
-  /** Walls, areas and lights that exist only in this scene (E-24). */
-  added: z.object({ walls: z.array(mapWallSchema).default([]), zones: z.array(mapAreaSchema).default([]), lights: z.array(mapLightSchema).default([]) }).default({ walls: [], zones: [], lights: [] }),
+  /** Walls, areas, lights and sound sources that exist only in this scene (E-24; sounds E-37, version 11). */
+  added: z.object({ walls: z.array(mapWallSchema).default([]), zones: z.array(mapAreaSchema).default([]), lights: z.array(mapLightSchema).default([]), sounds: z.array(mapSoundSchema).default([]) }).default({ walls: [], zones: [], lights: [], sounds: [] }),
 });
 export type SceneOverride = z.infer<typeof SceneOverrideSchema>;
 

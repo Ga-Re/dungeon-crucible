@@ -2,7 +2,7 @@
  * Map and scene layers (decisions E-2, E-16, E-24).
  *
  * A library map holds the elements as built in the Map Forge: walls (with doors and windows),
- * areas and lights. A scene uses the map and changes it only for itself:
+ * areas, lights and sound sources. A scene uses the map and changes it only for itself:
  *  - `overrides` by element id: `{ hidden: true }`, or the fields that differ from the map;
  *  - `added` elements that exist only in this scene (e.g. a collapsed corridor).
  * State (a door open, a light on, a secret area discovered) is not part of the elements; the scene
@@ -14,16 +14,18 @@
  * Pure functions; inputs are never changed.
  */
 import { z } from 'zod';
-import { mapAreaSchema, mapLightSchema, mapWallSchema } from './sidecar';
+import { mapAreaSchema, mapLightSchema, mapSoundSchema, mapWallSchema } from './sidecar';
 
 export type MapWall = z.infer<typeof mapWallSchema>;
 export type MapArea = z.infer<typeof mapAreaSchema>;
 export type MapLight = z.infer<typeof mapLightSchema>;
+export type MapSound = z.infer<typeof mapSoundSchema>;
 
 export interface MapElements {
   walls: MapWall[];
   zones: MapArea[];
   lights: MapLight[];
+  sounds: MapSound[];
 }
 
 export type ElementOverride = { hidden: true } | Record<string, unknown>;
@@ -33,7 +35,7 @@ export interface SceneLayer {
   added: MapElements;
 }
 
-export const EMPTY_LAYER: SceneLayer = { overrides: {}, added: { walls: [], zones: [], lights: [] } };
+export const EMPTY_LAYER: SceneLayer = { overrides: {}, added: { walls: [], zones: [], lights: [], sounds: [] } };
 
 /** Fields that are scene state, not part of an element. */
 const STATE_FIELDS = new Set(['open', 'on', 'discovered']);
@@ -42,6 +44,7 @@ const KINDS = [
   ['walls', mapWallSchema],
   ['zones', mapAreaSchema],
   ['lights', mapLightSchema],
+  ['sounds', mapSoundSchema],
 ] as const;
 
 function withoutState<T extends object>(el: T): T {
@@ -66,7 +69,7 @@ export interface Resolved {
 export function resolveElements(base: MapElements, layer: SceneLayer): Resolved {
   const baseIds = new Set<string>();
   const invalid: string[] = [];
-  const out: MapElements = { walls: [], zones: [], lights: [] };
+  const out: MapElements = { walls: [], zones: [], lights: [], sounds: [] };
   for (const [kind, schema] of KINDS) {
     for (const el of base[kind]) {
       baseIds.add(el.id);
@@ -103,7 +106,7 @@ function same(a: unknown, b: unknown): boolean {
  */
 export function diffElements(base: MapElements, current: MapElements, previous: SceneLayer = EMPTY_LAYER): SceneLayer {
   const overrides: Record<string, ElementOverride> = {};
-  const added: MapElements = { walls: [], zones: [], lights: [] };
+  const added: MapElements = { walls: [], zones: [], lights: [], sounds: [] };
   const baseIds = new Set<string>();
   for (const [kind] of KINDS) {
     const now = new Map((current[kind] as { id: string }[]).map((e) => [e.id, withoutState(e) as Record<string, unknown>]));

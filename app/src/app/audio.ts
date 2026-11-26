@@ -1,11 +1,13 @@
 /**
- * Audio engine for the soundboard: ambience loops (built-in synthesised ones and the campaign's
- * own files) and sound effects, mixed through one master gain. Tracks fade in and out, so scene
+ * Audio engine for the soundboard and the map's sounds (E-37): loops (built-in synthesised ones
+ * and library files, each under its own key) and sound effects, mixed through one master gain. Tracks fade in and out, so scene
  * changes crossfade. Audio starts only after a user gesture (browser/WebView autoplay policy);
  * the engine resumes on the first click.
  */
 
-export const BUILTIN_PREFIX = 'builtin:';
+import { BUILTIN_SOUND, BUILTIN_SOUNDS } from '../core/sound';
+
+export const BUILTIN_PREFIX = BUILTIN_SOUND;
 const FADE_S = 1.2;
 
 let ctx: AudioContext | null = null;
@@ -49,13 +51,7 @@ function noise(c: AudioContext): AudioBufferSourceNode {
 }
 
 /** Built-in ambience, synthesised so the soundboard works without any files. */
-export const BUILTIN_AMBIENCE: { id: string; key: 'wind' | 'drip' | 'fire' | 'rain' | 'choir' }[] = [
-  { id: `${BUILTIN_PREFIX}wind`, key: 'wind' },
-  { id: `${BUILTIN_PREFIX}drip`, key: 'drip' },
-  { id: `${BUILTIN_PREFIX}fire`, key: 'fire' },
-  { id: `${BUILTIN_PREFIX}rain`, key: 'rain' },
-  { id: `${BUILTIN_PREFIX}choir`, key: 'choir' },
-];
+export const BUILTIN_AMBIENCE = BUILTIN_SOUNDS.map((key) => ({ id: `${BUILTIN_PREFIX}${key}`, key }));
 
 function startBuiltin(key: string, c: AudioContext, out: AudioNode): () => void {
   switch (key) {
@@ -142,12 +138,20 @@ function startBuiltin(key: string, c: AudioContext, out: AudioNode): () => void 
 }
 
 /**
- * Starts (or keeps) an ambience track. `url` is needed for file tracks (asset URL); built-in
- * tracks are identified by their id alone.
+ * Starts (or keeps) an ambience track of the soundboard. `url` is needed for file tracks (asset
+ * URL); built-in tracks are identified by their id alone.
  */
 export function playAmbience(id: string, volume: number, url?: string): void {
+  playLoop(id, id, volume, url);
+}
+
+/**
+ * Starts (or keeps) the loop `key` playing `sound` (`builtin:<key>` or a file at `url`) and fades
+ * it to `volume`. Keys keep the soundboard's tracks and the map's apart, even for the same sound.
+ */
+export function playLoop(key: string, sound: string, volume: number, url?: string): void {
   const { ctx: c, master: m } = audio();
-  const existing = tracks.get(id);
+  const existing = tracks.get(key);
   if (existing) {
     existing.gain.gain.setTargetAtTime(volume, c.currentTime, 0.1);
     return;
@@ -157,8 +161,8 @@ export function playAmbience(id: string, volume: number, url?: string): void {
   gain.connect(m);
   gain.gain.setTargetAtTime(volume, c.currentTime, FADE_S / 3);
   let stop: () => void;
-  if (id.startsWith(BUILTIN_PREFIX)) {
-    stop = startBuiltin(id.slice(BUILTIN_PREFIX.length), c, gain);
+  if (sound.startsWith(BUILTIN_PREFIX)) {
+    stop = startBuiltin(sound.slice(BUILTIN_PREFIX.length), c, gain);
   } else {
     const el = new Audio();
     if (url && !url.startsWith('blob:')) el.crossOrigin = 'anonymous';
@@ -173,19 +177,28 @@ export function playAmbience(id: string, volume: number, url?: string): void {
       el.load();
     };
   }
-  tracks.set(id, { gain, stop });
+  tracks.set(key, { gain, stop });
 }
 
 export function setAmbienceVolume(id: string, volume: number): void {
-  const t = tracks.get(id);
+  setLoopVolume(id, volume);
+}
+
+export function setLoopVolume(key: string, volume: number): void {
+  const t = tracks.get(key);
   if (t && ctx) t.gain.gain.setTargetAtTime(volume, ctx.currentTime, 0.05);
 }
 
 /** Fades a track out and stops it. */
 export function stopAmbience(id: string): void {
-  const t = tracks.get(id);
+  stopLoop(id);
+}
+
+/** Fades the loop `key` out and stops it. */
+export function stopLoop(key: string): void {
+  const t = tracks.get(key);
   if (!t || !ctx) return;
-  tracks.delete(id);
+  tracks.delete(key);
   t.gain.gain.setTargetAtTime(0, ctx.currentTime, FADE_S / 3);
   setTimeout(() => {
     t.stop();

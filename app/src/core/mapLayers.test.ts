@@ -10,6 +10,7 @@ function base(): MapElements {
     ],
     zones: [{ id: 'area-hall', name: 'Hall', shape: [rectPolygon(0, 0, 200, 100)], secret: false, color: '#7fd9cf', biome: 'sumpf' }],
     lights: [{ id: 'light-torch', x: 50, y: 50, brightFt: 20, dimFt: 40, color: '#ffb14a' }],
+    sounds: [],
   };
 }
 
@@ -28,7 +29,7 @@ describe('resolveElements', () => {
         'light-torch': { brightFt: -5 },
         'wall-gone': { hidden: true },
       },
-      added: { walls: [{ id: 'wall-rubble', kind: 'wall', x1: 0, y1: 50, x2: 100, y2: 50 }], zones: [], lights: [] },
+      added: { walls: [{ id: 'wall-rubble', kind: 'wall', x1: 0, y1: 50, x2: 100, y2: 50 }], zones: [], lights: [], sounds: [] },
     });
     expect(r.elements.walls.map((w) => w.id)).toEqual(['door-b', 'wall-rubble']);
     expect(r.elements.zones[0]).toEqual({ id: 'area-hall', name: 'Ruined hall', shape: [rectPolygon(0, 0, 200, 100)], secret: false, color: '#7fd9cf' });
@@ -40,7 +41,7 @@ describe('resolveElements', () => {
   it('does not change its inputs', () => {
     const b = base();
     const copy = structuredClone(b);
-    resolveElements(b, { overrides: { 'wall-a': { x2: 5 } }, added: { walls: [], zones: [], lights: [] } });
+    resolveElements(b, { overrides: { 'wall-a': { x2: 5 } }, added: { walls: [], zones: [], lights: [], sounds: [] } });
     expect(b).toEqual(copy);
   });
 });
@@ -55,6 +56,7 @@ describe('diffElements', () => {
       ],
       zones: [{ id: 'area-hall', name: 'Ruined hall', shape: [rectPolygon(0, 0, 200, 100)], secret: false, color: '#7fd9cf' }],
       lights: [{ id: 'light-torch', x: 50, y: 50, brightFt: 20, dimFt: 40, color: '#ffb14a' }],
+      sounds: [],
     };
     const layer = diffElements(b, current);
     expect(layer.overrides).toEqual({ 'wall-a': { hidden: true }, 'area-hall': { name: 'Ruined hall', biome: null } });
@@ -75,7 +77,26 @@ describe('diffElements', () => {
     const b = base();
     const same = resolveElements(b, EMPTY_LAYER).elements;
     expect(diffElements(b, same)).toEqual(EMPTY_LAYER);
-    const kept = diffElements(b, same, { overrides: { 'wall-gone': { x1: 1 } }, added: { walls: [], zones: [], lights: [] } });
+    const kept = diffElements(b, same, { overrides: { 'wall-gone': { x1: 1 } }, added: { walls: [], zones: [], lights: [], sounds: [] } });
     expect(kept.overrides).toEqual({ 'wall-gone': { x1: 1 } });
+  });
+});
+
+describe('sound sources as map elements (E-37)', () => {
+  const fall = { id: 'sound-fall', sound: 'library/waterfall.ogg', x: 10, y: 20, radiusFt: 30, volume: 0.8, fade: true };
+  const withSound = (): MapElements => ({ ...base(), sounds: [fall] });
+
+  it('a scene changes a source\'s volume by an override and adds its own sources', () => {
+    const own = { id: 'sound-own', sound: 'builtin:fire', x: 0, y: 0, radiusFt: 10, volume: 1, fade: false };
+    const layer = diffElements(withSound(), { ...withSound(), sounds: [{ ...fall, volume: 0.3 }, own] });
+    expect(layer.overrides).toEqual({ 'sound-fall': { volume: 0.3 } });
+    expect(layer.added.sounds).toEqual([own]);
+    expect(resolveElements(withSound(), layer).elements.sounds).toEqual([{ ...fall, volume: 0.3 }, own]);
+  });
+
+  it('an override that would make a source invalid is not applied', () => {
+    const r = resolveElements(withSound(), { ...EMPTY_LAYER, overrides: { 'sound-fall': { radiusFt: -5 } } });
+    expect(r.invalid).toEqual(['sound-fall']);
+    expect(r.elements.sounds).toEqual([fall]);
   });
 });

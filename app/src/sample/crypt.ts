@@ -143,6 +143,7 @@ export function createSampleScene(): Scene {
     tokens,
     templates: [],
     pings: [],
+    sounds: [],
     // Two braziers light the throne room.
     lights: [
       { id: 'brazier-w', x: 14.5 * CELL, y: 18.5 * CELL, brightFt: 10, dimFt: 20, color: '#ffb14a', on: true },

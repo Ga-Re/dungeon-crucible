@@ -21,7 +21,7 @@ describe('persistence', () => {
     const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(scene, 'builtin:crypt'))));
     const ov = SceneOverrideSchema.parse(JSON.parse(JSON.stringify(sceneOverrideFromScene(scene, 'Session 3', mapSidecarPath('builtin:crypt'), { round: 2, turn: 3 }, map))));
     expect(ov.overrides).toEqual({});
-    expect(ov.added).toEqual({ walls: [], zones: [], lights: [] });
+    expect(ov.added).toEqual({ walls: [], zones: [], lights: [], sounds: [] });
     const back = sceneFromDocuments(map, ov, 'builtin:crypt');
 
     expect(back.walls).toHaveLength(scene.walls.length);
@@ -33,6 +33,34 @@ describe('persistence', () => {
     expect(back.fog.remembered.length).toBeGreaterThan(0);
     expect(back.fogEffect).toEqual({ biome: 'schnee', strength: 0.4 });
     expect(ov.combat).toEqual({ round: 2, turn: 3 });
+  });
+
+  it('sound sources and the map\'s sound go into the map; a scene hides one, changes another\'s volume, adds its own (E-37)', () => {
+    const forge = createSampleScene();
+    forge.map.ambientSound = { sound: 'builtin:wind', volume: 0.4 };
+    forge.sounds = [
+      { id: 'sound-fire', sound: 'builtin:fire', x: 10, y: 10, radiusFt: 20, volume: 0.7, fade: true },
+      { id: 'sound-drip', sound: 'library/drip.ogg', x: 50, y: 50, radiusFt: 15, volume: 1, fade: false },
+    ];
+    const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(forge, 'builtin:crypt'))));
+    expect(map.sounds.map((x) => x.id)).toEqual(['sound-fire', 'sound-drip']);
+    expect(map.ambientSound).toEqual({ sound: 'builtin:wind', volume: 0.4 });
+
+    const scene = sceneFromDocuments(map, null, null);
+    expect(scene.map.ambientSound).toEqual({ sound: 'builtin:wind', volume: 0.4 });
+    const drip = scene.sounds.find((x) => x.id === 'sound-drip')!;
+    scene.sounds = scene.sounds.filter((x) => x !== drip);
+    scene.hidden.sounds.push(drip);
+    scene.sounds[0].volume = 0.2;
+    scene.sounds.push({ id: 'sound-own', sound: 'builtin:rain', x: 0, y: 0, radiusFt: 10, volume: 1, fade: true });
+    const ov = SceneOverrideSchema.parse(JSON.parse(JSON.stringify(sceneOverrideFromScene(scene, 'S', mapSidecarPath('builtin:crypt'), { round: 1, turn: 0 }, map))));
+    expect(ov.hidden).toContain('sound-drip');
+    expect(ov.overrides).toEqual({ 'sound-fire': { volume: 0.2 } });
+    expect(ov.added.sounds.map((x) => x.id)).toEqual(['sound-own']);
+
+    const back = sceneFromDocuments(map, ov, null);
+    expect(back.sounds.map((x) => [x.id, x.volume])).toEqual([['sound-fire', 0.2], ['sound-own', 1]]);
+    expect(back.hidden.sounds.map((x) => x.id)).toEqual(['sound-drip']);
   });
 
   it('keeps secret zones locked on a fresh scene', () => {

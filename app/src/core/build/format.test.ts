@@ -17,9 +17,9 @@ function drawnMap() {
   return MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(scene, 'builtin:crypt', 'map'))));
 }
 
-describe('map file version 8 (E-33, DC-119b/f)', () => {
-  it('is version 8', () => {
-    expect(MAP_VERSION).toBe(8);
+describe('map file version 9 (E-33, DC-119b/f, E-37)', () => {
+  it('is version 9', () => {
+    expect(MAP_VERSION).toBe(9);
   });
 
   it('reads a version 5 map without drawn walls', () => {
@@ -130,11 +130,11 @@ describe('water in the map file (E-35)', () => {
   });
 });
 
-describe('a scene with its own drawing (scene version 10, DC-107c/DC-119b/f)', () => {
+describe('a scene with its own drawing (scene version 11, DC-107c/DC-119b/f, E-37)', () => {
   it('round-trips its own walls and what it hides; reset brings the start drawing back; old scenes read with none', async () => {
     const { SCENE_VERSION } = await import('../sidecar');
     const { resetToStart, startOf } = await import('../persistence');
-    expect(SCENE_VERSION).toBe(10);
+    expect(SCENE_VERSION).toBe(11);
     const map = drawnMap();
     const scene = sceneFromDocuments(map, null, null);
     expect(scene.own.masonry).toEqual([]);

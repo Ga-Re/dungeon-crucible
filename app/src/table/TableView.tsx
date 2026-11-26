@@ -9,8 +9,8 @@
  * fog only ever darken. Templates are clipped to the open area. This module must not import
  * DM-side state (src/app/store.ts and friends).
  */
-import { useEffect, useRef } from 'react';
-import { MAX_FRAME_AGE_MS, type PlayerFrame } from '../core/projection';
+import { useEffect, useRef, useState } from 'react';
+import { MAX_FRAME_AGE_MS, type PlayerFrame, type StoreyFrame } from '../core/projection';
 import { transitionLook, type TransitionPlay } from '../core/transition';
 import type { Polygon } from '../core/poly/types';
 import { fogOptions, lookFromWire } from '../render/fogOptions';
@@ -23,7 +23,14 @@ export interface FrameSource {
   current(): { frame: PlayerFrame; receivedAt: number } | null;
 }
 
-export function TableView({ source }: { source: FrameSource }) {
+/**
+ * `depth`: which storey of the frame this view draws (E-40) – 0 the TV's own, 1 the one below it …
+ * A storey below is drawn by a nested view under this one, blurred and darkened; this view is cut
+ * to its storey's footprint, so outside it only the storey below (with its own fog) shows.
+ */
+export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: number }) {
+  const [below, setBelow] = useState(false);
+  const belowRef = useRef(false);
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -99,11 +106,20 @@ export function TableView({ source }: { source: FrameSource }) {
       cutCanvas.style.visibility = 'visible';
     };
 
+    let clipKey = '';
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const r = renderer;
-      const latest = source.current();
+      const top = source.current();
       const now = Date.now();
+      // The storey this view draws; a storey below shows under it only while the frame has one.
+      const frame = top ? frameAt(top.frame, depth) : null;
+      const hasBelow = !!top && (top.frame.below?.length ?? 0) > depth;
+      if (hasBelow !== belowRef.current) {
+        belowRef.current = hasBelow;
+        setBelow(hasBelow);
+      }
+      const latest = top && frame ? { frame, receivedAt: top.receivedAt } : null;
       if (!r || !latest || now - latest.receivedAt > MAX_FRAME_AGE_MS) {
         // No fresh frame: black at once, a transition included.
         blank();
@@ -154,6 +170,12 @@ export function TableView({ source }: { source: FrameSource }) {
         r.setFog(f.fog.open, fogOptions({ look, cellSizePx: cell, seedKey: f.map.seedKey, effect: f.fog.effect, opacity: 1, quick: f.fog.quick, jump: newCut }));
       }
       r.setCamera(camera);
+      // Cut to the storey's footprint (E-40): outside it, nothing of this storey is drawn.
+      const key = f.storeyClip ? JSON.stringify([camera, s, f.storeyClip.length, f.seq]) : '';
+      if (key !== clipKey) {
+        clipKey = key;
+        host.style.clipPath = f.storeyClip ? `path(evenodd, '${clipPath(f.storeyClip, camera, s)}')` : '';
+      }
       drawOverlay(overlay, f, camera, s, now - latest.receivedAt);
       host.style.visibility = 'visible';
       drawCut(now, s);
@@ -166,10 +188,16 @@ export function TableView({ source }: { source: FrameSource }) {
       map?.dispose();
       renderer?.destroy();
     };
-  }, [source]);
+  }, [source, depth]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', background: '#000', overflow: 'hidden' }}>
+      {/* The storey below (E-40): blurred and darker, under this one – deeper ones more so. */}
+      {below && (
+        <div style={{ position: 'absolute', inset: 0, filter: 'blur(3px) brightness(0.6)' }}>
+          <TableView source={source} depth={depth + 1} />
+        </div>
+      )}
       <div ref={hostRef} style={{ position: 'absolute', inset: 0, visibility: 'hidden' }}>
         <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
         <canvas ref={overlayRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
@@ -177,6 +205,20 @@ export function TableView({ source }: { source: FrameSource }) {
       <canvas ref={cutRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', visibility: 'hidden' }} />
     </div>
   );
+}
+
+/** The storey of the frame a view of `depth` draws: the frame itself, or one of those below it. */
+function frameAt(frame: PlayerFrame, depth: number): StoreyFrame | null {
+  return depth === 0 ? frame : (frame.below?.[depth - 1] ?? null);
+}
+
+/** An SVG path of `polys` on screen, placed as the camera places the map (CSS px). */
+function clipPath(polys: readonly Polygon[], cam: { centerX: number; centerY: number; zoom: number; rotation: number }, s: { width: number; height: number }): string {
+  const a = (cam.rotation * Math.PI) / 180;
+  const cos = Math.cos(a) * cam.zoom;
+  const sin = Math.sin(a) * cam.zoom;
+  const pt = ([x, y]: [number, number]) => `${(cos * (x - cam.centerX) - sin * (y - cam.centerY) + s.width / 2).toFixed(1)} ${(sin * (x - cam.centerX) + cos * (y - cam.centerY) + s.height / 2).toFixed(1)}`;
+  return polys.map((p) => [p.outer, ...p.holes].map((ring) => `M${ring.map(pt).join('L')}Z`).join('')).join('');
 }
 
 function tracePolygons(g: CanvasRenderingContext2D, polys: readonly Polygon[]): void {

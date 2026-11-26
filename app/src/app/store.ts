@@ -6,10 +6,11 @@ import type { RescueCopy } from '../core/rescue';
 import { useSyncExternalStore } from 'react';
 import type { Point } from '../core/geometry';
 import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
-import { buildPlayerFrame, type PlayerFrame } from '../core/projection';
+import { buildPlayerFrame, type PlayerFrame, type StoreyFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, SoundSource, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { isSoundRef } from '../core/sound';
 import { findLeaks, type Leak } from '../core/leaks';
+import { storeyFootprint, storeysBelow } from '../core/storeyShape';
 import { DEFAULT_TRANSITION, type Transition, type TransitionKind, type TransitionPlay } from '../core/transition';
 import { assetDoorId, assetDoorWalls, wallsWithAssetDoors } from '../core/assetDoors';
 import { masonrySightWalls, toggledMasonryDoor, withMasonry } from '../core/build/sight';
@@ -23,7 +24,7 @@ import { rollDice, type RollResult } from '../core/rules/dice';
 import type { Condition } from '../core/rules/rules2024';
 import { litSources, updateVision, visiblePolygons, type LitSource, type ViewerVision, type VisionExtras } from '../core/vision';
 import { placementCovers, placementLights } from '../core/cover';
-import { forgetIn, hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
+import { rectPolygon, forgetIn, hideAll, hideIn, rememberSeen, revealAll, revealIn } from '../core/fogModel';
 import { lockedAreas } from '../core/persistence';
 import { newId, slugId } from '../core/documents';
 import { chainOf, moveEnds, removeWalls, withoutDegenerate, type WallEnd } from '../core/walls';
@@ -2506,13 +2507,21 @@ const VIDEO_FILE = /\.(mp4|webm|m4v|mov)$/i;
  * up yet shows nothing (black) until it is – never the other picture for a moment.
  */
 export function pictureOf(scene: Pick<Scene, 'map' | 'variant'>): { url: string | null; isVideo: boolean } {
+  // A storey (E-40) shows its own picture, if it has one – never the map's beneath it.
+  const storey = scene.map.storey ? scene.map.storeys?.find((x) => x.id === scene.map.storey) : undefined;
+  if (scene.map.storey) return storey?.image ? libraryPicture(storey.image) : { url: null, isVideo: false };
   const v = scene.variant ? scene.map.variants?.find((x) => x.id === scene.variant) : undefined;
   if (!v) return { url: scene.map.imageUrl, isVideo: scene.map.isVideo };
-  const isVideo = VIDEO_FILE.test(v.image);
-  if (pictures.has(v.image)) return { url: pictures.get(v.image) ?? null, isVideo };
+  return libraryPicture(v.image);
+}
+
+/** A library picture's URL once looked up (none until then, never another picture meanwhile). */
+function libraryPicture(image: string): { url: string | null; isVideo: boolean } {
+  const isVideo = VIDEO_FILE.test(image);
+  if (pictures.has(image)) return { url: pictures.get(image) ?? null, isVideo };
   if (resolvePicture) {
-    pictures.set(v.image, null);
-    const path = v.image;
+    pictures.set(image, null);
+    const path = image;
     void resolvePicture(path)
       .catch(() => null)
       .then((url) => {
@@ -2526,7 +2535,7 @@ export function pictureOf(scene: Pick<Scene, 'map' | 'variant'>): { url: string 
 
 /** The scene with the picture it shows in place of the map's (for the TV's frame). */
 function withPicture(scene: Scene): Scene {
-  if (!scene.variant) return scene;
+  if (!scene.variant && !scene.map.storey) return scene;
   const p = pictureOf(scene);
   return { ...scene, map: { ...scene.map, imageUrl: p.url, isVideo: p.isVideo } };
 }
@@ -2964,8 +2973,19 @@ export function produceFrame(now: number): PlayerFrame {
   state.frameSeq++;
   // No scene on the TV: black, and nothing of any scene in the frame.
   const tv = tvView() ?? { scene: emptyScene({ ...state.scene.table, blackout: true }), visible: [], lights: [], turn: 0, resource: '', runs: {} };
+  const top = frameOf(tv, now, state.ws === 'play' && tv.scene === state.scene ? initiativeOrder()[tv.turn]?.id ?? null : null);
+  // A storey on the TV (E-40): it covers its footprint; the storeys below show outside it, each
+  // with its own fog only.
+  const st = tv.scene.map.storey;
+  const def = st ? tv.scene.map.storeys?.find((x) => x.id === st) : undefined;
+  state.frame = def ? { ...top, storeyClip: storeyFootprint(def, tv.scene.map.masonry, tv.scene.map.floors), below: framesBelow(tv, now) } : top;
+  return state.frame;
+}
+
+/** The TV's frame of one view: its storey with its own fog, light and figures. */
+function frameOf(tv: TvView, now: number, activeTokenId: string | null): PlayerFrame {
   // The picture the scene shows: a variant's or the map's own (E-41).
-  state.frame = buildPlayerFrame(withPicture(tv.scene), {
+  return buildPlayerFrame(withPicture(tv.scene), {
     seq: state.frameSeq,
     now,
     showGrid: state.showGrid,
@@ -2975,7 +2995,7 @@ export function produceFrame(now: number): PlayerFrame {
     look: lookToWire(state.fogLook),
     visible: tv.visible,
     quick: state.fogQuick,
-    activeTokenId: state.ws === 'play' && tv.scene === state.scene ? initiativeOrder()[tv.turn]?.id ?? null : null,
+    activeTokenId,
     seedKey: tv.resource,
     lights: tv.lights,
     // Only the scene's shown placements: assets it hides never reach the TV.
@@ -2984,7 +3004,93 @@ export function produceFrame(now: number): PlayerFrame {
     covers: assetExtras(tv.scene).covers,
     cut: state.tvCut,
   });
-  return state.frame;
+}
+
+let belowCache: { key: string; views: TvView[] } | null = null;
+
+/**
+ * The frames of the storeys below the TV's (E-40), nearest first: each built from the scene file
+ * like the TV's own, with its own fog – only what players found there. Rebuilt when anything changed.
+ */
+function framesBelow(tv: TvView, now: number): StoreyFrame[] {
+  const storeys = tv.scene.map.storeys ?? [];
+  const ids = storeysBelow(storeys, tv.scene.map.storey ?? '');
+  if (!ids.length) return [];
+  const key = `${version}|${viewVersion}|${state.tvScenePath}|${ids.join(',')}`;
+  if (belowCache?.key !== key) {
+    const docs = tvDocs();
+    belowCache = {
+      key,
+      views: docs
+        ? ids.map((id) => {
+            const scene = sceneFromDocuments(docs.map, docs.ov, tv.scene.map.imageUrl, tv.scene.table, 'scene', id);
+            const extras = assetExtras(scene);
+            const seen = withAssetDoors(scene);
+            const vision = updateVision(seen, extras);
+            return { scene, visible: visiblePolygons(vision), lights: litSources(seen, extras), turn: 0, resource: tv.resource, runs: tv.runs };
+          })
+        : [],
+    };
+  }
+  return belowCache.views.map((v) => {
+    const def = storeys.find((x) => x.id === v.scene.map.storey);
+    const f = frameOf(v, now, null);
+    return def ? { ...f, storeyClip: storeyFootprint(def, v.scene.map.masonry, v.scene.map.floors) } : f;
+  });
+}
+
+let dmBelow: { key: string; frames: StoreyFrame[] } | null = null;
+
+/**
+ * For the DM window (E-40): the storeys below the one the DM works on, as frames with nothing
+ * fogged (the DM sees all), placed by the DM window's camera `cam` (CSS px). Null: none below.
+ */
+export function dmFramesBelow(cam: { centerX: number; centerY: number; zoom: number; rotation: 0 | 90 | 180 | 270; width: number; height: number }): PlayerFrame | null {
+  const ids = storeysBelow(state.scene.map.storeys ?? [], state.scene.map.storey ?? '');
+  if (!ids.length || !state.mapDoc) return null;
+  const key = `${version}|${viewVersion}|${state.storey}|${state.layer}|${ids.join(',')}`;
+  if (dmBelow?.key !== key) {
+    const docs = docsFromView();
+    const m = state.scene.map;
+    const o = m.origin ?? { x: 0, y: 0 };
+    const all = rectPolygon(o.x, o.y, o.x + m.widthPx, o.y + m.heightPx);
+    state.frameSeq++;
+    dmBelow = {
+      key,
+      frames: ids.map((id) => {
+        const scene = sceneFromDocuments(docs.map, docs.ov, state.scene.map.imageUrl, state.scene.table, state.layer, id);
+        // The DM sees everything there: no fog, no darkness.
+        scene.fog = { revealed: [all], remembered: [] };
+        scene.ambient = 'lit';
+        const def = scene.map.storeys?.find((x) => x.id === id);
+        const f = frameOf({ scene, visible: [all], lights: [], turn: 0, resource: state.mapResource, runs: {} }, Date.now(), null);
+        return def ? { ...f, storeyClip: storeyFootprint(def, scene.map.masonry, scene.map.floors) } : f;
+      }),
+    };
+  }
+  const now = Date.now();
+  // Placed as the DM window shows the map; fresh, so the view never takes them as stale.
+  const frames = dmBelow.frames.map((f) => ({ ...f, issuedAt: now, zoom: cam.zoom, center: { x: cam.centerX, y: cam.centerY }, rotation: cam.rotation, display: { widthPx: Math.max(1, Math.round(cam.width)), heightPx: Math.max(1, Math.round(cam.height)) }, blackout: false }));
+  return { ...frames[0], below: frames };
+}
+
+/** The footprint of the storey the DM works on (E-40); none for the map itself. */
+export function workingFootprint(): Polygon[] | null {
+  const m = state.scene.map;
+  const def = m.storey ? m.storeys?.find((x) => x.id === m.storey) : undefined;
+  return def ? storeyFootprint(def, m.masonry, m.floors) : null;
+}
+
+/** The files of the TV's scene, as the TV has them: the map it was put there with, the scene as it is. */
+function tvDocs(): { map: MapSidecar; ov: SceneOverride | null } | null {
+  if (state.tvScenePath && state.tvScenePath !== state.scenePath) {
+    const s = sessions.get(state.tvScenePath);
+    const map = s ? (tvMap ?? openMaps.get(s.mapFile) ?? s.mapDoc) : null;
+    return s && map ? { map, ov: s.sceneDoc } : null;
+  }
+  if (!state.mapDoc) return null;
+  const docs = docsFromView();
+  return { map: state.tvMapPending && tvMap ? tvMap : docs.map, ov: docs.ov };
 }
 
 interface TvView {

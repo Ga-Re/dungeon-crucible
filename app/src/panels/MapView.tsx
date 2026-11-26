@@ -32,7 +32,8 @@ import { Icon } from '../ui/Icon';
 import type { MessageKey } from '../i18n/en';
 import { drawDmOverlay, rotateHandleAt, SOUND_HANDLE_PX, type BuildOverlay, type OverlayState } from '../render/dmOverlay';
 import { isSoundRef } from '../core/sound';
-import { fitView, toMap, viewAt, type View } from '../render/viewTransform';
+import { fitView, toMap, toScreen, viewAt, type View } from '../render/viewTransform';
+import { storeysBelow } from '../core/storeyShape';
 import { fogOptions } from '../render/fogOptions';
 import { DARKNESS } from '../core/projection';
 import { dmDrawing } from '../core/build/playerDrawing';
@@ -46,7 +47,7 @@ import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/r
 import { TableView, type FrameSource } from '../table/TableView';
 import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
-  addCreatureToken, addLight, lightAt, removeSound, selectSound, soundAt, updateSound, currentLeaks, testFigureSight, updateLeakCheck, shownLook, pictureOf, setCropping, updateLook, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
+  addCreatureToken, addLight, lightAt, removeSound, selectSound, soundAt, updateSound, currentLeaks, testFigureSight, updateLeakCheck, shownLook, dmFramesBelow, workingFootprint, pictureOf, setCropping, updateLook, removeToken, revealZone, selectLight, selectToken, selectZone, snapPoint, state, toggleDmFog, toggleDoor, toggleLight, useStore, zoneAt,
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
   editableHere, shownInForge, activateAsset, placeHere, previewPlacing, stopPlacing, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, masonryDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
@@ -113,6 +114,19 @@ function DmMap() {
   const dmFogHidden = useStore((s) => s.dmFogHidden);
   // Another command panel open: the leak check waits behind it (one panel at a time).
   const otherCommand = useStore((s) => !!(s.placing || s.wallCommand || s.areaCommand || s.buildCommand || s.calibration || s.lookCommand));
+  const hasBelow = useStore((s) => storeysBelow(s.scene.map.storeys ?? [], s.scene.map.storey ?? '').length > 0);
+  // The storeys below as frames, placed by this window's camera (E-40).
+  const belowSource = useMemo<FrameSource>(() => ({
+    current: () => {
+      const wrap = wrapRef.current;
+      if (!wrap) return null;
+      const v = view.current;
+      const s = { width: Math.max(1, wrap.clientWidth), height: Math.max(1, wrap.clientHeight) };
+      const c = toMap(v, { x: s.width / 2, y: s.height / 2 });
+      const frame = dmFramesBelow({ centerX: c.x, centerY: c.y, zoom: v.zoom, rotation: v.rot, ...s });
+      return frame ? { frame, receivedAt: Date.now() } : null;
+    },
+  }), []);
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -241,9 +255,12 @@ function DmMap() {
         // The map turned another way (E-42): fitted anew.
         if ((shownLook()?.rotation ?? 0) !== view.current.rot) fit();
         const v2 = view.current;
-        const camKey = `${v2.zoom}|${v2.x}|${v2.y}|${v2.rot}|${s.width}|${s.height}`;
+        // On a storey (E-40) the map is cut to its footprint; the storeys below show around it.
+        const fp = workingFootprint();
+        const camKey = `${v2.zoom}|${v2.x}|${v2.y}|${v2.rot}|${s.width}|${s.height}|${getVersion()}`;
         if (camKey !== lastCam) {
           lastCam = camKey;
+          canvas.style.clipPath = fp ? `path(evenodd, '${screenPath(fp, v2)}')` : '';
           const c = toMap(v2, { x: s.width / 2, y: s.height / 2 });
           r.setCamera({ centerX: c.x, centerY: c.y, zoom: v2.zoom, rotation: v2.rot });
         }
@@ -849,6 +866,12 @@ function DmMap() {
   const hintKey = tool === 'select' && ws === 'forge' ? 'hint.selectForge' : HINTS[tool];
   return (
     <div ref={wrapRef} className="map-wrap">
+      {/* The storeys below the one worked on (E-40): blurred under it, everything shown. */}
+      {hasBelow && (
+        <div className="storey-underlay" aria-hidden="true">
+          <TableView source={belowSource} depth={1} />
+        </div>
+      )}
       <canvas ref={canvasRef} aria-hidden="true" />
       <canvas
         ref={overlayRef}
@@ -978,6 +1001,11 @@ function elementAt(p: Point, tol: number): string | null {
   const asset = placementAt(p);
   if (asset) return asset;
   return [...sc.zones, ...sc.hidden.zones].reverse().find((z) => areaContains(z.shape, p))?.id ?? null;
+}
+
+/** An SVG path of `polys` on screen in this view (CSS px). */
+function screenPath(polys: readonly Polygon[], v: View): string {
+  return polys.map((p) => [p.outer, ...p.holes].map((ring) => `M${ring.map(([x, y]) => { const q = toScreen(v, { x, y }); return `${q.x.toFixed(1)} ${q.y.toFixed(1)}`; }).join('L')}Z`).join('')).join('');
 }
 
 /** A dragged radius in feet: whole 5 ft steps (Alt: whole feet), at least one step. */

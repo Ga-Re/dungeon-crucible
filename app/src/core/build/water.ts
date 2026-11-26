@@ -77,3 +77,47 @@ export function waterfalls(waters: readonly Water[], cliffs: readonly Cliff[]): 
   }
   return out;
 }
+
+/**
+ * Chaikin's corner cutting: a line made round (each round cuts every corner at a quarter and
+ * three quarters). An open line keeps its ends.
+ */
+export function smoothLine(points: readonly Point[], closed: boolean, rounds = 2): Point[] {
+  let pts = points.map((p) => ({ ...p }));
+  for (let r = 0; r < rounds && pts.length > 2; r++) {
+    const out: Point[] = closed ? [] : [pts[0]];
+    const n = closed ? pts.length : pts.length - 1;
+    for (let i = 0; i < n; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      out.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 }, { x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 });
+    }
+    if (!closed) out.push(pts[pts.length - 1]);
+    pts = out;
+  }
+  return pts;
+}
+
+/**
+ * The water's outline, rounded: a river's two banks joined into one ring (left bank forwards,
+ * right bank back), a lake's or the sea's ring. Shared by the painted map and the moving water.
+ */
+export function waterOutline(w: Pick<Water, 'kind' | 'points' | 'closed' | 'width'>): Point[] {
+  if (w.kind === 'river') {
+    const line = smoothLine(w.points, false, 3);
+    const { left, right } = riverBanks({ points: line, width: w.width });
+    return [...left, ...right.reverse()];
+  }
+  return smoothLine(w.points, true, 3);
+}
+
+/** Positive when the ring runs clockwise on the map (y down): its inside lies right of its edges. */
+export function ringArea(points: readonly Point[]): number {
+  let s = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    s += a.x * b.y - b.x * a.y;
+  }
+  return s / 2;
+}

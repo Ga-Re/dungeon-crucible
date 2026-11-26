@@ -15,6 +15,7 @@ import type { DmDrawing, Drawing } from '../core/build/playerDrawing';
 import type { Decal, PaintedImage } from './pixi/renderer';
 import { groundSlot, type BuildTextures } from './build/textures';
 import { paintCliffs } from './cliffsPaint';
+import { paintWater, paintWaterfalls } from './waterPaint';
 
 /** How each style's outline wavers, by its thickness. */
 const WAVER: Record<MasonryStyle, { amplitude: number; scale: number }> = {
@@ -280,8 +281,11 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       // From here on in map coordinates.
       g.translate(-left - ox, -top - oy);
       paintFloors(g, left + ox, top + oy, w, h);
+      // Water lies in the ground (E-35); cliffs over it, waterfalls where rivers fall over them.
+      paintWater(g, drawing.waters, cell, tex);
       // Cliffs and slopes lie on the ground, under the walls (E-34).
       paintCliffs(g, drawing.cliffs, drawing.biome, cell, tex);
+      paintWaterfalls(g, drawing.waters, drawing.cliffs, cell);
       paintWalls(g);
       g.restore();
     },
@@ -372,6 +376,7 @@ function scaled<D extends Drawing | DmDrawing>(d: D, k: number): D {
     doors: d.doors.map((x) => ({ ...x, at: x.at * k, width: x.width * k })),
     cracks: d.cracks.map((x) => ({ ...x, at: x.at * k, width: x.width * k })),
     cliffs: d.cliffs.map((c) => ({ ...c, width: c.width * k, points: c.points.map((p) => ({ x: p.x * k, y: p.y * k })) })),
+    waters: d.waters.map((w) => ({ ...w, width: w.width * k, points: w.points.map((p) => ({ x: p.x * k, y: p.y * k })) })),
   };
 }
 

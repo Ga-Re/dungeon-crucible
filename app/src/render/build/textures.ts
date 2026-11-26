@@ -7,7 +7,7 @@
 import { noise2 } from '../../core/build/handDrawn';
 import type { MasonryStyle } from '../../core/build/masonry';
 
-export type SurfaceSlot = `wall-${MasonryStyle}` | `floor-${MasonryStyle}` | 'cliff-rock' | 'cliff-earth' | 'cliff-scree' | GroundSlot;
+export type SurfaceSlot = `wall-${MasonryStyle}` | `floor-${MasonryStyle}` | 'cliff-rock' | 'cliff-earth' | 'cliff-scree' | GroundSlot | 'water-river' | 'water-deep' | 'water-foam';
 /** Natural ground far from walls, after the biome (E-34). */
 export type GroundSlot = 'ground-grass' | 'ground-snow' | 'ground-sand' | 'ground-ash' | 'ground-swamp';
 
@@ -33,7 +33,7 @@ const PART = 256;
 const STYLES: MasonryStyle[] = ['dungeon-stone', 'cave-rock', 'brick', 'wood'];
 const PARTS: PartSlot[] = ['part-cornerstone', 'part-pillar', 'part-door', 'growth-grass', 'growth-bush', 'growth-moss'];
 /** Cliff faces (E-34). */
-const CLIFF_SURFACES: SurfaceSlot[] = ['cliff-rock', 'cliff-earth', 'cliff-scree', 'ground-grass', 'ground-snow', 'ground-sand', 'ground-ash', 'ground-swamp'];
+const CLIFF_SURFACES: SurfaceSlot[] = ['cliff-rock', 'cliff-earth', 'cliff-scree', 'ground-grass', 'ground-snow', 'ground-sand', 'ground-ash', 'ground-swamp', 'water-river', 'water-deep', 'water-foam'];
 
 const files = import.meta.glob('./textures/*.{webp,png}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
@@ -101,6 +101,9 @@ const BASE: Record<SurfaceSlot, [number, number, number]> = {
   'ground-sand': [206, 180, 128],
   'ground-ash': [62, 60, 58],
   'ground-swamp': [70, 76, 52],
+  'water-river': [52, 128, 150],
+  'water-deep': [30, 82, 110],
+  'water-foam': [236, 244, 250],
 };
 
 /** Noise that repeats every `period` cells. */

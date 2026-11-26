@@ -489,8 +489,14 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     Regler „Verfall“ in den Eigenschaften): Risse und fehlende Steine auf der Krone, Geröll am Fuß; Karte v7 und
     Szene v9 (optionales Feld `decay`, Leer-Migrationen), in der TV-Projektion mitgegeben (nur Optik). Dazu eine
     dunkle Fundamentlinie am Mauerfuß (der Rand-Trim aus DC-119a in schlichter Form).
-  - **DC-119c Wasser**: organische Uferlinie, Strömungsrichtung in Textur und Animation, Flachzonen mit sichtbarem
-    Grund und Tiefenvarianz.
+  - ✓ **DC-119c Wasser**: Organische Uferlinie je Seed (`organicLine`, ortsbasiert und damit nahtfrei auf Ringen;
+    lange Segmente werden erst unterteilt, damit auch schnurgerade Linien Buchten bekommen): Flüsse bekommen ein
+    wanderndes Rückgrat und Ufer mit atmender Breite (`riverSpine`/`riverRibbon`), Seen/Meere Buchten und Zungen
+    statt der glatten Offset-Linie; Anstrich, bewegtes Wasser und Ufer-Details bauen auf demselben Band auf und
+    bleiben deckungsgleich. Die Flusstextur läuft in Scheiben **mit der Strömung** (die bewegte Schicht tat das
+    schon über ihre UVs). **Flachzonen**: am Ufer schimmert der Grund durch (Meer: Sand, sonst Kies, zwei Bänder);
+    die Wasserfläche nutzt ihre Texturvarianten je Seed (DC-119a). Tests für `organicLine`/`waterOutline`
+    nachgezogen (Determinismus, Schranken).
   - **DC-119d Flächen-Generator**: Bereich aufziehen und füllen (Stil, Dichte, Seed, Würfel-Knopf) im Bauen-Tab;
     Übernehmen backt ein, Seed+Parameter als Notiz.
   - **DC-119e Ganz-Karten-Generator**: „Karte generieren …“ im Kartenkatalog, Live-Regler (Worker, verkleinerte

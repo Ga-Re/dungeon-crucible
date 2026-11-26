@@ -8,7 +8,7 @@
  */
 import { Container, Graphics, Mesh, MeshGeometry, Shader, UniformGroup } from "pixi.js";
 import { offsetPolyline, type Cliff } from "../../core/build/cliffs";
-import { ringArea, smoothLine, waterfalls, waterOutline, type Water } from "../../core/build/water";
+import { ringArea, riverRibbon, waterfalls, waterOutline, type Water } from "../../core/build/water";
 import type { Point } from "../../core/geometry";
 
 export interface WaterScene {
@@ -155,9 +155,8 @@ export function buildWaterLayer(scene: WaterScene): WaterHandle {
   const { cell } = scene;
   for (const w of scene.waters) {
     if (w.kind === "river") {
-      const line = smoothLine(w.points, false, 3);
-      const left = offsetPolyline(line, false, w.width / 2);
-      const right = offsetPolyline(line, false, -w.width / 2);
+      // The same wandering banks the painted water has (DC-119c): both always agree.
+      const { left, right } = riverRibbon(w);
       parts.push(strip(left, right, false, RIVER, cell, w.width));
       continue;
     }

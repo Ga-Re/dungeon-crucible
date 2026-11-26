@@ -427,6 +427,7 @@ export function selectBuild(sel: BuildSelection | null): void {
   if (sel) {
     state.selectedWallIds = [];
     state.selectedAssetId = null;
+    state.selectedStairId = null;
   }
   emit();
 }

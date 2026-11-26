@@ -386,7 +386,7 @@ function DmMap() {
       selectedLightId: state.selectedLightId,
       selectedSoundId: state.selectedSoundId,
       soundGhost: state.placing?.at && isSoundRef(state.placing.next.path) ? state.placing.at : null,
-      stairs: { list: stairsOn(state.scene.map.stairs ?? [], state.scene.map.storey ?? '').map((s) => ({ ...s, toName: storeyName(otherEnd(s, state.scene.map.storey ?? '')) })), selected: state.selectedStairId },
+      stairs: { list: stairsOn(state.scene.map.stairs ?? [], state.scene.map.storey ?? '').map((s) => ({ ...s, toName: storeyName(otherEnd(s, state.scene.map.storey ?? '')) || t('storey.ground') })), selected: state.selectedStairId },
       leakCheck: state.ws === 'forge' && state.leakCheck ? { figure: state.leakCheck.figure, sight: testFigureSight(), leaks: currentLeaks() } : null,
       measure: d?.kind === 'measure' ? { a: d.a, b: d.b, ft: gridDistanceFeet(state.scene.map.grid, d.a, d.b) } : null,
       selectedWallIds: state.selectedWallIds,
@@ -541,15 +541,6 @@ function DmMap() {
           drag.current = { kind: 'token', id: tk.id, ox: tk.x - p.x, oy: tk.y - p.y, start: { x: tk.x, y: tk.y }, moved: false };
           return;
         }
-        // Stairs in the Map Forge (E-44): selected with a click on them.
-        if (state.layer === 'map') {
-          const st = stairUnder(p);
-          if (st) {
-            selectStair(st);
-            return;
-          }
-          if (state.selectedStairId) selectStair(null);
-        }
         // Sound sources (E-37): the selected one's radius handle, then any source – select and drag.
         const selSound = state.scene.sounds.find((x) => x.id === state.selectedSoundId && editableHere(x));
         if (selSound) {
@@ -630,6 +621,13 @@ function DmMap() {
             return;
           }
           selectPlacedAsset(null);
+          // Stairs (E-44): after everything that may stand on them, before the area they lie in.
+          const st = stairUnder(p);
+          if (st) {
+            selectStair(st);
+            return;
+          }
+          if (state.selectedStairId) selectStair(null);
         }
         selectZone(zoneAt(p));
         return;

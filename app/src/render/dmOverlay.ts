@@ -633,7 +633,7 @@ function drawStairMarks(g: CanvasRenderingContext2D, st: NonNullable<OverlayStat
     g.strokeRect(s.x, s.y, s.w, s.h);
     g.fillStyle = '#ffd79a';
     g.font = `600 ${12 * px}px 'JetBrains Mono', monospace`;
-    uprightText(g, `${s.toName || '0'} ${({ n: '↑', e: '→', s: '↓', w: '←' } as const)[s.dir]}`, s.x + 4 * px, s.y + 14 * px);
+    uprightText(g, `${s.toName} ${({ n: '↑', e: '→', s: '↓', w: '←' } as const)[s.dir]}`, s.x + 4 * px, s.y + 14 * px);
   }
   g.restore();
 }

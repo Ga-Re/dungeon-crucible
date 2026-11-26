@@ -236,6 +236,15 @@ describe('player projection (fail-closed)', () => {
     expect(frame.map.look).toEqual({ crop: { x: 0, y: 0, w: 100, h: 50 }, adjust: { brightness: 1.1, contrast: 1, saturation: 1, hue: 0 } });
     expect(parsePlayerFrame(frame, 0, 0).ok).toBe(true);
   });
+  it('sends only where the stairs of the storey shown are and their way up – nothing about where they lead (E-44)', () => {
+    const scene = createSampleScene();
+    scene.map.storeys = [{ id: 'gallery', name: 'Secret gallery', level: 1, footprint: [] }];
+    scene.map.stairs = [{ id: 'stair-a', x: 70, y: 70, w: 70, h: 140, to: 'gallery', dir: 'n' }, { id: 'stair-b', x: 700, y: 70, w: 70, h: 70, from: 'gallery', to: 'attic', dir: 'e' }];
+    const frame = buildPlayerFrame(scene, frameOpts(1, 0, visiblePolygons(updateVision(scene))));
+    expect(frame.stairs).toEqual([{ x: 70, y: 70, w: 70, h: 140, dir: 'n' }]);
+    const json = JSON.stringify(frame);
+    for (const word of ['stair-a', 'stair-b', 'gallery', 'Secret', 'attic']) expect(json).not.toContain(word);
+  });
   it('rejects stale, out-of-order and malformed frames', () => {
     const scene = createSampleScene();
     const frame = buildPlayerFrame(scene, frameOpts(5, 0, visiblePolygons(updateVision(scene))));

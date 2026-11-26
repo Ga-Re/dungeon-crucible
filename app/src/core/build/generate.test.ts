@@ -180,3 +180,28 @@ describe('whole-map generation (DC-119e)', () => {
     expect(els.floors.slice(1).every((f) => f.style === 'moss')).toBe(true);
   });
 });
+
+describe('generated rock (DC-119f)', () => {
+  it('outer rings carry rock outside, holes are rock blocks; a reach is passed on', () => {
+    const g = generate({ cols: 40, rows: 30, density: 0.6, seed: 7, style: 'cave' });
+    let n = 0;
+    const els = generatedElements(g, { x: 0, y: 0 }, 70, 'cave', 7, (p) => `${p}-${n++}`, 175);
+    const outside = els.walls.filter((w) => w.solid === 'outside');
+    expect(outside.length).toBeGreaterThanOrEqual(1);
+    expect(outside.every((w) => w.solidReach === 175)).toBe(true);
+    expect(els.walls.every((w) => w.solid === 'outside' || w.solid === 'inside')).toBe(true);
+    // Without a reach the rock goes to the map's edge.
+    n = 0;
+    expect(generatedElements(g, { x: 0, y: 0 }, 70, 'cave', 7, (p) => `${p}-${n++}`).walls.some((w) => w.solidReach)).toBe(false);
+  });
+
+  it('a pillar in a room is an inside block', () => {
+    const open = new Uint8Array(8 * 8);
+    for (let y = 1; y < 7; y++) for (let x = 1; x < 7; x++) open[y * 8 + x] = 1;
+    open[3 * 8 + 3] = 0;
+    open[3 * 8 + 4] = 0;
+    let n = 0;
+    const els = generatedElements({ cols: 8, rows: 8, open, rooms: [], doors: [] }, { x: 0, y: 0 }, 70, 'dungeon', 1, (p) => `${p}-${n++}`);
+    expect(els.walls.map((w) => w.solid).sort()).toEqual(['inside', 'outside']);
+  });
+});

@@ -520,6 +520,17 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     DM-Entscheid (2026-11-26): ohne Worker** – gemessen ~10 ms (Dungeon) / ~3 ms (Höhle) bei 120×90 Feldern,
     ein Worker käme erst, wenn ein Stil spürbar teurer wird. Klippen und Außen-Stile (Gebäude, Wildnis) folgen
     später als eigene Stile.
+  - ✓ **DC-119f Massiver Fels** (DM-Wunsch 2026-11-26): Generierte Höhlen und Dungeons waren nur Mauern auf offenem
+    Grund; jetzt liegen sie **eingelassen im Fels**. DM-Entscheidungen: **erhöhter Fels** (Felsoberfläche aus der
+    Mauertextur, angehoben, mit Flanke zur Lichtrichtung und Schatten in die Gänge) und gespeichert als **Fels-Seite
+    an geschlossenen Mauern**: optionales Feld `solid` (`outside` = Höhle/Dungeon im Stein, `inside` = Felsblock)
+    und `solidReach` (wie weit der Fels außen reicht; ohne: bis zum Kartenrand). Karte v8 / Szene v10 mit
+    Leer-Migrationen, TV-Projektion trägt beide Felder (nur Optik; Sicht und Bewegung bestimmen weiter die
+    Mauern). Der Fels folgt den Mauern auch nach Handbearbeitung (`core/build/rock.ts`, rein, mit Tests: außen,
+    Reichweite, Blöcke, zwei Höhlen füllen sich nie gegenseitig, Kartengrenze). Generator: äußere Ringe tragen Fels
+    außen, Löcher (Säulen) sind Felsblöcke; der Flächen-Generator lässt den Fels nur 2,5 Felder um das Gegrabene
+    reichen, die Ganz-Karte füllt bis zum Rand. In den Eigenschaften geschlossener Mauern: Auswahl „Fels“
+    (keiner/außen/innen). Der Fels steht niedriger als die Mauerkrone, damit einfeldbreite Gänge lesbar bleiben.
 - **DC-020 Ebenen (Stockwerke)**: anlegen, umbenennen, eigenes Bild gleicher Größe, Arbeitsebene vs. TV-Ebene,
   Freigabe, Nebel je Ebene (T-118a/c/d).
 - ✓ **DC-021 Rastereinmessung per N×N-Box** statt 3-Punkt, als Befehls-Panel; Raster verschieben; Schwenken während

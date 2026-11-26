@@ -10,6 +10,7 @@
  */
 import { floorField, jitterRing, noise2, type FloorStyle, type Jitter } from '../core/build/handDrawn';
 import { hashNoise, lineStrips, wearPaths } from '../core/build/variance';
+import { rockArea } from '../core/build/rock';
 import { FLOOR_REACH_CELLS, floorStep } from '../core/build/dirty';
 import { buildGraph, doorSpan, masonryOutline, pointAt, type BuildDoor, type Masonry, type MasonryStyle } from '../core/build/masonry';
 import type { DmDrawing, Drawing } from '../core/build/playerDrawing';
@@ -107,6 +108,8 @@ interface Geometry {
   wallZone: Path2D;
   /** The worn ways between doors (DC-119a), map px. */
   wear: Point[][];
+  /** Solid rock beside closed walls (DC-119f): its shape, the stone it is, how high it stands. */
+  rock: { shape: Path2D; style: MasonryStyle; height: number } | null;
 }
 
 /**
@@ -248,7 +251,24 @@ function geometryOf(drawing: Drawing | DmDrawing, withGround: boolean, cell: num
     return [{ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }];
   });
   const wear = wearPaths(walls, doorMids, { x: ox, y: oy, w: width, h: height }, cell);
-  const geometry = { styles, field, floorMasks, floorBoxes, step, wallZone, wear };
+  // Solid rock (DC-119f): the stone of most rock-bearing walls, as high as the highest of them.
+  const solidWalls = walls.filter((w) => w.closed && w.solid);
+  const rockPolys = solidWalls.length ? rockArea(walls, { x: ox, y: oy, w: width, h: height }) : [];
+  let rock: Geometry['rock'] = null;
+  if (rockPolys.length) {
+    const shape = new Path2D();
+    for (const p of rockPolys)
+      for (const r of [p.outer, ...p.holes]) {
+        r.forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)));
+        shape.closePath();
+      }
+    const counts = new Map<MasonryStyle, number>();
+    for (const w of solidWalls) counts.set(w.style, (counts.get(w.style) ?? 0) + 1);
+    const style = [...counts].sort((a, b) => b[1] - a[1])[0][0];
+    // Lower than the walls' crown: a one-cell passage keeps most of its floor in view.
+    rock = { shape, style, height: Math.min(cell * 0.22, Math.max(...solidWalls.map((w) => heightOf(w, cell)))) };
+  }
+  const geometry = { styles, field, floorMasks, floorBoxes, step, wallZone, wear, rock };
   geometries.set(key, geometry);
   if (geometries.size > KEPT_GEOMETRIES) geometries.delete(geometries.keys().next().value!);
   return geometry;
@@ -286,7 +306,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
   const { x: ox, y: oy } = drawing.origin;
   const width = Math.max(1, Math.ceil(drawing.width));
   const height = Math.max(1, Math.ceil(drawing.height));
-  const { styles, field, floorMasks, floorBoxes, wallZone, wear } = geometryOf(drawing, withGround, cell, drawing.masonry.map(asMasonry));
+  const { styles, field, floorMasks, floorBoxes, wallZone, wear, rock } = geometryOf(drawing, withGround, cell, drawing.masonry.map(asMasonry));
   const patches = drawing.floors.map((f) => {
     const shape = new Path2D();
     for (const p of f.shape)
@@ -499,6 +519,46 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
     g.restore();
   };
 
+  /**
+   * Solid rock (DC-119f): raised like the walls' crown, its face showing where it stands above the
+   * open floor, a shadow falling into the passages – so they look carved into the stone.
+   */
+  const paintRock = (g: CanvasRenderingContext2D) => {
+    if (!rock) return;
+    const up = rock.height;
+    const slot: SurfaceSlot = `wall-${rock.style}`;
+    // The shadow it casts into the passages, in two soft steps.
+    for (const [k, alpha] of [[1.6, 0.12], [0.8, 0.18]] as const) {
+      g.save();
+      g.translate(light.x * up * k, light.y * up * k);
+      g.fillStyle = `rgba(0,0,0,${alpha})`;
+      g.fill(rock.shape, 'evenodd');
+      g.restore();
+    }
+    // The face: the rock at ground level, darkened; the top covers all of it but a strip.
+    g.fillStyle = sheetPattern(g, slot, tex, cell, styleSeed(rock.style) + 3, 5) ?? '#5b5650';
+    g.fill(rock.shape, 'evenodd');
+    g.fillStyle = `rgba(14,11,8,${0.42 - sideLit * 0.22})`;
+    g.fill(rock.shape, 'evenodd');
+    // The top, raised: the stone's own sheet, a touch lighter than the floor below.
+    g.save();
+    g.translate(0, -up);
+    g.fillStyle = sheetPattern(g, slot, tex, cell, styleSeed(rock.style) + 3, 5) ?? '#6a645c';
+    g.fill(rock.shape, 'evenodd');
+    g.fillStyle = 'rgba(255,240,220,.05)';
+    g.fill(rock.shape, 'evenodd');
+    // A dark break line and a light lip on the side the light comes from.
+    g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(12,9,6,.55)';
+    g.lineWidth = Math.max(1.5, cell * 0.03);
+    g.stroke(rock.shape);
+    g.translate(-light.x * 1.2, -light.y * 1.2);
+    g.strokeStyle = 'rgba(255,245,225,.22)';
+    g.lineWidth = 1.2;
+    g.stroke(rock.shape);
+    g.restore();
+  };
+
   const paintWalls = (g: CanvasRenderingContext2D) => {
     // Shadows first, all of them: no shadow lies on a wall painted before it.
     for (const s of styles) {
@@ -597,6 +657,7 @@ export function paintedDrawing(drawing: Drawing | DmDrawing, withGround: boolean
       paintCliffs(g, drawing.cliffs, drawing.biome, cell, tex, drawing.lightAngle ?? 45);
       paintWaterfalls(g, drawing.waters, drawing.cliffs, cell);
       if (drawing.autoGrowth !== false) paintWallFeet(g, drawing.masonry, cell, tex, drawing.biome, onGround);
+      paintRock(g);
       paintWalls(g);
       g.restore();
     },

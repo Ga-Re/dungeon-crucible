@@ -155,7 +155,8 @@ function regenerate(): void {
   const rows = Math.round(c.region.h / cell);
   const gen = generate({ cols, rows, density: c.genDensity, seed: c.genSeed, style: c.genStyle });
   const layer = onCurrentLayer();
-  const els = generatedElements(gen, { x: c.region.x, y: c.region.y }, cell, c.genStyle, c.genSeed, freshId);
+  // In a region the rock only hugs what was carved (DC-119f); it never buries the rest of the map.
+  const els = generatedElements(gen, { x: c.region.x, y: c.region.y }, cell, c.genStyle, c.genSeed, freshId, cell * 2.5);
   const withLayer = <T,>(xs: T[]): T[] => (layer.layer ? xs.map((x) => ({ ...x, ...layer })) : xs);
   apply({ masonry: [...genBefore.masonry, ...withLayer(els.walls)], doors: [...genBefore.doors, ...els.doors] }, undefined, true, undefined, [...genBefore.floors, ...withLayer(els.floors)]);
   emit();
@@ -538,7 +539,7 @@ export function splitBuildWall(): void {
   emit();
 }
 
-export function updateMasonry(id: string, patch: Partial<Pick<Masonry, 'style' | 'thickness' | 'seed' | 'height' | 'fortified' | 'decay'>>): void {
+export function updateMasonry(id: string, patch: Partial<Pick<Masonry, 'style' | 'thickness' | 'seed' | 'height' | 'fortified' | 'decay' | 'solid'>>): void {
   checkpoint();
   apply({ masonry: target().masonry.map((w) => (w.id === id ? { ...w, ...patch } : w)), doors: target().masonryDoors });
   emit();

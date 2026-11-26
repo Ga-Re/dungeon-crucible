@@ -60,6 +60,7 @@ export function startOf(ov: SceneOverride): SceneStart {
     ambience: ov.ambience.map((a) => ({ ...a })),
     ...copyAmbientSound(ov.ambientSound),
     soundLevels: { ...ov.soundLevels },
+    ...(ov.variant ? { variant: ov.variant } : {}),
     hidden: [...ov.hidden],
     assets: ov.assets.map((a) => ({ ...a })),
     effects: { ...ov.effects },
@@ -100,6 +101,7 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
       ambience: ambience.map((a) => ({ ...a })),
       ...copyAmbientSound(fromView.ambientSound),
       soundLevels: fromView.soundLevels,
+      ...(fromView.variant ? { variant: fromView.variant } : {}),
       hidden: fromView.hidden,
       assets: fromView.assets,
       effects: fromView.effects,
@@ -117,9 +119,10 @@ export function commitStart(previous: SceneOverride, fromView: SceneOverride, am
  */
 export function resetToStart(ov: SceneOverride): SceneOverride {
   const start = startOf(ov);
-  const { fogEffect: _fe, ambientSound: _as, ...rest } = ov;
+  const { fogEffect: _fe, ambientSound: _as, variant: _v, ...rest } = ov;
   return {
     ...rest,
+    ...(start.variant ? { variant: start.variant } : {}),
     ...copyAmbientSound(start.ambientSound),
     soundLevels: { ...start.soundLevels },
     fog: copyFog(start.fog),
@@ -203,10 +206,13 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     layers: (fromView ? m.layers : previous.layers).map((l) => ({ ...l, ...(l.trigger ? { trigger: { ...l.trigger } } : {}) })),
     lights: elements.lights,
     sounds: elements.sounds,
+    // A variant's light is the scene's choice, never the map's own (E-41).
+    ambient: !fromView && scene.variant ? previous.ambient : scene.ambient,
     ...((fromView ? m.ambientSound : previous.ambientSound) ? { ambientSound: { ...(fromView ? m.ambientSound : previous.ambientSound)! } } : {}),
     ...((fromView ? m.transition : previous.transition) ? { transition: { ...(fromView ? m.transition : previous.transition)! } } : {}),
     ...((fromView ? m.look : previous.look) ? { look: structuredClone((fromView ? m.look : previous.look)!) } : {}),
-    ambient: scene.ambient,
+    // Variants are edited in the Map Forge only, like the drawing.
+    variants: (fromView ? (m.variants ?? []) : previous.variants).map((v) => ({ ...v })),
     ...(startFog ? { startFog: copyFog(startFog) } : {}),
     // Drawn walls are edited in the Map Forge only, like placed assets.
     masonry: (fromView ? m.masonry : previous.masonry).map(copyMasonry),
@@ -267,6 +273,7 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     combat: { ...combat },
     ambience: [],
     ...copyAmbientSound(scene.ambientOverride),
+    ...(scene.variant ? { variant: scene.variant } : {}),
     soundLevels: Object.fromEntries(all('sounds').filter((x) => x.level !== undefined).map((x) => [x.id, x.level!])),
     overrides: layer.overrides,
     added: layer.added,
@@ -318,7 +325,9 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   // The start state shows the scene's start instead of its play state.
   const st = layer === 'start' && override ? startOf(override) : null;
   // The start's own sound everywhere, not the play state's (E-37).
-  const state = st ? { ...override!, ...st, ambientSound: st.ambientSound, soundLevels: st.soundLevels ?? {}, templates: [], fogEffect: undefined } : override;
+  const state = st ? { ...override!, ...st, ambientSound: st.ambientSound, variant: st.variant, soundLevels: st.soundLevels ?? {}, templates: [], fogEffect: undefined } : override;
+  // The variant shown (E-41): only one the map still has; its light, if it brings one.
+  const variant = onMap ? undefined : map.variants.find((v) => v.id === state?.variant);
   const discovered = new Set(state?.discoveredZones ?? []);
   const elements = onMap ? elementsFromSidecar(map) : resolveElements(elementsFromSidecar(map), layerOf(override)).elements;
   const zones: Zone[] = elements.zones.map((z) => ({ ...z, shape: copyShape(z.shape), discovered: !z.secret || (!onMap && discovered.has(z.id)) }));
@@ -379,6 +388,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       ...(map.ambientSound ? { ambientSound: { ...map.ambientSound } } : {}),
       ...(map.transition ? { transition: { ...map.transition } } : {}),
       ...(map.look ? { look: structuredClone(map.look) } : {}),
+      ...(map.variants.length ? { variants: map.variants.map((v) => ({ ...v })) } : {}),
     },
     walls: shownOn(walls),
     zones: shownOn(zones),
@@ -395,8 +405,9 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     own: drawing ? { masonry: drawing.masonry, masonryDoors: drawing.masonryDoors, cliffs: drawing.cliffs, waters: drawing.waters, floors: drawing.floors } : emptyOwnDrawing(),
     drawnHidden: drawing ? drawing.hidden : [],
     effectsOn: onMap ? {} : { ...(state?.effects ?? {}) },
+    ...(variant ? { variant: variant.id } : {}),
     ...(onMap || state?.ambientSound === undefined ? {} : { ambientOverride: copyAmbientSound(state.ambientSound).ambientSound }),
-    ambient: map.ambient,
+    ambient: variant?.ambient ?? map.ambient,
     tokens: onMap ? [] : (state?.tokens ?? []).map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: onMap ? [] : (state?.templates ?? []).map((t) => ({ ...t })),
     pings: [],

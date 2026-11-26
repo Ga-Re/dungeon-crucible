@@ -3,7 +3,7 @@ import type { Point, Segment } from './geometry';
 import type { GridConfig, DisplaySpec } from './grid';
 import type { FogEffect, LevelFog, Polygon } from './poly/types';
 import type { Condition } from './rules/rules2024';
-import type { InteriorTrigger, MapLayer, MapLook } from './sidecar';
+import type { InteriorTrigger, MapLayer, MapLook, MapVariant } from './sidecar';
 import type { Transition } from './transition';
 import type { BuildDoor, Masonry } from './build/masonry';
 import type { Cliff } from './build/cliffs';
@@ -191,6 +191,8 @@ export interface MapInfo {
   transition?: Transition;
   /** How the picture is shown (E-42): turned, cut, adjusted; none: as it is. */
   look?: MapLook;
+  /** Other pictures of the map (E-41). */
+  variants?: MapVariant[];
 }
 
 export type MapType = 'dungeon' | 'building' | 'region' | 'world' | 'arena';
@@ -263,6 +265,8 @@ export interface Scene {
   lights: LightSource[];
   /** Sound sources (E-37): heard in the Orchestrator only, never sent to the TV. */
   sounds: SoundSource[];
+  /** The map's variant this scene shows (E-41); none: the map's own picture. */
+  variant?: string;
   /** This scene's sound everywhere instead of the map's, or "none" (E-37); missing: the map's. */
   ambientOverride?: { sound: string; volume: number } | 'none';
   ambient: AmbientLight;

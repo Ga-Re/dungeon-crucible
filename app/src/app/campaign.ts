@@ -31,7 +31,7 @@ import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { activateSession, buildHooks, checkpoint, clearTabs, subscribe, closeCreatureTab, closeSessionTab, markDirty, openCreatureTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, fadeTvIn, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
+import { setPictureResolver, activateSession, buildHooks, checkpoint, clearTabs, subscribe, closeCreatureTab, closeSessionTab, markDirty, openCreatureTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, fadeTvIn, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
 import { applySceneAmbience, refreshAudioFiles, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
@@ -45,6 +45,44 @@ export function campaignPath(rel: string): string {
 
 export function creaturePath(c: Pick<Creature, 'name'>): string {
   return `library/${slugId(c.name, 'creature')}${CREATURE_SUFFIX}`;
+}
+
+// Pictures of map variants come from the library like map pictures (E-41).
+setPictureResolver(async (path) => (isDesktop() ? assetUrl(await absolutePath(path)) : null));
+
+/** The size of a picture or video at `url`. */
+function pictureSize(url: string, video: boolean): Promise<{ w: number; h: number }> {
+  return new Promise((resolve, reject) => {
+    if (video) {
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      v.onloadedmetadata = () => resolve({ w: v.videoWidth, h: v.videoHeight });
+      v.onerror = () => reject(new Error('unreadable video'));
+      v.src = url;
+    } else {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => reject(new Error('unreadable picture'));
+      img.src = url;
+    }
+  });
+}
+
+/**
+ * Picks the picture of a new map variant (E-41): into the library, and only if it has the map's
+ * size – walls, areas and fog must fit it. Null: nothing picked.
+ */
+export async function pickVariantPicture(): Promise<{ path: string } | { error: 'variant.wrongSize' | 'variant.unreadable'; w?: number; h?: number } | null> {
+  const f = await importToLibrary('map');
+  if (!f) return null;
+  const m = state.scene.map;
+  try {
+    const size = await pictureSize(await assetUrl(f.absPath), /\.(mp4|webm|m4v|mov)$/i.test(f.relPath));
+    if (Math.round(size.w) !== Math.round(m.widthPx) || Math.round(size.h) !== Math.round(m.heightPx)) return { error: 'variant.wrongSize', w: size.w, h: size.h };
+  } catch {
+    return { error: 'variant.unreadable' };
+  }
+  return { path: f.relPath };
 }
 
 /** The URL the renderer loads a map picture from; none for a drawn map (E-33), which has no picture. */
@@ -816,7 +854,7 @@ async function mapOf(resource: string, sidecar: MapSidecar | null): Promise<{ ma
     url,
     map: {
       kind: 'map', schemaVersion: MAP_VERSION, name, resource, isVideo, widthPx: w, heightPx: h,
-      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], sounds: [], ambient: 'dark', masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [],
+      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], sounds: [], variants: [], ambient: 'dark', masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [],
     },
   };
 }

@@ -130,11 +130,11 @@ describe('water in the map file (E-35)', () => {
   });
 });
 
-describe('a scene with its own drawing (scene version 11, DC-107c/DC-119b/f, E-37)', () => {
+describe('a scene with its own drawing (scene version 12, DC-107c/DC-119b/f, E-37, E-41)', () => {
   it('round-trips its own walls and what it hides; reset brings the start drawing back; old scenes read with none', async () => {
     const { SCENE_VERSION } = await import('../sidecar');
     const { resetToStart, startOf } = await import('../persistence');
-    expect(SCENE_VERSION).toBe(11);
+    expect(SCENE_VERSION).toBe(12);
     const map = drawnMap();
     const scene = sceneFromDocuments(map, null, null);
     expect(scene.own.masonry).toEqual([]);

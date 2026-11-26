@@ -122,6 +122,13 @@ export const mapLookSchema = z.object({
 });
 export type MapLook = z.infer<typeof mapLookSchema>;
 
+/**
+ * A variant of a map (DC-023, E-41): another picture of the same size (day/night, destroyed,
+ * flooded) and, if it differs, its own ambient light. Walls, areas and fog stay the map's.
+ */
+export const mapVariantSchema = z.object({ id, name: z.string().min(1), image: z.string().min(1), ambient: z.enum(['dark', 'lit']).optional() });
+export type MapVariant = z.infer<typeof mapVariantSchema>;
+
 /** How the TV changes to a scene on this map (DC-105, E-38): fade, through black or a hard cut, and how long. */
 export const transitionSchema = z.object({ kind: z.enum(['fade', 'black', 'cut']), seconds: z.number().min(0).max(10) });
 /** A map's sound everywhere (E-37): wind, a snowstorm. */
@@ -151,7 +158,7 @@ export type MapLayer = z.infer<typeof mapLayerSchema>;
 /** Version 2: areas are polygons (DC-013). */
 export const MAP_VERSION = 11;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
-export const SCENE_VERSION = 11;
+export const SCENE_VERSION = 12;
 
 /**
  * When a house's interior is shown (E-29): by the DM's click only, when a player character steps
@@ -202,6 +209,8 @@ export const MapSidecarSchema = z.object({
   transition: transitionSchema.optional(),
   /** How the picture is shown (E-42, version 11): turned, cut, adjusted; none: as it is. */
   look: mapLookSchema.optional(),
+  /** Other pictures of the map (E-41, version 11); a scene picks one. */
+  variants: z.array(mapVariantSchema).default([]),
   /** What is revealed when a new scene starts on this map (painted in the Map Forge, E-26). */
   startFog: levelFogSchema.optional(),
   /** Dark (darkvision and light matter) or lit (daylight: line of sight is enough). */
@@ -440,6 +449,8 @@ export const SceneOverrideSchema = z.object({
   combat: z.object({ round: z.number().int().min(1), turn: z.number().int().min(0) }).default({ round: 1, turn: 0 }),
   ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
   ambientSound: sceneAmbientSound,
+  /** The map's variant this scene shows (E-41, version 12); none: the map's own picture. */
+  variant: z.string().optional(),
   /** Sound source id → its volume in this scene (DC-104c); not listed: the map's. */
   soundLevels: z.record(z.string(), z.number().min(0).max(1)).default({}),
   /** Changes of the map for this scene only, by element id: the fields that differ (E-2). Hiding is state: `hidden`. */
@@ -456,6 +467,7 @@ export const SceneOverrideSchema = z.object({
     discoveredZones: z.array(z.string()).default([]),
     ambience: z.array(z.object({ path: z.string(), volume: z.number().min(0).max(1) })).default([]),
     ambientSound: sceneAmbientSound,
+    variant: z.string().optional(),
     soundLevels: z.record(z.string(), z.number().min(0).max(1)).default({}),
     /** Map elements hidden from the start (prepared, e.g. a buried corridor). */
     hidden: z.array(z.string()).default([]),

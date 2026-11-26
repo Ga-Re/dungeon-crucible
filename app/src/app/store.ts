@@ -35,7 +35,7 @@ import type { MonitorInfo } from '../platform/bridge';
 import { emptyScene } from '../core/emptyScene';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import type { AssetKind, AssetSidecar, Creature, MapLayer, MapLook, Player } from '../core/sidecar';
+import type { AssetKind, AssetSidecar, Creature, MapLayer, MapLook, MapVariant, Player } from '../core/sidecar';
 import { missingPartyTokens, tokenFromCreature } from '../core/party';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
@@ -2419,6 +2419,67 @@ export function selectLight(id: string | null): void {
   emit();
 }
 
+/* ---------- Map variants (DC-023, E-41) ---------- */
+
+/** Library pictures by path → their URL (null: cannot be shown); looked up once. */
+const pictures = new Map<string, string | null>();
+let resolvePicture: ((path: string) => Promise<string | null>) | null = null;
+
+/** How a library picture becomes a URL the renderer loads (set by the campaign layer). */
+export function setPictureResolver(fn: (path: string) => Promise<string | null>): void {
+  resolvePicture = fn;
+}
+
+const VIDEO_FILE = /\.(mp4|webm|m4v|mov)$/i;
+
+/**
+ * The picture a scene shows: its variant's (E-41) or the map's own. A variant's picture not looked
+ * up yet shows nothing (black) until it is – never the other picture for a moment.
+ */
+export function pictureOf(scene: Pick<Scene, 'map' | 'variant'>): { url: string | null; isVideo: boolean } {
+  const v = scene.variant ? scene.map.variants?.find((x) => x.id === scene.variant) : undefined;
+  if (!v) return { url: scene.map.imageUrl, isVideo: scene.map.isVideo };
+  const isVideo = VIDEO_FILE.test(v.image);
+  if (pictures.has(v.image)) return { url: pictures.get(v.image) ?? null, isVideo };
+  if (resolvePicture) {
+    pictures.set(v.image, null);
+    const path = v.image;
+    void resolvePicture(path)
+      .catch(() => null)
+      .then((url) => {
+        pictures.set(path, url);
+        if (!url) log('log.variantMissing', { file: path });
+        emit();
+      });
+  }
+  return { url: null, isVideo };
+}
+
+/** The scene with the picture it shows in place of the map's (for the TV's frame). */
+function withPicture(scene: Scene): Scene {
+  if (!scene.variant) return scene;
+  const p = pictureOf(scene);
+  return { ...scene, map: { ...scene.map, imageUrl: p.url, isVideo: p.isVideo } };
+}
+
+/**
+ * Shows a variant of the map in this scene, or the map's own picture (null): for the start while
+ * preparing, else for the play state. Its light counts; on the TV it changes with a transition.
+ */
+export function setSceneVariant(id: string | null): void {
+  if (state.layer === 'map' || !state.mapDoc) return;
+  const v = id ? state.scene.map.variants?.find((x) => x.id === id) : undefined;
+  if ((v?.id ?? undefined) === state.scene.variant) return;
+  checkpoint();
+  if (v) state.scene.variant = v.id;
+  else delete state.scene.variant;
+  state.scene.ambient = v?.ambient ?? state.mapDoc.ambient;
+  markDirty();
+  recomputeVision();
+  if (state.layer === 'scene' && state.scenePath && state.scenePath === state.tvScenePath) cutTv(tvTransition().kind);
+  emit();
+}
+
 /* ---------- The picture's look (DC-022, E-42) ---------- */
 
 /** "Adjust picture": the look as edited (a preview until OK) and as it was. */
@@ -2637,6 +2698,8 @@ export interface MapSettings {
   ambientSound: { sound: string; volume: number } | null;
   /** How the TV changes to a scene on this map (E-38). */
   transition: Transition;
+  /** Other pictures of the map (E-41). */
+  variants: MapVariant[];
 }
 
 export function openMapSettings(open = true): void {
@@ -2646,7 +2709,7 @@ export function openMapSettings(open = true): void {
 
 export function currentMapSettings(): MapSettings {
   const m = state.scene.map;
-  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient, ambientSound: m.ambientSound ? { ...m.ambientSound } : null, transition: { ...(m.transition ?? DEFAULT_TRANSITION) } };
+  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient, ambientSound: m.ambientSound ? { ...m.ambientSound } : null, transition: { ...(m.transition ?? DEFAULT_TRANSITION) }, variants: (m.variants ?? []).map((v) => ({ ...v })) };
 }
 
 /** Applies the dialog as one undoable step; only in the Map Forge (the map's data). */
@@ -2663,6 +2726,7 @@ export function applyMapSettings(s: MapSettings): boolean {
   if (s.ambientSound) m.ambientSound = { ...s.ambientSound };
   else delete m.ambientSound;
   // Written only when it is not the default, so maps keep no field they do not need.
+  m.variants = s.variants.map((v) => ({ ...v }));
   const plain = s.transition.kind === DEFAULT_TRANSITION.kind && s.transition.seconds === DEFAULT_TRANSITION.seconds;
   if (plain && !m.transition) delete m.transition;
   else m.transition = { ...s.transition };
@@ -2831,7 +2895,8 @@ export function produceFrame(now: number): PlayerFrame {
   state.frameSeq++;
   // No scene on the TV: black, and nothing of any scene in the frame.
   const tv = tvView() ?? { scene: emptyScene({ ...state.scene.table, blackout: true }), visible: [], lights: [], turn: 0, resource: '', runs: {} };
-  state.frame = buildPlayerFrame(tv.scene, {
+  // The picture the scene shows: a variant's or the map's own (E-41).
+  state.frame = buildPlayerFrame(withPicture(tv.scene), {
     seq: state.frameSeq,
     now,
     showGrid: state.showGrid,

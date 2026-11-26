@@ -61,6 +61,7 @@ Geklärt im Interview mit dem DM (Skill `topic-interviewer`). „Wie DM“ heiß
 | E-41 | Kartenvarianten (DC-023) | Eine Variante (Tag/Nacht, zerstört, geflutet …) bringt **ein anderes Bild je Stockwerk** und optional ein **anderes Umgebungslicht**; Wände, Bereiche und Nebel bleiben gemeinsam (bauliche Änderungen weiter über Zeichenebenen). **Wahl je Szene im Orchestrator**, Start und Spiel getrennt; ein Wechsel im Spiel blendet auf dem TV über (E-38). | DM-Interview 2026-11-26 |
 | E-42 | Zuschneiden, Drehen, Bildanpassung (DC-022) | **Nicht-destruktiv**, Werte in der Kartendatei, TV und DM-Fenster sehen gleich aus. **Drehen in 90°-Schritten, alles dreht mit** (Bild, Raster, Wände, Bereiche, Lichter, Klänge, Assets, gezeichnete Elemente, Start-Nebel und der Nebel der Szenen). **Helligkeit, Kontrast, Sättigung, Farbton** und **Zuschnitt** (Rahmen auf der Karte) im Befehls-Panel „Bild anpassen“ mit Live-Vorschau. **Umsetzung bestätigt** (DM 2026-11-26): Drehen dreht die **Ansicht** (DM-Fenster und TV), die gespeicherten Daten bleiben unverändert; Beschriftungen im DM-Fenster bleiben aufrecht. | DM-Interview 2026-11-26 |
 | E-43 | Leck-Prüfung (DC-025) | **Testfigur** in der Kartenschmiede: ziehbar, zeigt live, was eine Figur dort sähe (Dunkelsicht einstellbar), nur im DM-Fenster, nichts wird gespeichert. **Lücken markieren**: offene Wandenden, kleine Lücken zwischen Wänden, Türen ohne Anschluss – auf der Karte markiert und als klickbare Liste. Wände aus Bereichen (T-141) nicht jetzt. **UVTT-Import (DC-024) zurückgestellt** (DM 2026-11-26). | DM-Interview 2026-11-26 |
+| E-44 | Treppen (DC-026) | Eine Treppe ist ein **Feld auf zwei Stockwerken** an derselben Stelle (Werkzeug „Treppe“: Felder aufziehen, Ziel = nächstes Stockwerk darüber, sonst darunter; Ziel und Richtung nach oben in den Eigenschaften). Eine Figur, die auf einer Treppe abgestellt wird, löst eine **Rückfrage** aus („… nach oben? Hinübergehen / Bleibt hier“, blockiert nicht). Sind danach **alle Spielerfiguren** auf dem neuen Stockwerk und ist die Szene auf dem TV, **folgt der TV** mit Übergang. Auf dem TV **gezeichnete Stufen** unter dem Nebel. Format: Karte v12 `stairs`. | DM 2026-11-26 |
 
 **Bleibt aus Dungeon Crucible:** Pergament als drittes Theme, das eigene Docking mit echten Fenstern und
 Hover-Flyout (statt dockview und Kanten-Leisten), Export/Import ganzer Kampagnen als Archiv – beim Export wählbar:
@@ -658,7 +659,11 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   ist ziehbar, ihre Sicht wird wie die einer Spielerfigur gerechnet (Wände inkl. gezeichneter Mauern und
   Asset-Türen, Licht, Dunkelsicht) und hell gezeigt; Lücken rot markiert. Nichts davon wird gespeichert oder an
   den TV geschickt. In der App geprüft (Beispielkarte: keine Lücken, Sicht durch die Durchgänge).
-- **DC-026 Parametrische Räume, Gelände mit Bewegungskosten, Treppen zwischen Ebenen** (T-195–197).
+- ◐ **DC-026 Parametrische Räume, Gelände mit Bewegungskosten, Treppen zwischen Ebenen** (T-195–197). Treppen
+  erledigt (E-44, Branch `feature/stairs`): `core/stairs.ts` (Tests), Karte v12 `stairs`, Werkzeug „Treppe“
+  (Kartenschmiede › Hindernisse), Eigenschaften (Ziel, Richtung, entfernen), Rückfrage beim Abstellen, TV folgt
+  allen Spielerfiguren, Stufenbild im TV- und DM-Fenster (nur die Lage geht in den Frame). Kartenkopie erneuert
+  Treppen-IDs. In der App geprüft. Offen: parametrische Räume, Gelände mit Bewegungskosten.
 - **DC-027 Karte aus Kacheln, eigene Karten zeichnen** (T-190, Stufe 6) – geht in DC-107 (Zeichnen) und DC-119 (Generator) auf.
 - **DC-028 Einzelkarte teilen als `.dmmap`** (T-148).
 

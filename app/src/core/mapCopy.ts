@@ -27,7 +27,7 @@ export function duplicateMap(map: MapSidecar, name: string, withContent: boolean
       ? { masonry: copy.masonry.map(({ layer: _l, ...w }) => w), masonryDoors: copy.masonryDoors, cliffs: copy.cliffs.map(({ layer: _l, ...c }) => c), waters: copy.waters.map(({ layer: _l, ...w }) => w), floors: copy.floors.map(({ layer: _l, ...f }) => f) }
       : { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [] };
     // Variants are pictures of the map and come along (new ids); storeys are content and do not (E-40/41).
-    return { ...rest, walls: [], zones: [], lights: [], sounds: [], assets: [], layers: [], pois: [], storeys: [], variants: copy.variants.map((v) => ({ ...v, id: fresh('variant') })), ...drawing };
+    return { ...rest, walls: [], zones: [], lights: [], sounds: [], assets: [], layers: [], pois: [], storeys: [], stairs: [], variants: copy.variants.map((v) => ({ ...v, id: fresh('variant') })), ...drawing };
   }
   const ids = new Map<string, string>();
   const renew = <T extends { id: string }>(xs: T[], prefix: string) => xs.map((x) => {
@@ -39,6 +39,7 @@ export function duplicateMap(map: MapSidecar, name: string, withContent: boolean
   copy.layers = renew(copy.layers, 'layer');
   copy.storeys = renew(copy.storeys, 'storey');
   copy.variants = renew(copy.variants, 'variant');
+  copy.stairs = renew(copy.stairs, 'stair');
   copy.zones = renew(copy.zones, 'area');
   copy.walls = renew(copy.walls, 'wall');
   copy.lights = renew(copy.lights, 'light');
@@ -67,5 +68,6 @@ export function duplicateMap(map: MapSidecar, name: string, withContent: boolean
   copy.waters = copy.waters.map(onLayer);
   copy.floors = copy.floors.map(onLayer);
   copy.masonryDoors = copy.masonryDoors.map((d) => ({ ...d, wall: ref(d.wall)! }));
+  copy.stairs = copy.stairs.map((x) => ({ ...x, ...(x.from ? { from: ref(x.from) } : {}), ...(x.to ? { to: ref(x.to) } : {}) }));
   return copy;
 }

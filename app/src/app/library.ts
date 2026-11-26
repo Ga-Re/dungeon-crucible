@@ -290,7 +290,7 @@ export async function generateLibraryMap(name: string, opts: Omit<MapGenOptions,
     kind: 'map', schemaVersion: MAP_VERSION, name, resource: DRAWN_RESOURCE, isVideo: false,
     widthPx: area.w, heightPx: area.h, origin: { x: area.x, y: area.y },
     tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
-    layers: [], walls: [], zones: [], pois: [], sounds: [], variants: [], storeys: [],
+    layers: [], walls: [], zones: [], pois: [], sounds: [], variants: [], storeys: [], stairs: [],
     // Torches make their own light; with none the map stays plainly lit.
     lights: els.lights.map((l) => ({ id: rid('light'), x: l.x, y: l.y, brightFt: 20, dimFt: 40, color: '#ffb35c' })),
     ambient: opts.lights && els.lights.length ? 'dark' : 'lit',
@@ -314,7 +314,7 @@ export async function createDrawnMap(name: string): Promise<string | null> {
     kind: 'map', schemaVersion: MAP_VERSION, name, resource: DRAWN_RESOURCE, isVideo: false,
     widthPx: area.w, heightPx: area.h, origin: { x: area.x, y: area.y },
     tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
-    layers: [], walls: [], zones: [], pois: [], lights: [], sounds: [], variants: [], storeys: [], ambient: 'dark', assets: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [],
+    layers: [], walls: [], zones: [], pois: [], lights: [], sounds: [], variants: [], storeys: [], stairs: [], ambient: 'dark', assets: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [],
   };
   await writeDoc(file, MapSidecarSchema, doc);
   log('log.drawnMapCreated', { name });

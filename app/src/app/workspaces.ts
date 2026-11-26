@@ -165,6 +165,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
             ],
           },
           { label: 'group.light', buttons: [{ id: 'tool:light', icon: 'light', label: 'tool.light', tool: 'light' }] },
+          { label: 'group.stairs', buttons: [{ id: 'tool:stair', icon: 'up', label: 'tool.stair', tool: 'stair' }] },
           { label: 'group.check', buttons: [{ id: 'leak:check', icon: 'eye', label: 'tool.leakCheck' }] },
         ],
       },

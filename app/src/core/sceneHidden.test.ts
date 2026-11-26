@@ -12,6 +12,7 @@ const map: MapSidecar = {
   sounds: [],
   variants: [],
   storeys: [],
+  stairs: [],
   walls: [
     { id: 'w1', kind: 'wall', x1: 0, y1: 0, x2: 100, y2: 0 },
     { id: 'd1', kind: 'door', x1: 100, y1: 0, x2: 200, y2: 0 },

@@ -20,9 +20,10 @@ import { Icon } from '../ui/Icon';
 import { SceneSound, SoundProperties, useSoundName } from './SoundPanels';
 import { StoreyList } from './StoreyList';
 import { TRANSITION_KINDS, type TransitionKind } from '../core/transition';
+import { otherEnd } from '../core/stairs';
 import {
   addCreatureToken, changeHp, discoverZone, emit, initiativeOrder, markDirty, openMapSettings, removeLight, startAreaCommand, removeToken, toggleLight, updateLight, nextTurn, revealZone, roll, rotateTable, selectToken, selectZone,
-  openCreatureTab, setElementsLayer, setPlacementInteriorTrigger, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, setSceneVariant, setNextTransition, toggleCondition, updateTable, useStore,
+  openCreatureTab, setElementsLayer, setPlacementInteriorTrigger, cycleAssetVariant, deletePlacedAsset, rotatePlacedAsset, scalePlacedAsset, cleanUpOrphans, currentChanges, resetToMap, toggleHidden, deleteSelectedWalls, flipSelectedCliffs, setWallKind, resetSceneFogEffect, setBiome, setBiomeStrength, setFogLook, setFogMode, setFogOption, toggleDmFog, setTableRotation, state, toggle, toggleBlackout, updateStair, removeStair, setSceneVariant, setNextTransition, toggleCondition, updateTable, useStore,
 } from '../app/store';
 import { openTable, moveTableTo } from '../app/tableOutput';
 import { switchScene } from '../app/campaign';
@@ -261,6 +262,7 @@ function MapProperties() {
   const selLight = useStore((s) => s.selectedLightId);
   const light = useStore((s) => s.scene.lights.find((l) => l.id === selLight));
   const selSound = useStore((s) => s.selectedSoundId);
+  const selStair = useStore((s) => s.selectedStairId);
   const zone = state.scene.zones.find((z) => z.id === selZone);
   const selWalls = useStore((s) => s.selectedWallIds);
   const placedAsset = useStore((s) => s.selectedAssetId);
@@ -303,7 +305,9 @@ function MapProperties() {
       )}
       {selSound && <SoundProperties id={selSound} />}
       <div className="sec">{t('props.selection')}</div>
-      {buildSel ? (
+      {selStair ? (
+        <StairProperties id={selStair} />
+      ) : buildSel ? (
         <BuildProperties sel={buildSel} />
       ) : placedAsset ? (
         <PlacedAssetProperties id={placedAsset} />
@@ -473,6 +477,32 @@ function DecayRow({ id, value, onCommit }: { id: string; value: number; onCommit
       <label htmlFor={id}>{t('build.decay')}</label>
       <input id={id} type="range" min={0} max={100} value={v} onChange={(e) => setV(Number(e.target.value))} onMouseUp={commit} onTouchEnd={commit} onKeyUp={commit} onBlur={commit} />
     </div>
+  );
+}
+
+/** The selected stairs (Map Forge, E-44): the storey at their other end, the way up, remove. */
+function StairProperties({ id }: { id: string }) {
+  const { t } = useI18n();
+  const stair = useStore((s) => s.scene.map.stairs?.find((x) => x.id === id));
+  const here = useStore((s) => s.scene.map.storey ?? '');
+  const storeys = useStore((s) => s.scene.map.storeys ?? []);
+  if (!stair) return null;
+  const other = otherEnd(stair, here);
+  const targets = [{ id: '', name: t('storey.ground') }, ...storeys.map((s) => ({ id: s.id, name: s.name }))].filter((s) => s.id !== here);
+  const setTarget = (to: string) => updateStair(id, (stair.from ?? '') === here ? { to } : { from: to });
+  return (
+    <>
+      <div className="row"><label>{t('stair.title')}</label><span className="mono hint">{Math.round(stair.w)}×{Math.round(stair.h)} px</span></div>
+      <div className="row"><label htmlFor="stair-to">{t('stair.to')}</label>
+        <select id="stair-to" value={other} onChange={(e) => setTarget(e.target.value)}>
+          {targets.map((s) => <option key={s.id || 'ground'} value={s.id}>{s.name}</option>)}
+        </select>
+      </div>
+      <div className="row"><label>{t('stair.dir')}</label>
+        <div className="seg">{(['n', 'e', 's', 'w'] as const).map((d) => <button key={d} className={stair.dir === d ? 'on' : ''} aria-pressed={stair.dir === d} onClick={() => updateStair(id, { dir: d })}>{({ n: '↑', e: '→', s: '↓', w: '←' } as const)[d]}</button>)}</div>
+      </div>
+      <button className="btn sm danger" onClick={() => removeStair(id)}><Icon name="trash" />{t('stair.remove')}</button>
+    </>
   );
 }
 

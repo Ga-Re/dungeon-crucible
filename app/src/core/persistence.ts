@@ -225,6 +225,8 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     ...((fromView ? m.look : previous.look) ? { look: structuredClone((fromView ? m.look : previous.look)!) } : {}),
     // Variants are edited in the Map Forge only, like the drawing.
     variants: (fromView ? (m.variants ?? []) : previous.variants).map((v) => ({ ...v })),
+    // Stairs are edited in the Map Forge only (E-44).
+    stairs: (fromView ? (m.stairs ?? []) : previous.stairs).map((x) => ({ ...x })),
     // Storeys too; in the Map Forge each keeps the start fog painted on it (E-40).
     storeys: (fromView ? (m.storeys ?? []) : previous.storeys).map((st) => {
       const painted = fromView && layer === 'map' ? viewFog(st.id) : undefined;
@@ -443,6 +445,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       layers: map.layers.map((l) => ({ ...l, ...(l.trigger ? { trigger: { ...l.trigger } } : {}) })),
       ...mapDrawn.here,
       ...(map.storeys.length ? { storeys: structuredClone(map.storeys) } : {}),
+      ...(map.stairs.length ? { stairs: map.stairs.map((x) => ({ ...x })) } : {}),
       ...(here ? { storey: here } : {}),
       offStorey: { ...mapDrawn.off, own: ownDrawn?.off ?? { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [] } },
       waterAnimated: map.waterAnimated,

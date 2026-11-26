@@ -295,18 +295,20 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .soon h3 { margin: 0 0 6px; font-family: var(--font-head); color: var(--fg); letter-spacing: 0.04em; }
 
 /* Soundboard */
-.sound { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.8fr); gap: 14px; }
+/* Columns wrap instead of overlapping when the panel is narrow (it sits in the bottom zone). */
+.sound { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; align-items: start; }
 /* The panel "Map sounds" (DC-104c): the source marked on the map stands out. */
 .map-sounds .amb.sel .nm { color: var(--sel); }
 .map-sounds .nm.link { background: none; border: 0; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; }
 .map-sounds .nm.link:hover { text-decoration: underline; }
-.amb { display: grid; grid-template-columns: 28px 1fr 110px; align-items: center; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line-soft); }
+.amb { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(56px, 110px); align-items: center; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line-soft); }
 .amb .play { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; }
 .amb .play.on { background: var(--accent); color: #22160a; border-color: var(--accent); }
 .amb .play .ic { width: 12px; height: 12px; }
 .amb .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sfx { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
-.sfx button { height: 42px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 10.5px; color: var(--fg-dim); overflow: hidden; }
+.sound input[type='range'] { width: 100%; min-width: 0; margin: 0; }
+.sfx { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 5px; }
+.sfx button { min-width: 0; height: 42px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 10.5px; color: var(--fg-dim); overflow: hidden; }
 .sfx button:hover { border-color: var(--accent); color: var(--fg); }
 .sfx .ic { width: 15px; height: 15px; }
 .meter { height: 6px; border-radius: 3px; background: var(--input); margin: 8px 0; overflow: hidden; }

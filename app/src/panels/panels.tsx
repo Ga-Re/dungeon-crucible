@@ -7,8 +7,8 @@ import { d20Test } from '../core/rules/dice';
 import { playerOfToken } from '../core/party';
 import type { InteriorTrigger } from '../core/sidecar';
 import { useI18n } from '../i18n/i18n';
-import { deleteBuildSelection, flipCliff, flipWater, rerollCliff, rerollMasonry, setMapLook, setWaterAnimated, showHiddenDrawn, splitBuildWall, updateBuildDoor, updateCliff, updateMasonry, updateWater, type BuildSelection } from '../app/build';
-import { CliffFields, WaterFields } from './BuildCommandPanel';
+import { deleteBuildSelection, flipCliff, flipWater, rerollCliff, rerollMasonry, rerollRoom, roomsToWalls, updateRoom, setMapLook, setWaterAnimated, showHiddenDrawn, splitBuildWall, updateBuildDoor, updateCliff, updateMasonry, updateWater, type BuildSelection } from '../app/build';
+import { CliffFields, RoomFields, WaterFields } from './BuildCommandPanel';
 import { MASONRY_STYLES, type Masonry, type MasonryStyle } from '../core/build/masonry';
 import { defaultWallHeight } from '../render/drawnMap';
 import type { MessageKey } from '../i18n/en';
@@ -361,6 +361,7 @@ function MapLook() {
 /** The drawn wall or door selected in the "Build" tab (E-33): style, thickness, look; door width, secret, crack. */
 function BuildProperties({ sel }: { sel: BuildSelection }) {
   if (sel.onMap) return <MapDrawnInScene />;
+  if (sel.kind === 'room') return <RoomProperties id={sel.wall} />;
   return <OwnBuildProperties sel={sel} />;
 }
 
@@ -371,6 +372,30 @@ function MapDrawnInScene() {
     <>
       <p className="hint">{t('build.scene.mapElement')}</p>
       <button className="btn sm" onClick={() => deleteBuildSelection()}><Icon name="eyeoff" />{t('build.scene.hide')}</button>
+    </>
+  );
+}
+
+/** A parametric room selected in the "Build" tab (E-45): its shape's settings, its walls and floor. */
+function RoomProperties({ id }: { id: string }) {
+  const { t } = useI18n();
+  const room = useStore((s) => s.scene.map.rooms?.find((r) => r.id === id));
+  const grid = useStore((s) => s.scene.map.grid);
+  if (!room) return <p className="hint">{t('props.noSelection')}</p>;
+  const ftPerPx = grid.feetPerCell / grid.cellWidth;
+  const ft = (px: number) => Math.round(px * ftPerPx * 100) / 100;
+  return (
+    <>
+      <div className="row"><label>{t('props.name')}</label><span>{t('build.props.room')} · {t(`build.room.kind.${room.kind}` as MessageKey)}</span></div>
+      {room.kind === 'corridor' && <NumberRow id="br-width" label={t('build.room.width')} value={ft(room.width ?? grid.cellWidth)} step={1} min={1} onCommit={(v) => v > 0 && updateRoom(room.id, { width: v / ftPerPx })} />}
+      <RoomFields style={room.style} floor={room.floor ?? ''} onChange={(p) => updateRoom(room.id, { ...(p.style ? { style: p.style } : {}), ...(p.floor !== undefined ? { floor: p.floor || undefined } : {}) })} />
+      <NumberRow id="br-thick" label={t('build.thickness')} value={ft(room.thickness)} step={0.25} min={0.25} onCommit={(v) => v > 0 && updateRoom(room.id, { thickness: v / ftPerPx })} />
+      <p className="hint">{t('build.room.about')}</p>
+      <div className="cmd-line">
+        <button className="btn sm" onClick={() => rerollRoom(room.id)}><Icon name="reset" />{t('build.reroll')}</button>
+        <button className="btn sm" title={t('build.room.toWallsAbout')} onClick={roomsToWalls}><Icon name="wall" />{t('build.room.toWalls')}</button>
+      </div>
+      <button className="btn sm danger" onClick={() => deleteBuildSelection()}><Icon name="trash" />{t('build.delete')}</button>
     </>
   );
 }

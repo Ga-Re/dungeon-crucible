@@ -62,6 +62,7 @@ Geklärt im Interview mit dem DM (Skill `topic-interviewer`). „Wie DM“ heiß
 | E-42 | Zuschneiden, Drehen, Bildanpassung (DC-022) | **Nicht-destruktiv**, Werte in der Kartendatei, TV und DM-Fenster sehen gleich aus. **Drehen in 90°-Schritten, alles dreht mit** (Bild, Raster, Wände, Bereiche, Lichter, Klänge, Assets, gezeichnete Elemente, Start-Nebel und der Nebel der Szenen). **Helligkeit, Kontrast, Sättigung, Farbton** und **Zuschnitt** (Rahmen auf der Karte) im Befehls-Panel „Bild anpassen“ mit Live-Vorschau. **Umsetzung bestätigt** (DM 2026-11-26): Drehen dreht die **Ansicht** (DM-Fenster und TV), die gespeicherten Daten bleiben unverändert; Beschriftungen im DM-Fenster bleiben aufrecht. | DM-Interview 2026-11-26 |
 | E-43 | Leck-Prüfung (DC-025) | **Testfigur** in der Kartenschmiede: ziehbar, zeigt live, was eine Figur dort sähe (Dunkelsicht einstellbar), nur im DM-Fenster, nichts wird gespeichert. **Lücken markieren**: offene Wandenden, kleine Lücken zwischen Wänden, Türen ohne Anschluss – auf der Karte markiert und als klickbare Liste. Wände aus Bereichen (T-141) nicht jetzt. **UVTT-Import (DC-024) zurückgestellt** (DM 2026-11-26). | DM-Interview 2026-11-26 |
 | E-44 | Treppen (DC-026) | Eine Treppe ist ein **Feld auf zwei Stockwerken** an derselben Stelle (Werkzeug „Treppe“: Felder aufziehen, Ziel = nächstes Stockwerk darüber, sonst darunter; Ziel und Richtung nach oben in den Eigenschaften). Eine Figur, die auf einer Treppe abgestellt wird, löst eine **Rückfrage** aus („… nach oben? Hinübergehen / Bleibt hier“, blockiert nicht). Sind danach **alle Spielerfiguren** auf dem neuen Stockwerk und ist die Szene auf dem TV, **folgt der TV** mit Übergang. Auf dem TV **gezeichnete Stufen** unter dem Nebel. Format: Karte v12 `stairs`. | DM 2026-11-26 |
+| E-45 | Parametrische Räume (DC-026) | **Formen**: Rechteck, Rund, Gang (Weg mit Breite) und Vieleck. Ein Raum **bleibt ein Raum** und ist jederzeit änderbar (Griffe an Ecken/Mittelpunkt/Rand/Punkten, verschieben, Stil, Dicke, Boden, Gangbreite); Mauern, Türen und Boden werden **daraus abgeleitet**, nicht gespeichert. Überlappende Räume verschmelzen zu einem Umriss; **an gemeinsamen Kanten** stoßender Räume steht eine Mauer **mit Tür** in der Mitte. **Hand-Mauern** werden dort abgeschnitten, wo ein Raum sie überdeckt (ihre Türen wandern mit). Nur in der Kartenschmiede (Bauen › Raum), je Stockwerk. „Räume in Mauern umwandeln“ macht die Räume des Stockwerks zu gewöhnlichen Mauern, Türen und Böden. Format: Karte v13 `rooms`. | DM 2026-11-26 |
 
 **Bleibt aus Dungeon Crucible:** Pergament als drittes Theme, das eigene Docking mit echten Fenstern und
 Hover-Flyout (statt dockview und Kanten-Leisten), Export/Import ganzer Kampagnen als Archiv – beim Export wählbar:
@@ -663,7 +664,11 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   erledigt (E-44, Branch `feature/stairs`): `core/stairs.ts` (Tests), Karte v12 `stairs`, Werkzeug „Treppe“
   (Kartenschmiede › Hindernisse), Eigenschaften (Ziel, Richtung, entfernen), Rückfrage beim Abstellen, TV folgt
   allen Spielerfiguren, Stufenbild im TV- und DM-Fenster (nur die Lage geht in den Frame). Kartenkopie erneuert
-  Treppen-IDs. In der App geprüft. Offen: parametrische Räume, Gelände mit Bewegungskosten.
+  Treppen-IDs. In der App geprüft. Parametrische Räume erledigt (E-45, Branch `feature/parametric-rooms`):
+  `core/build/rooms.ts` (Ableitung, Griffe; Tests), Karte v13 `rooms`, Ableitung in `sceneMap` (Sicht, TV, DM-Bild),
+  Werkzeug Bauen › Raum mit Befehls-Panel, Bearbeiten (Griffe, verschieben, Punkte einfügen/löschen),
+  Eigenschaften, „Räume in Mauern umwandeln“; Türzustände der abgeleiteten Türen bleiben in der Szene. In der App
+  geprüft. Offen: Gelände mit Bewegungskosten.
 - **DC-027 Karte aus Kacheln, eigene Karten zeichnen** (T-190, Stufe 6) – geht in DC-107 (Zeichnen) und DC-119 (Generator) auf.
 - **DC-028 Einzelkarte teilen als `.dmmap`** (T-148).
 

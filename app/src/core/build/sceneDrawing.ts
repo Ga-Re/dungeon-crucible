@@ -8,6 +8,7 @@ import type { Cliff } from './cliffs';
 import type { FloorPatch } from './floors';
 import type { BuildDoor, Masonry } from './masonry';
 import type { Water } from './water';
+import { deriveRoomsByLayer, type Room } from './rooms';
 
 export interface OwnDrawing {
   masonry: Masonry[];
@@ -49,7 +50,41 @@ export function shownDrawing(map: Readonly<Lists>, own: OwnDrawing, hidden: read
 
 /** The map's info as this scene shows it: its drawing lists replaced by the scene's view of them. */
 export function sceneMap<M extends Lists>(scene: { map: M; own?: OwnDrawing; drawnHidden?: readonly string[] }): M {
-  if (!scene.own) return scene.map;
-  const shown = shownDrawing(scene.map, scene.own, scene.drawnHidden ?? []);
-  return shown === (scene.map as Lists) ? scene.map : { ...scene.map, ...shown };
+  // Parametric rooms (E-45): their walls, doors and floors join the map's drawing, cutting its hand
+  // walls – before the scene's own drawing is added (that is never cut) and what it hides is taken out.
+  const rooms = roomsDrawn(scene.map as M & RoomInfo);
+  const m = scene.map;
+  const base: Lists = rooms ? { masonry: rooms.masonry, masonryDoors: rooms.masonryDoors, cliffs: m.cliffs, waters: m.waters, floors: rooms.floors } : m;
+  const shown = scene.own ? shownDrawing(base, scene.own, scene.drawnHidden ?? []) : base;
+  if (shown === (m as Lists)) return m;
+  return { ...m, masonry: shown.masonry, masonryDoors: shown.masonryDoors, cliffs: shown.cliffs, waters: shown.waters, floors: shown.floors };
+}
+
+interface RoomInfo {
+  rooms?: Room[];
+  storey?: string;
+  grid?: { cellWidth: number };
+}
+
+type RoomLists = Pick<Lists, 'masonry' | 'masonryDoors' | 'floors'>;
+
+/** The last result per room list, with the map lists it was made from. */
+const roomCache = new WeakMap<object, { from: RoomLists; storey: string; cell: number; out: RoomLists }>();
+
+/**
+ * The map's walls, doors and floors with the rooms of the storey shown (null: none there); the
+ * same lists while nothing they come from changed.
+ */
+function roomsDrawn(map: RoomInfo & RoomLists): RoomLists | null {
+  const storey = map.storey ?? '';
+  const rooms = (map.rooms ?? []).filter((r) => (r.storey ?? '') === storey);
+  if (!rooms.length) return null;
+  const cell = map.grid?.cellWidth ?? 70;
+  const hit = roomCache.get(map.rooms!);
+  if (hit && hit.from.masonry === map.masonry && hit.from.masonryDoors === map.masonryDoors && hit.from.floors === map.floors && hit.storey === storey && hit.cell === cell) return hit.out;
+  const d = deriveRoomsByLayer(rooms, map, cell);
+  // Room floors under the floors painted by hand.
+  const out: RoomLists = { masonry: d.masonry, masonryDoors: d.masonryDoors, floors: [...d.floors, ...map.floors] };
+  roomCache.set(map.rooms!, { from: { masonry: map.masonry, masonryDoors: map.masonryDoors, floors: map.floors }, storey, cell, out });
+  return out;
 }

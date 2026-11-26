@@ -42,7 +42,8 @@ import { dmDrawing } from '../core/build/playerDrawing';
 import { sceneMap } from '../core/build/sceneDrawing';
 import { doorSpan, pointAt } from '../core/build/masonry';
 import { activeLayers, elementLayer } from '../core/layers';
-import { addBuildPoint, addBuildStroke, paintFloorStroke, buildHit, buildTarget, deleteBuildSelection, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, setGenerateRegion, slideBuildDoor, undoBuildPoint } from '../app/build';
+import { addBuildPoint, addBuildStroke, addRoomDrag, paintFloorStroke, buildHit, buildTarget, deleteBuildSelection, editableRooms, endBuildCommand, finishBuildWall, insertBuildPoint, insertRoomPointAt, moveBuildPoint, moveRoomTo, placeBuildDoor, roomDraft, roomShape, selectBuild, setGenerateRegion, slideBuildDoor, undoBuildPoint } from '../app/build';
+import type { Room } from '../core/build/rooms';
 import { BuildCommandPanel } from './BuildCommandPanel';
 import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
@@ -67,7 +68,7 @@ const HINTS: Partial<Record<string, MessageKey>> = {
   'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
   'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom', light: 'hint.light',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
-  stair: 'hint.stair', 'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor', 'build-cliff': 'hint.buildCliff', 'build-water': 'hint.buildWater', 'build-floor': 'hint.buildFloor', 'build-generate': 'hint.buildGenerate',
+  stair: 'hint.stair', 'build-edit': 'hint.buildEdit', 'build-wall': 'hint.buildWall', 'build-door': 'hint.buildDoor', 'build-cliff': 'hint.buildCliff', 'build-water': 'hint.buildWater', 'build-floor': 'hint.buildFloor', 'build-generate': 'hint.buildGenerate', 'build-room': 'hint.buildRoom',
 };
 
 type Drag =
@@ -95,7 +96,11 @@ type Drag =
   | { kind: 'gen-rect'; a: Point; b: Point }
   | { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; invert: boolean; circle: boolean }
   | { kind: 'fog-path'; tool: 'fog-lasso' | 'fog-brush'; path: Point[]; invert: boolean }
-  | { kind: 'build-point'; line: { kind: 'wall' | 'cliff' | 'water'; wall: string }; index: number; to: Point; moved: boolean }
+  | { kind: 'build-point'; line: { kind: 'wall' | 'cliff' | 'water' | 'room'; wall: string }; index: number; to: Point; moved: boolean }
+  /** A rectangle or round room being dragged (E-45). */
+  | { kind: 'room-rect'; a: Point; b: Point; alt: boolean }
+  /** A room moved as a whole: as it was, and where it was grabbed. */
+  | { kind: 'room-move'; start: Room; grab: Point; moved: boolean }
   | { kind: 'build-door'; id: string; moved: boolean }
   /** A stroke while drawing a wall or cliff (E-35): freehand, or straight with Shift; a click if it barely moved. */
   | { kind: 'build-stroke'; path: Point[]; straight: boolean; alt: boolean; floor?: boolean };
@@ -449,8 +454,12 @@ function DmMap() {
     const pxPerFt = state.scene.map.grid.cellWidth / state.scene.map.grid.feetPerCell;
     const d = drag.current;
     const stroke = d?.kind === 'build-stroke' ? (d.straight ? [d.path[0], mouse.current] : [...d.path, mouse.current]) : [];
-    const draft = c && c.kind !== 'door' && c.kind !== 'floor' ? [...c.points, ...stroke] : [];
-    const next = draft.length && !stroke.length ? buildTarget(mouse.current, altHeld.current, HANDLE_PX / view.current.zoom) : null;
+    const tol = HANDLE_PX / view.current.zoom;
+    // A rectangle or round room being dragged: its outline as it will be (E-45).
+    const roomRect = d?.kind === 'room-rect' ? roomDraft(d.a, d.b, d.alt || altHeld.current, tol) : null;
+    const draft = roomRect ?? (c && c.kind !== 'door' && c.kind !== 'floor' ? [...c.points, ...stroke] : []);
+    const next = draft.length && !stroke.length && !roomRect ? buildTarget(mouse.current, altHeld.current, tol) : null;
+    const room = sel?.kind === 'room' ? roomShape(sel.wall) : null;
     // The map's drawing, or in a scene its own (DC-107c).
     const lists = !sel || sel.onMap || state.layer === 'map' ? state.scene.map : state.scene.own;
     const w = sel?.kind === 'wall' ? lists.masonry.find((x) => x.id === sel.wall) : undefined;
@@ -460,10 +469,11 @@ function DmMap() {
     const line = w ?? cl;
     return {
       draft,
-      handles: c?.points.length ?? 0,
+      draftClosed: !!roomRect,
+      handles: roomRect ? 0 : (c?.points.length ?? 0),
       next,
-      thickness: c?.kind === 'cliff' ? 6 : (c?.thicknessFt ?? 1) * pxPerFt,
-      selected: line ? { points: line.points, closed: line.closed, thickness: w ? w.thickness : 6, point: sel!.point, door: w && span ? { a: pointAt(w.points, w.closed, span.from), b: pointAt(w.points, w.closed, span.to) } : null } : null,
+      thickness: c?.kind === 'cliff' ? 6 : c?.kind === 'room' && c.roomKind === 'corridor' && !roomRect ? c.corridorWidthFt * pxPerFt : (c?.thicknessFt ?? 1) * pxPerFt,
+      selected: room ? { points: room.outline, closed: true, thickness: room.thickness, point: sel!.point, door: null, handles: room.handles } : line ? { points: line.points, closed: line.closed, thickness: w ? w.thickness : 6, point: sel!.point, door: w && span ? { a: pointAt(w.points, w.closed, span.from), b: pointAt(w.points, w.closed, span.to) } : null } : null,
     };
   };
 
@@ -697,6 +707,12 @@ function DmMap() {
       case 'build-generate':
         drag.current = { kind: 'gen-rect', a: p, b: p };
         return;
+      case 'build-room': {
+        // Rectangles and round rooms are dragged; corridors and polygons clicked (or stroked) like walls.
+        const k = state.buildCommand?.roomKind;
+        drag.current = k === 'rect' || k === 'circle' ? { kind: 'room-rect', a: p, b: p, alt: e.altKey } : { kind: 'build-stroke', path: [p], straight: e.shiftKey, alt: e.altKey };
+        return;
+      }
       case 'stair':
         drag.current = { kind: 'stair-rect', a: p, b: p };
         return;
@@ -704,15 +720,25 @@ function DmMap() {
         const tol = HANDLE_PX / view.current.zoom;
         const hit = buildHit(p, tol);
         const sel = state.buildSelection;
-        if (hit?.point != null) {
+        if (hit?.kind === 'room' && hit.point == null) {
+          // The selected polygon or corridor: a press on its line adds a point; else the room moves.
+          const index = sel?.kind === 'room' && sel.wall === hit.wall ? insertRoomPointAt(hit.wall, p, tol) : null;
+          if (index !== null) {
+            drag.current = { kind: 'build-point', line: hit, index, to: p, moved: true };
+            return;
+          }
+          selectBuild(hit);
+          const start = editableRooms().find((r) => r.id === hit.wall);
+          if (start) drag.current = { kind: 'room-move', start, grab: p, moved: false };
+        } else if (hit?.point != null) {
           selectBuild(hit);
           drag.current = { kind: 'build-point', line: hit, index: hit.point, to: p, moved: false };
         } else if (hit?.door && !hit.onMap) {
           selectBuild(hit);
           drag.current = { kind: 'build-door', id: hit.door, moved: false };
-        } else if (hit && !hit.onMap && sel && !sel.onMap && sel.kind === hit.kind && sel.wall === hit.wall && !sel.door) {
+        } else if (hit && hit.kind !== 'room' && !hit.onMap && sel && !sel.onMap && sel.kind === hit.kind && sel.wall === hit.wall && !sel.door) {
           // A click on the selected line: a new point there, dragged at once.
-          const index = insertBuildPoint(hit, p);
+          const index = insertBuildPoint({ kind: hit.kind, wall: hit.wall }, p);
           drag.current = { kind: 'build-point', line: hit, index, to: p, moved: true };
         } else selectBuild(hit);
         return;
@@ -788,6 +814,13 @@ function DmMap() {
       d.moved = true;
       d.to = buildTarget(p, e.altKey, HANDLE_PX / view.current.zoom, d.line.wall);
       moveBuildPoint(d.line, d.index, d.to, false, HANDLE_PX / view.current.zoom);
+    } else if (d.kind === 'room-move') {
+      if (!d.moved) checkpoint();
+      d.moved = true;
+      moveRoomTo(d.start, { x: p.x - d.grab.x, y: p.y - d.grab.y }, e.altKey, false, HANDLE_PX / view.current.zoom);
+    } else if (d.kind === 'room-rect') {
+      d.b = p;
+      d.alt = e.altKey;
     } else if (d.kind === 'build-stroke') {
       const last = d.path[d.path.length - 1];
       if (Math.hypot(last.x - p.x, last.y - p.y) * view.current.zoom > 3) d.path.push(p);
@@ -827,6 +860,11 @@ function DmMap() {
       if (d.moved) moveBuildPoint(d.line, d.index, d.to, true, HANDLE_PX / view.current.zoom);
     } else if (d.kind === 'build-door') {
       if (d.moved) slideBuildDoor(d.id, toWorld(e), e.altKey, true);
+    } else if (d.kind === 'room-move') {
+      const q = toWorld(e);
+      if (d.moved) moveRoomTo(d.start, { x: q.x - d.grab.x, y: q.y - d.grab.y }, e.altKey, true, HANDLE_PX / view.current.zoom);
+    } else if (d.kind === 'room-rect') {
+      addRoomDrag(d.a, toWorld(e), d.alt || e.altKey, HANDLE_PX / view.current.zoom);
     } else if (d.kind === 'build-stroke' && d.floor) {
       paintFloorStroke([...d.path, toWorld(e)], d.straight || e.shiftKey, d.alt || e.altKey);
     } else if (d.kind === 'build-stroke') {
@@ -903,7 +941,7 @@ function DmMap() {
         onDoubleClick={(e) => {
           if (state.tool === 'fog-polygon' || state.tool === 'area') finishPolygon(e.altKey);
           else if (state.tool === 'wall') endWallChain();
-          else if (state.tool === 'build-wall' || state.tool === 'build-cliff' || state.tool === 'build-water') finishBuildWall();
+          else if (state.tool === 'build-wall' || state.tool === 'build-cliff' || state.tool === 'build-water' || state.tool === 'build-room') finishBuildWall();
           // Map Forge: a double-click on a wall selects its chain, on an area edits it.
           else if (state.tool === 'select' && state.layer === 'map') {
             const p = toWorld(e);

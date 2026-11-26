@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addBuildPoint, buildHit, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
+import { addBuildPoint, addBuildStroke, buildHit, deleteBuildSelection, flipCliff, updateCliff, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, splitBuildWall, startBuildCommand, updateBuildCommand, updateBuildDoor } from './build';
 import { checkpoint, setWorkspace, sightWalls, state, undo } from './store';
 
 /** The "Build" tab (E-33, DC-107a) in the Map Forge, on the sample crypt (cells of 70 px, 5 ft). */
@@ -151,5 +151,56 @@ describe('cliffs in the build tab (E-34)', () => {
     selectBuild({ kind: 'cliff', wall: id, point: 1, door: null });
     deleteBuildSelection();
     expect(state.scene.map.cliffs[0].points).toHaveLength(2);
+  });
+});
+
+describe('drawing with the brush (E-35, DC-107e)', () => {
+  beforeEach(() => {
+    setWorkspace('forge');
+    state.scene.map.masonry = [];
+    state.scene.map.masonryDoors = [];
+    state.scene.map.cliffs = [];
+    state.buildSelection = null;
+  });
+  const wobbly = (y: number) => Array.from({ length: 80 }, (_, i) => ({ x: i * 5, y: y + Math.sin(i) * 1.5 }));
+
+  it('a stroke becomes a wall of few points at once', () => {
+    startBuildCommand('wall');
+    addBuildStroke(wobbly(8000), false, 8);
+    const [w] = state.scene.map.masonry;
+    expect(w.points.length).toBeLessThan(6);
+    expect(w.points[0]).toEqual({ x: 0, y: 8000 });
+    expect(state.buildCommand?.points).toEqual([]);
+  });
+
+  it('a stroke ending at its start is a ring; for a cliff a pit', () => {
+    startBuildCommand('cliff');
+    const square = [...Array.from({ length: 20 }, (_, i) => ({ x: i * 14, y: 9000 })), ...Array.from({ length: 20 }, (_, i) => ({ x: 280, y: 9000 + i * 14 })), ...Array.from({ length: 20 }, (_, i) => ({ x: 280 - i * 14, y: 9280 })), ...Array.from({ length: 21 }, (_, i) => ({ x: 0, y: 9280 - i * 14 }))];
+    addBuildStroke(square, false, 8);
+    expect(state.scene.map.cliffs[0]).toMatchObject({ closed: true, form: 'ring' });
+  });
+
+  it('its ends snap onto points of other lines', () => {
+    startBuildCommand('wall');
+    addBuildPoint({ x: 0, y: 10000 }, 8);
+    addBuildPoint({ x: 280, y: 10000 }, 8);
+    finishBuildWall();
+    addBuildStroke([{ x: 283, y: 10003 }, { x: 350, y: 10070 }, { x: 420, y: 10140 }], false, 8);
+    expect(state.scene.map.masonry[1].points[0]).toEqual({ x: 280, y: 10000 });
+  });
+
+  it('with Shift a straight piece, snapped like clicks', () => {
+    startBuildCommand('wall');
+    // Grid corners every 70 px: 10990 is one.
+    addBuildStroke([{ x: 3, y: 10993 }, { x: 100, y: 11090 }, { x: 207, y: 10993 }], true, 8);
+    expect(state.scene.map.masonry[0].points).toEqual([{ x: 0, y: 10990 }, { x: 210, y: 10990 }]);
+  });
+
+  it('after clicked points a stroke carries the line on', () => {
+    startBuildCommand('wall');
+    addBuildPoint({ x: 0, y: 12000 }, 8);
+    addBuildStroke(wobbly(12000), false, 8);
+    expect(state.scene.map.masonry).toHaveLength(0);
+    expect(state.buildCommand!.points.length).toBeGreaterThanOrEqual(2);
   });
 });

@@ -390,8 +390,13 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
     ihrer Wand getroffen, nicht nur an der Oberkante; nach einem Werkzeugwechsel ist nichts ausgewählt, der erste
     Klick wählt aus (fügt nie einen Punkt ein). Geprüft in der App: alle Formen und Arten, Schnee-Biom, Zeichnen,
     Auswählen und Eigenschaften im Tab „Bauen“, Markierung. ✓ bis auf die Abnahme durch den DM.
-  - **DC-107e Pinsel** (E-35): Ziehen zeichnet frei (geglättet zu bearbeitbaren Punkten), Shift gerade Linien,
-    Klick-Klick bleibt – für Mauer, Klippe und die folgenden Werkzeuge.
+  - ✓ **DC-107e Pinsel** (E-35): Ziehen zeichnet frei (geglättet zu bearbeitbaren Punkten), Shift gerade Linien,
+    Klick-Klick bleibt – für Mauer, Klippe und die folgenden Werkzeuge. Umgesetzt (`core/build/strokes.ts`,
+    `addBuildStroke`): ein Strich wird geglättet und auf wenige Punkte reduziert (Ramer–Douglas–Peucker, ein Achtel
+    Feld), seine Enden rasten an Punkten anderer Linien ein; endet er am Anfang, wird er ein Ring (Klippe: Grube);
+    für sich allein wird er sofort Mauer/Klippe, nach geklickten Punkten führt er die Linie fort. Shift + Ziehen:
+    gerades Stück, eingerastet wie Klicks. Ein Klick ohne Bewegung bleibt ein Punkt. Vorschau beim Ziehen. Geprüft in
+    der App (Wellenmauer, gerade Mauer mit Shift, Grube als Schleife).
   - **DC-107f Wasser** (E-35): Fluss/Bach, See/Teich, Meer/Küste, automatische Wasserfälle an Klippen; animierte
     Strömung, Wellen, Schaum und Brandung, je Karte abschaltbar; nur Optik. 60 FPS auf dem TV (`npm run bench`).
   - **DC-107g 2,5D und Automatik** (E-35): Höhe und Seitenflächen von Mauern und Klippen, Lichtrichtung je Karte;

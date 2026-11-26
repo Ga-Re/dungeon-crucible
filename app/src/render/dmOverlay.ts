@@ -72,6 +72,8 @@ function drawDifficult(g: CanvasRenderingContext2D, d: NonNullable<OverlayState[
 
 export interface BuildOverlay {
   draft: readonly Point[];
+  /** How many of the draft's first points get handles (clicked ones, not those of a stroke being drawn). */
+  handles?: number;
   next: Point | null;
   thickness: number;
   selected: { points: readonly Point[]; closed: boolean; thickness: number; point: number | null; door: { a: Point; b: Point } | null } | null;
@@ -102,7 +104,7 @@ function drawBuild(g: CanvasRenderingContext2D, b: BuildOverlay, px: number): vo
       g.stroke();
       g.setLineDash([]);
     }
-    for (const q of b.draft) drawEnd(g, q.x, q.y, px, false);
+    for (const q of b.draft.slice(0, b.handles ?? b.draft.length)) drawEnd(g, q.x, q.y, px, false);
     if (b.next) drawEnd(g, b.next.x, b.next.y, px, true);
   }
   const s = b.selected;

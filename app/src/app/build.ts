@@ -7,6 +7,7 @@
 import { CLIFF_FORMS, type Cliff, type CliffForm, type CliffKind } from '../core/build/cliffs';
 import { doorPlacement, hitDoor, hitMasonry, hitVertex, insertPoint, joinEnds, masonryPoints, movePoint, removePoint, removeWall, slideDoor, snapBuildPoint, splitAt, type BuildSnap, type Edit, type Line, type WallEnd } from '../core/build/editing';
 import { drawnBounds, type BuildDoor, type Masonry, type MasonryStyle } from '../core/build/masonry';
+import { closesRing, strokeToLine } from '../core/build/strokes';
 import type { Point } from '../core/geometry';
 import { checkpoint, editableInForge, emit, freshId, log, markDirty, recomputeVision, state } from './store';
 
@@ -104,6 +105,44 @@ export function addBuildPoint(p: Point, tolPx: number): void {
   if (prev && Math.hypot(prev.x - p.x, prev.y - p.y) < 1) return;
   state.buildCommand = { ...c, points: [...c.points, p] };
   emit();
+}
+
+/**
+ * A stroke dragged while drawing (E-35): freehand it is smoothed into a few points, its ends
+ * snapping onto points of other lines; with Shift it is a straight piece from where it began to
+ * where it ended (snapped like clicks). On its own it becomes a wall or cliff at once – a ring
+ * when it ends where it began; after clicked points it carries the line on.
+ */
+export function addBuildStroke(stroke: readonly Point[], straight: boolean, tolPx: number): void {
+  const c = state.buildCommand;
+  if (!c || c.kind === 'door' || stroke.length < 2) return;
+  const cell = state.scene.map.grid.cellWidth;
+  const magnets = masonryPoints([...editableMasonry(), ...editableCliffs()]);
+  const onMagnet = (p: Point) => snapBuildPoint(p, { mode: 'free', grid: state.scene.map.grid, magnets, tol: tolPx });
+  let line: Point[];
+  let ring = false;
+  if (straight) line = [buildTarget(stroke[0], false, tolPx), buildTarget(stroke[stroke.length - 1], false, tolPx)];
+  else {
+    ring = closesRing(stroke, tolPx * 2);
+    line = strokeToLine(stroke, cell);
+    if (line.length >= 2) {
+      line[0] = onMagnet(line[0]);
+      line[line.length - 1] = ring ? line[0] : onMagnet(line[line.length - 1]);
+      // A ring's last point is its first again: kept once.
+      if (ring) line = line.slice(0, -1);
+    }
+  }
+  if (line.length < 2 || (line.length === 2 && Math.hypot(line[1].x - line[0].x, line[1].y - line[0].y) < 1)) return;
+  const prev = c.points.at(-1);
+  if (prev) {
+    // After clicked points: the line goes on (from the last point, if the stroke began there).
+    const rest = Math.hypot(line[0].x - prev.x, line[0].y - prev.y) <= tolPx ? line.slice(1) : line;
+    state.buildCommand = { ...c, points: [...c.points, ...rest] };
+    emit();
+    return;
+  }
+  state.buildCommand = { ...c, points: line };
+  finishBuildWall(ring && line.length >= 3);
 }
 
 /** Backspace while drawing: the last point goes. */

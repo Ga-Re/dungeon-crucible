@@ -34,7 +34,7 @@ import { DARKNESS } from '../core/projection';
 import { dmDrawing } from '../core/build/playerDrawing';
 import { doorSpan, pointAt } from '../core/build/masonry';
 import { activeLayers, elementLayer } from '../core/layers';
-import { addBuildPoint, buildHit, buildTarget, deleteBuildSelection, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, slideBuildDoor, undoBuildPoint } from '../app/build';
+import { addBuildPoint, addBuildStroke, buildHit, buildTarget, deleteBuildSelection, endBuildCommand, finishBuildWall, insertBuildPoint, moveBuildPoint, placeBuildDoor, selectBuild, slideBuildDoor, undoBuildPoint } from '../app/build';
 import { BuildCommandPanel } from './BuildCommandPanel';
 import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
@@ -78,7 +78,9 @@ type Drag =
   | { kind: 'fog-rect' | 'fog-ellipse'; a: Point; b: Point; invert: boolean; circle: boolean }
   | { kind: 'fog-path'; tool: 'fog-lasso' | 'fog-brush'; path: Point[]; invert: boolean }
   | { kind: 'build-point'; line: { kind: 'wall' | 'cliff'; wall: string }; index: number; to: Point; moved: boolean }
-  | { kind: 'build-door'; id: string; moved: boolean };
+  | { kind: 'build-door'; id: string; moved: boolean }
+  /** A stroke while drawing a wall or cliff (E-35): freehand, or straight with Shift; a click if it barely moved. */
+  | { kind: 'build-stroke'; path: Point[]; straight: boolean; alt: boolean };
 
 export function MapView() {
   const viewAsPlayer = useStore((s) => s.viewAsPlayer);
@@ -385,8 +387,10 @@ function DmMap() {
     const sel = state.buildSelection;
     if (!c && !sel) return null;
     const pxPerFt = state.scene.map.grid.cellWidth / state.scene.map.grid.feetPerCell;
-    const draft = c && c.kind !== 'door' ? c.points : [];
-    const next = draft.length ? buildTarget(mouse.current, altHeld.current, HANDLE_PX / view.current.zoom) : null;
+    const d = drag.current;
+    const stroke = d?.kind === 'build-stroke' ? (d.straight ? [d.path[0], mouse.current] : [...d.path, mouse.current]) : [];
+    const draft = c && c.kind !== 'door' ? [...c.points, ...stroke] : [];
+    const next = draft.length && !stroke.length ? buildTarget(mouse.current, altHeld.current, HANDLE_PX / view.current.zoom) : null;
     const w = sel?.kind === 'wall' ? state.scene.map.masonry.find((x) => x.id === sel.wall) : undefined;
     const cl = sel?.kind === 'cliff' ? state.scene.map.cliffs.find((x) => x.id === sel.wall) : undefined;
     const door = sel?.door ? state.scene.map.masonryDoors.find((x) => x.id === sel.door) : undefined;
@@ -394,6 +398,7 @@ function DmMap() {
     const line = w ?? cl;
     return {
       draft,
+      handles: c?.points.length ?? 0,
       next,
       thickness: c?.kind === 'cliff' ? 6 : (c?.thicknessFt ?? 1) * pxPerFt,
       selected: line ? { points: line.points, closed: line.closed, thickness: w ? w.thickness : 6, point: sel!.point, door: w && span ? { a: pointAt(w.points, w.closed, span.from), b: pointAt(w.points, w.closed, span.to) } : null } : null,
@@ -579,11 +584,10 @@ function DmMap() {
         addWallPoint(wallTarget(p, e.altKey));
         return;
       case 'build-wall':
-      case 'build-cliff': {
-        const tol = HANDLE_PX / view.current.zoom;
-        addBuildPoint(buildTarget(p, e.altKey, tol), tol);
+      case 'build-cliff':
+        // Decided on release: a click adds a point, a drag draws a stroke.
+        drag.current = { kind: 'build-stroke', path: [p], straight: e.shiftKey, alt: e.altKey };
         return;
-      }
       case 'build-door':
         placeBuildDoor(p, e.altKey, HANDLE_PX / view.current.zoom);
         return;
@@ -662,6 +666,10 @@ function DmMap() {
       d.moved = true;
       d.to = buildTarget(p, e.altKey, HANDLE_PX / view.current.zoom, d.line.wall);
       moveBuildPoint(d.line, d.index, d.to, false, HANDLE_PX / view.current.zoom);
+    } else if (d.kind === 'build-stroke') {
+      const last = d.path[d.path.length - 1];
+      if (Math.hypot(last.x - p.x, last.y - p.y) * view.current.zoom > 3) d.path.push(p);
+      d.straight = d.straight || e.shiftKey;
     } else if (d.kind === 'build-door') {
       if (!d.moved) checkpoint();
       d.moved = true;
@@ -697,6 +705,13 @@ function DmMap() {
       if (d.moved) moveBuildPoint(d.line, d.index, d.to, true, HANDLE_PX / view.current.zoom);
     } else if (d.kind === 'build-door') {
       if (d.moved) slideBuildDoor(d.id, toWorld(e), e.altKey, true);
+    } else if (d.kind === 'build-stroke') {
+      const tol = HANDLE_PX / view.current.zoom;
+      const end = toWorld(e);
+      const start = d.path[0];
+      // Barely moved: a click, a point as before.
+      if (Math.hypot(end.x - start.x, end.y - start.y) * view.current.zoom < 6 && d.path.length < 3) addBuildPoint(buildTarget(start, d.alt, tol), tol);
+      else addBuildStroke([...d.path, end], d.straight || e.shiftKey, tol);
     } else if (d.kind === 'asset-move') {
       const q = toWorld(e);
       if (d.moved) moveAssetTo(d.id, { x: q.x + d.ox, y: q.y + d.oy }, true);

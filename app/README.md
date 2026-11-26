@@ -91,8 +91,10 @@ while the DM window is open. Budget: at most 1 % missed refreshes at 4K/60 Hz.
 
 2. Copy it into the **library of your root folder**, e.g. `<root folder>/library/bench-4k.mp4`. The app
    serves media only from `<root folder>/library/` (the asset protocol never serves campaign data), and the
-   root folder is the one chosen on the start screen – it is remembered on this device and loaded on
-   start, so choose it in the app once before benchmarking. As a video in the library it also shows up
+   root folder is the one chosen on the start screen, remembered on this device and loaded on start.
+   **Choose it once in the dev app (`npm start`)**: the dev app keeps its own device settings, separate
+   from the installed app, and the benchmark uses those. Then quit `npm start` – only one instance runs at
+   a time, a second start just brings the first to the front. As a video in the library it also shows up
    in the map catalog; move it to the trash there when you no longer need it.
 
 3. Start the benchmark with the absolute path of that copy:

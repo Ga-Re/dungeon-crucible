@@ -1133,8 +1133,16 @@ Branch: `feature/procedural-forge-phase-0`.
   solche überstehen (sonst bleibt alles schwarz), und `table:ready` fehlt ohne Electron (BroadcastChannel).
 - **DC-126 Prüfwerkzeuge** (E-73; nach E-86 erst nach DC-128): Bench-Szene mit großer gezeichneter Karte, Wasser, Stockwerk und Streuung;
   Playwright-Bildvergleiche (Steckbrief vor dem Einführen).
-- **DC-127 Look-Spike Klippenband** (E-46, E-52): Stufen-Raster → Kontur → Band mit Test-Textur, Fuß-AO und Lippe;
+- ◐ **DC-127 Look-Spike Klippenband** (E-46, E-52): Stufen-Raster → Kontur → Band mit Test-Textur, Fuß-AO und Lippe;
   Abnahme neben einer Referenzkarte.
+  Stand: `core/build/geom/contours.ts` (Marching Squares je Stufenwechsel, Kreuzung immer mittig – zwei Stufen auf
+  einer Linie, höhere Seite links, Sattel nach der Feldmitte, Chaikin) und `band.ts` (Bandbreite 0,45 Feld je 10 ft,
+  höchstens 2,5 Felder; Band rechts der Kontur mit Gehrung, höchstens doppelte Breite; u entlang der Bogenlänge, v
+  von Kante zu Fuß; Helligkeit nach Lichtrichtung), getestet. Spike-Seite `spike-cliff.html` (Entwicklerseite,
+  `?p=` Perspektivfaktor) mit erzeugten, nahtlosen Platzhaltertexturen, Fuß-AO und Lippe; Referenz mit Higgsfield
+  (außerhalb des Repos). DM 2026-11-27: Bandbreite bleibt 0,45 Feld; nachbessern – detaillierter (Felsblöcke und
+  Klüfte, unruhige Oberkante, Geröll am Fuß, wechselnde Bandbreite) und der Boden soll über die Kante laufen
+  (Gras/Erde hängen oben über, Erde und Schutt laufen unten in die untere Ebene).
 
 **Phase 1 bis 10**
 

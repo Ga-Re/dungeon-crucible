@@ -1161,6 +1161,8 @@ Branch: `feature/procedural-forge-phase-0`.
   der Spike lädt sie über `?band=`/`?grass=` und macht sie beim Laden nahtlos (Ränder überblendet – die Nachbearbeitung,
   die E-75 ins Entwickler-Werkzeug legt); vom Streifen nur ein Drittel der Höhe (wenige dicke Schichten, Seitenverhältnis
   gehalten), sanfteres Licht.
+  Schritt 6 (DM: das weiche Auslaufen am Fuß sieht nicht gut aus): wieder entfernt – der Fuß ist überall eine klare
+  Kante mit Fuß-AO; Steinkappen und Schichtvarianz bleiben.
 
 **Phase 1 bis 10**
 

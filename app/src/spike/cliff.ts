@@ -112,16 +112,12 @@ const strata = () =>
       }
   });
 
-/**
- * Patches along an edge (read by arc length): red – bare stone caps instead of grass on the top;
- * green – a foot that runs out softly instead of a hard line.
- */
+/** Patches along an edge (read by arc length): bare stone caps instead of grass on the top. */
 const patches = () =>
   canvasTexture(512, 4, (g) => {
     for (let x = 0; x < 512; x++) {
       const cap = 128 + tileNoise(x, 0, 64, 512, 201) * 127;
-      const soft = 128 + tileNoise(x, 0, 48, 512, 203) * 127;
-      g.fillStyle = `rgb(${cap},${soft},0)`;
+      g.fillStyle = `rgb(${cap},0,0)`;
       g.fillRect(x, 0, 1, 4);
     }
   });
@@ -207,7 +203,7 @@ void main() {
 
 /**
  * The face: strata, lit by its turn to the light, darker towards the foot. Where the patches say
- * so, a bare, light stone cap shows at the top, and the foot runs out softly into the ground.
+ * so, a bare, light stone cap shows at the top.
  */
 const FACE = `in vec2 vUV;
 in float vShade;
@@ -216,13 +212,11 @@ uniform sampler2D uPatch;
 out vec4 finalColor;
 void main() {
   vec3 c = texture(uTexture, SAMPLE).rgb;
-  vec2 p = texture(uPatch, vec2(vUV.x * 0.35, 0.5)).rg;
-  float cap = smoothstep(0.52, 0.6, p.r) * (1.0 - smoothstep(0.16, 0.32, vUV.y));
+  float p = texture(uPatch, vec2(vUV.x * 0.35, 0.5)).r;
+  float cap = smoothstep(0.52, 0.6, p) * (1.0 - smoothstep(0.16, 0.32, vUV.y));
   c = mix(c, vec3(0.86, 0.80, 0.66) + (c - 0.55) * 0.35, cap);
-  float soft = smoothstep(0.62, 0.74, p.g);
   float foot = mix(1.0, 0.55, vUV.y * vUV.y);
-  float a = 1.0 - soft * smoothstep(0.68, 1.0, vUV.y);
-  finalColor = vec4(c * LIGHT * foot * a, a);
+  finalColor = vec4(c * LIGHT * foot, 1.0);
 }`;
 
 /** Where the face samples its texture, and how its light is applied: generated strata as they are; a painted strip (`?band=`) only a third of its height – a few thick layers, its aspect kept – and lit more gently. */

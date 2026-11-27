@@ -161,7 +161,7 @@ void main() {
 const AO = `in vec2 vUV;
 out vec4 finalColor;
 void main() {
-  float a = 0.6 * pow(1.0 - vUV.y, 1.6);
+  float a = 0.45 * pow(1.0 - vUV.y, 1.8);
   finalColor = vec4(0.0, 0.0, 0.0, a);
 }`;
 
@@ -257,20 +257,25 @@ async function main() {
       if (c.closed) feet.pop();
       // Smoothed, so mitred corners of the foot leave no slivers in the hems.
       const foot = chaikin(feet, c.closed, 2);
-      soil.addChild(mesh(cliffBand(foot, c.closed, CELL * 0.6, { textureLength: CELL * 2, lightAngle: LIGHT_ANGLE }), SOIL, dirt));
-      ao.addChild(mesh(cliffBand(foot, c.closed, CELL * 0.5, { textureLength: CELL, lightAngle: LIGHT_ANGLE }), AO, rock));
+      // The AO's own, smoother line: its band folds over itself less in inner bends (DC-128: AO from a distance field).
+      const hem = chaikin(feet, c.closed, 4);
+      // Earth runs out only in patches; elsewhere the grass reaches the foot.
+      const soilWidth = (p: Pt) => 0.05 + 1.1 * Math.max(0, noise2(p.x / (CELL * 1.4), p.y / (CELL * 1.4), 83));
+      soil.addChild(mesh(cliffBand(foot, c.closed, CELL * 0.6, { textureLength: CELL * 2, lightAngle: LIGHT_ANGLE, widthFactor: soilWidth }), SOIL, dirt));
+      ao.addChild(mesh(cliffBand(hem, c.closed, CELL * 0.4, { textureLength: CELL, lightAngle: LIGHT_ANGLE }), AO, rock));
       faces.addChild(mesh(face, FACE, rock));
       overhang.addChild(mesh(cliffBand(line, c.closed, CELL * 0.22, { textureLength: CELL * 1.5, lightAngle: LIGHT_ANGLE }), OVERHANG, turf));
-      // Scree at the foot: smaller the further it rolled.
-      for (const { p, normal } of alongLine(foot, c.closed, CELL * 0.14)) {
-        if (hashNoise(p.x, p.y, 41) > 0.16) continue;
+      // Scree at the foot, gathered in a few heaps (as in the reference), smaller the further it rolled.
+      for (const { p, normal } of alongLine(foot, c.closed, CELL * 0.1)) {
+        const heap = noise2(p.x / (CELL * 1.6), p.y / (CELL * 1.6), 81) > 0.45;
+        if (hashNoise(p.x, p.y, 41) > (heap ? 0.3 : 0.008)) continue;
         const out = hashNoise(p.x, p.y, 43) ** 1.6 * CELL * 0.55;
         const size = CELL * (0.09 - (out / (CELL * 0.55)) * 0.06) * (0.6 + hashNoise(p.y, p.x, 45) * 0.8);
         stone(rubble, { x: p.x + normal.x * out, y: p.y + normal.y * out }, size, 51);
       }
       // A broken rim: stones sitting on the edge, a few sticking out.
       for (const { p, normal } of alongLine(line, c.closed, CELL * 0.25)) {
-        if (hashNoise(p.x, p.y, 61) > 0.12) continue;
+        if (hashNoise(p.x, p.y, 61) > 0.025) continue;
         const off = (hashNoise(p.y, p.x, 63) - 0.6) * CELL * 0.1;
         stone(rim, { x: p.x + normal.x * off, y: p.y + normal.y * off }, CELL * (0.04 + hashNoise(p.x, p.y, 65) * 0.05), 71);
       }

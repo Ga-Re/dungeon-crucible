@@ -1147,6 +1147,10 @@ Branch: `feature/procedural-forge-phase-0`.
   Felsblöcken mit versetzten Fugen, Lichtkante links und Schattenkante rechts; Grasüberhang mit ausgefranstem
   Rand über der Kante, Randsteine, Erd- und Schuttsaum unter dem Fuß, Geröll (nach außen kleiner) mit
   Kontaktschatten. Vergleichsbild außerhalb des Repos.
+  Schritt 3 (DM: „zu viele Steine, nicht überall Steine – wie in der Referenz“): Geröll nur noch in wenigen Nestern
+  (großräumiges Rauschen entscheidet, wo), Randsteine ganz vereinzelt, Erdsaum in Flecken statt als Ring; Fuß-AO
+  über eine stärker geglättete Linie (die Keile an Innenbiegungen fast weg – richtig mit AO aus dem Distanzfeld in
+  DC-128).
 
 **Phase 1 bis 10**
 

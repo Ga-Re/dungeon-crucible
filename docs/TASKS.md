@@ -1143,6 +1143,10 @@ Branch: `feature/procedural-forge-phase-0`.
   (außerhalb des Repos). DM 2026-11-27: Bandbreite bleibt 0,45 Feld; nachbessern – detaillierter (Felsblöcke und
   Klüfte, unruhige Oberkante, Geröll am Fuß, wechselnde Bandbreite) und der Boden soll über die Kante laufen
   (Gras/Erde hängen oben über, Erde und Schutt laufen unten in die untere Ebene).
+  Schritt 2: Band mit wechselnder Breite (±35 %, an der Weltposition abgetastet, `widthFactor`), Textur aus
+  Felsblöcken mit versetzten Fugen, Lichtkante links und Schattenkante rechts; Grasüberhang mit ausgefranstem
+  Rand über der Kante, Randsteine, Erd- und Schuttsaum unter dem Fuß, Geröll (nach außen kleiner) mit
+  Kontaktschatten. Vergleichsbild außerhalb des Repos.
 
 **Phase 1 bis 10**
 

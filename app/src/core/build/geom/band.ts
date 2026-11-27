@@ -34,7 +34,7 @@ export interface BandMesh {
  * The band of a contour (higher ground on its left) of `width` map px. `lightAngle`: the direction
  * the light falls towards (degrees, map coordinates; 45: to the lower right).
  */
-export function cliffBand(points: readonly Pt[], closed: boolean, width: number, opts: { textureLength: number; lightAngle: number }): BandMesh {
+export function cliffBand(points: readonly Pt[], closed: boolean, width: number, opts: { textureLength: number; lightAngle: number; widthFactor?: (p: Pt) => number }): BandMesh {
   const pts = closed ? [...points, points[0]!] : [...points];
   const n = pts.length;
   const positions = new Float32Array(n * 4);
@@ -60,7 +60,9 @@ export function cliffBand(points: readonly Pt[], closed: boolean, width: number,
     const normal = sumLen < 1e-9 ? a : { x: sum.x / sumLen, y: sum.y / sumLen };
     // The mitre: longer at corners, at most twice the width.
     const cos = Math.max(1e-9, normal.x * a.x + normal.y * a.y);
-    const reach = Math.min(width / cos, 2 * width);
+    // A factor read at the point itself, never along the line: an edit at one end moves nothing at the other.
+    const w = width * (opts.widthFactor?.(p) ?? 1);
+    const reach = Math.min(w / cos, 2 * w);
     positions.set([p.x, p.y, p.x + normal.x * reach, p.y + normal.y * reach], i * 4);
     const u = along / opts.textureLength;
     uvs.set([u, 0, u, 1], i * 4);

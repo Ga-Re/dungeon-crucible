@@ -43,6 +43,13 @@ describe('the band mesh', () => {
     expect(Math.hypot(dx, dy)).toBeLessThanOrEqual(40 + 1e-4);
   });
 
+  it('its width may change along the contour, read at the world position (protrusions and niches)', () => {
+    const b = cliffBand(line, false, 30, { textureLength: 50, lightAngle: 45, widthFactor: (p) => (p.x < 50 ? 1 : 1.5) });
+    expect(b.positions[3]).toBeCloseTo(30);
+    expect(b.positions[7]).toBeCloseTo(45);
+    expect(b.positions[11]).toBeCloseTo(45);
+  });
+
   it('a face turned to the light is brighter than one turned away', () => {
     // Light falls towards the lower right (45°): a face looking up-left (towards the light's source) is lit.
     const facingLight = cliffBand([{ x: 100, y: 0 }, { x: 0, y: 0 }], false, 20, { textureLength: 50, lightAngle: 45 });

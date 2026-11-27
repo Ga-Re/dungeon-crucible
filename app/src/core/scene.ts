@@ -11,6 +11,7 @@ import type { Cliff } from './build/cliffs';
 import type { Water } from './build/water';
 import type { OwnDrawing } from './build/sceneDrawing';
 import type { FloorPatch } from './build/floors';
+import type { MapIntent, MapPath } from './build/intent';
 
 /** A cliff or gallery is one way: one sees down from its upper side, not up from below (DC-014). */
 export type WallKind = 'wall' | 'door' | 'secret-door' | 'window' | 'cliff';
@@ -214,6 +215,8 @@ export interface MapInfo {
   storey?: string;
   /** Drawn elements on other storeys – the map's and the scene's own – kept for saving (E-40). */
   offStorey?: OffStoreyDrawing;
+  /** The procedural Map Forge's intent (E-46 ff.), all storeys, kept as read until its tools use it. */
+  intent?: MapIntent;
 }
 
 export type MapType = 'dungeon' | 'building' | 'region' | 'world' | 'arena';
@@ -290,8 +293,10 @@ export interface Scene {
   masonryDoorsOpen: Record<string, boolean>;
   /** The scene's own drawing (DC-107c); empty in the Map Forge. */
   own: OwnDrawing;
-  /** Drawn elements of the map this scene hides, by id. */
+  /** Drawn elements of the map this scene hides, by id (derived objects by key). */
   drawnHidden: string[];
+  /** The scene's own paths (E-59), all storeys; none in the Map Forge. */
+  ownPaths: MapPath[];
   tokens: Token[];
   templates: AreaTemplate[];
   pings: Ping[];

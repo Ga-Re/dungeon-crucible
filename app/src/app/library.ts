@@ -15,6 +15,7 @@ import type { MapFilter } from '../core/mapCatalog';
 import { isDesktop, listCampaignFolders, listFiles, listLibrary, readText, trashFile } from '../platform/bridge';
 import { campaignPath, openMapTab, readDoc, saveCampaign, writeDoc } from './campaign';
 import { duplicateMap, mapFileFor } from '../core/mapCopy';
+import { intentIds } from '../core/build/intent';
 import { newId } from '../core/documents';
 import { emit, latestMap, log, state } from './store';
 
@@ -255,7 +256,7 @@ export async function duplicateLibraryMap(mapFile: string, name: string, withCon
   const doc = latestMap(mapFile) ?? (await readDoc(mapFile, 'map', MapSidecarSchema));
   if (!doc) return null;
   const taken = new Set([...libraryNames, ...state.libraryMaps.map((m) => m.mapFile)]);
-  const ids = new Set([...doc.walls, ...doc.zones, ...doc.lights, ...doc.assets, ...doc.layers, ...doc.pois].map((x) => x.id));
+  const ids = new Set([...[...doc.walls, ...doc.zones, ...doc.lights, ...doc.sounds, ...doc.assets, ...doc.layers, ...doc.pois, ...doc.storeys, ...doc.variants, ...doc.stairs].map((x) => x.id), ...intentIds(doc)]);
   const fresh = (prefix: string) => {
     const id = newId(prefix, (x) => ids.has(x));
     ids.add(id);

@@ -111,6 +111,15 @@ Roadmap: `docs/KARTENSCHMIEDE-PROZEDURAL.md` (Teil A gilt vorrangig).
 | E-76 | Begriffe und Texte | Kollisionsfreie Namen (A.5). Alle Texte in `en.ts`/`de.ts`, auch Paket-, Regel- und Prefab-Namen. | wie CLAUDE.md |
 | E-77 | Roadmap | Roadmap als DC-Tasks in `docs/TASKS.md` (A.11); ein Branch je Thema; Merge nur nach DM-Freigabe. | wie CLAUDE.md |
 
+### Nachtrag: Start Phase 0 (DM, 2026-11-27)
+
+| Nr. | Thema | Entscheidung | Verhältnis zu Bestehendem |
+|---|---|---|---|
+| E-78 | Standard-Geländebiom (O-A7) | Eine neue Karte vom Kartentyp „Dungeon“ startet im Geländebiom **Dungeon/Höhle**, jede andere nach ihrem Nebelbiom: nebel, kueste, arkan → Gemäßigt; schnee → Winter; wueste, asche → Wüste; sumpf → Sumpf; dunkel → Dungeon/Höhle. | beantwortet O-A7 |
+| E-79 | Umfang Karte v14 | **Alle Felder aus A.6 jetzt**, als optionale Felder; die endgültigen Namen legt DC-121 fest (`app/src/core/build/intent.ts`). Bis zum Merge von Phase 0 dürfen DC-123 bis DC-125 sie noch anpassen. | wie A.6 |
+| E-80 | Migration | Die Migration v13→v14 löscht zusätzlich `autoShore`, `autoGrowth` (E-50) und `generated` (E-66); in Szenen-Zeichnungen auch `hidden` (es verwies nur auf gelöschte Elemente). `waterAnimated`, `lightAngle` und `origin` bleiben. | ergänzt E-57 |
+| E-81 | Vorab | Die Bench-Basis mit großer alter gezeichneter Karte **entfällt** (das Bench kann nur die Videokarte, DC-126 baut die neue Szene); Vergleichsbasis ist der Lauf vom 23.11. Der DM legt den Archiv-Export an, bevor die App auf dem Branch mit dem echten Wurzelordner startet. | ändert „Vorab“ in 3.9 |
+
 ---
 
 ## 2. Funktionsabgleich
@@ -1005,14 +1014,39 @@ Plan: `docs/KARTENSCHMIEDE-PROZEDURAL.md` (Teil A gilt vorrangig, Roadmap A.11).
 DC-122 fallen gezeichnete Mauern, Klippen, Wasser, Böden, Räume und der Generator weg (E-57); bis Phase 2 hat die
 Kartenschmiede keine Bauwerkzeuge.
 
-**Vorab (DM):** Archiv-Export aller Kampagnen (E-57 löscht die alten Bau-Felder ohne Sicherung); offene Bench-Läufe
-DC-107a/f und DC-020 als Vergleichsbasis.
+**Vorab (DM):** Archiv-Export aller Kampagnen (E-57 löscht die alten Bau-Felder ohne Sicherung), bevor die App auf dem
+Branch mit dem echten Wurzelordner startet. Die Bench-Basis mit alter gezeichneter Karte entfällt (E-81).
+
+Branch: `feature/procedural-forge-phase-0`.
 
 **Phase 0 – Fundament**
 
-- **DC-121 Karte v14 und Migration** (E-55, E-57): neue optionale Felder (Plan A.6); Migration v13→v14 entfernt
+- ✓ **DC-121 Karte v14 und Migration** (E-55, E-57): neue optionale Felder (Plan A.6); Migration v13→v14 entfernt
   `masonry`, `masonryDoors`, `cliffs`, `waters`, `floors`, `rooms`, auch in Szenen-Zeichnungen; Rundreise-Test in
   `format.test.ts`; Standard-Geländebiom aus `fogBiome` (O-A7).
+  Erledigt: `core/build/intent.ts` mit den Schemas aller v14-Felder (E-79) – `terrain` (Stufenhöhe, Biom-Palette mit
+  höchstens 4 Biomen, Stapel `map` bzw. Stockwerk-id mit Blöcken `{ v, data }` und Patches je Ebene `{ v, data,
+  mask }`, Block-Schlüssel `<bx>_<by>` vorzeichenbehaftet, Base64 geprüft), `wallLines` (Stile stone, brick, wood,
+  palisade, fence, drystone, hedge), `openings` (door, double-door, portcullis, window, arrow-slit, archway, breach;
+  `secret` nur bei Türen; `hinge`, `opensTo`, `material`; ohne `wall` in der Fels-Kante), `paths` (Bézier, Anfasser
+  relativ zum Knoten, Breite je Knoten), `crossings` (`auto` oder fester Typ; `path` statt `origin`/`lock` der
+  Skizze), `waterSources`, `prefabs` (Vierteldrehungen), `derived` (Schlüssel klein, `:` `.` `~` erlaubt), `mood`,
+  `undergrounds` (Eingänge mit id und `secret`, `confirm`, `leaveOff`). Karte v14 / Szene v13; Migration nach E-57
+  und E-80; Szenen-Zeichnungen haben `paths` und blenden auch abgeleitete Schlüssel aus. Die Laufzeit trägt die
+  Felder unverändert (`MapInfo.intent`, `Scene.ownPaths`, alle Stockwerke), damit Speichern nichts verliert; nichts
+  davon geht an den TV. `defaultTerrainBiome` nach E-78. Karte duplizieren: „nur die Karte“ behält die Absicht nur
+  bei gezeichneten Karten (ohne Ebenen und Stockwerke, Stimmung immer), „mit allem“ vergibt neue IDs und zieht
+  Verweise nach (Öffnung → Wandlinie, Übergang → Weg, Untergrund → Stockwerk, Rasterstapel → Stockwerk, Patches →
+  Ebene). Tests: `intent.test.ts`, `format.test.ts`, `mapCopy.test.ts`. Keine sichtbare Änderung; die App wurde
+  wegen E-81 nicht mit dem echten Wurzelordner gestartet. Bis DC-122 bleiben die alten Felder im Schema (leer).
+  Nach dem Review: die ausgemusterten Felder fallen bei **jedem** Lesen weg, nicht nur bei der Migration – eine
+  v14-Datei, die vor DC-122 noch `masonry: []` usw. bekam, behält sie nie als unbekannte Felder; Block-Schlüssel
+  nur in einer Schreibweise, Biom-Palette ohne Doppelte, Prefab-Pfad nur `library/<name>.prefab.json`; Kopieren
+  kennt alle IDs der Karte (auch der Absicht), neue IDs wiederholen keine; Test, dass der TV-Frame mit und ohne
+  Absicht gleich ist. Offen für spätere Tasks: `keepUnknown` geht nicht in Records (unbekannte Felder in Blöcken
+  und `derived` gehen beim Schreiben verloren) und `intentOf` kopiert die ganze Absicht je Ansicht – beides mit
+  DC-123 (geteilte Blöcke); abgeleitete Schlüssel mit Element-IDs müssten beim Kopieren mitgehen (Schlüssel-Schema
+  in DC-131).
 - **DC-122 Alten Bau- und Mal-Code entfernen** (E-57, Plan A.3): Module, Ribbon-Knöpfe, Generator-Dialoge,
   i18n-Schlüssel; Tests, Typecheck und Build grün.
 - **DC-123 Raster-Blöcke** (E-55, E-56): Blockspeicher, Codec (Lauflänge + Deflate + Base64), Patches je Ebene,
@@ -1064,7 +1098,7 @@ Task:
 - **O-A5** Foundry-Zielversion (v12 oder v13) – DC-135
 - **O-A6** Bildverarbeitung der Entwickler-Pipeline: über Chromium (Playwright) oder mit `sharp` – vor der
   Asset-Produktion
-- **O-A7** Standard-Geländebiom neuer Karten aus `fogBiome` – DC-121
+- ✓ **O-A7** Standard-Geländebiom neuer Karten aus `fogBiome` – entschieden: E-78
 - **O-A8** Lizenz der Higgsfield-Ausgaben für Auslieferung und späteren Verkauf; Rechte an einem Stil-LoRA – vor DC-137
 
 Neue Fragen werden mit `/topic-interviewer` geklärt und als E-… in Abschnitt 1 eingetragen.

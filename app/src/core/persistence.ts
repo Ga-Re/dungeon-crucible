@@ -19,6 +19,7 @@ import { DEFAULT_TABLE, type HiddenElements, type MapAssetPlacement, type Scene,
 import { diffElements, resolveElements, type MapElements, type SceneLayer } from './mapLayers';
 import { MAP_VERSION, SCENE_VERSION, SCHEMA_VERSION, type CampaignManifest, type MapSidecar, type Player, type SceneDrawing, type SceneOverride } from './sidecar';
 import { emptyOwnDrawing } from './build/sceneDrawing';
+import { intentOf } from './build/intent';
 
 export const BUILTIN_PREFIX = 'builtin:';
 /** The resource of a drawn map (E-33): it has no picture, its drawn walls are its picture. */
@@ -80,6 +81,7 @@ function copySceneDrawing(d: SceneDrawing): SceneDrawing {
     cliffs: d.cliffs.map(copyCliff),
     waters: d.waters.map(copyWater),
     floors: d.floors.map(copyFloor),
+    paths: structuredClone(d.paths),
     hidden: [...d.hidden],
   };
 }
@@ -249,6 +251,8 @@ export function mapSidecarFromScene(scene: Scene, resource: string, layer: ViewL
     autoShore: fromView ? m.autoShore : previous.autoShore,
     autoGrowth: fromView ? m.autoGrowth : previous.autoGrowth,
     ...((fromView ? m.origin : previous.origin) ? { origin: { ...(fromView ? m.origin : previous.origin)! } } : {}),
+    // The procedural Map Forge's intent (E-46 ff.) is edited in the Map Forge only, all storeys at once.
+    ...intentOf(fromView ? (m.intent ?? {}) : previous),
   };
 }
 
@@ -297,7 +301,7 @@ export function sceneOverrideFromScene(scene: Scene, name: string, mapSidecar: s
     effects: { ...scene.effectsOn },
     layers: { ...scene.layersOn },
     interiors,
-    drawing: copySceneDrawing({ ...joinOwn(scene.own, scene.map.offStorey?.own), hidden: scene.drawnHidden }),
+    drawing: copySceneDrawing({ ...joinOwn(scene.own, scene.map.offStorey?.own), paths: scene.ownPaths, hidden: scene.drawnHidden }),
     tokens: [...scene.tokens, ...(scene.offStoreyTokens ?? [])].map((t) => ({ ...t, conditions: [...t.conditions] })),
     templates: scene.templates.map((t) => ({ ...t })),
     combat: { ...combat },
@@ -411,6 +415,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
   const assetDoorsOpen = Object.fromEntries(Object.entries(doors).filter(([id]) => /:(door|in\d+)$/.test(id)));
   // The scene's own drawing (DC-107c): none in the Map Forge.
   const drawingAll = onMap || !state ? null : copySceneDrawing(state.drawing);
+  const intent = intentOf(map);
   // Drawn elements of this storey; those of others put aside (E-40). Doors go with their wall.
   const split = <T extends { storey?: string }>(xs: T[]): [T[], T[]] => [xs.filter(onHere), xs.filter((x) => !onHere(x))];
   const splitDrawing = (d: Pick<SceneDrawing, 'masonry' | 'masonryDoors' | 'cliffs' | 'waters' | 'floors'>) => {
@@ -458,6 +463,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
       autoGrowth: map.autoGrowth,
       ...(map.origin ? { origin: { ...map.origin } } : {}),
       ...(isDrawn(map.resource) ? { drawn: true } : {}),
+      ...(Object.keys(intent).length ? { intent } : {}),
       ...(map.ambientSound ? { ambientSound: { ...map.ambientSound } } : {}),
       ...(map.transition ? { transition: { ...map.transition } } : {}),
       ...(map.look ? { look: structuredClone(map.look) } : {}),
@@ -477,6 +483,7 @@ export function sceneFromDocuments(map: MapSidecar, override: SceneOverride | nu
     masonryDoorsOpen,
     own: drawing ? { masonry: drawing.masonry, masonryDoors: drawing.masonryDoors, cliffs: drawing.cliffs, waters: drawing.waters, floors: drawing.floors } : emptyOwnDrawing(),
     drawnHidden: drawing ? drawing.hidden : [],
+    ownPaths: drawingAll ? drawingAll.paths : [],
     effectsOn: onMap ? {} : { ...(state?.effects ?? {}) },
     ...(variant ? { variant: variant.id } : {}),
     ...(onMap || state?.ambientSound === undefined ? {} : { ambientOverride: copyAmbientSound(state.ambientSound).ambientSound }),

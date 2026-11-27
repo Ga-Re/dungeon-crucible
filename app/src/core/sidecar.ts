@@ -11,6 +11,7 @@ import { CLIFF_FORMS, CLIFF_KINDS } from './build/cliffs';
 import { WATER_KINDS } from './build/water';
 import { FLOOR_STYLES } from './build/floors';
 import { ROOM_KINDS } from './build/rooms';
+import { derivedKeySchema, mapIntentSchema, pathSchema } from './build/intent';
 
 export const SIDECAR_SUFFIX = '.dm.json';
 export const SCENE_SUFFIX = '.scene.json';
@@ -208,10 +209,10 @@ export const mapLayerSchema = z.object({
 });
 export type MapLayer = z.infer<typeof mapLayerSchema>;
 
-/** Version 2: areas are polygons (DC-013). */
-export const MAP_VERSION = 13;
+/** Version 2: areas are polygons (DC-013); version 14: the procedural Map Forge's intent (E-46 ff.). */
+export const MAP_VERSION = 14;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
-export const SCENE_VERSION = 12;
+export const SCENE_VERSION = 13;
 
 /**
  * When a house's interior is shown (E-29): by the DM's click only, when a player character steps
@@ -294,6 +295,8 @@ export const MapSidecarSchema = z.object({
   generated: z.object({ style: z.enum(['dungeon', 'cave']), density: z.number().min(0).max(1), seed: z.number().int(), water: z.boolean(), lights: z.boolean(), details: z.boolean() }).optional(),
   /** Top left of a drawn map's area (map px; it grows left and up too). None: 0, 0. */
   origin: z.object({ x: z.number(), y: z.number() }).optional(),
+  /** The procedural Map Forge's intent (E-46 – E-77, version 14): terrain rasters, wall lines, openings, paths … */
+  ...mapIntentSchema.shape,
 });
 export type MapSidecar = z.infer<typeof MapSidecarSchema>;
 
@@ -465,8 +468,9 @@ const tokenSchema = z.object({
 
 /** Per-session state on top of a map: fog, doors, tokens, combat. The map itself stays untouched. */
 /**
- * A scene's own drawing (DC-107c): walls, doors, cliffs, water and floors of this scene only, and
- * the map's drawn elements it hides. Part of the play state and of the start state.
+ * A scene's own drawing (DC-107c): walls, doors, cliffs, water and floors of this scene only, its
+ * own paths (E-59, version 13), and what it hides of the map's drawing – elements by id, derived
+ * objects by key. Part of the play state and of the start state.
  */
 const sceneDrawingSchema = z.object({
   masonry: z.array(masonrySchema).default([]),
@@ -474,10 +478,11 @@ const sceneDrawingSchema = z.object({
   cliffs: z.array(cliffSchema).default([]),
   waters: z.array(waterSchema).default([]),
   floors: z.array(floorPatchSchema).default([]),
-  hidden: z.array(id).default([]),
+  paths: z.array(pathSchema).default([]),
+  hidden: z.array(derivedKeySchema).default([]),
 });
 export type SceneDrawing = z.infer<typeof sceneDrawingSchema>;
-const EMPTY_SCENE_DRAWING = { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], hidden: [] };
+const EMPTY_SCENE_DRAWING = { masonry: [], masonryDoors: [], cliffs: [], waters: [], floors: [], paths: [], hidden: [] };
 
 export const SceneOverrideSchema = z.object({
   kind: z.literal('scene'),

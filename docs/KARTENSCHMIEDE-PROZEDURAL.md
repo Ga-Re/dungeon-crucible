@@ -201,6 +201,8 @@ Diese Punkte folgen aus festgehaltenen Regeln und gelten für Teil B:
 
 Alle neuen Felder sind **optional**. Die Migration v13→v14 setzt Standardwerte und **entfernt** die alten Bau-Felder (E-57). Endgültige Feldnamen legt der Task DC-121 fest.
 
+> **Festgelegt mit DC-121 (E-79, E-80):** `app/src/core/build/intent.ts`. Abweichungen von der Skizze: Öffnungen haben `kind` (door, double-door, portcullis, window, arrow-slit, archway, breach) statt `type`/`window?`, dazu `material`, `hinge` (start/end) und `opensTo` (left/right); Übergänge haben `path?` statt `origin` und `lock` (ein fester `kind` ist die Sperre); Wege haben eine Grundbreite `width`; Eingänge eines Untergrunds haben eine `id` und `secret`, der Untergrund `confirm` und `leaveOff` (A.8). Jede Liste trägt `layer?` und `storey?` (A.4). Die Migration löscht zusätzlich `autoShore`, `autoGrowth` und `generated`.
+
 ```ts
 // Ausschnitt MapSidecar v14 – neue Felder
 terrain?: {
@@ -333,7 +335,7 @@ Reihenfolge angepasst: Weil die Bauwerkzeuge sofort wegfallen (E-57), kommen **F
 | O-A4 | Druckauflösung: 256 dpi (Master) oder Hochskalieren auf 300 dpi | Phase 8 |
 | O-A5 | Foundry-Zielversion (v12 oder v13) | Phase 8 |
 | O-A6 | Bildverarbeitung der Entwickler-Pipeline: ohne neue Abhängigkeit über Chromium (Playwright) oder mit `sharp` (Steckbrief) | vor der Asset-Produktion |
-| O-A7 | Zuordnung `fogBiome` → Standard-Geländebiom neuer Karten | DC-121 |
+| O-A7 | Zuordnung `fogBiome` → Standard-Geländebiom neuer Karten | entschieden: E-78 |
 | O-A8 | Lizenz: Nutzungsbedingungen von Higgsfield für Auslieferung und späteren Verkauf; Rechte an einem Stil-LoRA | vor Phase 10 |
 
 ---

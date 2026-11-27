@@ -19,6 +19,7 @@ export function emptyScene(table: Scene['table'] = DEFAULT_TABLE): Scene {
     masonryDoorsOpen: {},
     own: emptyOwnDrawing(),
     drawnHidden: [],
+    ownPaths: [],
     effectsOn: {},
     tokens: [],
     templates: [],

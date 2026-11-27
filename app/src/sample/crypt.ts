@@ -139,6 +139,7 @@ export function createSampleScene(): Scene {
     masonryDoorsOpen: {},
     own: emptyOwnDrawing(),
     drawnHidden: [],
+    ownPaths: [],
     effectsOn: {},
     tokens,
     templates: [],

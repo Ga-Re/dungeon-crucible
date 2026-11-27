@@ -135,6 +135,10 @@ function registerIpc(): void {
   ipcMain.on('table:frame', (e, frame: unknown) => {
     if (fromMain(e)) table.send('player-frame', frame);
   });
+  // Terrain blocks the frames name (E-61): one way, from the DM window to the table only.
+  ipcMain.on('table:raster', (e, batch: unknown) => {
+    if (fromMain(e)) table.send('player-raster', batch);
+  });
   ipcMain.on('float:bounds', (e, name: string, bounds: FloatBounds) => {
     if (fromMain(e)) floating.setBounds(name, bounds);
   });

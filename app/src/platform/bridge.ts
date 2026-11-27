@@ -19,6 +19,7 @@ declare global {
 }
 
 const CHANNEL = 'dc-table';
+const RASTER_CHANNEL = 'dc-table-raster';
 
 /** True in the desktop app's DM window. */
 export function isDesktop(): boolean {
@@ -82,6 +83,26 @@ export async function sendFrame(frame: PlayerFrame): Promise<void> {
   }
   channel ??= new BroadcastChannel(CHANNEL);
   channel.postMessage(frame);
+}
+
+let rasterChannel: BroadcastChannel | null = null;
+
+/** Sends terrain blocks to the table window only (E-61). */
+export function sendRaster(batch: unknown): void {
+  if (isDesktop()) {
+    dc().sendRaster(batch);
+    return;
+  }
+  rasterChannel ??= new BroadcastChannel(RASTER_CHANNEL);
+  rasterChannel.postMessage(batch);
+}
+
+/** Table side: subscribe to incoming terrain blocks. Returns an unsubscribe function. */
+export function onRaster(cb: (data: unknown) => void): () => void {
+  if (window.dcTable) return window.dcTable.onRaster(cb);
+  const ch = new BroadcastChannel(RASTER_CHANNEL);
+  ch.onmessage = (e) => cb(e.data);
+  return () => ch.close();
 }
 
 /** Table side: subscribe to incoming frames. Returns an unsubscribe function. */

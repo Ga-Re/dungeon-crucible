@@ -23,6 +23,7 @@ const api: DcApi = {
   openTable: (index, title) => ipcRenderer.invoke('table:open', index, title),
   closeTable: () => ipcRenderer.invoke('table:close'),
   sendFrame: (frame) => ipcRenderer.send('table:frame', frame),
+  sendRaster: (batch) => ipcRenderer.send('table:raster', batch),
   onTableReady: on('table:ready'),
   onTableClosed: on('table:closed'),
   rootInfo: () => ipcRenderer.invoke('root:info'),

@@ -9,6 +9,7 @@
 import { z } from 'zod';
 import { idSchema } from '../documents';
 import { polygonSchema } from '../poly/types';
+import { BLOCK_KEY, biomePaletteSchema, stepFtSchema, type TerrainBiome } from './terrainKeys';
 import type { FogBiome, MapType } from '../scene';
 
 const id = idSchema;
@@ -19,12 +20,7 @@ const point = z.object({ x: z.number(), y: z.number() });
 
 /* ---------------------------------------------------------------- terrain (E-46, E-49, E-55, E-58) */
 
-/** Terrain biomes (A.5 "Geländebiom"; not the fog biome, not the catalog's landscape). */
-export const TERRAIN_BIOMES = ['temperate', 'dungeon', 'swamp', 'desert', 'winter'] as const;
-export type TerrainBiome = (typeof TERRAIN_BIOMES)[number];
-
-/** A block's key: `<bx>_<by>` in blocks of 32 × 32 cells, signed – the area grows left and up too (A.4). One spelling per block. */
-export const BLOCK_KEY = /^(0|-?[1-9]\d{0,5})_(0|-?[1-9]\d{0,5})$/;
+export { BLOCK_KEY, TERRAIN_BIOMES, type TerrainBiome } from './terrainKeys';
 const blockKey = z.string().regex(BLOCK_KEY, 'block key must be <bx>_<by>');
 const base64 = z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/, 'must be Base64');
 
@@ -41,9 +37,9 @@ export const terrainStackSchema = z.object({
 
 export const terrainSchema = z.object({
   /** Height of one step (E-46). */
-  stepFt: z.union([z.literal(5), z.literal(10), z.literal(15), z.literal(20)]).default(10),
+  stepFt: stepFtSchema.default(10),
   /** The biomes the cells' weights refer to (at most 4 weights per cell, A.6). */
-  biomePalette: z.array(z.enum(TERRAIN_BIOMES)).min(1).max(4).refine((p) => new Set(p).size === p.length, 'each biome once'),
+  biomePalette: biomePaletteSchema,
   /** By stack: `map` for the map itself, else a storey's id. */
   stacks: z.record(id, terrainStackSchema).default({}),
 });

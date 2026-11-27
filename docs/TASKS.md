@@ -122,6 +122,8 @@ Roadmap: `docs/KARTENSCHMIEDE-PROZEDURAL.md` (Teil A gilt vorrangig).
 | E-82 | Umbau ohne Bauwerkzeuge (DC-122) | Der Tab **„Bauen“ entfällt** in Kartenschmiede und Orchestrator, bis DC-129 ihn neu bringt. **„Neue gezeichnete Karte“ bleibt** im Katalog (eine leere Fläche, 20 × 20 Felder), „Karte generieren …“ entfällt (E-66). Der TV-Frame verliert seinen Teil `drawn` sofort. `dirty.ts`, `sight.ts`, `sceneDrawing.ts` und `playerDrawing.ts` werden **gelöscht** und mit DC-124, DC-125 und DC-129 neu gebaut; neutral weiterverwendet bleiben `editing.ts` (generisch, ohne Tür-Kopplung), `strokes.ts`, `noise2`/`jitterRing`, `hashNoise`/`variantBlobs`/`lineStrips` und das Textur-Slot-System (`textures.ts`, `variantSheet.ts`) samt WebP-Dateien. | ändert A.3 |
 | E-83 | Rastergröße (O-A1) | **Vorerst keine Binärdatei**: die Raster bleiben in der `.map.json`. Gemessen (150 × 150 Felder): leer 1,6 KB, typisch 56–516 KB (je nach Feinhöhe), reines Rauschen ≈ 7,3 MB. Eine Kartendatei über 8 MB wird geschrieben und im Protokoll mit einem Hinweis gemeldet; erst eine echte Karte darüber macht die Binärdatei zur neuen Entscheidung. | beantwortet O-A1 |
 | E-84 | Einbau der Raster | DC-123 liefert den reinen Kern (Blöcke, Codec, Patches, Rasterzustand mit geteilten Blöcken, Kodieren nur geänderter Blöcke) und die Rettungskopie in IndexedDB. Der **Einbau in Speichern, Öffnen und Rückgängig** kommt mit dem ersten Werkzeug in **DC-128**; bis dahin reisen die Raster kodiert mit (DC-121). | teilt DC-123 |
+| E-85 | Raster auf dem TV | Der TV bekommt Rasterdaten **nur im Erkundeten** (aufgedeckt und erinnert) plus **2 Felder Rand**, nie einen unentdeckten geheimen Bereich und nie die Felder, die ihn berühren; alles andere ist „unbekannt“. Patches aktiver Ebenen werden beim DM **fertig verrechnet**, inaktive Ebenen verlassen den DM nie; nur der Stapel des gezeigten Stockwerks. **Übertragung per Prüfsumme**: der Frame nennt je Block eine Prüfsumme, ein eigener Einweg-Kanal (`table:raster`, DM → Hauptprozess → TV) bringt nur fehlende Blöcke; nach „TV geladen/geschlossen“ alles neu. Der TV nimmt einen Block nur ganz und mit passender Prüfsumme, ein fehlender bleibt schwarz. Umfang jetzt: alles außer dem Anschluss an den Rasterzustand (der kommt mit DC-128, E-84). Nach dem Review (DM 2026-11-27): als geheim gilt jedes Feld, durch das ein Rand des Bereichs läuft oder dessen Mitte darin liegt (auch schmale und schräge Bereiche); der Ring um einen geheimen Bereich im Erkundeten wird **aus dem nächsten bekannten Feld aufgefüllt** (keine Lücke in Form des Raums, nichts von ihm). | konkretisiert E-61 |
+| E-86 | Reihenfolge Phase 0 | **DC-126 (Prüfwerkzeuge) kommt nach DC-128**: Bench-Szene und Bildvergleiche messen erst sinnvoll, wenn Gelände gemalt wird; die Bench-Szene wächst mit Wasser und Streuung. Als Nächstes DC-127; seine Referenzkarte (Klippe in Draufsicht) erzeugt Claude mit Higgsfield, abgelegt außerhalb des Repos. | ändert die Reihenfolge in 3.9 |
 
 ---
 
@@ -1103,10 +1105,33 @@ Branch: `feature/procedural-forge-phase-0`.
   unverändert (Modul-Worker aus `'self'`). Geprüft: Tests (Scheduler, Aufträge, Pool mit Ersatz-Worker), in der
   echten App ein Worker mit beiden Aufträgen über die DevTools (19 ms, Bitmap 32 × 32, Fehlerfall). Genutzt ab DC-128
   (wie E-84).
-- **DC-125 TV-Frame v6** (E-61; Version 6 hat DC-122 schon vergeben – ohne `drawn`, mit `drawnOrigin` –, die
+- ✓ **DC-125 TV-Frame v6** (E-61; Version 6 hat DC-122 schon vergeben – ohne `drawn`, mit `drawnOrigin` –, die
   Raster-Blöcke kommen auf diesem Branch dazu): Raster-Blöcke nur bei Änderung mit Prüfsumme, gefiltert nach Ebene, Stockwerk und
   geheimen Bereichen; Projektionstests je neuer Absicht-Art; fail-closed.
-- **DC-126 Prüfwerkzeuge** (E-73): Bench-Szene mit großer gezeichneter Karte, Wasser, Stockwerk und Streuung;
+  Erledigt nach E-85: `core/build/terrain/tvRaster.ts` – Feldmaske je Block (Feldmitte im Erkundeten, um 2 Felder
+  geweitet; ein Feld, dessen Mitte oder Ecke in einem unentdeckten geheimen Bereich liegt, und seine Nachbarn fallen
+  weg; auch bei gedrehtem Raster), Block = Grundblock mit Patches aktiver Ebenen, außerhalb der Maske die Vorgaben;
+  nur Blöcke mit etwas Erkundetem; Prüfsumme (zweimal FNV-1a, 16 Hex-Zeichen); Versandplanung (fehlende Blöcke, je
+  Nachricht höchstens 16); TV-Seite: `parseRasterBatch` (nur ganze Blöcke mit passender Prüfsumme, alles andere
+  verworfen), `RasterCache` (höchstens 256 Blöcke, die des neuesten Frames bleiben am längsten; ein fehlender
+  Block bleibt schwarz). Frame: `map.raster` (Stufenhöhe, Palette, Prüfsumme je Block; Schema-geprüft). Kanal
+  `table:raster` → `player-raster` nur vom DM-Fenster angenommen (ohne Electron: eigener BroadcastChannel);
+  `pushRaster` in `tableOutput.ts` vergisst das Gesendete, wenn der TV lädt oder schließt. Projektionstests:
+  Unerkundetes, geheimer Bereich samt Rand und Eckpunkt, inaktive Ebene, Block nur aus einer Ebene, anderes
+  Stockwerk, gedrehtes Raster; die übrigen Absicht-Arten gehen gar nicht an den TV (Test aus DC-121). Geprüft:
+  Tests, Build mit Tisch-Bundle-Prüfung. Nicht im echten Fenster geprüft: der TV müsste als Vollbild auf dem
+  einzigen Bildschirm öffnen, und noch erzeugt nichts Raster – kommt mit DC-128.
+  Nach dem Sicherheits-Review: ein schmaler oder schräger geheimer Bereich lief durch die alte Prüfung (nur Mitte
+  und Ecken) – jetzt zählt jedes Feld, durch das ein Rand läuft (Tests: schräges Band, dünner Streifen, dünner
+  Ausläufer, jeweils mit Wasser nur im Geheimen). Der Ring um einen geheimen Bereich wird aus dem nächsten bekannten
+  Feld aufgefüllt (E-85; Test: die Wand vor dem Geheimraum bleibt Wand). Jeder erkundete Block wird genannt, auch
+  ungemalt (leere Blöcke teilen eine Prüfsumme). Der DM führt das Gesendete als begrenzte Liste (224) und vergisst
+  vor dem TV (256), sodass nie ein Block schwarz bleibt. Konstanten und kleine Schemas in `core/build/terrainKeys.ts`
+  (das TV-Bundle zieht das Kartenschema nicht mehr). Offen für DC-128: Leistung (Masken je Zeile statt
+  Punkt-in-Polygon je Feld, Zwischenspeicher je Block und Nebelstand, ggf. im Worker), ob durchscheinende
+  Stockwerke darunter eigenes Raster bekommen (bis dahin `raster: null`), dass Int8/Int16-Arrays den IPC-Weg als
+  solche überstehen (sonst bleibt alles schwarz), und `table:ready` fehlt ohne Electron (BroadcastChannel).
+- **DC-126 Prüfwerkzeuge** (E-73; nach E-86 erst nach DC-128): Bench-Szene mit großer gezeichneter Karte, Wasser, Stockwerk und Streuung;
   Playwright-Bildvergleiche (Steckbrief vor dem Einführen).
 - **DC-127 Look-Spike Klippenband** (E-46, E-52): Stufen-Raster → Kontur → Band mit Test-Textur, Fuß-AO und Lippe;
   Abnahme neben einer Referenzkarte.

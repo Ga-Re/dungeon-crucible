@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { MAX_FRAME_AGE_MS, type PlayerFrame, type StoreyFrame } from '../core/projection';
+import type { RasterCache } from '../core/build/terrain/tvRaster';
 import { transitionLook, type TransitionPlay } from '../core/transition';
 import type { Polygon } from '../core/poly/types';
 import { fogOptions, lookFromWire } from '../render/fogOptions';
@@ -22,6 +23,8 @@ import { templatePath } from '../render/shared';
 export interface FrameSource {
   /** Latest frame and when it arrived (ms, `Date.now()`), or null. */
   current(): { frame: PlayerFrame; receivedAt: number } | null;
+  /** The TV's terrain blocks (E-61), resolved per frame by the renderer from DC-128; none in the DM window's views. */
+  raster?: RasterCache;
 }
 
 /**

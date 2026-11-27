@@ -262,6 +262,16 @@ describe('player projection (fail-closed)', () => {
     expect(isInside(frame.fog.open, mid)).toBe(false);
     expect(isInside(frame.fog.clear, mid)).toBe(false);
   });
+  it('the terrain goes as checksums per block; anything else in that place makes the frame black (E-61)', () => {
+    const scene = createSampleScene();
+    expect(buildPlayerFrame(scene, frameOpts(1, 0, [])).map.raster).toBeNull();
+    const raster = { stepFt: 10 as const, palette: ['temperate' as const], blocks: { '0_0': '0123456789abcdef', '-1_2': 'fedcba9876543210' } };
+    const frame = buildPlayerFrame(scene, { ...frameOpts(1, 0, []), raster });
+    expect(frame.map.raster).toEqual(raster);
+    expect(parsePlayerFrame(frame, 0, 0).ok).toBe(true);
+    for (const blocks of [{ '0_0': 'not-a-checksum' }, { 'a_b': '0123456789abcdef' }]) expect(parsePlayerFrame({ ...frame, map: { ...frame.map, raster: { ...raster, blocks } } }, 0, 0).ok).toBe(false);
+  });
+
   it('a drawn map sends where its area starts, a picture map none (E-33)', () => {
     const scene = createSampleScene();
     expect(buildPlayerFrame(scene, frameOpts(1, 0, [])).map.drawnOrigin).toBeNull();

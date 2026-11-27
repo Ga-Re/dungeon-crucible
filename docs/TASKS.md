@@ -1151,6 +1151,11 @@ Branch: `feature/procedural-forge-phase-0`.
   (großräumiges Rauschen entscheidet, wo), Randsteine ganz vereinzelt, Erdsaum in Flecken statt als Ring; Fuß-AO
   über eine stärker geglättete Linie (die Keile an Innenbiegungen fast weg – richtig mit AO aus dem Distanzfeld in
   DC-128).
+  Schritt 4 (DM: Textur abwechslungsreicher wie die Referenz – oben auch glatter Stein statt Gras, unten auch weiche
+  Übergänge, mehr Varianz in den Schichten): sechs Schichten in mehreren Tönen (Ocker, Sand, Rost, Graubraun) mit
+  stark welligen Grenzen, die anschwellen und auslaufen, feine Zwischenfugen, verwitterte helle Oberkante; ein
+  Fleckenmuster entlang der Kante (nach Bogenlänge) schaltet Gras ↔ helle Steinkappe und harten ↔ weich
+  auslaufenden Fuß (nur an wenigen Stellen, unteres Drittel).
 
 **Phase 1 bis 10**
 

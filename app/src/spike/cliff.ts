@@ -58,39 +58,38 @@ function canvasTexture(w: number, h: number, paint: (g: CanvasRenderingContext2D
 const tileNoise = (x: number, y: number, scale: number, w: number, seed: number) => periodicNoise(x / scale, y / scale, w / scale, seed);
 
 /**
- * Rock strata in blocks: five layers of sandstone with wavy borders and a lighter top, cut by
- * joints into blocks of uneven width – each block a little different, lit on its left edge and
- * shaded on its right, the joints staggered from layer to layer like the reference. A stand-in
- * until the real band textures (E-70).
+ * Rock strata in blocks: six layers of uneven thickness in several tones (ochre, sand, rust,
+ * grey-brown), their borders strongly wavy so layers swell and pinch out, fine seams inside, a
+ * weathered lighter top; cut by staggered joints into blocks, each a little different, lit on
+ * the left, shaded on the right. A stand-in until the real band textures (E-70).
  */
 const strata = () =>
-  canvasTexture(512, 128, (g) => {
-    const W = 512;
-    const layers = [
-      { at: 0, rgb: [190, 166, 126] },
-      { at: 0.2, rgb: [160, 128, 92] },
-      { at: 0.42, rgb: [138, 106, 76] },
-      { at: 0.62, rgb: [168, 138, 102] },
-      { at: 0.8, rgb: [120, 92, 68] },
+  canvasTexture(1024, 128, (g) => {
+    const W = 1024;
+    const tones = [
+      [196, 170, 128],
+      [170, 132, 90],
+      [150, 100, 70],
+      [138, 124, 106],
+      [176, 146, 104],
+      [112, 86, 64],
     ];
-    // Joints per layer: uneven blocks of 36–90 px, a new pattern in every layer (staggered).
-    const joints = layers.map((_, li) => {
+    const at = [0, 0.16, 0.3, 0.47, 0.66, 0.82];
+    // Each border wanders on its own, two scales: layers swell and pinch out along the cliff.
+    const border = (j: number, x: number) => at[j]! + tileNoise(x, 0, 128, W, 100 + j) * 0.07 + tileNoise(x, 0, 32, W, 120 + j) * 0.025;
+    const joints = at.map((_, li) => {
       const xs: number[] = [];
-      for (let x = hashNoise(li, 0, 21) * 40; x < W; x += 36 + hashNoise(li, x, 23) * 54) xs.push(Math.round(x));
+      for (let x = hashNoise(li, 0, 21) * 50; x < W; x += 34 + hashNoise(li, x, 23) * 70) xs.push(Math.round(x));
       return xs;
     });
-    for (let y = 0; y < 128; y++)
-      for (let x = 0; x < W; x++) {
-        const v = y / 128 + tileNoise(x, 0, 64, W, 3) * 0.05;
+    for (let x = 0; x < W; x++)
+      for (let y = 0; y < 128; y++) {
+        const v = y / 128;
         let li = 0;
-        layers.forEach((l, i) => {
-          if (v >= l.at) li = i;
-        });
-        const layer = layers[li]!;
+        for (let j = 1; j < at.length; j++) if (v >= border(j, x)) li = j;
         const xs = joints[li]!;
-        // The block this pixel lies in and how far from its left and right joint.
         let left = xs[xs.length - 1]! - W;
-        let right = xs[0]!;
+        let right = xs[0]! + W;
         for (const j of xs) {
           if (j <= x) left = j;
           else {
@@ -98,16 +97,33 @@ const strata = () =>
             break;
           }
         }
-        if (right <= x) right = xs[0]! + W;
-        const block = hashNoise(li, left, 29) * 24 - 12;
-        const fromLeft = x - left;
-        const toRight = right - x;
-        const bevel = fromLeft < 3 ? 26 : toRight < 2 ? -60 : toRight < 4 ? -22 : 0;
-        const grain = tileNoise(x, y, 8, W, 7) * 12 + tileNoise(x, y, 32, W, 9) * 10;
-        const seam = layers.some((l) => l.at > 0 && Math.abs(v - l.at) < 0.014) ? -55 : 0;
-        g.fillStyle = `rgb(${layer.rgb.map((c) => Math.max(0, Math.min(255, c + grain + seam + block + bevel))).join(',')})`;
+        const block = hashNoise(li, left, 29) * 30 - 15;
+        const warm = hashNoise(li, left, 31) * 14 - 7;
+        const bevel = x - left < 3 ? 28 : right - x < 2 ? -65 : right - x < 4 ? -24 : 0;
+        const grain = tileNoise(x, y, 8, W, 7) * 12 + tileNoise(x, y, 32, W, 9) * 12 + tileNoise(x, y, 3, W, 11) * 6;
+        const seam = [1, 2, 3, 4, 5].some((j) => Math.abs(v - border(j, x)) < 0.013) ? -58 : 0;
+        // Fine seams inside thicker layers.
+        const fine = Math.abs(tileNoise(x, y * 4, 64, W, 140 + li)) < 0.02 && li % 2 === 0 ? -22 : 0;
+        const weathered = v < 0.06 ? 22 * (1 - v / 0.06) : 0;
+        const [r, gg, b] = tones[li]!;
+        const d = grain + seam + fine + block + bevel + weathered;
+        g.fillStyle = `rgb(${[r! + d + warm, gg! + d, b! + d - warm].map((c) => Math.max(0, Math.min(255, c))).join(',')})`;
         g.fillRect(x, y, 1, 1);
       }
+  });
+
+/**
+ * Patches along an edge (read by arc length): red – bare stone caps instead of grass on the top;
+ * green – a foot that runs out softly instead of a hard line.
+ */
+const patches = () =>
+  canvasTexture(512, 4, (g) => {
+    for (let x = 0; x < 512; x++) {
+      const cap = 128 + tileNoise(x, 0, 64, 512, 201) * 127;
+      const soft = 128 + tileNoise(x, 0, 48, 512, 203) * 127;
+      g.fillStyle = `rgb(${cap},${soft},0)`;
+      g.fillRect(x, 0, 1, 4);
+    }
   });
 
 /** Earth for the hem below the foot: brown, crumbly. */
@@ -146,15 +162,24 @@ void main() {
   vShade = aShade;
 }`;
 
-/** The face: strata, lit by its turn to the light, darker towards the foot. */
+/**
+ * The face: strata, lit by its turn to the light, darker towards the foot. Where the patches say
+ * so, a bare, light stone cap shows at the top, and the foot runs out softly into the ground.
+ */
 const FACE = `in vec2 vUV;
 in float vShade;
 uniform sampler2D uTexture;
+uniform sampler2D uPatch;
 out vec4 finalColor;
 void main() {
-  vec3 c = texture(uTexture, vec2(vUV.x, vUV.y * 0.9)).rgb;
+  vec3 c = texture(uTexture, vec2(vUV.x * 0.5, vUV.y * 0.92)).rgb;
+  vec2 p = texture(uPatch, vec2(vUV.x * 0.35, 0.5)).rg;
+  float cap = smoothstep(0.52, 0.6, p.r) * (1.0 - smoothstep(0.16, 0.32, vUV.y));
+  c = mix(c, vec3(0.86, 0.80, 0.66) + (c - 0.55) * 0.35, cap);
+  float soft = smoothstep(0.62, 0.74, p.g);
   float foot = mix(1.0, 0.55, vUV.y * vUV.y);
-  finalColor = vec4(c * vShade * foot, 1.0);
+  float a = 1.0 - soft * smoothstep(0.68, 1.0, vUV.y);
+  finalColor = vec4(c * vShade * foot * a, a);
 }`;
 
 /** Foot AO: a soft dark hem on the lower ground. */
@@ -168,12 +193,14 @@ void main() {
 /** Grass hanging over the edge: the upper ground's texture, its lower rim ragged. */
 const OVERHANG = `in vec2 vUV;
 uniform sampler2D uTexture;
+uniform sampler2D uPatch;
 out vec4 finalColor;
 void main() {
-  vec3 c = texture(uTexture, vec2(vUV.x * 0.6, vUV.y * 0.15)).rgb;
-  float tuft = texture(uTexture, vec2(vUV.x * 7.0, 0.5)).g;
+  vec3 c = texture(uTexture, vec2(vUV.x * 1.6, vUV.y * 0.15)).rgb;
+  float tuft = texture(uTexture, vec2(vUV.x * 18.0, 0.5)).g;
   float reach = 0.25 + 0.75 * smoothstep(0.42, 0.62, tuft);
-  float a = 1.0 - smoothstep(reach - 0.18, reach, vUV.y);
+  float bare = smoothstep(0.5, 0.58, texture(uPatch, vec2(vUV.x * 0.35, 0.5)).r);
+  float a = (1.0 - smoothstep(reach - 0.18, reach, vUV.y)) * (1.0 - bare);
   finalColor = vec4(c * (0.82 + 0.18 * (1.0 - vUV.y)) * a, a);
 }`;
 
@@ -188,9 +215,9 @@ void main() {
   finalColor = vec4(c * a, a);
 }`;
 
-function mesh(m: BandMesh, fragment: string, texture: Texture): Mesh<Geometry, Shader> {
+function mesh(m: BandMesh, fragment: string, texture: Texture, patch?: Texture): Mesh<Geometry, Shader> {
   const geometry = new Geometry({ attributes: { aPosition: m.positions, aUV: m.uvs, aShade: { buffer: m.shade, format: 'float32' } }, indexBuffer: m.indices });
-  const shader = Shader.from({ gl: { vertex: VERTEX, fragment }, resources: { uTexture: texture.source } });
+  const shader = Shader.from({ gl: { vertex: VERTEX, fragment }, resources: { uTexture: texture.source, ...(patch ? { uPatch: patch.source } : {}) } });
   return new Mesh({ geometry, shader, texture });
 }
 
@@ -244,6 +271,7 @@ async function main() {
   const rock = strata();
   const turf = grass();
   const dirt = earth();
+  const spots = patches();
   const area = { x0: -2, y0: -2, x1: CELLS * SUB + 2, y1: CELLS * SUB + 2 };
   // Protrusions and niches: the band's width wanders by ±35 %, read at the world position.
   const widthFactor = (p: Pt) => 1 + 0.35 * noise2(p.x / (CELL * 0.9), p.y / (CELL * 0.9), 17);
@@ -263,8 +291,9 @@ async function main() {
       const soilWidth = (p: Pt) => 0.05 + 1.1 * Math.max(0, noise2(p.x / (CELL * 1.4), p.y / (CELL * 1.4), 83));
       soil.addChild(mesh(cliffBand(foot, c.closed, CELL * 0.6, { textureLength: CELL * 2, lightAngle: LIGHT_ANGLE, widthFactor: soilWidth }), SOIL, dirt));
       ao.addChild(mesh(cliffBand(hem, c.closed, CELL * 0.4, { textureLength: CELL, lightAngle: LIGHT_ANGLE }), AO, rock));
-      faces.addChild(mesh(face, FACE, rock));
-      overhang.addChild(mesh(cliffBand(line, c.closed, CELL * 0.22, { textureLength: CELL * 1.5, lightAngle: LIGHT_ANGLE }), OVERHANG, turf));
+      // Face and overhang share their arc length (the same texture length), so caps and grass never overlap.
+      faces.addChild(mesh(face, FACE, rock, spots));
+      overhang.addChild(mesh(cliffBand(line, c.closed, CELL * 0.22, { textureLength: CELL * 4, lightAngle: LIGHT_ANGLE }), OVERHANG, turf, spots));
       // Scree at the foot, gathered in a few heaps (as in the reference), smaller the further it rolled.
       for (const { p, normal } of alongLine(foot, c.closed, CELL * 0.1)) {
         const heap = noise2(p.x / (CELL * 1.6), p.y / (CELL * 1.6), 81) > 0.45;

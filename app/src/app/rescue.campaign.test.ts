@@ -1,17 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DcApi } from '../platform/desktop-api';
 import { closeCampaign, newCampaign, newCreature, openCampaign, reloadCampaign, saveCampaign } from './campaign';
-import { discardRescue, resetRunMarkerForTests, restoreRescue, startRunMarker } from './rescue';
+import { discardRescue, resetRunMarkerForTests, restoreRescue, startRunMarker, takingOverLocalStorage, useRescueBackendForTests } from './rescue';
 import { checkpoint, moveToken, state } from './store';
 
 /** Rescue copies and the crash notice (DC-003). Files kept in memory; a save can be made to fail. */
 let files: Map<string, string>;
 let failing: (rel: string) => boolean;
+/** The device storage of the copies (IndexedDB in the app). */
+let kept: string | null;
+const copies = () => JSON.parse(kept!) as { copies: { session: string; path: string }[] };
 
 beforeEach(() => {
   files = new Map();
   failing = () => false;
   localStorage.clear();
+  kept = null;
+  useRescueBackendForTests({ read: async () => kept, write: async (t) => void (kept = t) });
   const api: Partial<DcApi> = {
     readText: async (rel: string) => {
       const t = files.get(rel);
@@ -47,9 +52,9 @@ async function failedSave() {
   await closeCampaign();
   failing = () => false;
   // As if the app started again: the copy now comes from an earlier session.
-  const raw = JSON.parse(localStorage.getItem('dc.rescueCopies')!) as { copies: { session: string }[] };
+  const raw = copies();
   for (const c of raw.copies) c.session = 'earlier';
-  localStorage.setItem('dc.rescueCopies', JSON.stringify(raw));
+  kept = JSON.stringify(raw);
   return { scenePath, pcId: pc.id, x };
 }
 
@@ -122,7 +127,7 @@ describe('rescue copies (DC-003)', () => {
     moveToken(pc.id, { x: pc.x + 70, y: pc.y }, true);
     failing = () => true;
     await saveCampaign(true);
-    const paths = (JSON.parse(localStorage.getItem('dc.rescueCopies')!) as { copies: { path: string }[] }).copies.map((c) => c.path);
+    const paths = copies().copies.map((c) => c.path);
     expect(paths.some((p) => p.includes('/scenes/'))).toBe(true);
     expect(paths.some((p) => p.endsWith('campaign.dm.json'))).toBe(true);
     expect(paths.some((p) => p.includes('grim'))).toBe(true);
@@ -132,7 +137,7 @@ describe('rescue copies (DC-003)', () => {
   it('discard drops the copy and leaves the file as it is', async () => {
     const { scenePath, pcId, x } = await failedSave();
     await openCampaign('c');
-    discardRescue(state.rescueOffer[0]);
+    await discardRescue(state.rescueOffer[0]);
     expect(state.rescueOffer).toEqual([]);
     expect(savedX(scenePath, pcId)).not.toBe(x);
     await openCampaign('c');
@@ -147,12 +152,12 @@ describe('rescue copies (DC-003)', () => {
     moveToken(pc.id, { x: pc.x + 70, y: pc.y }, true);
     failing = (rel) => rel === scenePath;
     await saveCampaign(true);
-    expect(localStorage.getItem('dc.rescueCopies')).toContain(scenePath);
+    expect(kept).toContain(scenePath);
     failing = () => false;
     checkpoint();
     moveToken(pc.id, { x: pc.x + 140, y: pc.y }, true);
     await saveCampaign(true);
-    expect(JSON.parse(localStorage.getItem('dc.rescueCopies')!).copies).toEqual([]);
+    expect(copies().copies).toEqual([]);
   });
 });
 
@@ -171,5 +176,18 @@ describe('crash notice (DC-003)', () => {
     handlers.forEach((h) => h());
     resetRunMarkerForTests();
     expect(startRunMarker(target)).toBe(false);
+  });
+});
+
+describe('rescue copies in IndexedDB (DC-123, E-55)', () => {
+  it('copies an older version kept in localStorage move over once', async () => {
+    let inner: string | null = null;
+    const b = takingOverLocalStorage({ read: async () => inner, write: async (t) => void (inner = t) }, localStorage);
+    localStorage.setItem('dc.rescueCopies', '{"version":1,"copies":[]}');
+    expect(await b.read()).toBe('{"version":1,"copies":[]}');
+    expect(inner).toBe('{"version":1,"copies":[]}');
+    expect(localStorage.getItem('dc.rescueCopies')).toBeNull();
+    await b.write('{"version":1,"copies":[{"x":1}]}');
+    expect(await b.read()).toBe('{"version":1,"copies":[{"x":1}]}');
   });
 });

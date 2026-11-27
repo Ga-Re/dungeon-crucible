@@ -330,7 +330,7 @@ Reihenfolge angepasst: Weil die Bauwerkzeuge sofort wegfallen (E-57), kommen **F
 
 | # | Punkt | Wann |
 |---|---|---|
-| O-A1 | Grenzwert für die Rastergröße in der `.map.json`; ab wann Binärdatei (E-55) | DC-123, nach Messung |
+| O-A1 | Grenzwert für die Rastergröße in der `.map.json`; ab wann Binärdatei (E-55) | entschieden: E-83 |
 | O-A2 | Sichtmodell für Fallgitter (offen/zu) und Schießscharte („eingeschränkt“): neue Wandart, ändert Projektion und Frame | Öffnungs-Task Phase 2 |
 | O-A3 | Untergrund: eigener Nebel vs. Kartennebel, Dauer der Überblendung, Verweis auf tiefere Karten (Szene) | Phase 2 |
 | O-A4 | Druckauflösung: 256 dpi (Master) oder Hochskalieren auf 300 dpi | Phase 8 |

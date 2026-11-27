@@ -239,6 +239,7 @@ export const en = {
   'rescue.newer': 'The file now comes from a newer version of Dungeon Crucible and is not overwritten. Update the app or discard the copy.',
   'rescue.failed': 'Could not write the file. Check that the root folder is reachable and try again.',
   'rescue.close': 'Decide later',
+  'log.mapFileLarge': 'The map file {file} is {mb} MB. It was saved, but large maps load slowly – split it into several maps where you can.',
   'log.saveFailed': 'Saving failed: {error}',
   'log.tableFailed': 'Could not open the table window: {error}',
   'group.mode': 'Mode',

@@ -125,6 +125,12 @@ export async function readDoc<T>(rel: string, kind: DocumentKind, schema: z.ZodT
   return null;
 }
 
+/**
+ * A map file larger than this is still written, with a note in the log (O-A1, E-83): rasters stay
+ * in the map file until a real map outgrows it; then a binary file becomes a new decision.
+ */
+export const MAP_FILE_WARN_BYTES = 8 * 1024 * 1024;
+
 /** Writes a JSON document, keeping the unknown fields it had; never one from a newer version; nothing if unchanged. */
 export async function writeDoc(rel: string, schema: z.ZodType, value: unknown): Promise<void> {
   if (readOnly.has(rel)) return;
@@ -136,10 +142,11 @@ export async function writeDoc(rel: string, schema: z.ZodType, value: unknown): 
     await writeText(rel, text);
   } catch (e) {
     // Not lost (DC-003): kept on this device and offered when the campaign opens again.
-    keepRescue(rel, JSON.stringify(out), bases.get(rel) ?? null);
+    await keepRescue(rel, JSON.stringify(out), bases.get(rel) ?? null);
     throw e;
   }
-  savedOk(rel);
+  await savedOk(rel);
+  if (schema === MapSidecarSchema && text.length > MAP_FILE_WARN_BYTES) log('log.mapFileLarge', { file: rel, mb: Math.round(text.length / (1024 * 1024)) });
   bases.set(rel, fileHash(text));
   // A copy: `out` can share objects with `value`, which the app changes in place later.
   originals.set(rel, JSON.parse(text));
@@ -231,7 +238,7 @@ export async function openCampaign(slug: string): Promise<void> {
   if (state.campaign) await closeCampaign({ toStart: false });
   const ok = await loadCampaign({ slug, name: slug });
   // Documents whose save failed last time are offered now (DC-003).
-  if (ok) offerRescue(slug);
+  if (ok) await offerRescue(slug);
   if (!ok) {
     const newer = readOnly.has(`campaigns/${slug}/${CAMPAIGN_FILE}`);
     state.campaign = null;

@@ -239,6 +239,7 @@ export const de: Partial<Record<MessageKey, string>> = {
   'rescue.newer': 'Die Datei stammt jetzt von einer neueren Version von Dungeon Crucible und wird nicht überschrieben. Aktualisiere die App oder verwirf die Kopie.',
   'rescue.failed': 'Die Datei konnte nicht geschrieben werden. Prüfe, ob der Wurzelordner erreichbar ist, und versuche es erneut.',
   'rescue.close': 'Später entscheiden',
+  'log.mapFileLarge': 'Die Kartendatei {file} ist {mb} MB groß. Sie wurde gespeichert, aber große Karten laden langsam – teile sie, wo es geht, in mehrere Karten.',
   'log.saveFailed': 'Speichern fehlgeschlagen: {error}',
   'log.tableFailed': 'Tischfenster konnte nicht geöffnet werden: {error}',
   'group.mode': 'Modus',

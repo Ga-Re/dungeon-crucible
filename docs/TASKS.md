@@ -120,6 +120,8 @@ Roadmap: `docs/KARTENSCHMIEDE-PROZEDURAL.md` (Teil A gilt vorrangig).
 | E-80 | Migration | Die Migration v13→v14 löscht zusätzlich `autoShore`, `autoGrowth` (E-50) und `generated` (E-66); in Szenen-Zeichnungen auch `hidden` (es verwies nur auf gelöschte Elemente). `waterAnimated`, `lightAngle` und `origin` bleiben. | ergänzt E-57 |
 | E-81 | Vorab | Die Bench-Basis mit großer alter gezeichneter Karte **entfällt** (das Bench kann nur die Videokarte, DC-126 baut die neue Szene); Vergleichsbasis ist der Lauf vom 23.11. Der DM legt den Archiv-Export an, bevor die App auf dem Branch mit dem echten Wurzelordner startet. | ändert „Vorab“ in 3.9 |
 | E-82 | Umbau ohne Bauwerkzeuge (DC-122) | Der Tab **„Bauen“ entfällt** in Kartenschmiede und Orchestrator, bis DC-129 ihn neu bringt. **„Neue gezeichnete Karte“ bleibt** im Katalog (eine leere Fläche, 20 × 20 Felder), „Karte generieren …“ entfällt (E-66). Der TV-Frame verliert seinen Teil `drawn` sofort. `dirty.ts`, `sight.ts`, `sceneDrawing.ts` und `playerDrawing.ts` werden **gelöscht** und mit DC-124, DC-125 und DC-129 neu gebaut; neutral weiterverwendet bleiben `editing.ts` (generisch, ohne Tür-Kopplung), `strokes.ts`, `noise2`/`jitterRing`, `hashNoise`/`variantBlobs`/`lineStrips` und das Textur-Slot-System (`textures.ts`, `variantSheet.ts`) samt WebP-Dateien. | ändert A.3 |
+| E-83 | Rastergröße (O-A1) | **Vorerst keine Binärdatei**: die Raster bleiben in der `.map.json`. Gemessen (150 × 150 Felder): leer 1,6 KB, typisch 56–516 KB (je nach Feinhöhe), reines Rauschen ≈ 7,3 MB. Eine Kartendatei über 8 MB wird geschrieben und im Protokoll mit einem Hinweis gemeldet; erst eine echte Karte darüber macht die Binärdatei zur neuen Entscheidung. | beantwortet O-A1 |
+| E-84 | Einbau der Raster | DC-123 liefert den reinen Kern (Blöcke, Codec, Patches, Rasterzustand mit geteilten Blöcken, Kodieren nur geänderter Blöcke) und die Rettungskopie in IndexedDB. Der **Einbau in Speichern, Öffnen und Rückgängig** kommt mit dem ersten Werkzeug in **DC-128**; bis dahin reisen die Raster kodiert mit (DC-121). | teilt DC-123 |
 
 ---
 
@@ -1073,8 +1075,20 @@ Branch: `feature/procedural-forge-phase-0`.
   `waterAnimated` bleiben in der Datei, E-80; wieder bedienbar mit DC-128/DC-130/DC-134). Neue Element-IDs
   (`freshId`) meiden jetzt auch die IDs der Absicht und eigene Wege der Szene. Nach dem Review: Tests für den Wechsel
   Bildkarte ↔ gezeichnete Fläche (fail-closed), veraltete Kommentare, ungenutztes Symbol und Text entfernt.
-- **DC-123 Raster-Blöcke** (E-55, E-56): Blockspeicher, Codec (Lauflänge + Deflate + Base64), Patches je Ebene,
+- ✓ **DC-123 Raster-Blöcke** (E-55, E-56): Blockspeicher, Codec (Lauflänge + Deflate + Base64), Patches je Ebene,
   Historie mit geteilten Blöcken, Rettungskopie in IndexedDB; Größenmessung (O-A1).
+  Erledigt nach E-83/E-84: `core/build/terrain/` – `block.ts` (32 × 32 Felder, 128 × 128 Stützpunkte, je Kanal eine
+  Ebene: Stufe int8, Feinhöhe int16 in 1/16 ft, Böschung, Fels, Felsstil, Wasser, zwei Bodenklassen mit Gewicht,
+  Dichte Pflanzen/Geröll mit 128 = normal; je Feld vier Biomgewichte; Blöcke ändern sich nie, eine Änderung kopiert
+  nur ihre Ebene; Patches je Ebene mit Maske je Kanalgruppe, in Ebenen-Reihenfolge übereinandergelegt),
+  `rle.ts` (PackBits), `codec.ts` (Ebenen → PackBits → Deflate per `CompressionStream` mit Prüfsumme → Base64;
+  strenge Längenprüfung, eine kaputte Datei wird ganz abgelehnt), `state.ts` (Rasterzustand je Stapel, Ändern über
+  Blockgrenzen auch ins Negative, unveränderte Stapel/Blöcke/Ebenen werden geteilt; kodiert beim Speichern nur
+  Blöcke, die es noch nicht kennt). Rettungskopien liegen in IndexedDB (eine einmalige Übernahme aus dem
+  localStorage; in der echten App geprüft), die Absturzmarke bleibt im localStorage. Hinweis im Protokoll ab 8 MB
+  Kartendatei. Tests: 22 Kern-Tests, Rettungskopie und Übernahme, Dateigröße. Der Einbau in Speichern/Öffnen/
+  Rückgängig folgt mit DC-128 (E-84). Beobachtet beim Prüfen: ein lange verdecktes App-Fenster hängt mit voller
+  CPU im nativen Teil (auch auf `main`) – zum Beobachten am Tisch notiert.
 - **DC-124 Worker-Pool und Scheduler** (E-53): Transferables, Dirty je Block mit Halo, veraltete Jobs verwerfen,
   Worker-taugliche Malbasis (OffscreenCanvas).
 - **DC-125 TV-Frame v6** (E-61; Version 6 hat DC-122 schon vergeben – ohne `drawn`, mit `drawnOrigin` –, die
@@ -1087,7 +1101,8 @@ Branch: `feature/procedural-forge-phase-0`.
 
 **Phase 1 bis 10**
 
-- **DC-128 Gelände und Render-Pipeline** (E-46, E-49, E-52, E-60, E-70): Stufe, Feinhöhe, Böschung, Klippen (Kontur,
+- **DC-128 Gelände und Render-Pipeline** (E-46, E-49, E-52, E-60, E-70; dazu aus DC-123 der Einbau des
+  Rasterzustands in Speichern, Öffnen und Rückgängig nach E-84, mit Standard-Biom nach E-78): Stufe, Feinhöhe, Böschung, Klippen (Kontur,
   Band, Lippe, Material, Module), Boden- und Biom-Raster mit Splat-Shader, Schatten und AO, Chunk-Bake und
   Detailstufen, Einweg-Sicht an steilen Stufen, Viertelfeld-Fang, Raster über Bildkarten, Katalog-Vorschau;
   Ribbon-Tab GELÄNDE (E-67).
@@ -1116,7 +1131,7 @@ Branch: `feature/procedural-forge-phase-0`.
 Aus dem Plan der prozeduralen Kartenschmiede (`docs/KARTENSCHMIEDE-PROZEDURAL.md` A.12), zu klären im genannten
 Task:
 
-- **O-A1** Grenzwert für die Rastergröße in der `.map.json`; ab wann eine Binärdatei (E-55) – DC-123
+- ✓ **O-A1** Grenzwert für die Rastergröße in der `.map.json`; ab wann eine Binärdatei (E-55) – entschieden: E-83
 - **O-A2** Sichtmodell für Fallgitter (offen/zu) und Schießscharte („eingeschränkt“) – DC-129
 - **O-A3** Untergrund: eigener Nebel oder Kartennebel, Überblendung, Verweis auf tiefere Karten – DC-129
 - **O-A4** Druckauflösung: 256 dpi (Master) oder Hochskalieren auf 300 dpi – DC-135

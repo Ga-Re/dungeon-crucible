@@ -24,6 +24,7 @@ generated pattern, so every slot is optional. File name = slot, `.webp` (preferr
 | `water-river`, `water-deep`, `water-foam` | water surfaces and foam (E-35; foam with transparency) | square, seamless, ~512 px |
 | `cliff-band-<biome>` | the face of a cliff band seen from the front, strata running along it, per terrain biome (`temperate`, `dungeon`, `swamp`, `desert`, `winter`; E-87) | wide strip, seamless along its width, 1024 px wide |
 | `terrain-ground-<biome>` | the ground of a terrain biome under and over its cliffs (E-87) | square, seamless, 512 px |
+| `terrain-<biome>-<class>` | a ground class as the biome shows it (E-88): `grass`, `tallgrass`, `earth`, `rock`, `gravel`, `moss`, `leaves`, `paving`, `snow` – only where the biome has the class (Teil B §13.1) | square, seamless, 512 px |
 
 A surface slot may bring **variants** as `<slot>.1.webp`, `<slot>.2.webp` … (DC-119a): the variant
 sheets (`../variantSheet.ts`) lay them in patches over floors and ground, so large areas stop
@@ -47,3 +48,6 @@ The 69 variant pictures (`*.1/2/3.webp` of all floors, grounds, walls, cliffs an
 were generated the same way on 2026-11-26 (DC-119a).
 The five cliff bands and five terrain grounds (E-87) were generated the same way on 2026-11-27 (DC-127, DC-128b) and
 accepted by the DM next to a reference picture; the DM's plan allows shipping them here.
+The 35 ground classes of the five terrain biomes, a variant of each but paving (laid stones in two sizes look wrong
+side by side, DM 2026-11-27) and a variant of each terrain ground were generated the same way on 2026-11-27
+(DC-128c) and accepted by the DM per biome.

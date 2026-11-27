@@ -11,8 +11,8 @@
  * matching checksum, a block it lacks stays black (fail-closed). Pure.
  */
 import type { GridConfig } from '../../grid';
-import { cellCenter, toCellSpace } from '../../grid';
-import { isInside } from '../../poly/fog';
+import { toCellSpace } from '../../grid';
+import { cellCentresInside, type CellGrid } from '../geom/scanline';
 import type { Polygon } from '../../poly/types';
 import { BLOCK_CELLS, BLOCK_POINTS, CELL_CHANNELS, newBlock, newPlane, planeKind, POINT_CHANNELS, SUBDIVISIONS, type Channel, type RasterBlock } from './block';
 import { shownBlock, type TerrainState } from './state';
@@ -79,7 +79,20 @@ function edgeCells(polys: readonly Polygon[], grid: GridConfig): Set<string> {
  * Per cell of block `key` (32 × 32): the cell whose values the TV gets – itself, the nearest cell
  * it may know (around a secret area, E-85), or -1: unknown (the defaults).
  */
-export function tvCellSources(key: string, view: RasterView, secretEdges = edgeCells(view.hidden, view.grid)): Int16Array {
+/** The explored cells and the secret ones of a view, worked out once for all its blocks (one scan per row). */
+export interface ViewMasks {
+  explored: CellGrid;
+  /** Centres in an undiscovered secret area, or an edge of one runs through. */
+  secret: (col: number, row: number) => boolean;
+}
+
+export function viewMasks(view: RasterView): ViewMasks {
+  const edges = edgeCells(view.hidden, view.grid);
+  const inside = cellCentresInside(view.hidden, view.grid);
+  return { explored: cellCentresInside(view.shown, view.grid), secret: (col, row) => inside.get(col, row) === 1 || edges.has(`${col}_${row}`) };
+}
+
+export function tvCellSources(key: string, masks: ViewMasks): Int16Array {
   const { bx, by } = parse(key);
   const col0 = bx * BLOCK_CELLS;
   const row0 = by * BLOCK_CELLS;
@@ -92,9 +105,8 @@ export function tvCellSources(key: string, view: RasterView, secretEdges = edgeC
     for (let c = 0; c < side; c++) {
       const col = col0 - M + c;
       const row = row0 - M + r;
-      const p = cellCenter(view.grid, { col, row });
-      explored[r * side + c] = isInside(view.shown, [p.x, p.y]) ? 1 : 0;
-      secret[r * side + c] = secretEdges.has(`${col}_${row}`) || (view.hidden.length > 0 && isInside(view.hidden, [p.x, p.y])) ? 1 : 0;
+      explored[r * side + c] = masks.explored.get(col, row);
+      secret[r * side + c] = masks.secret(col, row) ? 1 : 0;
     }
   const near = (grid: Uint8Array, c: number, r: number, d: number) => {
     for (let dr = -d; dr <= d; dr++)
@@ -137,38 +149,54 @@ export function tvCellSources(key: string, view: RasterView, secretEdges = edgeC
 
 /** `block` as the TV gets it: each cell's points and values from its source cell, the defaults where none. */
 function sourced(block: RasterBlock, sources: Int16Array): RasterBlock {
+  // A block the TV may know whole goes as it is: no copy.
+  if (sources.every((src, i) => src === i)) return block;
+  // Each point's source point (-1: the default), worked out once for all planes.
+  const from = new Int32Array(BLOCK_POINTS * BLOCK_POINTS);
+  for (let y = 0; y < BLOCK_POINTS; y++) {
+    const cy = (y / SUBDIVISIONS) | 0;
+    const sy = y % SUBDIVISIONS;
+    for (let x = 0; x < BLOCK_POINTS; x++) {
+      const src = sources[cy * BLOCK_CELLS + ((x / SUBDIVISIONS) | 0)]!;
+      from[y * BLOCK_POINTS + x] = src < 0 ? -1 : (((src / BLOCK_CELLS) | 0) * SUBDIVISIONS + sy) * BLOCK_POINTS + (src % BLOCK_CELLS) * SUBDIVISIONS + (x % SUBDIVISIONS);
+    }
+  }
   const empty = newBlock();
   const planes = {} as Record<Channel, Int8Array | Int16Array | Uint8Array>;
   for (const ch of POINT_CHANNELS) {
-    const from = block.planes[ch];
-    const plane = from.slice();
+    const src = block.planes[ch];
+    const plane = src.slice();
     const d = empty.planes[ch][0]!;
-    for (let y = 0; y < BLOCK_POINTS; y++)
-      for (let x = 0; x < BLOCK_POINTS; x++) {
-        const cy = floorDiv(y, SUBDIVISIONS);
-        const cx = floorDiv(x, SUBDIVISIONS);
-        const src = sources[cy * BLOCK_CELLS + cx]!;
-        if (src === cy * BLOCK_CELLS + cx) continue;
-        if (src < 0) plane[y * BLOCK_POINTS + x] = d;
-        else {
-          const sx = (src % BLOCK_CELLS) * SUBDIVISIONS + (x % SUBDIVISIONS);
-          const sy = floorDiv(src, BLOCK_CELLS) * SUBDIVISIONS + (y % SUBDIVISIONS);
-          plane[y * BLOCK_POINTS + x] = from[sy * BLOCK_POINTS + sx]!;
-        }
-      }
+    for (let i = 0; i < from.length; i++) {
+      const f = from[i]!;
+      plane[i] = f < 0 ? d : src[f]!;
+    }
     planes[ch] = plane;
   }
   for (const ch of CELL_CHANNELS) {
-    const from = block.planes[ch];
-    const plane = from.slice();
+    const src = block.planes[ch];
+    const plane = src.slice();
     const d = empty.planes[ch][0]!;
     for (let i = 0; i < plane.length; i++) {
-      const src = sources[i]!;
-      if (src !== i) plane[i] = src < 0 ? d : from[src]!;
+      const f = sources[i]!;
+      plane[i] = f < 0 ? d : src[f]!;
     }
     planes[ch] = plane;
   }
   return { planes };
+}
+
+/** What a block came out as for a mask, by the block (blocks never change) and the mask's fingerprint. */
+const sourcedCache = new WeakMap<RasterBlock, Map<string, { block: RasterBlock; checksum: string }>>();
+
+function maskKey(sources: Int16Array): string {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x2b5d1e3f;
+  for (let i = 0; i < sources.length; i++) {
+    h1 = Math.imul(h1 ^ (sources[i]! & 0xffff), 0x01000193);
+    h2 = Math.imul(h2 ^ (sources[i]! & 0xffff), 0x01000193) ^ (h2 >>> 13);
+  }
+  return `${h1 >>> 0}_${h2 >>> 0}`;
 }
 
 /** The blocks the TV may know of `view` – every block the explored area reaches – as it may know them, with their checksums. */
@@ -176,14 +204,25 @@ export function tvRaster(t: TerrainState, view: RasterView): Map<string, { block
   const out = new Map<string, { block: RasterBlock; checksum: string }>();
   const area = exploredCells(view);
   if (!area) return out;
-  const secretEdges = edgeCells(view.hidden, view.grid);
+  const masks = viewMasks(view);
   for (let by = floorDiv(area.r0, BLOCK_CELLS); by <= floorDiv(area.r1, BLOCK_CELLS); by++)
     for (let bx = floorDiv(area.c0, BLOCK_CELLS); bx <= floorDiv(area.c1, BLOCK_CELLS); bx++) {
       const key = `${bx}_${by}`;
-      const sources = tvCellSources(key, view, secretEdges);
+      const sources = tvCellSources(key, masks);
       if (!sources.some((s) => s >= 0)) continue;
-      const block = sourced(shownBlock(t, view.stack, key, view.activeLayers), sources);
-      out.set(key, { block, checksum: rasterChecksum(block) });
+      const shown = shownBlock(t, view.stack, key, view.activeLayers);
+      const mk = maskKey(sources);
+      let byMask = sourcedCache.get(shown);
+      if (!byMask) sourcedCache.set(shown, (byMask = new Map()));
+      let result = byMask.get(mk);
+      if (!result) {
+        const block = sourced(shown, sources);
+        result = { block, checksum: rasterChecksum(block) };
+        // A few masks per block are enough: the explored edge moves on, old masks never come back.
+        if (byMask.size > 8) byMask.clear();
+        byMask.set(mk, result);
+      }
+      out.set(key, result);
     }
   return out;
 }
@@ -192,8 +231,12 @@ export function tvRaster(t: TerrainState, view: RasterView): Map<string, { block
 
 const CHANNELS: readonly Channel[] = [...POINT_CHANNELS, ...CELL_CHANNELS];
 
-/** Two 32-bit FNV-1a lanes over every plane in file order, as 16 hex digits. */
+const checksums = new WeakMap<RasterBlock, string>();
+
+/** Two 32-bit FNV-1a lanes over every plane in file order, as 16 hex digits (worked out once per block: blocks never change). */
 export function rasterChecksum(b: RasterBlock): string {
+  const known = checksums.get(b);
+  if (known) return known;
   let h1 = 0x811c9dc5;
   let h2 = 0x01000193 ^ 0x5bd1e995;
   for (const ch of CHANNELS) {
@@ -204,7 +247,9 @@ export function rasterChecksum(b: RasterBlock): string {
       h2 = Math.imul(h2 ^ bytes[i]!, 0x01000193) ^ (h2 >>> 15);
     }
   }
-  return (h1 >>> 0).toString(16).padStart(8, '0') + (h2 >>> 0).toString(16).padStart(8, '0');
+  const sum = (h1 >>> 0).toString(16).padStart(8, '0') + (h2 >>> 0).toString(16).padStart(8, '0');
+  checksums.set(b, sum);
+  return sum;
 }
 
 /* ---------------------------------------------------------------- sending */

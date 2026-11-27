@@ -190,3 +190,27 @@ describe('checksums and sending (E-61)', () => {
     expect(cache.has(sums[2]!)).toBe(true);
   });
 });
+
+describe('speed (review DC-125)', () => {
+  it('16 blocks under a ragged fog of 2000 points and a secret area of 200 points', () => {
+    let t = emptyTerrain(['temperate']);
+    const edits: [number, number, number][] = [];
+    for (let y = 0; y < 512; y += 3) for (let x = 0; x < 512; x += 3) edits.push([x, y, (x + y) % 3]);
+    t = setPoints(t, 'map', 'step', edits);
+    const ring = (cx: number, cy: number, r: number, n: number, wobble: number) => ({
+      outer: Array.from({ length: n }, (_, i) => {
+        const a = (i / n) * Math.PI * 2;
+        const rr = r * (1 + wobble * Math.sin(a * 37));
+        return [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr] as [number, number];
+      }),
+      holes: [],
+    });
+    const shown = [ring(64 * 70, 64 * 70, 60 * 70, 2000, 0.08)];
+    const hidden = [ring(40 * 70, 40 * 70, 6 * 70, 200, 0.2)];
+    const t0 = performance.now();
+    const r = tvRaster(t, view({ shown, hidden }));
+    const ms = performance.now() - t0;
+    expect(r.size).toBeGreaterThanOrEqual(16);
+    expect(ms).toBeLessThan(250);
+  });
+});

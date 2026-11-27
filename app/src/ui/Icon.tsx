@@ -8,7 +8,6 @@ const PATHS = {
   eraser: 'M3 16l9-9 6 6-6 6H6z M8 11l6 6 M12 21h9',
   rect: 'M4 6h16v12H4z',
   room: 'M3 3h8v8H3z M13 3h8v8h-8z M3 13h18v8H3z',
-  floorplan: 'M3 4h18v16H3z M12 4v6 M12 14v6 M3 12h5 M16 12h5',
   wall: 'M3 5h18v14H3z M3 9.7h18M3 14.3h18 M9 5v4.7M15 5v4.7 M6 9.7v4.6 M12 9.7v4.6 M18 9.7v4.6 M9 14.3V19 M15 14.3V19',
   door: 'M6 21V3h12v18 M3 21h18 M14.5 12h.5',
   secretdoor: 'M6 21V3h12v18 M3 21h18 M9 9l6 6M15 9l-6 6',

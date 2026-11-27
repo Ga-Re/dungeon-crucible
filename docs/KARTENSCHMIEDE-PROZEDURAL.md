@@ -144,6 +144,7 @@ Eingetragen in `docs/TASKS.md` §1 (Nachtrag 2026-11-27). „Ersetzt“ heißt: 
 - `render/{cliffsPaint,waterPaint,detailsPaint}.ts`, der Mal-Teil von `render/drawnMap.ts`, `render/pixi/water-layer.ts`
 - `app/GenerateMapDialog.tsx`, Ribbon-Knöpfe `build:wall`, `build:door`, `build:cliff`, `build:water`, `build:floor`, `build:generate`, `build:room`
 - Weiterverwendet und nicht entfernt: `handDrawn.ts` (`noise2`), `variance.ts`, `strokes.ts`, `editing.ts` (Linien-Werkzeuge für Wandlinien), `dirty.ts`, `sight.ts`, `sceneDrawing.ts`, `playerDrawing.ts`. Die letzten drei werden umgebaut.
+- **Geändert mit E-82 (DC-122):** `dirty.ts`, `sight.ts`, `sceneDrawing.ts` und `playerDrawing.ts` sind gelöscht und kommen neu mit DC-124, DC-125 und DC-129. Von `handDrawn.ts` bleiben `noise2` und `jitterRing`, von `variance.ts` `hashNoise`, `periodicNoise`, `variantBlobs` und `lineStrips`; `editing.ts` ist generisch (Linien ohne Tür-Kopplung). Der Tab „Bauen“ entfällt bis DC-129, „Neue gezeichnete Karte“ bleibt.
 
 **Neu aufzubauen auf dem Raster** (nicht vergessen):
 
@@ -200,6 +201,8 @@ Diese Punkte folgen aus festgehaltenen Regeln und gelten für Teil B:
 ## A.6 Datenformat Karte v14 (Skizze)
 
 Alle neuen Felder sind **optional**. Die Migration v13→v14 setzt Standardwerte und **entfernt** die alten Bau-Felder (E-57). Endgültige Feldnamen legt der Task DC-121 fest.
+
+> **Festgelegt mit DC-121 (E-79, E-80):** `app/src/core/build/intent.ts`. Abweichungen von der Skizze: Öffnungen haben `kind` (door, double-door, portcullis, window, arrow-slit, archway, breach) statt `type`/`window?`, dazu `material`, `hinge` (start/end) und `opensTo` (left/right); Übergänge haben `path?` statt `origin` und `lock` (ein fester `kind` ist die Sperre); Wege haben eine Grundbreite `width`; Eingänge eines Untergrunds haben eine `id` und `secret`, der Untergrund `confirm` und `leaveOff` (A.8). Jede Liste trägt `layer?` und `storey?` (A.4). Die Migration löscht zusätzlich `autoShore`, `autoGrowth` und `generated`.
 
 ```ts
 // Ausschnitt MapSidecar v14 – neue Felder
@@ -327,13 +330,13 @@ Reihenfolge angepasst: Weil die Bauwerkzeuge sofort wegfallen (E-57), kommen **F
 
 | # | Punkt | Wann |
 |---|---|---|
-| O-A1 | Grenzwert für die Rastergröße in der `.map.json`; ab wann Binärdatei (E-55) | DC-123, nach Messung |
+| O-A1 | Grenzwert für die Rastergröße in der `.map.json`; ab wann Binärdatei (E-55) | entschieden: E-83 |
 | O-A2 | Sichtmodell für Fallgitter (offen/zu) und Schießscharte („eingeschränkt“): neue Wandart, ändert Projektion und Frame | Öffnungs-Task Phase 2 |
 | O-A3 | Untergrund: eigener Nebel vs. Kartennebel, Dauer der Überblendung, Verweis auf tiefere Karten (Szene) | Phase 2 |
 | O-A4 | Druckauflösung: 256 dpi (Master) oder Hochskalieren auf 300 dpi | Phase 8 |
 | O-A5 | Foundry-Zielversion (v12 oder v13) | Phase 8 |
 | O-A6 | Bildverarbeitung der Entwickler-Pipeline: ohne neue Abhängigkeit über Chromium (Playwright) oder mit `sharp` (Steckbrief) | vor der Asset-Produktion |
-| O-A7 | Zuordnung `fogBiome` → Standard-Geländebiom neuer Karten | DC-121 |
+| O-A7 | Zuordnung `fogBiome` → Standard-Geländebiom neuer Karten | entschieden: E-78 |
 | O-A8 | Lizenz: Nutzungsbedingungen von Higgsfield für Auslieferung und späteren Verkauf; Rechte an einem Stil-LoRA | vor Phase 10 |
 
 ---

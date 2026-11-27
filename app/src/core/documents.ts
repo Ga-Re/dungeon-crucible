@@ -20,8 +20,8 @@ export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' |
 /** Current version of each document kind. */
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
-  map: 13,
-  scene: 12,
+  map: 14,
+  scene: 13,
   creature: 1,
   asset: 3,
   object: 1,
@@ -29,6 +29,35 @@ export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
 };
 
 type Raw = Record<string, unknown>;
+
+/**
+ * Fields E-57/E-80 retired: deleted from maps (version 14) and from scenes' own drawings (version 13).
+ * They are also dropped whenever such a document is read, so a file written while the app still
+ * wrote them never keeps them as unknown fields.
+ */
+const RETIRED_OF_MAPS = ['masonry', 'masonryDoors', 'cliffs', 'waters', 'floors', 'rooms', 'autoShore', 'autoGrowth', 'generated'];
+const RETIRED_OF_SCENE_DRAWINGS = ['masonry', 'masonryDoors', 'cliffs', 'waters', 'floors'];
+
+function omit(doc: Raw, keys: readonly string[]): Raw {
+  return Object.fromEntries(Object.entries(doc).filter(([k]) => !keys.includes(k)));
+}
+
+/** A scene with `keys` taken out of its own drawing, in the play state and the start. */
+function omitFromSceneDrawings(doc: Raw, keys: readonly string[]): Raw {
+  const out: Raw = { ...doc };
+  if (isRecord(doc['drawing'])) out['drawing'] = omit(doc['drawing'], keys);
+  const start = doc['start'];
+  if (isRecord(start) && isRecord(start['drawing'])) out['start'] = { ...start, drawing: omit(start['drawing'], keys) };
+  return out;
+}
+
+/** A document of the current version without the retired fields of its kind. */
+function withoutRetired(kind: DocumentKind, doc: Raw): Raw {
+  if (kind === 'map') return omit(doc, RETIRED_OF_MAPS);
+  if (kind === 'scene') return omitFromSceneDrawings(doc, RETIRED_OF_SCENE_DRAWINGS);
+  return doc;
+}
+
 /** Migrations per kind: `[n]` turns a version-n document into version n+1. */
 export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>> = {
   campaign: {},
@@ -57,6 +86,9 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     11: (doc) => doc,
     // Version 13 adds parametric rooms (E-45): none yet.
     12: (doc) => doc,
+    // Version 14, the procedural Map Forge (E-46 ff.), adds optional intent fields (none yet) and
+    // deletes the old drawing, its automatic details and the old generator's note – without a backup (E-57).
+    13: (doc) => omit(doc, RETIRED_OF_MAPS),
   },
   // The same for the scene's own areas and its overrides of map areas.
   scene: {
@@ -93,6 +125,9 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     10: (doc) => doc,
     // Version 12 adds the map variant a scene shows (E-41): none yet, the map's own picture.
     11: (doc) => doc,
+    // Version 13 (E-57): a scene's own drawing goes like the map's, and with it what it hid of the
+    // map's drawing (only drawn elements, all gone). It may have paths now (E-59): none yet.
+    12: (doc) => omitFromSceneDrawings(doc, [...RETIRED_OF_SCENE_DRAWINGS, 'hidden']),
   },
   creature: {},
   // The first asset format (variants with props, never used by files) → E-27 (DC-040).
@@ -147,6 +182,7 @@ export function readDocument<T>(
     raw = { ...step(raw), schemaVersion: version + 1 };
     version++;
   }
+  raw = withoutRetired(kind, raw);
   const r = schema.safeParse(raw);
   if (!r.success) return { ok: false, reason: 'invalid', errors: r.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`) };
   return { ok: true, value: r.data, raw };

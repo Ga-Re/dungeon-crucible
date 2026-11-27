@@ -111,6 +111,20 @@ Roadmap: `docs/KARTENSCHMIEDE-PROZEDURAL.md` (Teil A gilt vorrangig).
 | E-76 | Begriffe und Texte | Kollisionsfreie Namen (A.5). Alle Texte in `en.ts`/`de.ts`, auch Paket-, Regel- und Prefab-Namen. | wie CLAUDE.md |
 | E-77 | Roadmap | Roadmap als DC-Tasks in `docs/TASKS.md` (A.11); ein Branch je Thema; Merge nur nach DM-Freigabe. | wie CLAUDE.md |
 
+### Nachtrag: Start Phase 0 (DM, 2026-11-27)
+
+| Nr. | Thema | Entscheidung | Verhältnis zu Bestehendem |
+|---|---|---|---|
+| E-78 | Standard-Geländebiom (O-A7) | Eine neue Karte vom Kartentyp „Dungeon“ startet im Geländebiom **Dungeon/Höhle**, jede andere nach ihrem Nebelbiom: nebel, kueste, arkan → Gemäßigt; schnee → Winter; wueste, asche → Wüste; sumpf → Sumpf; dunkel → Dungeon/Höhle. | beantwortet O-A7 |
+| E-79 | Umfang Karte v14 | **Alle Felder aus A.6 jetzt**, als optionale Felder; die endgültigen Namen legt DC-121 fest (`app/src/core/build/intent.ts`). Bis zum Merge von Phase 0 dürfen DC-123 bis DC-125 sie noch anpassen. | wie A.6 |
+| E-80 | Migration | Die Migration v13→v14 löscht zusätzlich `autoShore`, `autoGrowth` (E-50) und `generated` (E-66); in Szenen-Zeichnungen auch `hidden` (es verwies nur auf gelöschte Elemente). `waterAnimated`, `lightAngle` und `origin` bleiben. | ergänzt E-57 |
+| E-81 | Vorab | Die Bench-Basis mit großer alter gezeichneter Karte **entfällt** (das Bench kann nur die Videokarte, DC-126 baut die neue Szene); Vergleichsbasis ist der Lauf vom 23.11. Der DM legt den Archiv-Export an, bevor die App auf dem Branch mit dem echten Wurzelordner startet. | ändert „Vorab“ in 3.9 |
+| E-82 | Umbau ohne Bauwerkzeuge (DC-122) | Der Tab **„Bauen“ entfällt** in Kartenschmiede und Orchestrator, bis DC-129 ihn neu bringt. **„Neue gezeichnete Karte“ bleibt** im Katalog (eine leere Fläche, 20 × 20 Felder), „Karte generieren …“ entfällt (E-66). Der TV-Frame verliert seinen Teil `drawn` sofort. `dirty.ts`, `sight.ts`, `sceneDrawing.ts` und `playerDrawing.ts` werden **gelöscht** und mit DC-124, DC-125 und DC-129 neu gebaut; neutral weiterverwendet bleiben `editing.ts` (generisch, ohne Tür-Kopplung), `strokes.ts`, `noise2`/`jitterRing`, `hashNoise`/`variantBlobs`/`lineStrips` und das Textur-Slot-System (`textures.ts`, `variantSheet.ts`) samt WebP-Dateien. | ändert A.3 |
+| E-83 | Rastergröße (O-A1) | **Vorerst keine Binärdatei**: die Raster bleiben in der `.map.json`. Gemessen (150 × 150 Felder): leer 1,6 KB, typisch 56–516 KB (je nach Feinhöhe), reines Rauschen ≈ 7,3 MB. Eine Kartendatei über 8 MB wird geschrieben und im Protokoll mit einem Hinweis gemeldet; erst eine echte Karte darüber macht die Binärdatei zur neuen Entscheidung. | beantwortet O-A1 |
+| E-84 | Einbau der Raster | DC-123 liefert den reinen Kern (Blöcke, Codec, Patches, Rasterzustand mit geteilten Blöcken, Kodieren nur geänderter Blöcke) und die Rettungskopie in IndexedDB. Der **Einbau in Speichern, Öffnen und Rückgängig** kommt mit dem ersten Werkzeug in **DC-128**; bis dahin reisen die Raster kodiert mit (DC-121). | teilt DC-123 |
+| E-85 | Raster auf dem TV | Der TV bekommt Rasterdaten **nur im Erkundeten** (aufgedeckt und erinnert) plus **2 Felder Rand**, nie einen unentdeckten geheimen Bereich und nie die Felder, die ihn berühren; alles andere ist „unbekannt“. Patches aktiver Ebenen werden beim DM **fertig verrechnet**, inaktive Ebenen verlassen den DM nie; nur der Stapel des gezeigten Stockwerks. **Übertragung per Prüfsumme**: der Frame nennt je Block eine Prüfsumme, ein eigener Einweg-Kanal (`table:raster`, DM → Hauptprozess → TV) bringt nur fehlende Blöcke; nach „TV geladen/geschlossen“ alles neu. Der TV nimmt einen Block nur ganz und mit passender Prüfsumme, ein fehlender bleibt schwarz. Umfang jetzt: alles außer dem Anschluss an den Rasterzustand (der kommt mit DC-128, E-84). Nach dem Review (DM 2026-11-27): als geheim gilt jedes Feld, durch das ein Rand des Bereichs läuft oder dessen Mitte darin liegt (auch schmale und schräge Bereiche); der Ring um einen geheimen Bereich im Erkundeten wird **aus dem nächsten bekannten Feld aufgefüllt** (keine Lücke in Form des Raums, nichts von ihm). | konkretisiert E-61 |
+| E-86 | Reihenfolge Phase 0 | **DC-126 (Prüfwerkzeuge) kommt nach DC-128**: Bench-Szene und Bildvergleiche messen erst sinnvoll, wenn Gelände gemalt wird; die Bench-Szene wächst mit Wasser und Streuung. Als Nächstes DC-127; seine Referenzkarte (Klippe in Draufsicht) erzeugt Claude mit Higgsfield, abgelegt außerhalb des Repos. | ändert die Reihenfolge in 3.9 |
+
 ---
 
 ## 2. Funktionsabgleich
@@ -451,7 +465,8 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   `schemaVersion` 3 (Migration ohne Datenänderung: ältere App-Versionen schreiben solche Dateien nicht zurück).
   Schritt 3 (Deckung) entfällt hier – DM-Entscheidung (2026-11-25): Die Deckungsmaske gehört zum Asset und wird im
   Asset-Editor festgelegt; weiter mit DC-108.
-- **DC-107 Kontextsensitiver Karten-Editor** (DM-Wunsch 2026-11-25, `docs/KARTENEDITOR.md`): Dungeon- und
+- **DC-107 Kontextsensitiver Karten-Editor** – **entfallen mit E-57/DC-122** (neu geplant in 3.9); der Text bleibt als
+  Geschichte, die offenen Bench-Läufe DC-107a/f entfallen (E-81). (DM-Wunsch 2026-11-25, `docs/KARTENEDITOR.md`): Dungeon- und
   Wildnis-/Stadtkarten selbst zeichnen – Wände, Wege, Flüsse, Gebäude, Türen, Brücken als editierbare Absichten
   (Intent-Modell mit Seeds), Regel-Pipeline für Ecken, Kreuzungen, Durchbrüche, Übergänge, handgezeichnete Optik und
   Detailstreuung, daraus Sicht- und Bewegungsdaten. Assets bleiben frei platzierbar (DC-041). DM-Entscheidung
@@ -583,7 +598,8 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Spiel getrennt, Gegenebene schaltet mit), automatischer Auslöser beim Betreten eines Bereichs durch einen SC
   (aus beim Verlassen, wenn eingestellt), Protokolleintrag. Elemente inaktiver Ebenen fehlen in Sicht, Licht und
   TV-Projektion, werden aber nicht als ausgeblendet gespeichert; Assets werden nach Ebenenhöhe gezeichnet.
-- ✓ **DC-119 Lebendige Karten** (E-36) – Varianz und Generator, Teilpakete:
+- ✓ **DC-119 Lebendige Karten** (E-36) – Varianz und Generator, Teilpakete (Generator, Fels und Malerei **entfallen
+  mit E-57/E-66/DC-122**; Varianz-Funktionen und Texturen bleiben):
   - ✓ **DC-119a Böden**: Böden und Naturgrund wiederholen statt einer Textur einen komponierten Bogen aus 16×16
     Zellen: Flecken aus Varianten und Drehungen (`core/build/variance.ts`, deterministisch je Seed), phasengleich,
     sodass das Muster eines Fleckens in einem Stück weiterläuft – Kachelböden wechseln an Zellgrenzen in großen
@@ -1005,30 +1021,160 @@ Plan: `docs/KARTENSCHMIEDE-PROZEDURAL.md` (Teil A gilt vorrangig, Roadmap A.11).
 DC-122 fallen gezeichnete Mauern, Klippen, Wasser, Böden, Räume und der Generator weg (E-57); bis Phase 2 hat die
 Kartenschmiede keine Bauwerkzeuge.
 
-**Vorab (DM):** Archiv-Export aller Kampagnen (E-57 löscht die alten Bau-Felder ohne Sicherung); offene Bench-Läufe
-DC-107a/f und DC-020 als Vergleichsbasis.
+**Vorab (DM):** Archiv-Export aller Kampagnen (E-57 löscht die alten Bau-Felder ohne Sicherung), bevor die App auf dem
+Branch mit dem echten Wurzelordner startet. Die Bench-Basis mit alter gezeichneter Karte entfällt (E-81).
+
+Branch: `feature/procedural-forge-phase-0`.
 
 **Phase 0 – Fundament**
 
-- **DC-121 Karte v14 und Migration** (E-55, E-57): neue optionale Felder (Plan A.6); Migration v13→v14 entfernt
+- ✓ **DC-121 Karte v14 und Migration** (E-55, E-57): neue optionale Felder (Plan A.6); Migration v13→v14 entfernt
   `masonry`, `masonryDoors`, `cliffs`, `waters`, `floors`, `rooms`, auch in Szenen-Zeichnungen; Rundreise-Test in
   `format.test.ts`; Standard-Geländebiom aus `fogBiome` (O-A7).
-- **DC-122 Alten Bau- und Mal-Code entfernen** (E-57, Plan A.3): Module, Ribbon-Knöpfe, Generator-Dialoge,
+  Erledigt: `core/build/intent.ts` mit den Schemas aller v14-Felder (E-79) – `terrain` (Stufenhöhe, Biom-Palette mit
+  höchstens 4 Biomen, Stapel `map` bzw. Stockwerk-id mit Blöcken `{ v, data }` und Patches je Ebene `{ v, data,
+  mask }`, Block-Schlüssel `<bx>_<by>` vorzeichenbehaftet, Base64 geprüft), `wallLines` (Stile stone, brick, wood,
+  palisade, fence, drystone, hedge), `openings` (door, double-door, portcullis, window, arrow-slit, archway, breach;
+  `secret` nur bei Türen; `hinge`, `opensTo`, `material`; ohne `wall` in der Fels-Kante), `paths` (Bézier, Anfasser
+  relativ zum Knoten, Breite je Knoten), `crossings` (`auto` oder fester Typ; `path` statt `origin`/`lock` der
+  Skizze), `waterSources`, `prefabs` (Vierteldrehungen), `derived` (Schlüssel klein, `:` `.` `~` erlaubt), `mood`,
+  `undergrounds` (Eingänge mit id und `secret`, `confirm`, `leaveOff`). Karte v14 / Szene v13; Migration nach E-57
+  und E-80; Szenen-Zeichnungen haben `paths` und blenden auch abgeleitete Schlüssel aus. Die Laufzeit trägt die
+  Felder unverändert (`MapInfo.intent`, `Scene.ownPaths`, alle Stockwerke), damit Speichern nichts verliert; nichts
+  davon geht an den TV. `defaultTerrainBiome` nach E-78. Karte duplizieren: „nur die Karte“ behält die Absicht nur
+  bei gezeichneten Karten (ohne Ebenen und Stockwerke, Stimmung immer), „mit allem“ vergibt neue IDs und zieht
+  Verweise nach (Öffnung → Wandlinie, Übergang → Weg, Untergrund → Stockwerk, Rasterstapel → Stockwerk, Patches →
+  Ebene). Tests: `intent.test.ts`, `format.test.ts`, `mapCopy.test.ts`. Keine sichtbare Änderung; die App wurde
+  wegen E-81 nicht mit dem echten Wurzelordner gestartet. Bis DC-122 bleiben die alten Felder im Schema (leer).
+  Nach dem Review: die ausgemusterten Felder fallen bei **jedem** Lesen weg, nicht nur bei der Migration – eine
+  v14-Datei, die vor DC-122 noch `masonry: []` usw. bekam, behält sie nie als unbekannte Felder; Block-Schlüssel
+  nur in einer Schreibweise, Biom-Palette ohne Doppelte, Prefab-Pfad nur `library/<name>.prefab.json`; Kopieren
+  kennt alle IDs der Karte (auch der Absicht), neue IDs wiederholen keine; Test, dass der TV-Frame mit und ohne
+  Absicht gleich ist. Offen für spätere Tasks: `keepUnknown` geht nicht in Records (unbekannte Felder in Blöcken
+  und `derived` gehen beim Schreiben verloren) und `intentOf` kopiert die ganze Absicht je Ansicht – beides mit
+  DC-123 (geteilte Blöcke); abgeleitete Schlüssel mit Element-IDs müssten beim Kopieren mitgehen (Schlüssel-Schema
+  in DC-131).
+- ✓ **DC-122 Alten Bau- und Mal-Code entfernen** (E-57, Plan A.3): Module, Ribbon-Knöpfe, Generator-Dialoge,
   i18n-Schlüssel; Tests, Typecheck und Build grün.
-- **DC-123 Raster-Blöcke** (E-55, E-56): Blockspeicher, Codec (Lauflänge + Deflate + Base64), Patches je Ebene,
+  Erledigt nach E-82: entfernt sind `core/build/{masonry,cliffs,water,floors,rooms,rock,generate,sight,sceneDrawing,
+  playerDrawing,dirty}.ts` samt Tests, `render/{cliffsPaint,waterPaint,detailsPaint,drawnMap}.ts`,
+  `render/pixi/water-layer.ts`, `app/build.ts`, `app/GenerateMapDialog.tsx`, `panels/BuildCommandPanel.tsx`, der
+  Tab „Bauen“, Bau-Eigenschaften, Bau-Overlay und Geröll-Markierung im DM-Fenster, 158 Texte (en/de), die
+  Generator-Styles. Schema: Karte und Szene kennen die alten Felder nicht mehr; `readDocument` wirft sie bei jedem
+  Lesen weg (E-80), sie kommen also auch über `keepUnknown` nie zurück – in der echten App geprüft: eine v13-Karte
+  mit Mauern, Raum und Tür wird nach einer Änderung als v14 ohne ein altes Feld geschrieben, Ursprung, Lichtrichtung
+  und normale Wände bleiben. Renderer: Overlay über Bildkarten, Decals, bewegtes Wasser und kachelweise gemalte
+  Karten entfallen; neu ist eine **leere Fläche** (`BlankArea`) für gezeichnete Karten – Nebel, Raster und Licht
+  haben ihren Platz, ohne eine Textur anzulegen. TV-Frame Version 6: statt `drawn` nur `drawnOrigin` (wo die Fläche
+  einer gezeichneten Karte beginnt). Sichtwände sind bis DC-129 nur die Wände der Karte (und Asset-Türen); die
+  Stockwerk-Grundfläche ist bis dahin nur die von Hand gezeichnete. Katalog: gezeichnete Karten zeigen das
+  Mauer-Symbol, bis DC-128 die Vorschau malt. Bundles kleiner (DM 575 → 500 kB, TV 831 → 739 kB). Geprüft: 699
+  Tests, Typecheck, Build, Tisch-Bundle-Prüfung; in der App (eigenes Profil, Test-Wurzelordner): Menüband ohne
+  „Bauen“, Katalog ohne „Karte generieren“, alte gezeichnete Karte öffnet. Nicht geprüft: das Bild einer
+  gezeichneten Karte im DM-Fenster und auf dem TV – das App-Fenster lag verdeckt im Hintergrund, WebGL zeichnete
+  dort nicht; offen für den DM nach dem Archiv-Export (leere dunkle Fläche mit Raster erwartet).
+  Im Eigenschaften-Panel fehlen bis zur neuen Oberfläche Lichtrichtung und „Wasser bewegt sich“ (`lightAngle` und
+  `waterAnimated` bleiben in der Datei, E-80; wieder bedienbar mit DC-128/DC-130/DC-134). Neue Element-IDs
+  (`freshId`) meiden jetzt auch die IDs der Absicht und eigene Wege der Szene. Nach dem Review: Tests für den Wechsel
+  Bildkarte ↔ gezeichnete Fläche (fail-closed), veraltete Kommentare, ungenutztes Symbol und Text entfernt.
+- ✓ **DC-123 Raster-Blöcke** (E-55, E-56): Blockspeicher, Codec (Lauflänge + Deflate + Base64), Patches je Ebene,
   Historie mit geteilten Blöcken, Rettungskopie in IndexedDB; Größenmessung (O-A1).
-- **DC-124 Worker-Pool und Scheduler** (E-53): Transferables, Dirty je Block mit Halo, veraltete Jobs verwerfen,
+  Erledigt nach E-83/E-84: `core/build/terrain/` – `block.ts` (32 × 32 Felder, 128 × 128 Stützpunkte, je Kanal eine
+  Ebene: Stufe int8, Feinhöhe int16 in 1/16 ft, Böschung, Fels, Felsstil, Wasser, zwei Bodenklassen mit Gewicht,
+  Dichte Pflanzen/Geröll mit 128 = normal; je Feld vier Biomgewichte; Blöcke ändern sich nie, eine Änderung kopiert
+  nur ihre Ebene; Patches je Ebene mit Maske je Kanalgruppe, in Ebenen-Reihenfolge übereinandergelegt),
+  `rle.ts` (PackBits), `codec.ts` (Ebenen → PackBits → Deflate per `CompressionStream` mit Prüfsumme → Base64;
+  strenge Längenprüfung, eine kaputte Datei wird ganz abgelehnt), `state.ts` (Rasterzustand je Stapel, Ändern über
+  Blockgrenzen auch ins Negative, unveränderte Stapel/Blöcke/Ebenen werden geteilt; kodiert beim Speichern nur
+  Blöcke, die es noch nicht kennt). Rettungskopien liegen in IndexedDB (eine einmalige Übernahme aus dem
+  localStorage; in der echten App geprüft), die Absturzmarke bleibt im localStorage. Hinweis im Protokoll ab 8 MB
+  Kartendatei. Tests: 22 Kern-Tests, Rettungskopie und Übernahme, Dateigröße. Der Einbau in Speichern/Öffnen/
+  Rückgängig folgt mit DC-128 (E-84). Beobachtet beim Prüfen: ein lange verdecktes App-Fenster hängt mit voller
+  CPU im nativen Teil (auch auf `main`) – zum Beobachten am Tisch notiert.
+- ✓ **DC-124 Worker-Pool und Scheduler** (E-53): Transferables, Dirty je Block mit Halo, veraltete Jobs verwerfen,
   Worker-taugliche Malbasis (OffscreenCanvas).
-- **DC-125 TV-Frame v6** (E-61): Raster-Blöcke nur bei Änderung mit Prüfsumme, gefiltert nach Ebene, Stockwerk und
+  Erledigt: `core/build/derive/scheduler.ts` (Halo in Feldern → Blöcke, geänderte Blöcke mit Nachbarn auch ins
+  Negative, Reihenfolge nach Nähe zum Ausschnitt, Generationen je Block: ein veralteter Auftrag liefert nie).
+  `src/derive/` (außerhalb `app/`, weil der TV dieselbe Optik rechnet, E-61): `pool.ts` (Kerne − 1, höchstens 4;
+  Auftrag an den am wenigsten belegten Worker; Ergebnisse als Transferables, Eingaben als Kopie – die Blöcke des
+  Hauptthreads bleiben unversehrt; ein abstürzender Worker lehnt seine Aufträge ab und wird ersetzt), `jobs.ts`
+  (reine Aufträge: Patches über einen Block legen, schematische Blockvorschau; Eingaben werden an der Grenze
+  geprüft, jeder Fehler kommt als Antwort), `worker.ts`. `render/paint/surface.ts`: Zeichenfläche als
+  OffscreenCanvas ohne DOM, Bild als übertragbares ImageBitmap. Die Tisch-Bundle-Prüfung folgt jetzt auch
+  Worker-Dateien (`new URL(…, import.meta.url)`; mit einem Probe-Build in beide Richtungen geprüft). CSP und Header
+  unverändert (Modul-Worker aus `'self'`). Geprüft: Tests (Scheduler, Aufträge, Pool mit Ersatz-Worker), in der
+  echten App ein Worker mit beiden Aufträgen über die DevTools (19 ms, Bitmap 32 × 32, Fehlerfall). Genutzt ab DC-128
+  (wie E-84).
+- ✓ **DC-125 TV-Frame v6** (E-61; Version 6 hat DC-122 schon vergeben – ohne `drawn`, mit `drawnOrigin` –, die
+  Raster-Blöcke kommen auf diesem Branch dazu): Raster-Blöcke nur bei Änderung mit Prüfsumme, gefiltert nach Ebene, Stockwerk und
   geheimen Bereichen; Projektionstests je neuer Absicht-Art; fail-closed.
-- **DC-126 Prüfwerkzeuge** (E-73): Bench-Szene mit großer gezeichneter Karte, Wasser, Stockwerk und Streuung;
+  Erledigt nach E-85: `core/build/terrain/tvRaster.ts` – Feldmaske je Block (Feldmitte im Erkundeten, um 2 Felder
+  geweitet; ein Feld, dessen Mitte oder Ecke in einem unentdeckten geheimen Bereich liegt, und seine Nachbarn fallen
+  weg; auch bei gedrehtem Raster), Block = Grundblock mit Patches aktiver Ebenen, außerhalb der Maske die Vorgaben;
+  nur Blöcke mit etwas Erkundetem; Prüfsumme (zweimal FNV-1a, 16 Hex-Zeichen); Versandplanung (fehlende Blöcke, je
+  Nachricht höchstens 16); TV-Seite: `parseRasterBatch` (nur ganze Blöcke mit passender Prüfsumme, alles andere
+  verworfen), `RasterCache` (höchstens 256 Blöcke, die des neuesten Frames bleiben am längsten; ein fehlender
+  Block bleibt schwarz). Frame: `map.raster` (Stufenhöhe, Palette, Prüfsumme je Block; Schema-geprüft). Kanal
+  `table:raster` → `player-raster` nur vom DM-Fenster angenommen (ohne Electron: eigener BroadcastChannel);
+  `pushRaster` in `tableOutput.ts` vergisst das Gesendete, wenn der TV lädt oder schließt. Projektionstests:
+  Unerkundetes, geheimer Bereich samt Rand und Eckpunkt, inaktive Ebene, Block nur aus einer Ebene, anderes
+  Stockwerk, gedrehtes Raster; die übrigen Absicht-Arten gehen gar nicht an den TV (Test aus DC-121). Geprüft:
+  Tests, Build mit Tisch-Bundle-Prüfung. Nicht im echten Fenster geprüft: der TV müsste als Vollbild auf dem
+  einzigen Bildschirm öffnen, und noch erzeugt nichts Raster – kommt mit DC-128.
+  Nach dem Sicherheits-Review: ein schmaler oder schräger geheimer Bereich lief durch die alte Prüfung (nur Mitte
+  und Ecken) – jetzt zählt jedes Feld, durch das ein Rand läuft (Tests: schräges Band, dünner Streifen, dünner
+  Ausläufer, jeweils mit Wasser nur im Geheimen). Der Ring um einen geheimen Bereich wird aus dem nächsten bekannten
+  Feld aufgefüllt (E-85; Test: die Wand vor dem Geheimraum bleibt Wand). Jeder erkundete Block wird genannt, auch
+  ungemalt (leere Blöcke teilen eine Prüfsumme). Der DM führt das Gesendete als begrenzte Liste (224) und vergisst
+  vor dem TV (256), sodass nie ein Block schwarz bleibt. Konstanten und kleine Schemas in `core/build/terrainKeys.ts`
+  (das TV-Bundle zieht das Kartenschema nicht mehr). Offen für DC-128: Leistung (Masken je Zeile statt
+  Punkt-in-Polygon je Feld, Zwischenspeicher je Block und Nebelstand, ggf. im Worker), ob durchscheinende
+  Stockwerke darunter eigenes Raster bekommen (bis dahin `raster: null`), dass Int8/Int16-Arrays den IPC-Weg als
+  solche überstehen (sonst bleibt alles schwarz), und `table:ready` fehlt ohne Electron (BroadcastChannel).
+- **DC-126 Prüfwerkzeuge** (E-73; nach E-86 erst nach DC-128): Bench-Szene mit großer gezeichneter Karte, Wasser, Stockwerk und Streuung;
   Playwright-Bildvergleiche (Steckbrief vor dem Einführen).
-- **DC-127 Look-Spike Klippenband** (E-46, E-52): Stufen-Raster → Kontur → Band mit Test-Textur, Fuß-AO und Lippe;
+- ✓ **DC-127 Look-Spike Klippenband** (E-46, E-52): Stufen-Raster → Kontur → Band mit Test-Textur, Fuß-AO und Lippe;
   Abnahme neben einer Referenzkarte.
+  Stand: `core/build/geom/contours.ts` (Marching Squares je Stufenwechsel, Kreuzung immer mittig – zwei Stufen auf
+  einer Linie, höhere Seite links, Sattel nach der Feldmitte, Chaikin) und `band.ts` (Bandbreite 0,45 Feld je 10 ft,
+  höchstens 2,5 Felder; Band rechts der Kontur mit Gehrung, höchstens doppelte Breite; u entlang der Bogenlänge, v
+  von Kante zu Fuß; Helligkeit nach Lichtrichtung), getestet. Spike-Seite `spike-cliff.html` (Entwicklerseite,
+  `?p=` Perspektivfaktor) mit erzeugten, nahtlosen Platzhaltertexturen, Fuß-AO und Lippe; Referenz mit Higgsfield
+  (außerhalb des Repos). DM 2026-11-27: Bandbreite bleibt 0,45 Feld; nachbessern – detaillierter (Felsblöcke und
+  Klüfte, unruhige Oberkante, Geröll am Fuß, wechselnde Bandbreite) und der Boden soll über die Kante laufen
+  (Gras/Erde hängen oben über, Erde und Schutt laufen unten in die untere Ebene).
+  Schritt 2: Band mit wechselnder Breite (±35 %, an der Weltposition abgetastet, `widthFactor`), Textur aus
+  Felsblöcken mit versetzten Fugen, Lichtkante links und Schattenkante rechts; Grasüberhang mit ausgefranstem
+  Rand über der Kante, Randsteine, Erd- und Schuttsaum unter dem Fuß, Geröll (nach außen kleiner) mit
+  Kontaktschatten. Vergleichsbild außerhalb des Repos.
+  Schritt 3 (DM: „zu viele Steine, nicht überall Steine – wie in der Referenz“): Geröll nur noch in wenigen Nestern
+  (großräumiges Rauschen entscheidet, wo), Randsteine ganz vereinzelt, Erdsaum in Flecken statt als Ring; Fuß-AO
+  über eine stärker geglättete Linie (die Keile an Innenbiegungen fast weg – richtig mit AO aus dem Distanzfeld in
+  DC-128).
+  Schritt 4 (DM: Textur abwechslungsreicher wie die Referenz – oben auch glatter Stein statt Gras, unten auch weiche
+  Übergänge, mehr Varianz in den Schichten): sechs Schichten in mehreren Tönen (Ocker, Sand, Rost, Graubraun) mit
+  stark welligen Grenzen, die anschwellen und auslaufen, feine Zwischenfugen, verwitterte helle Oberkante; ein
+  Fleckenmuster entlang der Kante (nach Bogenlänge) schaltet Gras ↔ helle Steinkappe und harten ↔ weich
+  auslaufenden Fuß (nur an wenigen Stellen, unteres Drittel).
+  Schritt 5 (DM: erst echte Textur im Spike): mit Higgsfield ein Klippenstreifen (Sandstein in Schichten und Blöcken)
+  und eine Graskachel erzeugt, abgelegt außerhalb des Repos (`~/Documents/Dungeon Crucible Testbilder`, O-A8 offen);
+  der Spike lädt sie über `?band=`/`?grass=` und macht sie beim Laden nahtlos (Ränder überblendet – die Nachbearbeitung,
+  die E-75 ins Entwickler-Werkzeug legt); vom Streifen nur ein Drittel der Höhe (wenige dicke Schichten, Seitenverhältnis
+  gehalten), sanfteres Licht.
+  Schritt 6 (DM: das weiche Auslaufen am Fuß sieht nicht gut aus): wieder entfernt – der Fuß ist überall eine klare
+  Kante mit Fuß-AO; Steinkappen und Schichtvarianz bleiben.
+  Schritt 7 (DM: blanker Fels oben nicht so durchgängig, kleinere Flächen hier und da): feineres Fleckenmuster, höhere
+  Schwelle, Kappen reichen weniger tief.
+  **Abgenommen vom DM (2026-11-27)** mit den gemalten Texturen. Für DC-128 mitnehmen: Band 0,45 Feld je 10 ft;
+  Felsblöcke mit Fugen und Schichtvarianz; Breite wandert ±35 %; oben Grasüberhang im Wechsel mit kleinen, verstreuten
+  Steinkappen; Fuß überall klare Kante mit Fuß-AO (kein weiches Auslaufen); Erde in Flecken; Geröll nur in wenigen
+  Nestern, Randsteine selten; gemalte Texturen (E-70) statt erzeugter. Offen dort: AO aus dem Distanzfeld (Keile an
+  Innenbiegungen), Klemmung enger Innenkurven (kleine Gruben), O-A8 vor der Auslieferung der Higgsfield-Bilder.
 
 **Phase 1 bis 10**
 
-- **DC-128 Gelände und Render-Pipeline** (E-46, E-49, E-52, E-60, E-70): Stufe, Feinhöhe, Böschung, Klippen (Kontur,
+- **DC-128 Gelände und Render-Pipeline** (E-46, E-49, E-52, E-60, E-70; dazu aus DC-123 der Einbau des
+  Rasterzustands in Speichern, Öffnen und Rückgängig nach E-84, mit Standard-Biom nach E-78): Stufe, Feinhöhe, Böschung, Klippen (Kontur,
   Band, Lippe, Material, Module), Boden- und Biom-Raster mit Splat-Shader, Schatten und AO, Chunk-Bake und
   Detailstufen, Einweg-Sicht an steilen Stufen, Viertelfeld-Fang, Raster über Bildkarten, Katalog-Vorschau;
   Ribbon-Tab GELÄNDE (E-67).
@@ -1057,14 +1203,14 @@ DC-107a/f und DC-020 als Vergleichsbasis.
 Aus dem Plan der prozeduralen Kartenschmiede (`docs/KARTENSCHMIEDE-PROZEDURAL.md` A.12), zu klären im genannten
 Task:
 
-- **O-A1** Grenzwert für die Rastergröße in der `.map.json`; ab wann eine Binärdatei (E-55) – DC-123
+- ✓ **O-A1** Grenzwert für die Rastergröße in der `.map.json`; ab wann eine Binärdatei (E-55) – entschieden: E-83
 - **O-A2** Sichtmodell für Fallgitter (offen/zu) und Schießscharte („eingeschränkt“) – DC-129
 - **O-A3** Untergrund: eigener Nebel oder Kartennebel, Überblendung, Verweis auf tiefere Karten – DC-129
 - **O-A4** Druckauflösung: 256 dpi (Master) oder Hochskalieren auf 300 dpi – DC-135
 - **O-A5** Foundry-Zielversion (v12 oder v13) – DC-135
 - **O-A6** Bildverarbeitung der Entwickler-Pipeline: über Chromium (Playwright) oder mit `sharp` – vor der
   Asset-Produktion
-- **O-A7** Standard-Geländebiom neuer Karten aus `fogBiome` – DC-121
+- ✓ **O-A7** Standard-Geländebiom neuer Karten aus `fogBiome` – entschieden: E-78
 - **O-A8** Lizenz der Higgsfield-Ausgaben für Auslieferung und späteren Verkauf; Rechte an einem Stil-LoRA – vor DC-137
 
 Neue Fragen werden mit `/topic-interviewer` geklärt und als E-… in Abschnitt 1 eingetragen.

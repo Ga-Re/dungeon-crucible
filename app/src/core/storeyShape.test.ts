@@ -5,21 +5,15 @@ import { storeyFootprint, storeysBelow } from './storeyShape';
 import type { MapStorey } from './sidecar';
 
 const st = (id: string, level: number, footprint = [] as MapStorey['footprint']): MapStorey => ({ id, name: id, level, footprint });
-const ring = (id: string, storey: string, x: number, y: number, s: number) => ({ id, points: [{ x, y }, { x: x + s, y }, { x: x + s, y: y + s }, { x, y: y + s }], closed: true, style: 'dungeon-stone' as const, thickness: 14, seed: 1, storey });
 
 /** Storeys: footprint and what lies below (DC-020, E-40). */
 describe('storey footprint', () => {
-  it('is what its closed walls enclose, its floors and the area drawn by hand', () => {
-    const fp = storeyFootprint(
-      st('up', 1, [rectPolygon(500, 500, 600, 600)]),
-      [ring('t', 'up', 0, 0, 100), ring('g', '', 200, 0, 100), { ...ring('open', 'up', 300, 0, 100), closed: false }],
-      [{ id: 'f', style: 'wood', shape: [rectPolygon(0, 200, 50, 250)], seed: 1, storey: 'up' }],
-    );
-    expect(isInside(fp, [50, 50])).toBe(true);
-    expect(isInside(fp, [250, 50])).toBe(false);
-    expect(isInside(fp, [350, 50])).toBe(false);
-    expect(isInside(fp, [25, 225])).toBe(true);
-    expect(isInside(fp, [550, 550])).toBe(true);
+  it('is the area drawn by hand, its parts joined', () => {
+    const fp = storeyFootprint(st('up', 1, [rectPolygon(0, 0, 100, 100), rectPolygon(50, 50, 150, 150)]));
+    expect(fp).toHaveLength(1);
+    expect(isInside(fp, [125, 125])).toBe(true);
+    expect(isInside(fp, [125, 25])).toBe(false);
+    expect(storeyFootprint(st('empty', 1))).toEqual([]);
   });
 });
 

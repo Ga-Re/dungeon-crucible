@@ -59,3 +59,68 @@ describe('duplicating a map', () => {
     expect(mapFileFor('Camp 2', new Set(['library/camp-2.map.json']))).toBe('library/camp-2-2.map.json');
   });
 });
+
+/** The procedural Map Forge's intent (E-46 ff., map version 14) in a copy. */
+describe('duplicating a map with intent (DC-121)', () => {
+  const sq = { outer: [[0, 0], [70, 0], [70, 70], [0, 70]] as [number, number][], holes: [] };
+  const block = { v: 1 as const, data: 'AAE=' };
+  const withIntent = (resource: string) => MapSidecarSchema.parse({
+    ...map,
+    resource,
+    terrain: { biomePalette: ['temperate'], stacks: { map: { base: { '0_0': block }, layers: { inside: { '0_0': { ...block, mask: 'AAE=' } } } }, loft: { base: { '1_1': block }, layers: { roof: { '1_1': { ...block, mask: 'AAE=' } } } } } },
+    wallLines: [{ id: 'wl-a', points: [{ x: 0, y: 0 }, { x: 140, y: 0 }], style: 'fence', thickness: 8, seed: 1, layer: 'inside' }, { id: 'wl-up', points: [{ x: 0, y: 0 }, { x: 70, y: 0 }], style: 'wood', thickness: 8, seed: 2, storey: 'loft' }],
+    openings: [{ id: 'op-a', wall: 'wl-a', x: 70, y: 0, width: 50, kind: 'door' }],
+    paths: [{ id: 'p-a', kind: 'track', width: 50, seed: 1, nodes: [{ x: 0, y: 0 }, { x: 300, y: 0 }], layer: 'roof' }],
+    crossings: [{ id: 'cr-a', kind: 'auto', a: { x: 0, y: 0 }, b: { x: 0, y: 140 }, width: 70, path: 'p-a' }],
+    waterSources: [{ id: 'ws-a', x: 5, y: 5, width: 20, seed: 1 }],
+    prefabs: [{ id: 'pf-a', prefab: 'library/well.prefab.json', x: 50, y: 50 }],
+    derived: { suppressed: { 'scatter:temperate.oak:0_0:1': true }, regions: [{ id: 'rg-a', shape: [sq], rule: 'temperate.cliff-ivy', factor: 0.5, layer: 'inside' }, { id: 'rg-up', shape: [sq], rule: 'temperate.cliff-ivy', factor: 0, storey: 'loft' }] },
+    mood: { season: 'autumn' },
+    undergrounds: [{ id: 'ug-a', storey: 'loft', entrances: [{ id: 'en-a', x: 1, y: 1, area: sq }] }],
+  });
+
+  it('"only the map" of a picture map: what is drawn over it stays behind, its mood comes along', () => {
+    const c = duplicateMap(withIntent('library/camp.png'), 'Copy', false, fresh);
+    for (const k of ['terrain', 'wallLines', 'openings', 'paths', 'crossings', 'waterSources', 'prefabs', 'derived', 'undergrounds'] as const) expect(c[k], k).toBeUndefined();
+    expect(c.mood).toEqual({ season: 'autumn' });
+  });
+
+  it('"only the map" of a drawn map keeps its drawing on the map itself – without layers and storeys', () => {
+    const c = duplicateMap(withIntent('drawn:'), 'Copy', false, fresh);
+    expect(c.terrain!.stacks).toEqual({ map: { base: { '0_0': block } } });
+    expect(c.wallLines!.map((w) => w.id)).toEqual(['wl-a']);
+    expect(c.wallLines![0].layer).toBeUndefined();
+    expect(c.openings![0].wall).toBe('wl-a');
+    expect(c.paths![0].layer).toBeUndefined();
+    expect(c.crossings![0].path).toBe('p-a');
+    expect(c.waterSources).toHaveLength(1);
+    expect(c.prefabs).toHaveLength(1);
+    expect(c.derived!.suppressed).toEqual({ 'scatter:temperate.oak:0_0:1': true });
+    expect(c.derived!.regions.map((r) => [r.id, r.layer])).toEqual([['rg-a', undefined]]);
+    expect(c.undergrounds).toBeUndefined();
+    expect(c.mood).toEqual({ season: 'autumn' });
+  });
+
+  it('"with everything": the intent under new ids, its references following', () => {
+    const original = withIntent('library/camp.png');
+    const c = duplicateMap(original, 'Copy', true, fresh);
+    const [inside, roof] = c.layers;
+    const loft = c.storeys[0].id;
+    const ids = [...c.wallLines!, ...c.openings!, ...c.paths!, ...c.crossings!, ...c.waterSources!, ...c.prefabs!, ...c.derived!.regions, ...c.undergrounds!, ...c.undergrounds![0].entrances].map((x) => x.id);
+    expect(ids.some((id) => ['wl-a', 'wl-up', 'op-a', 'p-a', 'cr-a', 'ws-a', 'pf-a', 'rg-a', 'rg-up', 'ug-a', 'en-a'].includes(id))).toBe(false);
+    expect(c.wallLines![0].layer).toBe(inside.id);
+    expect(c.wallLines![1].storey).toBe(loft);
+    expect(c.openings![0].wall).toBe(c.wallLines![0].id);
+    expect(c.paths![0].layer).toBe(roof.id);
+    expect(c.crossings![0].path).toBe(c.paths![0].id);
+    expect(c.derived!.regions.map((r) => [r.layer, r.storey])).toEqual([[inside.id, undefined], [undefined, loft]]);
+    expect(c.undergrounds![0].storey).toBe(loft);
+    // The rasters of a storey and the patches of a layer follow their new ids.
+    expect(Object.keys(c.terrain!.stacks).sort()).toEqual([loft, 'map'].sort());
+    expect(Object.keys(c.terrain!.stacks['map'].layers!)).toEqual([inside.id]);
+    expect(Object.keys(c.terrain!.stacks[loft].layers!)).toEqual([roof.id]);
+    // Derived keys are no ids: they stay. The original is untouched.
+    expect(c.derived!.suppressed).toEqual({ 'scatter:temperate.oak:0_0:1': true });
+    expect(original.wallLines![0].id).toBe('wl-a');
+  });
+});

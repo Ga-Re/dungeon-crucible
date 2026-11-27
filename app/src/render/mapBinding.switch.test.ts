@@ -16,7 +16,7 @@ const { bindMap } = await import('./mapBinding');
 describe('changing the map', () => {
   it('removes the old picture at once and sets the new one when it has loaded', async () => {
     const calls: unknown[] = [];
-    const renderer = { setMap: (img: unknown) => calls.push(img), setVideo: () => undefined, setDrawing: () => undefined, setDecals: () => undefined } as never;
+    const renderer = { setMap: (img: unknown) => calls.push(img), setVideo: () => undefined } as never;
     const map = bindMap(renderer, document.createElement('div'));
     const first = map.set('a.png', false);
     release!();
@@ -27,6 +27,26 @@ describe('changing the map', () => {
     expect(calls.at(-1)).toBeNull();
     release!();
     await second;
+    expect(calls.at(-1)).toEqual({ url: 'b.png' });
+  });
+
+  it('a drawn map (E-33) is its area at once; a picture still loading never comes over it', async () => {
+    const calls: unknown[] = [];
+    const renderer = { setMap: (img: unknown, at?: unknown) => calls.push(at === undefined ? img : [img, at]), setVideo: () => undefined } as never;
+    const map = bindMap(renderer, document.createElement('div'));
+    const loading = map.set('a.png', false);
+    const area = { origin: { x: -70, y: 0 }, width: 1400, height: 1050 };
+    map.setDrawn(area);
+    release!();
+    await loading;
+    expect(calls).toEqual([null, [{ blank: true, width: 1400, height: 1050 }, { x: -70, y: 0 }]]);
+    // The same area again changes nothing; a picture map after it drops the area at once.
+    map.setDrawn(area);
+    expect(calls).toHaveLength(2);
+    const next = map.set('b.png', false);
+    expect(calls.at(-1)).toBeNull();
+    release!();
+    await next;
     expect(calls.at(-1)).toEqual({ url: 'b.png' });
   });
 });

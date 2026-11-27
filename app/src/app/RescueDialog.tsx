@@ -55,7 +55,7 @@ export function RescueDialog() {
                     <b>{c.path.split('/').pop()}</b>
                     <span>{c.path.split('/').slice(0, -1).join('/')} · {when.format(c.at)}</span>
                   </span>
-                  <button type="button" className="btn" disabled={busy} onClick={() => discardRescue(c)}>{t('rescue.discard')}</button>
+                  <button type="button" className="btn" disabled={busy} onClick={() => void discardRescue(c)}>{t('rescue.discard')}</button>
                   {issue === 'changed' ? (
                     <button type="button" className="btn danger" disabled={busy} onClick={() => restore(c, true)}>{t('rescue.overwrite')}</button>
                   ) : (

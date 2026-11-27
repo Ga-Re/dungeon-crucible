@@ -15,10 +15,9 @@ import { stairsOn } from './stairs';
 import { tokensVisibleToPlayers, type LitSource } from './vision';
 import { intersection } from 'polyclip-ts';
 import { asGeom, fromClip } from './poly/polygon-clip';
-import { drawingSchema, playerDrawing } from './build/playerDrawing';
-import { sceneMap } from './build/sceneDrawing';
+import { BLOCK_KEY, biomePaletteSchema, stepFtSchema, type TerrainBiome } from './build/terrainKeys';
 
-export const FRAME_VERSION = 5;
+export const FRAME_VERSION = 6;
 
 /** How dark unlit areas look on a dark map (darkvision sees them, dimmed). */
 export const DARKNESS = 0.45;
@@ -74,8 +73,19 @@ export const StoreyFrameSchema = z.object({
       feetPerCell: z.number().positive(),
     }),
     showGrid: z.boolean(),
-    /** A map's drawn walls (E-33), only what players may know (`playerDrawing`). */
-    drawn: drawingSchema.nullable(),
+    /** A drawn map (E-33): where its area starts (it has no picture); null for a picture or video map. */
+    drawnOrigin: z.object({ x: z.number(), y: z.number() }).nullable(),
+    /**
+     * The terrain (E-61): step height, biome palette and, per block the TV may know, its checksum –
+     * the blocks themselves come over the raster channel. None: no terrain shown.
+     */
+    raster: z
+      .object({
+        stepFt: stepFtSchema,
+        palette: biomePaletteSchema,
+        blocks: z.record(z.string().regex(BLOCK_KEY), z.string().regex(/^[0-9a-f]{16}$/)),
+      })
+      .nullable(),
     /** How the picture is cut and adjusted (E-42); its turn is in `rotation`. Numbers only. */
     look: z.object({ crop: z.object({ x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }).optional(), adjust: z.object({ brightness: z.number(), contrast: z.number(), saturation: z.number(), hue: z.number() }).optional() }).optional(),
   }),
@@ -150,6 +160,8 @@ export interface ProjectionOptions {
   covers?: readonly Polygon[];
   /** The TV's last change of picture (DC-105); none: no transition yet. */
   cut?: { n: number; play: TransitionPlay; ms: number };
+  /** The terrain the TV may know (`tvRaster`): its checksums by block; none: no terrain. */
+  raster?: { stepFt: 5 | 10 | 15 | 20; palette: readonly TerrainBiome[]; blocks: Readonly<Record<string, string>> } | null;
 }
 
 /** Light for the players: only inside what they see now, so a light in remembered or hidden areas gives nothing away. */
@@ -192,7 +204,8 @@ export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFram
       seedKey: o.seedKey,
       grid: { type: g.type, cellWidth: g.cellWidth, cellHeight: g.cellHeight, originX: g.originX, originY: g.originY, rotationDeg: g.rotationDeg, feetPerCell: g.feetPerCell },
       showGrid: o.showGrid,
-      drawn: playerDrawing(sceneMap(scene), scene.masonryDoorsOpen, scene.layersOn, scene.zones),
+      drawnOrigin: scene.map.drawn ? { x: scene.map.origin?.x ?? 0, y: scene.map.origin?.y ?? 0 } : null,
+      raster: o.raster ? { stepFt: o.raster.stepFt, palette: [...o.raster.palette], blocks: { ...o.raster.blocks } } : null,
       ...(scene.map.look?.crop || scene.map.look?.adjust ? { look: { ...(scene.map.look.crop ? { crop: { ...scene.map.look.crop } } : {}), ...(scene.map.look.adjust ? { adjust: { ...scene.map.look.adjust } } : {}) } } : {}),
     },
     fog: {

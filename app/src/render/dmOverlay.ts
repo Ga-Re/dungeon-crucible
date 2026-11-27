@@ -65,96 +65,13 @@ export interface OverlayState {
   brush: { p: Point; r: number } | null;
   /** "Calibrate grid": the box over N×N cells of the printed grid (E-7). */
   calibBox: { box: GridBox; cells: number } | null;
-  /** The area generator's dragged region (DC-119d). */
-  genRect: { x: number; y: number; w: number; h: number } | null;
+  /** Stairs (E-44) or a cut (DC-022) being dragged: a dashed frame. */
+  frameRect: { x: number; y: number; w: number; h: number } | null;
   draftTemplate: TemplateLike | null;
   /** "Create area": the shape so far, the part being drawn and a polygon or lasso path (DC-013). */
   areaDraft: { shape: Polygon[]; part: Polygon | null; path: Point[]; color: string; subtract: boolean; editing: string | null } | null;
   /** Outline of a fog tool's shape while drawing. */
   fogDraft: { polygon: Polygon | null; path: Point[]; mode: 'reveal' | 'hide' } | null;
-  /** The "Build" tab (E-33): the wall being drawn (and where its next point would go), the drawn wall or door selected. */
-  build?: BuildOverlay | null;
-  /** Scree slopes (E-34): difficult terrain, marked for the DM only, with this label. */
-  difficult?: { lines: readonly { points: readonly Point[]; closed: boolean; depth: number }[]; label: string } | null;
-}
-
-/** Difficult terrain: a dashed orange line along the slope's foot and its label at the middle. */
-function drawDifficult(g: CanvasRenderingContext2D, d: NonNullable<OverlayState['difficult']>, px: number): void {
-  g.save();
-  g.strokeStyle = 'rgba(232,150,60,.9)';
-  g.fillStyle = 'rgba(232,150,60,.95)';
-  g.lineWidth = 2 * px;
-  g.setLineDash([7 * px, 5 * px]);
-  g.font = `${11 * px}px system-ui, sans-serif`;
-  g.textAlign = 'center';
-  for (const l of d.lines) {
-    polyline(g, l.points, l.closed);
-    g.stroke();
-    // The middle of the middle segment.
-    const i = Math.floor((l.points.length - 1) / 2);
-    const a = l.points[i];
-    const b = l.points[Math.min(l.points.length - 1, i + 1)];
-    uprightText(g, d.label, (a.x + b.x) / 2, (a.y + b.y) / 2 + l.depth * 0.6);
-  }
-  g.restore();
-}
-
-export interface BuildOverlay {
-  draft: readonly Point[];
-  /** The draft is a closed outline (a room being dragged, E-45). */
-  draftClosed?: boolean;
-  /** How many of the draft's first points get handles (clicked ones, not those of a stroke being drawn). */
-  handles?: number;
-  next: Point | null;
-  thickness: number;
-  /** The selection; `handles` where they are not its points (a room's corners, centre and rim). */
-  selected: { points: readonly Point[]; closed: boolean; thickness: number; point: number | null; door: { a: Point; b: Point } | null; handles?: readonly Point[] } | null;
-}
-
-function polyline(g: CanvasRenderingContext2D, points: readonly Point[], closed: boolean): void {
-  g.beginPath();
-  points.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)));
-  if (closed) g.closePath();
-}
-
-/** The wall being drawn as a see-through band of its thickness, the selection as a blue band with its points. */
-function drawBuild(g: CanvasRenderingContext2D, b: BuildOverlay, px: number): void {
-  g.save();
-  g.lineCap = 'round';
-  g.lineJoin = 'round';
-  if (b.draft.length) {
-    const pts = b.next ? [...b.draft, b.next] : b.draft;
-    g.strokeStyle = 'rgba(232,176,75,.45)';
-    g.lineWidth = b.thickness;
-    polyline(g, pts, !!b.draftClosed);
-    g.stroke();
-    if (b.next) {
-      g.strokeStyle = 'rgba(232,176,75,.9)';
-      g.lineWidth = 1.5 * px;
-      g.setLineDash([8 * px, 5 * px]);
-      polyline(g, [b.draft[b.draft.length - 1], b.next], false);
-      g.stroke();
-      g.setLineDash([]);
-    }
-    for (const q of b.draft.slice(0, b.handles ?? b.draft.length)) drawEnd(g, q.x, q.y, px, false);
-    if (b.next) drawEnd(g, b.next.x, b.next.y, px, true);
-  }
-  const s = b.selected;
-  if (s) {
-    g.strokeStyle = SELECTED;
-    g.lineWidth = s.thickness + 8 * px;
-    polyline(g, s.points, s.closed);
-    g.stroke();
-    (s.handles ?? s.points).forEach((q, i) => drawEnd(g, q.x, q.y, px, i === s.point));
-    if (s.door) {
-      g.strokeStyle = '#3f9de2';
-      g.lineWidth = s.thickness + 10 * px;
-      g.lineCap = 'butt';
-      polyline(g, [s.door.a, s.door.b], false);
-      g.stroke();
-    }
-  }
-  g.restore();
 }
 
 const labels = new WeakMap<readonly Polygon[], Point>();
@@ -254,9 +171,6 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
       drawEnd(g, next.b.x, next.b.y, px, true);
     }
   }
-
-  if (o.build) drawBuild(g, o.build, px);
-  if (o.difficult) drawDifficult(g, o.difficult, px);
 
   for (const a of o.assets) drawPlacement(g, a, px);
   if (o.covers.length) {
@@ -454,12 +368,12 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     g.stroke();
   }
   if (o.calibBox) drawCalibBox(g, o.calibBox.box, o.calibBox.cells, px);
-  if (o.genRect) {
+  if (o.frameRect) {
     g.save();
     g.strokeStyle = '#d9a648';
     g.lineWidth = 1.5 * px;
     g.setLineDash([6 * px, 4 * px]);
-    g.strokeRect(o.genRect.x, o.genRect.y, o.genRect.w, o.genRect.h);
+    g.strokeRect(o.frameRect.x, o.frameRect.y, o.frameRect.w, o.frameRect.h);
     g.restore();
   }
 }

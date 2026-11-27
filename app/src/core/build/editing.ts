@@ -1,18 +1,17 @@
 /**
- * Editing drawn walls (E-33, tab "Build"): snapping, hit tests, points (insert, move, remove),
- * split and join, doors placed on and slid along walls. Doors keep their place: after an edit
- * each door's centre is projected onto the changed wall again. Pure: new arrays, nothing changed.
+ * Editing lines point by point (E-33, E-35): snapping, hit tests, points (insert, move, remove),
+ * split and join – for wall lines and the other line tools to come (E-48). Openings are anchored by
+ * their place (A.4), so an edit moves nothing else. Pure: new arrays, nothing changed.
  */
 import type { Point } from '../geometry';
-import { snapToCell, snapToCorner, type GridConfig } from '../grid';
-import { pointAt, polylineLength, type BuildDoor, type Masonry } from './masonry';
+import { snapToCorner, type GridConfig } from '../grid';
 
-/** What can be edited point by point: a drawn wall or a cliff (E-33, E-34). */
+/** What can be edited point by point. */
 export interface Line {
   id: string;
   points: Point[];
   closed: boolean;
-  /** Walls: how far a click may lie off the line and still hit it (half of it). */
+  /** How far a click may lie off the line and still hit it (half of it). */
   thickness?: number;
 }
 
@@ -23,7 +22,7 @@ export interface SnapOptions {
   grid: GridConfig;
   /** The point drawn last (angle mode turns from it). */
   from?: Point | null;
-  /** Points of other walls a new point snaps onto first. */
+  /** Points of other lines a new point snaps onto first. */
   magnets: readonly Point[];
   /** Map px within which a magnet catches. */
   tol: number;
@@ -54,9 +53,9 @@ export function snapBuildPoint(p: Point, o: SnapOptions): Point {
   }
 }
 
-/** Every point of the walls (what new points snap onto), but those of `skip`. */
-export function masonryPoints(masonry: readonly Line[], skip?: string): Point[] {
-  return masonry.filter((w) => w.id !== skip).flatMap((w) => w.points);
+/** Every point of the lines (what new points snap onto), but those of `skip`. */
+export function linePoints(lines: readonly Line[], skip?: string): Point[] {
+  return lines.filter((w) => w.id !== skip).flatMap((w) => w.points);
 }
 
 function segments(w: Line): [Point, Point][] {
@@ -66,7 +65,7 @@ function segments(w: Line): [Point, Point][] {
   return out;
 }
 
-/** Where `p` falls on wall `w`: the distance along it, how far off it is, the point and segment. */
+/** Where `p` falls on line `w`: the distance along it, how far off it is, the point and segment. */
 export function projectOnto(w: Line, p: Point): { at: number; dist: number; point: Point; segment: number } {
   let best = { at: 0, dist: Infinity, point: w.points[0] ?? p, segment: 0 };
   let start = 0;
@@ -83,155 +82,88 @@ export function projectOnto(w: Line, p: Point): { at: number; dist: number; poin
   return best;
 }
 
-export function hitVertex(masonry: readonly Line[], p: Point, tol: number): { wall: string; index: number } | null {
-  let best: { wall: string; index: number; d: number } | null = null;
-  for (const w of masonry)
+export function hitVertex(lines: readonly Line[], p: Point, tol: number): { line: string; index: number } | null {
+  let best: { line: string; index: number; d: number } | null = null;
+  for (const w of lines)
     w.points.forEach((q, index) => {
       const d = dist(p, q);
-      if (d <= tol && (!best || d < best.d)) best = { wall: w.id, index, d };
+      if (d <= tol && (!best || d < best.d)) best = { line: w.id, index, d };
     });
-  return best ? { wall: (best as { wall: string }).wall, index: (best as { index: number }).index } : null;
+  return best ? { line: (best as { line: string }).line, index: (best as { index: number }).index } : null;
 }
 
-export function hitMasonry(masonry: readonly Line[], p: Point, tol: number): { wall: string; at: number; point: Point; segment: number } | null {
-  let best: { wall: string; at: number; point: Point; segment: number; dist: number } | null = null;
-  for (const w of masonry) {
+export function hitLine(lines: readonly Line[], p: Point, tol: number): { line: string; at: number; point: Point; segment: number } | null {
+  let best: { line: string; at: number; point: Point; segment: number; dist: number } | null = null;
+  for (const w of lines) {
     const h = projectOnto(w, p);
-    if (h.dist <= Math.max(tol, (w.thickness ?? 0) / 2) && (!best || h.dist < best.dist)) best = { wall: w.id, ...h };
+    if (h.dist <= Math.max(tol, (w.thickness ?? 0) / 2) && (!best || h.dist < best.dist)) best = { line: w.id, ...h };
   }
   if (!best) return null;
   const { dist: _d, ...hit } = best;
   return hit;
 }
 
-export function hitDoor(masonry: readonly Masonry[], doors: readonly BuildDoor[], p: Point, tol: number): string | null {
-  const byId = new Map(masonry.map((w) => [w.id, w]));
-  let best: { id: string; d: number } | null = null;
-  for (const d of doors) {
-    const w = byId.get(d.wall);
-    if (!w) continue;
-    const h = projectOnto(w, p);
-    if (h.dist <= Math.max(tol, w.thickness / 2) && Math.abs(h.at - d.at) <= d.width / 2 && (!best || h.dist < best.d)) best = { id: d.id, d: h.dist };
-  }
-  return best?.id ?? null;
+function replace<T extends Line>(lines: readonly T[], id: string, next: readonly T[]): T[] {
+  return lines.flatMap((w) => (w.id === id ? [...next] : [w]));
 }
 
-/**
- * Doors of wall `before`, moved onto `after` (the walls it became): each door's centre is
- * projected onto the nearest of them; a door farther off than twice the wall's thickness goes.
- */
-function refit(before: Line, after: readonly Line[], doors: readonly BuildDoor[]): BuildDoor[] {
-  return doors.flatMap((d) => {
-    if (d.wall !== before.id) return [d];
-    const centre = pointAt(before.points, before.closed, d.at);
-    let best: { wall: string; at: number; dist: number } | null = null;
-    for (const w of after) {
-      const h = projectOnto(w, centre);
-      if (!best || h.dist < best.dist) best = { wall: w.id, at: h.at, dist: h.dist };
-    }
-    return best && best.dist <= (before.thickness ?? 0) * 2 ? [{ ...d, wall: best.wall, at: best.at }] : [];
-  });
-}
-
-export interface Edit<T extends Line = Masonry> {
-  masonry: T[];
-  doors: BuildDoor[];
-}
-
-function replace<T extends Line>(masonry: readonly T[], id: string, next: readonly T[]): T[] {
-  return masonry.flatMap((w) => (w.id === id ? [...next] : [w]));
-}
-
-/** A point on the line of wall `id` at `p` (projected onto it); `index` is the new point's. */
-export function insertPoint<T extends Line>(masonry: readonly T[], id: string, p: Point): { masonry: T[]; index: number } {
-  const w = masonry.find((x) => x.id === id);
-  if (!w) return { masonry: [...masonry], index: -1 };
+/** A point on line `id` at `p` (projected onto it); `index` is the new point's. */
+export function insertPoint<T extends Line>(lines: readonly T[], id: string, p: Point): { lines: T[]; index: number } {
+  const w = lines.find((x) => x.id === id);
+  if (!w) return { lines: [...lines], index: -1 };
   const h = projectOnto(w, p);
   const index = h.segment + 1;
   const points = [...w.points.slice(0, index), h.point, ...w.points.slice(index)];
-  return { masonry: replace(masonry, id, [{ ...w, points }]), index };
+  return { lines: replace(lines, id, [{ ...w, points }]), index };
 }
 
-export function movePoint<T extends Line>(masonry: readonly T[], doors: readonly BuildDoor[], id: string, index: number, p: Point): Edit<T> {
-  const w = masonry.find((x) => x.id === id);
-  if (!w) return { masonry: [...masonry], doors: [...doors] };
-  const next = { ...w, points: w.points.map((q, i) => (i === index ? { x: p.x, y: p.y } : q)) };
-  return { masonry: replace(masonry, id, [next]), doors: refit(w, [next], doors) };
+export function movePoint<T extends Line>(lines: readonly T[], id: string, index: number, p: Point): T[] {
+  const w = lines.find((x) => x.id === id);
+  if (!w) return [...lines];
+  return replace(lines, id, [{ ...w, points: w.points.map((q, i) => (i === index ? { x: p.x, y: p.y } : q)) }]);
 }
 
-/** Removes a point: a ring below three points opens, a wall below two points goes (with its doors). */
-export function removePoint<T extends Line>(masonry: readonly T[], doors: readonly BuildDoor[], id: string, index: number): Edit<T> {
-  const w = masonry.find((x) => x.id === id);
-  if (!w) return { masonry: [...masonry], doors: [...doors] };
+/** Removes a point: a ring below three points opens, a line below two points goes. */
+export function removePoint<T extends Line>(lines: readonly T[], id: string, index: number): T[] {
+  const w = lines.find((x) => x.id === id);
+  if (!w) return [...lines];
   const points = w.points.filter((_, i) => i !== index);
-  if (points.length < 2) return removeWall(masonry, doors, id);
-  const next = { ...w, points, closed: w.closed && points.length >= 3 };
-  return { masonry: replace(masonry, id, [next]), doors: refit(w, [next], doors) };
+  if (points.length < 2) return lines.filter((x) => x.id !== id);
+  return replace(lines, id, [{ ...w, points, closed: w.closed && points.length >= 3 }]);
 }
 
-export function removeWall<T extends Line>(masonry: readonly T[], doors: readonly BuildDoor[], id: string): Edit<T> {
-  return { masonry: masonry.filter((w) => w.id !== id), doors: doors.filter((d) => d.wall !== id) };
+/** Splits line `id` at point `index`: an open line into two (the second gets `newId`), a ring opens there. */
+export function splitAt<T extends Line>(lines: readonly T[], id: string, index: number, newId: string): T[] {
+  const w = lines.find((x) => x.id === id);
+  if (!w) return [...lines];
+  if (w.closed) return replace(lines, id, [{ ...w, points: [...w.points.slice(index), ...w.points.slice(0, index), w.points[index]], closed: false }]);
+  if (index <= 0 || index >= w.points.length - 1) return [...lines];
+  return replace(lines, id, [{ ...w, points: w.points.slice(0, index + 1) }, { ...w, id: newId, points: w.points.slice(index) }]);
 }
 
-/** Splits wall `id` at point `index`: an open wall into two (the second gets `newId`), a ring opens there. */
-export function splitAt<T extends Line>(masonry: readonly T[], doors: readonly BuildDoor[], id: string, index: number, newId: string): Edit<T> {
-  const w = masonry.find((x) => x.id === id);
-  if (!w) return { masonry: [...masonry], doors: [...doors] };
-  if (w.closed) {
-    const points = [...w.points.slice(index), ...w.points.slice(0, index), w.points[index]];
-    const next = { ...w, points, closed: false };
-    return { masonry: replace(masonry, id, [next]), doors: refit(w, [next], doors) };
-  }
-  if (index <= 0 || index >= w.points.length - 1) return { masonry: [...masonry], doors: [...doors] };
-  const first = { ...w, points: w.points.slice(0, index + 1) };
-  const second = { ...w, id: newId, points: w.points.slice(index) };
-  return { masonry: replace(masonry, id, [first, second]), doors: refit(w, [first, second], doors) };
-}
-
-export interface WallEnd {
-  wall: string;
+export interface LineEnd {
+  line: string;
   end: 'first' | 'last';
 }
 
 /**
- * Joins two wall ends: two walls become one (the first's style and id), a wall's own two ends
+ * Joins two line ends: two lines become one (the first's look and id), a line's own two ends
  * close it into a ring. Where both ends lie on one point, it is kept once.
  */
-export function joinEnds<T extends Line>(masonry: readonly T[], doors: readonly BuildDoor[], a: WallEnd, b: WallEnd): Edit<T> {
-  const wa = masonry.find((x) => x.id === a.wall);
-  const wb = masonry.find((x) => x.id === b.wall);
-  if (!wa || !wb || wa.closed || wb.closed) return { masonry: [...masonry], doors: [...doors] };
+export function joinEnds<T extends Line>(lines: readonly T[], a: LineEnd, b: LineEnd): T[] {
+  const wa = lines.find((x) => x.id === a.line);
+  const wb = lines.find((x) => x.id === b.line);
+  if (!wa || !wb || wa.closed || wb.closed) return [...lines];
   if (wa.id === wb.id) {
-    if (a.end === b.end || wa.points.length < 3) return { masonry: [...masonry], doors: [...doors] };
+    if (a.end === b.end || wa.points.length < 3) return [...lines];
     const pts = wa.points;
     const points = dist(pts[0], pts[pts.length - 1]) < 0.5 ? pts.slice(0, -1) : pts;
-    if (points.length < 3) return { masonry: [...masonry], doors: [...doors] };
-    const next = { ...wa, points, closed: true };
-    return { masonry: replace(masonry, wa.id, [next]), doors: refit(wa, [next], doors) };
+    if (points.length < 3) return [...lines];
+    return replace(lines, wa.id, [{ ...wa, points, closed: true }]);
   }
   // Both run towards the joint: a's end last, b's end first.
   const pa = a.end === 'last' ? wa.points : [...wa.points].reverse();
   const pb = b.end === 'first' ? wb.points : [...wb.points].reverse();
   const points = dist(pa[pa.length - 1], pb[0]) < 0.5 ? [...pa, ...pb.slice(1)] : [...pa, ...pb];
-  const next = { ...wa, points };
-  const moved = refit(wb, [next], refit(wa, [next], doors));
-  return { masonry: replace(masonry, wa.id, [next]).filter((w) => w.id !== wb.id), doors: moved };
-}
-
-/** Where a door clicked at `p` goes: on the nearest wall, its centre on a cell's middle (with a grid). */
-export function doorPlacement(masonry: readonly Masonry[], p: Point, grid: GridConfig | null, tol: number): { wall: string; at: number } | null {
-  const hit = hitMasonry(masonry, p, tol);
-  if (!hit) return null;
-  const w = masonry.find((x) => x.id === hit.wall)!;
-  if (!grid) return { wall: w.id, at: hit.at };
-  return { wall: w.id, at: projectOnto(w, snapToCell(grid, hit.point)).at };
-}
-
-/** A door slid along its wall towards `p` (centred on a cell with a grid). */
-export function slideDoor(masonry: readonly Masonry[], door: BuildDoor, p: Point, grid: GridConfig | null): BuildDoor {
-  const w = masonry.find((x) => x.id === door.wall);
-  if (!w) return door;
-  const h = projectOnto(w, p);
-  const at = grid ? projectOnto(w, snapToCell(grid, h.point)).at : h.at;
-  return { ...door, at: Math.max(0, Math.min(polylineLength(w.points, w.closed), at)) };
+  return replace(lines, wa.id, [{ ...wa, points }]).filter((w) => w.id !== wb.id);
 }

@@ -130,6 +130,8 @@ export interface DcApi {
   closeTable(): Promise<void>;
   /** Sends a player frame to the table window only. */
   sendFrame(frame: unknown): void;
+  /** Sends terrain blocks the frames name to the table window only (E-61). */
+  sendRaster(batch: unknown): void;
   /** The table window has (re)loaded and wants the current frame. */
   onTableReady(cb: () => void): Unsubscribe;
   /** The table window was closed by the operating system or the user. */
@@ -193,4 +195,6 @@ export interface DcApi {
 /** Table window: may only receive frames. */
 export interface DcTableApi {
   onFrame(cb: (frame: unknown) => void): Unsubscribe;
+  /** Terrain blocks for the frames (E-61); checked by the receiver like frames. */
+  onRaster(cb: (batch: unknown) => void): Unsubscribe;
 }

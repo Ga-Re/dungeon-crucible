@@ -3,10 +3,7 @@
  * for the Map Forge, finds which campaigns use one, opens one in a scene, moves one to the trash.
  */
 import { readDocument } from '../core/documents';
-import { generateMap, mapGenElements, type MapGenOptions } from '../core/build/generate';
 import { DRAWN_RESOURCE, isDrawn, mapSidecarPath } from '../core/persistence';
-import { drawnBounds } from '../core/build/masonry';
-import { dmDrawing, type DmDrawing } from '../core/build/playerDrawing';
 import { DEFAULT_GRID } from '../core/grid';
 import { MAP_VERSION } from '../core/sidecar';
 import { CampaignManifestSchema, MapSidecarSchema, SceneOverrideSchema, type MapSidecar } from '../core/sidecar';
@@ -15,6 +12,7 @@ import type { MapFilter } from '../core/mapCatalog';
 import { isDesktop, listCampaignFolders, listFiles, listLibrary, readText, trashFile } from '../platform/bridge';
 import { campaignPath, openMapTab, readDoc, saveCampaign, writeDoc } from './campaign';
 import { duplicateMap, mapFileFor } from '../core/mapCopy';
+import { intentIds } from '../core/build/intent';
 import { newId } from '../core/documents';
 import { emit, latestMap, log, state } from './store';
 
@@ -33,10 +31,8 @@ export interface LibraryMap {
   isVideo: boolean;
   /** A copy with its own map file (on a picture other maps may use too). */
   copy: boolean;
-  /** A drawn map (E-33): its own map file, no picture – its drawn walls are its picture. */
+  /** A drawn map (E-33): its own map file, no picture – its drawing is its picture. */
   drawn: boolean;
-  /** A drawn map's drawing, for its preview in the catalog. */
-  drawing?: DmDrawing;
   /** The picture's file size and time (thumbnails). */
   size: number;
   mtimeMs: number;
@@ -73,9 +69,7 @@ export async function refreshLibraryMaps(): Promise<void> {
       const mapFile = `library/${e.name}`;
       const side = await readDoc(mapFile, 'map', MapSidecarSchema, { quiet: true });
       if (side && isDrawn(side.resource)) {
-        // The map file's `biome` is its landscape (free text); cliffs look after the fog biome.
-        const drawing = dmDrawing({ ...side, biome: side.fogBiome, drawn: true }, {}) ?? undefined;
-        maps.push({ ...catalogEntry(mapFile, side.resource, side, e, false, scenes, true), drawing });
+        maps.push(catalogEntry(mapFile, side.resource, side, e, false, scenes, true));
         continue;
       }
       const pic = side ? pictures.get(side.resource) : undefined;
@@ -255,7 +249,7 @@ export async function duplicateLibraryMap(mapFile: string, name: string, withCon
   const doc = latestMap(mapFile) ?? (await readDoc(mapFile, 'map', MapSidecarSchema));
   if (!doc) return null;
   const taken = new Set([...libraryNames, ...state.libraryMaps.map((m) => m.mapFile)]);
-  const ids = new Set([...doc.walls, ...doc.zones, ...doc.lights, ...doc.assets, ...doc.layers, ...doc.pois].map((x) => x.id));
+  const ids = new Set([...[...doc.walls, ...doc.zones, ...doc.lights, ...doc.sounds, ...doc.assets, ...doc.layers, ...doc.pois, ...doc.storeys, ...doc.variants, ...doc.stairs].map((x) => x.id), ...intentIds(doc)]);
   const fresh = (prefix: string) => {
     const id = newId(prefix, (x) => ids.has(x));
     ids.add(id);
@@ -270,51 +264,23 @@ export async function duplicateLibraryMap(mapFile: string, name: string, withCon
   return file;
 }
 
+/** Size of a new drawn map, in cells of the default grid (it grows with the drawing, E-33). */
+const NEW_DRAWN_CELLS = 20;
+
 /**
- * "New drawn map" (E-33): a map file of its own without a picture – its drawn walls will be its
+ * "New drawn map" (E-33): a map file of its own without a picture – its drawing will be its
  * picture. It starts as an empty area of the default grid and opens in a tab of the Map Forge.
  */
-/** A whole generated map in the library (DC-119e): the elements baked in, the settings as a note. */
-export async function generateLibraryMap(name: string, opts: Omit<MapGenOptions, 'cols' | 'rows'> & { cols: number; rows: number }): Promise<string | null> {
-  if (!isDesktop() || !state.root?.root) return null;
-  const taken = new Set([...libraryNames, ...state.libraryMaps.map((m) => m.mapFile)]);
-  const file = mapFileFor(name, taken);
-  const cell = DEFAULT_GRID.cellWidth;
-  const gen = generateMap(opts);
-  // New ids are random, as the file rules ask; a counter only breaks ties.
-  let n = 0;
-  const rid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 8)}${++n}`;
-  const els = mapGenElements(gen, cell, opts.style, opts.seed, rid);
-  const area = drawnBounds(els.walls, cell, 2, [...els.waters, ...els.floors.map((f) => ({ points: f.shape.flatMap((s) => s.outer.map(([x, y]) => ({ x, y }))), width: 1 }))]);
-  const doc: MapSidecar = {
-    kind: 'map', schemaVersion: MAP_VERSION, name, resource: DRAWN_RESOURCE, isVideo: false,
-    widthPx: area.w, heightPx: area.h, origin: { x: area.x, y: area.y },
-    tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
-    layers: [], walls: [], zones: [], pois: [], sounds: [], variants: [], storeys: [], stairs: [], rooms: [],
-    // Torches make their own light; with none the map stays plainly lit.
-    lights: els.lights.map((l) => ({ id: rid('light'), x: l.x, y: l.y, brightFt: 20, dimFt: 40, color: '#ffb35c' })),
-    ambient: opts.lights && els.lights.length ? 'dark' : 'lit',
-    assets: [], masonry: els.walls, masonryDoors: els.doors, cliffs: [], waters: els.waters, waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: els.floors,
-    generated: { style: opts.style, density: opts.density, seed: opts.seed, water: opts.water, lights: opts.lights, details: opts.details },
-  };
-  await writeDoc(file, MapSidecarSchema, doc);
-  log('log.mapGenerated', { name });
-  await refreshLibraryMaps();
-  state.mapSelected = file;
-  await openMapTab(file);
-  return file;
-}
-
 export async function createDrawnMap(name: string): Promise<string | null> {
   if (!isDesktop() || !state.root?.root) return null;
   const taken = new Set([...libraryNames, ...state.libraryMaps.map((m) => m.mapFile)]);
   const file = mapFileFor(name, taken);
-  const area = drawnBounds([], DEFAULT_GRID.cellWidth, 0);
+  const side = NEW_DRAWN_CELLS * DEFAULT_GRID.cellWidth;
   const doc: MapSidecar = {
     kind: 'map', schemaVersion: MAP_VERSION, name, resource: DRAWN_RESOURCE, isVideo: false,
-    widthPx: area.w, heightPx: area.h, origin: { x: area.x, y: area.y },
+    widthPx: side, heightPx: side, origin: { x: 0, y: 0 },
     tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID },
-    layers: [], walls: [], zones: [], pois: [], lights: [], sounds: [], variants: [], storeys: [], stairs: [], rooms: [], ambient: 'dark', assets: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [],
+    layers: [], walls: [], zones: [], pois: [], lights: [], sounds: [], variants: [], storeys: [], stairs: [], ambient: 'dark', assets: [], waterAnimated: true, lightAngle: 45,
   };
   await writeDoc(file, MapSidecarSchema, doc);
   log('log.drawnMapCreated', { name });

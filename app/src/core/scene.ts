@@ -4,13 +4,8 @@ import type { GridConfig, DisplaySpec } from './grid';
 import type { FogEffect, LevelFog, Polygon } from './poly/types';
 import type { Condition } from './rules/rules2024';
 import type { InteriorTrigger, MapLayer, MapLook, MapStorey, MapVariant, Stair } from './sidecar';
-import type { Room } from './build/rooms';
 import type { Transition } from './transition';
-import type { BuildDoor, Masonry } from './build/masonry';
-import type { Cliff } from './build/cliffs';
-import type { Water } from './build/water';
-import type { OwnDrawing } from './build/sceneDrawing';
-import type { FloorPatch } from './build/floors';
+import type { MapIntent, MapPath } from './build/intent';
 
 /** A cliff or gallery is one way: one sees down from its upper side, not up from below (DC-014). */
 export type WallKind = 'wall' | 'door' | 'secret-door' | 'window' | 'cliff';
@@ -177,24 +172,13 @@ export interface MapInfo {
   assets: MapAssetPlacement[];
   /** The map's layers (E-28); the base layer is not listed. */
   layers: MapLayer[];
-  /** Drawn walls and their doors (E-33); sight uses the walls derived from them. */
-  masonry: Masonry[];
-  masonryDoors: BuildDoor[];
-  /** Drawn cliffs and slopes (E-34). */
-  cliffs: Cliff[];
-  /** Drawn rivers, lakes and sea (E-35), and whether their water moves. */
-  waters: Water[];
+  /** Whether the map's water moves (E-35). */
   waterAnimated: boolean;
-  /** Painted floors (DC-107b). */
-  floors: FloorPatch[];
   /** Where the light falls towards in the 2.5D look (degrees; 45: to the lower right). */
   lightAngle: number;
-  /** Automatic details: along shores, at the foot of walls (E-35). */
-  autoShore: boolean;
-  autoGrowth: boolean;
   /** Top left of a drawn map's area; none: 0, 0. */
   origin?: Point;
-  /** A drawn map (E-33): no picture, its drawn walls are its picture. */
+  /** A drawn map (E-33): no picture, its drawing is its picture. */
   drawn?: boolean;
   /** The map's sound everywhere (E-37); none: silent. */
   ambientSound?: { sound: string; volume: number };
@@ -208,12 +192,10 @@ export interface MapInfo {
   storeys?: MapStorey[];
   /** Stairs between storeys (E-44). */
   stairs?: Stair[];
-  /** Parametric rooms (E-45): their walls, doors and floors are derived when drawn. */
-  rooms?: Room[];
   /** The storey this view shows (E-40); none: the map itself. */
   storey?: string;
-  /** Drawn elements on other storeys – the map's and the scene's own – kept for saving (E-40). */
-  offStorey?: OffStoreyDrawing;
+  /** The procedural Map Forge's intent (E-46 ff.), all storeys, kept as read until its tools use it. */
+  intent?: MapIntent;
 }
 
 export type MapType = 'dungeon' | 'building' | 'region' | 'world' | 'arena';
@@ -240,7 +222,7 @@ export interface MapAssetPlacement {
 }
 
 /** Catalog defaults of a map that has none yet. */
-export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets' | 'layers' | 'masonry' | 'masonryDoors' | 'cliffs' | 'waters' | 'waterAnimated' | 'lightAngle' | 'autoShore' | 'autoGrowth' | 'floors'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [], layers: [], masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [] };
+export const EMPTY_MAP_CATALOG: Pick<MapInfo, 'tags' | 'region' | 'mapType' | 'pois' | 'assets' | 'layers' | 'waterAnimated' | 'lightAngle'> = { tags: [], region: '', mapType: 'dungeon', pois: [], assets: [], layers: [], waterAnimated: true, lightAngle: 45 };
 
 /** Map elements hidden in a scene (DC-103): kept apart, so vision, light and the TV never see them. */
 export interface HiddenElements {
@@ -254,16 +236,6 @@ export interface HiddenElements {
 
 export function noHidden(): HiddenElements {
   return { walls: [], zones: [], lights: [], sounds: [], assets: [] };
-}
-
-/** Drawn elements of other storeys (E-40): the map's, and the scene's own under `own`. */
-export interface OffStoreyDrawing {
-  masonry: Masonry[];
-  masonryDoors: BuildDoor[];
-  cliffs: Cliff[];
-  waters: Water[];
-  floors: FloorPatch[];
-  own: { masonry: Masonry[]; masonryDoors: BuildDoor[]; cliffs: Cliff[]; waters: Water[]; floors: FloorPatch[] };
 }
 
 export interface Scene {
@@ -286,12 +258,10 @@ export interface Scene {
   assetDoorsOpen: Record<string, boolean>;
   /** Houses showing their interior (E-29), by placement id. Not listed: outside. */
   interiorsOn: Record<string, boolean>;
-  /** Doors on drawn walls (E-33) by id → open, and by `foundKey(id)` → a secret one was found. Not listed: closed, not found. */
-  masonryDoorsOpen: Record<string, boolean>;
-  /** The scene's own drawing (DC-107c); empty in the Map Forge. */
-  own: OwnDrawing;
-  /** Drawn elements of the map this scene hides, by id. */
+  /** What this scene hides of the map's drawing (E-59): elements by id, derived objects by key; none in the Map Forge. */
   drawnHidden: string[];
+  /** The scene's own paths (E-59), all storeys; none in the Map Forge. */
+  ownPaths: MapPath[];
   tokens: Token[];
   templates: AreaTemplate[];
   pings: Ping[];

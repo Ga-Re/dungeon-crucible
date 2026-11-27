@@ -78,7 +78,7 @@ describe('a new drawn map (E-33)', () => {
     const file = await createDrawnMap('Keller');
     expect(file).toBe('library/keller.map.json');
     const doc = JSON.parse(files.get(file!)!);
-    expect(doc).toMatchObject({ kind: 'map', name: 'Keller', resource: 'drawn:', masonry: [], masonryDoors: [], origin: { x: 0, y: 0 } });
+    expect(doc).toMatchObject({ kind: 'map', name: 'Keller', resource: 'drawn:', widthPx: 1400, heightPx: 1400, origin: { x: 0, y: 0 } });
     expect(state.libraryMaps.find((m) => m.mapFile === file)).toMatchObject({ drawn: true });
     // A second one gets a free name.
     expect(await createDrawnMap('Keller')).toBe('library/keller-2.map.json');

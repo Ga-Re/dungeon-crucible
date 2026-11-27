@@ -1,8 +1,11 @@
 /**
  * Rescue copies and the crash notice (DC-003). A document whose save failed is kept in the
  * device's app storage (never in the root folder, never synced) and offered when its campaign
- * opens again: restore writes it back, discard drops it. A marker set at start and removed when
- * the window closes tells a clean end from a crash; after a crash the start screen says so.
+ * opens again: restore writes it back, discard drops it. The copies live in IndexedDB (E-55: map
+ * files with rasters outgrow the small localStorage); copies an older version kept in
+ * localStorage move over once. A marker set at start and removed when the window closes tells a
+ * clean end from a crash; after a crash the start screen says so – it stays in localStorage,
+ * which closing can still write to.
  */
 import { copiesFor, dropAfterSave, dropCopy, keepCopy, parseRescue, restoreCheck, serializeRescue, type RescueCopy, type RescueStore } from '../core/rescue';
 import { newId } from '../core/documents';
@@ -23,20 +26,97 @@ function storage(): Storage | null {
   }
 }
 
-function load(): RescueStore {
+/** Where the serialized copies are kept: IndexedDB in the app, memory in tests. */
+export interface RescueBackend {
+  read(): Promise<string | null>;
+  write(text: string): Promise<void>;
+}
+
+const DB = 'dungeon-crucible';
+const STORE = 'rescue';
+
+function request<T>(r: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error ?? new Error('IndexedDB request failed'));
+  });
+}
+
+let db: Promise<IDBDatabase> | null = null;
+
+function openDb(): Promise<IDBDatabase> {
+  db ??= new Promise((resolve, reject) => {
+    const r = indexedDB.open(DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(STORE);
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error ?? new Error('IndexedDB could not be opened'));
+  });
+  return db;
+}
+
+/** The app's backend: one record in IndexedDB. */
+const indexedBackend: RescueBackend = {
+  async read() {
+    const d = await openDb();
+    return ((await request(d.transaction(STORE).objectStore(STORE).get(KEY))) as string | undefined) ?? null;
+  },
+  async write(text) {
+    const d = await openDb();
+    const tx = d.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put(text, KEY);
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error('IndexedDB write failed'));
+      tx.onabort = () => reject(tx.error ?? new Error('IndexedDB write aborted'));
+    });
+  },
+};
+
+/** `inner`, taking over the copies an older version kept in localStorage the first time it has none. */
+export function takingOverLocalStorage(inner: RescueBackend, st: Storage | null): RescueBackend {
+  return {
+    async read() {
+      const text = await inner.read();
+      if (text !== null) return text;
+      const old = st?.getItem(KEY) ?? null;
+      if (old !== null) {
+        await inner.write(old);
+        st?.removeItem(KEY);
+      }
+      return old;
+    },
+    write: (text) => inner.write(text),
+  };
+}
+
+let backend: RescueBackend = takingOverLocalStorage(indexedBackend, storage());
+
+/** Tests: copies kept in `b` from now on (jsdom has no IndexedDB). */
+export function useRescueBackendForTests(b: RescueBackend): void {
+  backend = b;
+}
+
+async function load(): Promise<RescueStore> {
   try {
-    return parseRescue(storage()?.getItem(KEY) ?? null);
+    return parseRescue(await backend.read());
   } catch {
     return parseRescue(null);
   }
 }
 
+/** Read, change and write of the copies one after another: two saves never overwrite each other's copy. */
+let queue: Promise<unknown> = Promise.resolve();
+
+function serial<T>(work: () => Promise<T>): Promise<T> {
+  const next = queue.then(work, work);
+  queue = next.catch(() => undefined);
+  return next;
+}
+
 /** Stores the copies; false when the device storage refused them (full, blocked). */
-function store(s: RescueStore): boolean {
+async function store(s: RescueStore): Promise<boolean> {
   try {
-    const st = storage();
-    if (!st) return false;
-    st.setItem(KEY, serializeRescue(s));
+    await backend.write(serializeRescue(s));
     return true;
   } catch {
     return false;
@@ -49,21 +129,25 @@ const root = () => state.root?.root ?? '';
  * A save of `path` failed: keep what would have been written (compact JSON, device storage is
  * small) and what the file was when the app last read or wrote it (`base`, see `fileHash`).
  */
-export function keepRescue(path: string, text: string, base: string | null): void {
+export async function keepRescue(path: string, text: string, base: string | null): Promise<void> {
   if (!root()) return;
-  if (!store(keepCopy(load(), { root: root(), path, text, at: Date.now(), session: SESSION, base }))) log('log.rescueFailed', { file: path });
+  const r = root();
+  const kept = await serial(async () => store(keepCopy(await load(), { root: r, path, text, at: Date.now(), session: SESSION, base })));
+  if (!kept) log('log.rescueFailed', { file: path });
 }
 
 /** A save of `path` succeeded: a copy of this run is no longer needed. */
-export function savedOk(path: string): void {
-  const s = load();
-  if (!s.copies.length) return;
-  store(dropAfterSave(s, root(), path, SESSION));
+export async function savedOk(path: string): Promise<void> {
+  const r = root();
+  await serial(async () => {
+    const s = await load();
+    if (s.copies.length) await store(dropAfterSave(s, r, path, SESSION));
+  });
 }
 
 /** When a campaign opens: its copies, offered in a dialog (none: nothing shows). */
-export function offerRescue(slug: string): void {
-  state.rescueOffer = copiesFor(load(), root(), slug).sort((a, b) => b.at - a.at);
+export async function offerRescue(slug: string): Promise<void> {
+  state.rescueOffer = copiesFor(await load(), root(), slug).sort((a, b) => b.at - a.at);
   emit();
 }
 
@@ -91,7 +175,7 @@ export async function restoreRescue(copy: RescueCopy, reload: () => Promise<void
     log('log.saveFailed', { error: String(e) });
     return 'failed';
   }
-  store(dropCopy(load(), copy));
+  await serial(async () => store(dropCopy(await load(), copy)));
   state.rescueOffer = without(copy);
   log('log.rescueRestored', { file: copy.path });
   await reload();
@@ -99,8 +183,8 @@ export async function restoreRescue(copy: RescueCopy, reload: () => Promise<void
   return 'restored';
 }
 
-export function discardRescue(copy: RescueCopy): void {
-  store(dropCopy(load(), copy));
+export async function discardRescue(copy: RescueCopy): Promise<void> {
+  await serial(async () => store(dropCopy(await load(), copy)));
   state.rescueOffer = without(copy);
   emit();
 }

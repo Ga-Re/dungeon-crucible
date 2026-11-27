@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Masonry } from './masonry';
-import { blockedCells, lineStrips, periodicNoise, variantBlobs, wearPaths } from './variance';
+import { lineStrips, periodicNoise, variantBlobs } from './variance';
 
-const wall = (points: { x: number; y: number }[], extra: Partial<Masonry> = {}): Masonry => ({ id: 'w', points, closed: false, style: 'dungeon-stone', thickness: 14, seed: 1, ...extra });
 
 describe('periodic noise (DC-119a)', () => {
   it('repeats exactly with its period and stays in -1…1', () => {
@@ -54,48 +52,6 @@ describe('variant blobs (DC-119a)', () => {
     expect(b.at(5, 0)).toEqual(b.at(5, -8));
     const one = variantBlobs({ cells: 8, variants: 1, rotations: 1, seed: 9 });
     for (const [x, y] of [[0, 0], [3, 6]]) expect(one.at(x, y)).toEqual({ variant: 0, rotation: 0 });
-  });
-});
-
-describe('blocked cells and worn paths (DC-119a)', () => {
-  const area = { x: 0, y: 0, w: 700, h: 700 };
-
-  it('marks cells under and next to a wall as blocked', () => {
-    const b = blockedCells([wall([{ x: 0, y: 350 }, { x: 700, y: 350 }])], area, 35);
-    const at = (x: number, y: number) => b.blocked[Math.floor(y / 35) * b.cols + Math.floor(x / 35)];
-    expect(at(350, 350)).toBe(1);
-    expect(at(350, 100)).toBe(0);
-    expect(at(350, 600)).toBe(0);
-  });
-
-  it('finds a worn path between two doors around a wall, never through it', () => {
-    // A wall across the middle with a gap (door) at x≈100; doors north and south of the wall.
-    const walls = [wall([{ x: 0, y: 350 }, { x: 80, y: 350 }]), wall([{ x: 150, y: 350 }, { x: 700, y: 350 }], { id: 'w2' })];
-    const doors = [{ x: 350, y: 120 }, { x: 350, y: 580 }];
-    const paths = wearPaths(walls, doors, area, 35);
-    expect(paths.length).toBe(1);
-    const p = paths[0];
-    // From one door to the other …
-    expect(Math.hypot(p[0].x - 350, p[0].y - 120)).toBeLessThan(70);
-    expect(Math.hypot(p[p.length - 1].x - 350, p[p.length - 1].y - 580)).toBeLessThan(70);
-    // … through the gap, never across the wall away from it.
-    for (const q of p) if (Math.abs(q.y - 350) < 30) expect(q.x).toBeLessThan(150);
-    const b = blockedCells(walls, area, 35);
-    for (const q of p) expect(b.blocked[Math.floor(q.y / 35) * b.cols + Math.floor(q.x / 35)]).toBe(0);
-  });
-
-  it('separated doors get no path; a single door neither', () => {
-    const sealed = [wall([{ x: -70, y: 350 }, { x: 770, y: 350 }])];
-    expect(wearPaths(sealed, [{ x: 350, y: 120 }, { x: 350, y: 580 }], area, 35)).toEqual([]);
-    expect(wearPaths([], [{ x: 350, y: 120 }], area, 35)).toEqual([]);
-  });
-
-  it('is deterministic and connects each door once to its nearest reachable partner', () => {
-    const doors = [{ x: 100, y: 100 }, { x: 600, y: 100 }, { x: 600, y: 600 }];
-    const a = wearPaths([], doors, area, 35);
-    expect(wearPaths([], doors, area, 35)).toEqual(a);
-    // Three doors in the open: pairs (0,1) and (1,2), not the long diagonal as well.
-    expect(a.length).toBe(2);
   });
 });
 

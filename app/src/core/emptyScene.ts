@@ -1,6 +1,5 @@
 /** The scene of a campaign that has no map yet: nothing to draw until a map is imported. */
 import { DEFAULT_GRID } from './grid';
-import { emptyOwnDrawing } from './build/sceneDrawing';
 import { EMPTY_LEVEL_FOG } from './poly/fog';
 import { DEFAULT_TABLE, EMPTY_MAP_CATALOG, noHidden, type Scene } from './scene';
 
@@ -16,9 +15,8 @@ export function emptyScene(table: Scene['table'] = DEFAULT_TABLE): Scene {
     assetLightsOn: {},
     assetDoorsOpen: {},
     interiorsOn: {},
-    masonryDoorsOpen: {},
-    own: emptyOwnDrawing(),
     drawnHidden: [],
+    ownPaths: [],
     effectsOn: {},
     tokens: [],
     templates: [],

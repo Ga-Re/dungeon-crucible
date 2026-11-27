@@ -31,7 +31,7 @@ import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { setPictureResolver, activateSession, buildHooks, checkpoint, clearTabs, subscribe, closeCreatureTab, closeSessionTab, markDirty, openCreatureTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, fadeTvIn, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
+import { setPictureResolver, activateSession, checkpoint, clearTabs, subscribe, closeCreatureTab, closeSessionTab, markDirty, openCreatureTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, fadeTvIn, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
 import { applySceneAmbience, refreshAudioFiles, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
@@ -125,6 +125,12 @@ export async function readDoc<T>(rel: string, kind: DocumentKind, schema: z.ZodT
   return null;
 }
 
+/**
+ * A map file larger than this is still written, with a note in the log (O-A1, E-83): rasters stay
+ * in the map file until a real map outgrows it; then a binary file becomes a new decision.
+ */
+export const MAP_FILE_WARN_BYTES = 8 * 1024 * 1024;
+
 /** Writes a JSON document, keeping the unknown fields it had; never one from a newer version; nothing if unchanged. */
 export async function writeDoc(rel: string, schema: z.ZodType, value: unknown): Promise<void> {
   if (readOnly.has(rel)) return;
@@ -136,10 +142,11 @@ export async function writeDoc(rel: string, schema: z.ZodType, value: unknown): 
     await writeText(rel, text);
   } catch (e) {
     // Not lost (DC-003): kept on this device and offered when the campaign opens again.
-    keepRescue(rel, JSON.stringify(out), bases.get(rel) ?? null);
+    await keepRescue(rel, JSON.stringify(out), bases.get(rel) ?? null);
     throw e;
   }
-  savedOk(rel);
+  await savedOk(rel);
+  if (schema === MapSidecarSchema && text.length > MAP_FILE_WARN_BYTES) log('log.mapFileLarge', { file: rel, mb: Math.round(text.length / (1024 * 1024)) });
   bases.set(rel, fileHash(text));
   // A copy: `out` can share objects with `value`, which the app changes in place later.
   originals.set(rel, JSON.parse(text));
@@ -231,7 +238,7 @@ export async function openCampaign(slug: string): Promise<void> {
   if (state.campaign) await closeCampaign({ toStart: false });
   const ok = await loadCampaign({ slug, name: slug });
   // Documents whose save failed last time are offered now (DC-003).
-  if (ok) offerRescue(slug);
+  if (ok) await offerRescue(slug);
   if (!ok) {
     const newer = readOnly.has(`campaigns/${slug}/${CAMPAIGN_FILE}`);
     state.campaign = null;
@@ -707,21 +714,15 @@ let running: Promise<void> | null = null;
 
 export async function saveCampaign(force = false): Promise<void> {
   while (running) await running;
-  // A generator preview is parked while saving (DC-119d): it never reaches the disk.
-  const unpark = buildHooks.parkPreview?.() ?? null;
+  // The tabs are kept with every save, also when nothing else changed (a tab switched).
+  keepTabs();
+  const unsaved = unsavedSessions();
+  if (!state.campaign || (!state.dirty && !force && !unsaved.length)) return;
+  running = writeCampaign(unsaved);
   try {
-    // The tabs are kept with every save, also when nothing else changed (a tab switched).
-    keepTabs();
-    const unsaved = unsavedSessions();
-    if (!state.campaign || (!state.dirty && !force && !unsaved.length)) return;
-    running = writeCampaign(unsaved);
-    try {
-      await running;
-    } finally {
-      running = null;
-    }
+    await running;
   } finally {
-    unpark?.();
+    running = null;
   }
 }
 
@@ -855,7 +856,7 @@ async function mapOf(resource: string, sidecar: MapSidecar | null): Promise<{ ma
     url,
     map: {
       kind: 'map', schemaVersion: MAP_VERSION, name, resource, isVideo, widthPx: w, heightPx: h,
-      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], sounds: [], variants: [], storeys: [], stairs: [], rooms: [], ambient: 'dark', masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [],
+      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], sounds: [], variants: [], storeys: [], stairs: [], ambient: 'dark', waterAnimated: true, lightAngle: 45,
     },
   };
 }

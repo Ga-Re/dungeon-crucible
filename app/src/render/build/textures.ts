@@ -5,8 +5,9 @@
  * the map always draws. Shared by the DM window and the TV.
  */
 import { noise2 } from '../../core/build/handDrawn';
-import type { MasonryStyle } from '../../core/build/masonry';
 
+/** The stone and wood styles the wall and floor textures come in (E-33). */
+type MasonryStyle = (typeof STYLES)[number];
 export type SurfaceSlot = `wall-${MasonryStyle}` | `floor-${MasonryStyle}` | 'cliff-rock' | 'cliff-earth' | 'cliff-scree' | GroundSlot | 'water-river' | 'water-deep' | 'water-foam' | 'floor-carpet' | 'floor-marble' | 'floor-gravel' | 'floor-dirt' | 'floor-moss';
 /** Natural ground far from walls, after the biome (E-34). */
 export type GroundSlot = 'ground-grass' | 'ground-snow' | 'ground-sand' | 'ground-ash' | 'ground-swamp';
@@ -32,7 +33,7 @@ export interface BuildTextures {
 export const TILE = 512;
 const PART = 256;
 
-const STYLES: MasonryStyle[] = ['dungeon-stone', 'cave-rock', 'brick', 'wood'];
+const STYLES = ['dungeon-stone', 'cave-rock', 'brick', 'wood'] as const;
 const PARTS: PartSlot[] = ['part-cornerstone', 'part-pillar', 'part-door', 'growth-grass', 'growth-bush', 'growth-moss', 'shore-reeds', 'shore-stones'];
 /** Cliff faces (E-34). */
 const CLIFF_SURFACES: SurfaceSlot[] = ['cliff-rock', 'cliff-earth', 'cliff-scree', 'ground-grass', 'ground-snow', 'ground-sand', 'ground-ash', 'ground-swamp', 'water-river', 'water-deep', 'water-foam', 'floor-carpet', 'floor-marble', 'floor-gravel', 'floor-dirt', 'floor-moss'];

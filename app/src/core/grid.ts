@@ -147,6 +147,11 @@ export function toCellSpace(grid: GridConfig, p: Point): Point {
   return { x: g.x / grid.cellWidth, y: g.y / grid.cellHeight };
 }
 
+/** A point in cells of the grid (column, row, not rounded) as a map point: the inverse of `toCellSpace`. */
+export function fromCellSpace(grid: GridConfig, p: Point): Point {
+  return fromGridSpace(grid, { x: p.x * grid.cellWidth, y: p.y * grid.cellHeight });
+}
+
 /** Cell containing a map point. */
 export function cellAt(grid: GridConfig, p: Point): CellCoord {
   const g = toGridSpace(grid, p);

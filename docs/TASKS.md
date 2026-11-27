@@ -1156,6 +1156,11 @@ Branch: `feature/procedural-forge-phase-0`.
   stark welligen Grenzen, die anschwellen und auslaufen, feine Zwischenfugen, verwitterte helle Oberkante; ein
   Fleckenmuster entlang der Kante (nach Bogenlänge) schaltet Gras ↔ helle Steinkappe und harten ↔ weich
   auslaufenden Fuß (nur an wenigen Stellen, unteres Drittel).
+  Schritt 5 (DM: erst echte Textur im Spike): mit Higgsfield ein Klippenstreifen (Sandstein in Schichten und Blöcken)
+  und eine Graskachel erzeugt, abgelegt außerhalb des Repos (`~/Documents/Dungeon Crucible Testbilder`, O-A8 offen);
+  der Spike lädt sie über `?band=`/`?grass=` und macht sie beim Laden nahtlos (Ränder überblendet – die Nachbearbeitung,
+  die E-75 ins Entwickler-Werkzeug legt); vom Streifen nur ein Drittel der Höhe (wenige dicke Schichten, Seitenverhältnis
+  gehalten), sanfteres Licht.
 
 **Phase 1 bis 10**
 

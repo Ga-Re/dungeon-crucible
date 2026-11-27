@@ -147,6 +147,49 @@ const grass = () =>
       }
   });
 
+/**
+ * A painted texture (`?band=` / `?grass=`, e.g. one made with Higgsfield, E-75), made seamless:
+ * the last part of each tiled axis is blended over the first, then cut off.
+ */
+async function seamless(url: string, axes: 'x' | 'xy', maxWidth: number): Promise<Texture> {
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  const scale = Math.min(1, maxWidth / img.naturalWidth);
+  let src = document.createElement('canvas');
+  src.width = Math.round(img.naturalWidth * scale);
+  src.height = Math.round(img.naturalHeight * scale);
+  src.getContext('2d')!.drawImage(img, 0, 0, src.width, src.height);
+  const blend = (c: HTMLCanvasElement, vertical: boolean): HTMLCanvasElement => {
+    const len = vertical ? c.height : c.width;
+    const o = Math.round(len * 0.15);
+    const out = document.createElement('canvas');
+    out.width = vertical ? c.width : c.width - o;
+    out.height = vertical ? c.height - o : c.height;
+    const g = out.getContext('2d')!;
+    g.drawImage(c, 0, 0);
+    // The cut-off end, fading out over the start.
+    const strip = document.createElement('canvas');
+    strip.width = vertical ? c.width : o;
+    strip.height = vertical ? o : c.height;
+    const sg = strip.getContext('2d')!;
+    sg.drawImage(c, vertical ? 0 : -(len - o), vertical ? -(len - o) : 0);
+    const fade = vertical ? sg.createLinearGradient(0, 0, 0, o) : sg.createLinearGradient(0, 0, o, 0);
+    fade.addColorStop(0, 'rgba(0,0,0,1)');
+    fade.addColorStop(1, 'rgba(0,0,0,0)');
+    sg.globalCompositeOperation = 'destination-in';
+    sg.fillStyle = fade;
+    sg.fillRect(0, 0, strip.width, strip.height);
+    g.drawImage(strip, 0, 0);
+    return out;
+  };
+  src = blend(src, false);
+  if (axes === 'xy') src = blend(src, true);
+  const t = Texture.from(src);
+  t.source.style.addressMode = 'repeat';
+  return t;
+}
+
 const VERTEX = `in vec2 aPosition;
 in vec2 aUV;
 in float aShade;
@@ -172,15 +215,19 @@ uniform sampler2D uTexture;
 uniform sampler2D uPatch;
 out vec4 finalColor;
 void main() {
-  vec3 c = texture(uTexture, vec2(vUV.x * 0.5, vUV.y * 0.92)).rgb;
+  vec3 c = texture(uTexture, SAMPLE).rgb;
   vec2 p = texture(uPatch, vec2(vUV.x * 0.35, 0.5)).rg;
   float cap = smoothstep(0.52, 0.6, p.r) * (1.0 - smoothstep(0.16, 0.32, vUV.y));
   c = mix(c, vec3(0.86, 0.80, 0.66) + (c - 0.55) * 0.35, cap);
   float soft = smoothstep(0.62, 0.74, p.g);
   float foot = mix(1.0, 0.55, vUV.y * vUV.y);
   float a = 1.0 - soft * smoothstep(0.68, 1.0, vUV.y);
-  finalColor = vec4(c * vShade * foot * a, a);
+  finalColor = vec4(c * LIGHT * foot * a, a);
 }`;
+
+/** Where the face samples its texture, and how its light is applied: generated strata as they are; a painted strip (`?band=`) only a third of its height – a few thick layers, its aspect kept – and lit more gently. */
+const faceShader = (painted: boolean) =>
+  FACE.replace('SAMPLE', painted ? 'vec2(vUV.x * 1.6, 0.1 + vUV.y * 0.33)' : 'vec2(vUV.x * 0.5, vUV.y * 0.92)').replace('LIGHT', painted ? 'mix(0.85, 1.2, (vShade - 0.55) / 0.45)' : 'vShade');
 
 /** Foot AO: a soft dark hem on the lower ground. */
 const AO = `in vec2 vUV;
@@ -261,15 +308,18 @@ async function main() {
   const app = new Application();
   await app.init({ width: CELL * CELLS, height: CELL * CELLS, background: '#1b1d18', preference: 'webgl', antialias: true, preserveDrawingBuffer: true });
   document.body.appendChild(app.canvas);
-  const ground = new TilingSprite({ texture: grass(), width: CELL * CELLS, height: CELL * CELLS });
   const soil = new Container();
   const ao = new Container();
   const faces = new Container();
   const overhang = new Container();
   const rubble = new Graphics();
   const rim = new Graphics();
-  const rock = strata();
-  const turf = grass();
+  const params = new URLSearchParams(location.search);
+  const bandUrl = params.get('band');
+  const grassUrl = params.get('grass');
+  const rock = bandUrl ? await seamless(bandUrl, 'x', 1024) : strata();
+  const turf = grassUrl ? await seamless(grassUrl, 'xy', 512) : grass();
+  const ground = new TilingSprite({ texture: turf, width: CELL * CELLS, height: CELL * CELLS });
   const dirt = earth();
   const spots = patches();
   const area = { x0: -2, y0: -2, x1: CELLS * SUB + 2, y1: CELLS * SUB + 2 };
@@ -292,7 +342,7 @@ async function main() {
       soil.addChild(mesh(cliffBand(foot, c.closed, CELL * 0.6, { textureLength: CELL * 2, lightAngle: LIGHT_ANGLE, widthFactor: soilWidth }), SOIL, dirt));
       ao.addChild(mesh(cliffBand(hem, c.closed, CELL * 0.4, { textureLength: CELL, lightAngle: LIGHT_ANGLE }), AO, rock));
       // Face and overhang share their arc length (the same texture length), so caps and grass never overlap.
-      faces.addChild(mesh(face, FACE, rock, spots));
+      faces.addChild(mesh(face, faceShader(!!bandUrl), rock, spots));
       overhang.addChild(mesh(cliffBand(line, c.closed, CELL * 0.22, { textureLength: CELL * 4, lightAngle: LIGHT_ANGLE }), OVERHANG, turf, spots));
       // Scree at the foot, gathered in a few heaps (as in the reference), smaller the further it rolled.
       for (const { p, normal } of alongLine(foot, c.closed, CELL * 0.1)) {

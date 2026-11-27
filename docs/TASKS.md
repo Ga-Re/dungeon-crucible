@@ -1133,7 +1133,7 @@ Branch: `feature/procedural-forge-phase-0`.
   solche überstehen (sonst bleibt alles schwarz), und `table:ready` fehlt ohne Electron (BroadcastChannel).
 - **DC-126 Prüfwerkzeuge** (E-73; nach E-86 erst nach DC-128): Bench-Szene mit großer gezeichneter Karte, Wasser, Stockwerk und Streuung;
   Playwright-Bildvergleiche (Steckbrief vor dem Einführen).
-- ◐ **DC-127 Look-Spike Klippenband** (E-46, E-52): Stufen-Raster → Kontur → Band mit Test-Textur, Fuß-AO und Lippe;
+- ✓ **DC-127 Look-Spike Klippenband** (E-46, E-52): Stufen-Raster → Kontur → Band mit Test-Textur, Fuß-AO und Lippe;
   Abnahme neben einer Referenzkarte.
   Stand: `core/build/geom/contours.ts` (Marching Squares je Stufenwechsel, Kreuzung immer mittig – zwei Stufen auf
   einer Linie, höhere Seite links, Sattel nach der Feldmitte, Chaikin) und `band.ts` (Bandbreite 0,45 Feld je 10 ft,
@@ -1165,6 +1165,11 @@ Branch: `feature/procedural-forge-phase-0`.
   Kante mit Fuß-AO; Steinkappen und Schichtvarianz bleiben.
   Schritt 7 (DM: blanker Fels oben nicht so durchgängig, kleinere Flächen hier und da): feineres Fleckenmuster, höhere
   Schwelle, Kappen reichen weniger tief.
+  **Abgenommen vom DM (2026-11-27)** mit den gemalten Texturen. Für DC-128 mitnehmen: Band 0,45 Feld je 10 ft;
+  Felsblöcke mit Fugen und Schichtvarianz; Breite wandert ±35 %; oben Grasüberhang im Wechsel mit kleinen, verstreuten
+  Steinkappen; Fuß überall klare Kante mit Fuß-AO (kein weiches Auslaufen); Erde in Flecken; Geröll nur in wenigen
+  Nestern, Randsteine selten; gemalte Texturen (E-70) statt erzeugter. Offen dort: AO aus dem Distanzfeld (Keile an
+  Innenbiegungen), Klemmung enger Innenkurven (kleine Gruben), O-A8 vor der Auslieferung der Higgsfield-Bilder.
 
 **Phase 1 bis 10**
 

@@ -13,6 +13,7 @@ import type { Wall } from '../../scene';
 import { chaikin, stitch, type Pt } from '../geom/contours';
 import { noise2 } from '../handDrawn';
 import { BLOCK_POINTS, SUBDIVISIONS, type RasterBlock } from './block';
+import { UNKNOWN_STEP } from './tvRaster';
 
 /** The blocks of one stack as shown (base and active layers' patches), by key. */
 export interface CliffSource {
@@ -28,6 +29,9 @@ export interface CliffLine {
   /** Steps it drops. */
   readonly drop: number;
 }
+
+/** How far a cliff's edge wanders (cells): rock, as accepted in the look spike (DC-127, Teil B §11.1). */
+export const CLIFF_NOISE_CELLS = 0.15;
 
 export interface CliffOptions {
   readonly grid: GridConfig;
@@ -102,7 +106,9 @@ function blockSegments(bx: number, by: number, refs: readonly (RasterBlock | und
   for (let y = 0; y < n; y++)
     for (let x = 0; x < n; x++) {
       const b = refs[(x === BLOCK_POINTS ? 1 : 0) + (y === BLOCK_POINTS ? 2 : 0)];
-      v[y * n + x] = b ? b.planes.step[(y % BLOCK_POINTS) * BLOCK_POINTS + (x % BLOCK_POINTS)]! : missing;
+      const s = b ? b.planes.step[(y % BLOCK_POINTS) * BLOCK_POINTS + (x % BLOCK_POINTS)]! : missing;
+      // A point the TV was not sent is unknown like a missing block (E-85).
+      v[y * n + x] = s === UNKNOWN_STEP ? NaN : s;
     }
   const out: number[] = [];
   const ox = bx * BLOCK_POINTS;

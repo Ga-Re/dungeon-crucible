@@ -160,6 +160,14 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
         if (f.map.drawnOrigin) map?.setDrawn({ origin: f.map.drawnOrigin, width: f.map.widthPx, height: f.map.heightPx });
         else void map?.set(f.map.imageUrl, f.map.isVideo, f.map.look);
         r.setGrid(f.map.showGrid && f.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: f.map.grid.originX, offsetYPx: f.map.grid.originY, color: '#000000', alpha: 0.35 } : null);
+        // The terrain (E-85, E-87): blocks resolved from what was sent; one not here yet is unknown.
+        const ras = f.map.raster;
+        const blocks = ras && source.raster ? [...source.raster.resolve(ras.blocks)].flatMap(([k, b]) => (b ? [[k, b] as const] : [])) : [];
+        r.setTerrain(
+          ras && f.map.drawnOrigin
+            ? { source: { blocks: new Map(blocks), missingIsUnknown: true }, grid: f.map.grid, biome: ras.palette[0]!, stepFt: ras.stepFt, perspective: ras.perspective, lightAngle: ras.lightAngle, area: { x: f.map.drawnOrigin.x, y: f.map.drawnOrigin.y, width: f.map.widthPx, height: f.map.heightPx } }
+            : null,
+        );
         // Stairs (E-44) as pictures drawn here from their place – under the fog like the assets.
         r.setAssets([...stairShapes(f.stairs ?? []), ...f.assets.map((a, i) => ({ ...a, id: `asset-${i}` }))]);
         r.setTokens(f.tokens.map((t): TokenShape => ({ id: t.id, name: t.label, x: t.x - (t.size * cell) / 2, y: t.y - (t.size * cell) / 2, width: t.size * cell, height: t.size * cell, color: t.ringColor, active: t.active })), { glide: 120 });

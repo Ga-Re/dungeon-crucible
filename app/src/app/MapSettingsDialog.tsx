@@ -25,6 +25,7 @@ export function MapSettingsDialog({ onClose }: { onClose: () => void }) {
   const [tagInput, setTagInput] = useState('');
   const [variantError, setVariantError] = useState<string | null>(null);
   const picture = useStore((s) => !!s.scene.map.imageUrl);
+  const drawn = useStore((s) => !!s.scene.map.drawn);
   const addVariant = async () => {
     setVariantError(null);
     const r = await pickVariantPicture();
@@ -155,6 +156,13 @@ export function MapSettingsDialog({ onClose }: { onClose: () => void }) {
               onChange={(e) => { const v = Number(e.target.value); if (v > 0 && v <= 10) set('transition', { ...draft.transition, seconds: v }); }} />
           </label>
         </div>
+        {drawn && (
+          <label className="start-field">
+            <span>{t('mapSettings.cliffWidth')}</span>
+            <input type="range" min={0.2} max={1} step={0.05} value={draft.cliffPerspective} aria-valuetext={t('mapSettings.cliffWidthHint', { n: draft.cliffPerspective.toFixed(2) })} onChange={(e) => set('cliffPerspective', Number(e.target.value))} />
+            <span className="hint">{t('mapSettings.cliffWidthHint', { n: draft.cliffPerspective.toFixed(2) })}</span>
+          </label>
+        )}
         {picture && (
           <div className="start-field">
             <span>{t('variant.title')}</span>

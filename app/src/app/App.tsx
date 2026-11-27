@@ -13,7 +13,7 @@ import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, 
 import { choosablePanels } from './panelChoice';
 import type { DocTab } from './store';
 import {
-  clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, startCalibration, setLeakCheck, startLookCommand, cancelLookCommand, startWallCommand, redo, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
+  clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, startCalibration, setLeakCheck, startLookCommand, cancelLookCommand, startWallCommand, startTerrainCommand, setTerrainQuarter, redo, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
@@ -133,7 +133,7 @@ function Ribbon() {
   const { t } = useI18n();
   const ws = useStore((s) => s.ws);
   const tool = useStore((s) => s.tool);
-  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart, onTv: !!s.scenePath && s.scenePath === s.tvScenePath, leakCheck: !!s.leakCheck, look: !!s.lookCommand }));
+  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart, onTv: !!s.scenePath && s.scenePath === s.tvScenePath, leakCheck: !!s.leakCheck, look: !!s.lookCommand, quarter: s.terrainQuarter, drawn: !!s.scene.map.drawn }));
   const [resetting, setResetting] = useState(false);
   const mapSettings = useStore((s) => s.mapSettingsOpen);
   const [tab, setTab] = useState(0);
@@ -158,11 +158,17 @@ function Ribbon() {
     if (b.id === 'scene:toTv') return flags.onTv;
     if (b.id === 'area:create') return tool === 'area';
     if (b.id === 'walls:draw') return tool === 'wall';
+    if (b.id === 'terrain:step') return tool === 'terrain';
+    if (b.id === 'toggle:quarter') return flags.quarter;
     if (b.id === 'leak:check') return flags.leakCheck;
     if (b.id === 'map:look') return flags.look;
     if (b.id === 'grid:calibrate') return tool === 'calibrate';
     return false;
   };
+
+  /** Terrain tools work on drawn maps only for now (E-87): greyed out elsewhere, saying when they come. */
+  const isTerrain = (b: RibbonButton) => b.id === 'terrain:step' || b.id === 'toggle:quarter';
+  const isDisabled = (b: RibbonButton) => isTerrain(b) && !flags.drawn;
 
   const run = (b: RibbonButton, el: HTMLElement) => {
     if (b.tool) return setTool(b.tool);
@@ -189,6 +195,8 @@ function Ribbon() {
       case 'audio:stop': return stopAll();
       case 'fog:revealAll': return fogAll(true);
       case 'walls:draw': return startWallCommand();
+      case 'terrain:step': return startTerrainCommand();
+      case 'toggle:quarter': return setTerrainQuarter(!flags.quarter);
       case 'leak:check': return setLeakCheck(!state.leakCheck);
       case 'grid:calibrate': return startCalibration();
       case 'vault:import': return void importVaultAssets();
@@ -236,7 +244,7 @@ function Ribbon() {
           <div key={g.label} className="r-group">
             <div className="tools">
               {g.buttons.map((b) => (
-                <button key={b.id} className={`tool ${isActive(b) ? (b.tool ? 'on' : 'active') : ''}`} title={t(b.label)} onClick={(e) => run(b, e.currentTarget)}>
+                <button key={b.id} className={`tool ${isActive(b) ? (b.tool ? 'on' : 'active') : ''}`} title={isDisabled(b) ? t('tool.terrainLater') : t(b.label)} disabled={isDisabled(b)} onClick={(e) => run(b, e.currentTarget)}>
                   <Icon name={b.icon} /><span>{t(b.label)}</span>
                 </button>
               ))}

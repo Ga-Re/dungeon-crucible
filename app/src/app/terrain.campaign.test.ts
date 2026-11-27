@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DcApi } from '../platform/desktop-api';
 import { closeCampaign, newCampaign, newSceneOnMap, openMapTab, readDoc, saveCampaign } from './campaign';
 import { duplicateLibraryMap } from './library';
-import { applyFogArea, applyMapToTv, checkpoint, fogAll, markDirty, produceFrame, redo, setTvScene, setWorkspace, state, tvRasterBlocks, undo } from './store';
+import { abortTerrainStroke, applyFogArea, applyMapToTv, beginTerrainStroke, setTool, terrainStrokePath, cancelTerrainCommand, checkpoint, finishTerrainCommand, fogAll, markDirty, moveTerrainStroke, produceFrame, redo, setTerrainPreview, setTvScene, setWorkspace, sightWalls, startTerrainCommand, state, tvRasterBlocks, undo, updateTerrainCommand } from './store';
 import { terrainOf, setTerrain } from './terrain';
 import { DRAWN_RESOURCE, mapSidecarFromScene } from '../core/persistence';
 import { MapSidecarSchema } from '../core/sidecar';
 import { createSampleScene } from '../sample/crypt';
 import { rectPolygon } from '../core/fogModel';
 import { rasterChecksum } from '../core/build/terrain/tvRaster';
+import { defaultTerrainBiome } from '../core/build/intent';
 import { emptyTerrain, encodeTerrain, EncodeCache, pointOf, setPoints } from '../core/build/terrain/state';
 
 /** The terrain of an open map (E-84): out of the documents while open, back in every write. Files in memory. */
@@ -157,12 +158,114 @@ describe('terrain on the TV (E-85)', () => {
     expect(produceFrame(3).map.raster!.blocks['0_0']).not.toBe(before);
   });
 
-  it('no terrain: no raster in the frame', async () => {
+  it('a drawn map without terrain: its default ground, no blocks (E-87)', async () => {
     files.set(MAP, JSON.stringify({ ...mapSidecarFromScene(createSampleScene(), DRAWN_RESOURCE, 'map'), name: 'Flat' }));
     await newCampaign('C', false);
     await newSceneOnMap(MAP);
     setWorkspace('play');
     setTvScene(state.scenePath);
-    expect(produceFrame(1).map.raster).toBeNull();
+    const { mapType, biome } = state.scene.map;
+    expect(produceFrame(1).map.raster).toEqual({ stepFt: 10, palette: [defaultTerrainBiome(mapType, biome)], perspective: 0.45, lightAngle: state.scene.map.lightAngle, blocks: {} });
   });
 });
+
+describe('the tool "Stufe" (E-87)', () => {
+  const paint = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    beginTerrainStroke(from);
+    moveTerrainStroke(to, { straight: false, invert: false }, false);
+    moveTerrainStroke(to, { straight: false, invert: false }, true);
+  };
+
+  it('a stroke raises the ground to its start + 1, one step of undo; the cliff becomes a one-way wall', async () => {
+    await hill();
+    setTerrainPreview('live');
+    startTerrainCommand();
+    expect(state.tool).toBe('terrain');
+    updateTerrainCommand({ shape: 'square', sizeCells: 1, mode: 'raise' });
+    expect(state.scene.map.grid.cellWidth).toBe(70);
+    const g = state.scene.map.grid;
+    expect([g.originX, g.originY, g.rotationDeg]).toEqual([0, 0, 0]);
+    paint({ x: 10.5 * 70, y: 10.5 * 70 }, { x: 13.5 * 70, y: 10.5 * 70 });
+    expect(pointOf(terrainOf(MAP)!, 'map', 'step', 44, 42)).toBe(1);
+    expect(state.dirty).toBe(true);
+    const cliffs = sightWalls(state.scene, terrainOf(MAP)).filter((w) => w.kind === 'cliff' && w.id.startsWith('terrain:'));
+    expect(cliffs.length).toBeGreaterThan(0);
+    undo();
+    expect(pointOf(terrainOf(MAP)!, 'map', 'step', 44, 42)).toBe(0);
+    finishTerrainCommand();
+    expect(state.terrainCommand).toBeNull();
+  });
+
+  it('Cancel takes back every stroke since the tool opened; the outline preview changes nothing until let go', async () => {
+    await hill();
+    const before = terrainOf(MAP);
+    startTerrainCommand();
+    updateTerrainCommand({ shape: 'square', sizeCells: 1, mode: 'raise' });
+    setTerrainPreview('outline');
+    beginTerrainStroke({ x: 10.5 * 70, y: 10.5 * 70 });
+    moveTerrainStroke({ x: 12.5 * 70, y: 10.5 * 70 }, { straight: false, invert: false }, false);
+    expect(terrainOf(MAP)).toBe(before);
+    moveTerrainStroke({ x: 12.5 * 70, y: 10.5 * 70 }, { straight: false, invert: false }, true);
+    expect(pointOf(terrainOf(MAP)!, 'map', 'step', 44, 42)).toBe(1);
+    setTerrainPreview('live');
+    cancelTerrainCommand();
+    expect(terrainOf(MAP)).toBe(before);
+    expect(state.terrainCommand).toBeNull();
+  });
+
+  it('Alt lowers instead; the pipette picks the step for "set"', async () => {
+    await hill();
+    startTerrainCommand();
+    updateTerrainCommand({ shape: 'square', sizeCells: 1, mode: 'raise' });
+    beginTerrainStroke({ x: 10.5 * 70, y: 10.5 * 70 });
+    moveTerrainStroke({ x: 10.5 * 70, y: 10.5 * 70 }, { straight: false, invert: true }, true);
+    expect(pointOf(terrainOf(MAP)!, 'map', 'step', 42, 42)).toBe(-1);
+    // The hill's own point (1, 1) is at step 2.
+    updateTerrainCommand({ picking: true });
+    beginTerrainStroke({ x: 0.25 * 70, y: 0.25 * 70 });
+    expect(state.terrainCommand).toMatchObject({ mode: 'set', picked: 2, picking: false });
+  });
+
+  it('a stroke ends with its command: it never paints later, also not on another map', async () => {
+    await hill();
+    setTerrainPreview('live');
+    startTerrainCommand();
+    updateTerrainCommand({ shape: 'square', sizeCells: 1, mode: 'raise' });
+    const before = terrainOf(MAP);
+    expect(beginTerrainStroke({ x: 10.5 * 70, y: 10.5 * 70 })).toBe(true);
+    setTool('select');
+    expect(terrainStrokePath()).toBeNull();
+    startTerrainCommand();
+    moveTerrainStroke({ x: 12.5 * 70, y: 10.5 * 70 }, { straight: false, invert: false }, true);
+    expect(terrainOf(MAP)).toBe(before);
+    // The pipette starts no stroke.
+    updateTerrainCommand({ picking: true });
+    expect(beginTerrainStroke({ x: 10.5 * 70, y: 10.5 * 70 })).toBe(false);
+  });
+
+  it('a stroke changing nothing leaves no step of undo; Escape takes back the stroke being painted', async () => {
+    await hill();
+    setTerrainPreview('live');
+    startTerrainCommand();
+    updateTerrainCommand({ shape: 'square', sizeCells: 1, mode: 'set', picked: 0 });
+    const undoable = state.canUndo;
+    beginTerrainStroke({ x: 10.5 * 70, y: 10.5 * 70 });
+    moveTerrainStroke({ x: 10.5 * 70, y: 10.5 * 70 }, { straight: false, invert: false }, true);
+    expect(state.canUndo).toBe(undoable);
+    const before = terrainOf(MAP);
+    updateTerrainCommand({ mode: 'raise' });
+    beginTerrainStroke({ x: 10.5 * 70, y: 10.5 * 70 });
+    moveTerrainStroke({ x: 12.5 * 70, y: 10.5 * 70 }, { straight: false, invert: false }, false);
+    expect(terrainOf(MAP)).not.toBe(before);
+    abortTerrainStroke();
+    expect(terrainOf(MAP)).toBe(before);
+  });
+
+  it('a map whose terrain could not be read cannot be painted', async () => {
+    await hill({ stepFt: 10, biomePalette: ['temperate'], stacks: { map: { base: { '0_0': { v: 1, data: 'AAAA' } } } } });
+    startTerrainCommand();
+    expect(state.terrainCommand).toBeNull();
+    expect(state.log.some((l) => l.key === 'log.terrainReadOnly')).toBe(true);
+  });
+});
+

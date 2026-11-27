@@ -1207,6 +1207,34 @@ Branch: `feature/procedural-forge-phase-0`.
   Tab zurückgedreht); eine neue Szene auf einer offenen Karte nimmt deren Stand samt Gelände; die Kopie einer
   Karte mit kaputtem Gelände nimmt es so mit, wie es in der Datei steht. Tests: 10.
   **Abgenommen vom DM (2026-11-27).**
+  ◐ **b)** (E-87) Texturen je Biom (Band und Boden, Higgsfield, abgenommen per Vergleichsbild) als WebP-Slots;
+  Karte v15 mit `cliffPerspective` (0,2–1,0, Standard 0,45; v14 wird ohne Änderung hochgestuft), Regler in den
+  Karteneinstellungen gezeichneter Karten. `core/build/terrain/cliffs.ts`: alle Stufenwechsel in einem Durchlauf je
+  Block, mehrere Stufen auf einmal als eine hohe Klippe, sonst Terrassen; Linien mit Rauschen nach Weltposition
+  (DM und TV zeichnen aus denselben Blöcken dieselben Klippen), Blöcke zwischengespeichert, bis sie oder ein
+  gelesener Nachbar sich ändern; am TV gibt ein fehlender Block keine Kante. Ihre Oberkanten sind Einweg-Wände der
+  Sicht (DM-Szene, TV-Szene auch bei wartenden Kartenänderungen, Hintergrund-Szene, Stockwerke darunter); die
+  DM-Überlagerung zeichnet sie nicht. `render/pixi/terrain.ts` im gemeinsamen Renderer: Boden des Bioms, Band mit
+  ±35 % Breite, Fuß-AO, Erdsaum in Flecken, Überhang aus dem Boden (nicht im Dungeon) mit kleinen Steinkappen,
+  Geröll in wenigen Nestern, seltene Randsteine; Farben von Kappen, Geröll und Erde je Biom; neu gebaut nur, wenn
+  sich Blöcke oder Aussehen ändern. TV-Frame v7: das Raster nennt dazu Bandbreite und Lichtrichtung; eine
+  gezeichnete Karte ohne Gelände schickt ihr Standard-Biom ohne Blöcke (der Boden). Werkzeug **Stufe** im neuen Tab
+  GELÄNDE (auf Bild-/Videokarten ausgegraut mit Hinweis): Heben, Senken, Auf Stufe setzen mit Pipette; Pinsel
+  rund, eckig, Lasso; Schalter Viertelfeld-Fang; Alt kehrt um, Shift gerade Linie; Heben senkt nie, Senken hebt
+  nie; jeder Strich ein Schritt für Rückgängig, Abbrechen nimmt alle Striche seit dem Öffnen zurück; nicht
+  lesbares Gelände sperrt das Werkzeug. Die Vorschau (Live-Klippen oder Umriss) steht im Befehls-Panel und gilt für
+  dieses Gerät – einen eigenen Einstellungsdialog gibt es noch nicht. Geprüft: 805 Tests, Build mit
+  Tisch-Bundle-Prüfung; in der echten App (eigenes Profil) Malen mit allen Pinseln, Rückgängig, 102 Einweg-Wände,
+  Panel und Ribbon im Bild; die Klippen selbst im echten Renderer offscreen je Biom (das verdeckte App-Fenster
+  zeichnet kein WebGL). Das TV-Fenster nicht (Vollbild auf einem Bildschirm des DM). Beobachtet: einmal hing der
+  Renderer der Entwickler-App kurz nach dem Start, danach nicht mehr reproduzierbar – wie vor a).
+  Nach dem Review: ein Strich gehört fest zu seiner Karte und seinem Befehl (vorher konnte ein liegengebliebener
+  Strich nach einem Tab-Wechsel auf eine andere Karte schreiben); Esc nimmt den laufenden Strich zurück, Enter
+  beendet das Werkzeug; ein Strich ohne Änderung hinterlässt keinen Rückgängig-Schritt; beim Malen wird nur das
+  neue Wegstück gepinselt; GPU-Puffer werden beim Neubau freigegeben; Zwischenspeicher hängen am Geländestand
+  (DM und TV verdrängen sich nicht). Am TV heißt ein nicht gesendeter Punkt ausdrücklich „unbekannt“ (Stufe −128,
+  E-85 unverändert: nichts Verborgenes): sonst entstanden am Rand des Bekannten Klippen, die es nicht gibt;
+  teilweise erkundete leere Blöcke teilen deshalb keine Prüfsumme mehr, ganz erkundete weiter. Tests: 808.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

@@ -47,6 +47,7 @@ import {
 } from "./fog-living";
 import { softFogAlpha } from "./soft-mask";
 import { createVideoGate, cssTransform, sameAspect } from "./video-layer";
+import { createTerrainLayer, type TerrainShape } from "./terrain";
 
 /** An image the browser has loaded (or drawn), ready to become the map texture. */
 export type MapImage = HTMLImageElement | HTMLCanvasElement | ImageBitmap | BlankArea;
@@ -274,6 +275,12 @@ export interface Renderer {
    * and fog – darkness and fog cover them like the map. Videos loop; replaces those drawn before.
    */
   setAssets(assets: readonly AssetShape[]): void;
+  /**
+   * Dungeon Crucible (E-87): the terrain's ground and cliffs over the map, under the grid – fog
+   * and darkness cover them like the map. The same blocks and look again change nothing; `null`
+   * removes it.
+   */
+  setTerrain(terrain: TerrainShape | null): void;
   setCamera(camera: Camera): void;
   resize(size: Size): void;
   /** Resolves after the next draw has been submitted (for screenshots and tests). */
@@ -322,6 +329,9 @@ export async function createRenderer(
 
   const world = new Container();
   app.stage.addChild(world);
+  // The terrain (E-87): over the map (which goes in at index 0), under the grid.
+  const terrain = createTerrainLayer(() => requestDraw());
+  world.addChild(terrain.view);
   // Grid lines (T-106b): above the map (which goes in at index 0), below the fog (added last).
   const gridLayer = new Graphics();
   world.addChild(gridLayer);
@@ -1163,6 +1173,9 @@ export async function createRenderer(
       drawAssets(next);
       requestDraw();
     },
+    setTerrain(next) {
+      terrain.set(next);
+    },
     setTokens(next, tokenOptions) {
       drawTokens(next, tokenOptions?.glide ?? 0);
       requestDraw();
@@ -1239,6 +1252,8 @@ export async function createRenderer(
       glowTexture?.destroy(true);
       world.removeChild(gridLayer);
       gridLayer.destroy({ context: true });
+      world.removeChild(terrain.view);
+      terrain.destroy();
       drawTokens([]);
       drawAssets([]);
       for (const entry of assetTextures.values()) {

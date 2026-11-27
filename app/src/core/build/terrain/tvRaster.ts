@@ -147,7 +147,13 @@ export function tvCellSources(key: string, masks: ViewMasks): Int16Array {
   return sources;
 }
 
-/** `block` as the TV gets it: each cell's points and values from its source cell, the defaults where none. */
+/**
+ * A step the TV does not know (E-85, E-87): below every real step (−8 … +15), so a cliff never
+ * runs along the edge of what the TV knows.
+ */
+export const UNKNOWN_STEP = -128;
+
+/** `block` as the TV gets it: each cell's points and values from its source cell; where none, the defaults – and the step unknown. */
 function sourced(block: RasterBlock, sources: Int16Array): RasterBlock {
   // A block the TV may know whole goes as it is: no copy.
   if (sources.every((src, i) => src === i)) return block;
@@ -166,7 +172,7 @@ function sourced(block: RasterBlock, sources: Int16Array): RasterBlock {
   for (const ch of POINT_CHANNELS) {
     const src = block.planes[ch];
     const plane = src.slice();
-    const d = empty.planes[ch][0]!;
+    const d = ch === 'step' ? UNKNOWN_STEP : empty.planes[ch][0]!;
     for (let i = 0; i < from.length; i++) {
       const f = from[i]!;
       plane[i] = f < 0 ? d : src[f]!;

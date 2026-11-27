@@ -3,7 +3,7 @@ import { rectPolygon } from '../../fogModel';
 import { DEFAULT_GRID } from '../../grid';
 import { emptyPatch, newBlock, patchPoints, pointAt, withPoints, type RasterBlock } from './block';
 import { emptyTerrain, setPoints, type TerrainState } from './state';
-import { parseRasterBatch, RASTER_BATCH, rasterBatches, rasterChecksum, RasterCache, SentBlocks, tvRaster, type RasterView } from './tvRaster';
+import { parseRasterBatch, RASTER_BATCH, rasterBatches, rasterChecksum, RasterCache, SentBlocks, tvRaster, UNKNOWN_STEP, type RasterView } from './tvRaster';
 
 /**
  * What of the terrain the TV may know (E-61, decided 2026-11-27): only what is explored – revealed
@@ -34,6 +34,9 @@ describe('the TV raster', () => {
     expect(solidAtCell(b, 5, 5)).toBe(255);
     expect(solidAtCell(b, 6, 3)).toBe(0);
     expect(solidAtCell(b, 20, 20)).toBe(0);
+    // The step there is unknown, not flat ground (E-87: no cliff along the edge of what the TV knows).
+    expect(pointAt(b, 'step', 80, 80)).toBe(UNKNOWN_STEP);
+    expect(pointAt(b, 'step', 12, 12)).toBe(0);
   });
 
   it('nothing explored: nothing sent', () => {
@@ -97,7 +100,10 @@ describe('the TV raster', () => {
   it('an explored block nobody painted is named too: unknown and empty are never confused', () => {
     const r = tvRaster(emptyTerrain(['temperate']), view({ shown: [cells(-3, 3, 4, 6)] }));
     expect([...r.keys()].sort()).toEqual(['-1_0', '0_0']);
-    expect(r.get('-1_0')!.checksum).toBe(r.get('0_0')!.checksum);
+    // Wholly explored empty blocks are the same block: one checksum, sent once. Partly explored ones
+    // differ where their unknown part lies (E-87: unknown is marked, not flat).
+    const whole = tvRaster(emptyTerrain(['temperate']), view({ shown: [cells(-40, -8, 72, 40)] }));
+    expect(whole.get('-1_0')!.checksum).toBe(whole.get('0_0')!.checksum);
   });
 
   it('lays in the patches of active layers only', () => {

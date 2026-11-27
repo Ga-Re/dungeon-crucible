@@ -72,6 +72,14 @@ export function shownBlock(t: TerrainState, stack: string, key: string, activeLa
   return applyPatches(s.base.get(key) ?? newBlock(), patches);
 }
 
+/** Every block of a stack as shown: its base blocks and those only active layers' patches reach. */
+export function shownStack(t: TerrainState, stack: string, activeLayers: readonly string[]): Map<string, RasterBlock> {
+  const s = t.stacks.get(stack) ?? EMPTY_STACK;
+  const keys = new Set(s.base.keys());
+  for (const id of activeLayers) for (const key of s.layers.get(id)?.keys() ?? []) keys.add(key);
+  return new Map([...keys].map((key) => [key, shownBlock(t, stack, key, activeLayers)]));
+}
+
 /** The terrain of a map file, decoded; a broken block refuses the whole of it. */
 export async function decodeTerrain(file: Terrain, cache: EncodeCache): Promise<TerrainState> {
   const stacks = new Map<string, TerrainStack>();

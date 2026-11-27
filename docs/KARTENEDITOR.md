@@ -4,6 +4,9 @@ Stand: **Im Interview am 2026-11-25 entschieden: E-33** in `docs/TASKS.md`. Wo E
 abweicht (z. B. Türen nur offen/zu/geheim, keine Größengrenze, Texturen für Teile), gilt E-33. Assets (Fässer,
 Felsen, Bäume …) sollen weiterhin frei platziert werden können (DC-041).
 
+**Weitergeführt (2026-11-27):** `docs/KARTENSCHMIEDE-PROZEDURAL.md` (E-46–E-77) löst das Mauer-, Klippen- und
+Zonenmodell dieser Spezifikation durch Raster mit abgeleiteter Optik ab. Diese Datei bleibt als Ursprung erhalten.
+
 Bezüge: DC-026 (parametrische Räume, Gelände), DC-027 (eigene Karten zeichnen), DC-041 (Props), DC-101
 (Zeichenebenen), DC-014 (Wände: heute einzelne Strecken mit Gelenken, Türen als eigene Strecken – die Spezifikation
 sieht Linienzüge und Türen auf Wänden vor; eine Umstellung braucht eine Migration).

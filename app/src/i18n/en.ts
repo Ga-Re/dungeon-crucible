@@ -240,6 +240,7 @@ export const en = {
   'rescue.failed': 'Could not write the file. Check that the root folder is reachable and try again.',
   'rescue.close': 'Decide later',
   'log.mapFileLarge': 'The map file {file} is {mb} MB. It was saved, but large maps load slowly – split it into several maps where you can.',
+  'log.terrainBroken': 'The terrain of map "{name}" is damaged: the map opens without it and is not saved. Restore an earlier version from the trash or your archive.',
   'log.saveFailed': 'Saving failed: {error}',
   'log.tableFailed': 'Could not open the table window: {error}',
   'group.mode': 'Mode',

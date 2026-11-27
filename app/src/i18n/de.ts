@@ -240,6 +240,7 @@ export const de: Partial<Record<MessageKey, string>> = {
   'rescue.failed': 'Die Datei konnte nicht geschrieben werden. Prüfe, ob der Wurzelordner erreichbar ist, und versuche es erneut.',
   'rescue.close': 'Später entscheiden',
   'log.mapFileLarge': 'Die Kartendatei {file} ist {mb} MB groß. Sie wurde gespeichert, aber große Karten laden langsam – teile sie, wo es geht, in mehrere Karten.',
+  'log.terrainBroken': 'Das Gelände der Karte „{name}“ ist beschädigt: Die Karte öffnet ohne Gelände und wird nicht gespeichert. Stelle eine frühere Fassung aus dem Papierkorb oder deinem Archiv wieder her.',
   'log.saveFailed': 'Speichern fehlgeschlagen: {error}',
   'log.tableFailed': 'Tischfenster konnte nicht geöffnet werden: {error}',
   'group.mode': 'Modus',

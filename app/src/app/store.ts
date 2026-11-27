@@ -6,7 +6,7 @@ import type { RescueCopy } from '../core/rescue';
 import { useSyncExternalStore } from 'react';
 import type { Point } from '../core/geometry';
 import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
-import { buildPlayerFrame, type PlayerFrame, type StoreyFrame } from '../core/projection';
+import { buildPlayerFrame, type PlayerFrame, type ProjectionOptions, type StoreyFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, SoundSource, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { isSoundRef } from '../core/sound';
 import { findLeaks, type Leak } from '../core/leaks';
@@ -40,6 +40,10 @@ import { missingPartyTokens, tokenFromCreature } from '../core/party';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
+import { setTerrain, terrainOf } from './terrain';
+import type { TerrainState } from '../core/build/terrain/state';
+import { tvRaster } from '../core/build/terrain/tvRaster';
+import type { RasterBlock } from '../core/build/terrain/block';
 import { activeLayers, BASE_LAYER, drawOrder, triggerChanges } from '../core/layers';
 import { intentIds } from '../core/build/intent';
 import { allPlacements, elementsFromSidecar, resetElement, sceneChanges, sceneIssues, withoutOrphans, type ElementChange } from '../core/persistence';
@@ -370,7 +374,7 @@ export function log(key: MessageKey, params?: Record<string, string | number>): 
 
 /* ---------- Undo / redo & dirty tracking ---------- */
 
-let history = new History<string>(100);
+let history = new History<Snapshot>(100);
 const dirtyListeners = new Set<() => void>();
 
 export function onDirty(fn: () => void): () => void {
@@ -395,8 +399,19 @@ function previousLayer(doc: SceneOverride | null) {
   return { ...layerOf(doc), hidden: state.layer === 'start' ? startOf(doc).hidden : doc.hidden };
 }
 
-function snapshot(): string {
-  return JSON.stringify(docsFromView());
+/**
+ * A step of undo: the documents as JSON, and on the map layer the map's terrain by reference – it
+ * never changes, so steps share every block an edit did not touch (E-56). A scene's steps leave the
+ * terrain alone, as they leave the map: it may have changed in another tab since.
+ */
+interface Snapshot {
+  docs: string;
+  terrain?: TerrainState | null;
+}
+
+function snapshot(): Snapshot {
+  const docs = JSON.stringify(docsFromView());
+  return state.layer === 'map' && state.mapFile ? { docs, terrain: terrainOf(state.mapFile) } : { docs };
 }
 
 /** Call before every undoable change. */
@@ -407,8 +422,9 @@ export function checkpoint(): void {
   markDirty();
 }
 
-function restore(snap: string): void {
-  const { map, ov } = JSON.parse(snap) as { map: MapSidecar; ov: SceneOverride | null };
+function restore(snap: Snapshot): void {
+  const { map, ov } = JSON.parse(snap.docs) as { map: MapSidecar; ov: SceneOverride | null };
+  if (state.mapFile && snap.terrain !== undefined) setTerrain(state.mapFile, snap.terrain);
   // The scene file too: it holds what the view does not show (orphaned changes, the other state).
   if (ov) state.sceneDoc = ov;
   const keepTable = state.scene.table;
@@ -497,7 +513,7 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   state.selectedStairId = null;
   state.effectRuns = {};
   // A scene of its own: its own undo history; the one before keeps its history in its tab.
-  history = new History<string>(100);
+  history = new History<Snapshot>(100);
   clearHistory();
   if (tabId && !state.tabs.some((x) => x.id === tabId)) state.tabs = [...state.tabs, { id: tabId, kind: opts.scenePath ? 'scene' : 'map', name: opts.sceneName }];
   state.sceneVersion++;
@@ -571,7 +587,7 @@ interface Session {
   round: number;
   turn: number;
   editStart: boolean;
-  history: History<string>;
+  history: History<Snapshot>;
   dirty: boolean;
   effectRuns: Record<string, number>;
   interiorAsks: { id: string; name: string }[];
@@ -660,7 +676,7 @@ export function activateSession(tabId: string): boolean {
   state.effectRuns = s.effectRuns;
   state.interiorAsks = s.interiorAsks;
   // Undo stays in the layer it was recorded in (as when switching layers): a map edit is not undone in a scene.
-  history = s.layer === state.layer ? s.history : new History<string>(100);
+  history = s.layer === state.layer ? s.history : new History<Snapshot>(100);
   state.canUndo = history.canUndo;
   state.canRedo = history.canRedo;
   const table = { ...state.scene.table, centerX: s.center.x, centerY: s.center.y };
@@ -806,6 +822,9 @@ function currentMapOf(scenePath: string): MapSidecar | null {
 function snapshotTvMap(): void {
   const map = state.tvScenePath ? currentMapOf(state.tvScenePath) : null;
   tvMap = map ? structuredClone(map) : null;
+  // Its terrain is held with it: the TV shows it until the next "on the TV" too.
+  const file = tvMapFile();
+  tvTerrain = file ? terrainOf(file) : null;
   tvMapVersion++;
   state.tvMapPending = false;
   tvCache = null;
@@ -3160,7 +3179,7 @@ export function produceFrame(now: number): PlayerFrame {
   state.frameSeq++;
   // No scene on the TV: black, and nothing of any scene in the frame.
   const tv = tvView() ?? { scene: emptyScene({ ...state.scene.table, blackout: true }), visible: [], lights: [], turn: 0, resource: '', runs: {} };
-  const top = frameOf(tv, now, state.ws === 'play' && tv.scene === state.scene ? initiativeOrder()[tv.turn]?.id ?? null : null);
+  const top = frameOf(tv, now, state.ws === 'play' && tv.scene === state.scene ? initiativeOrder()[tv.turn]?.id ?? null : null, tvRasterOf(tv.scene));
   // A storey on the TV (E-40): it covers its footprint; the storeys below show outside it, each
   // with its own fog only.
   const st = tv.scene.map.storey;
@@ -3169,8 +3188,55 @@ export function produceFrame(now: number): PlayerFrame {
   return state.frame;
 }
 
-/** The TV's frame of one view: its storey with its own fog, light and figures. */
-function frameOf(tv: TvView, now: number, activeTokenId: string | null): PlayerFrame {
+/** The TV's terrain while it waits for the DM to take map changes over (E-30): held with `tvMap`. */
+let tvTerrain: TerrainState | null | undefined;
+
+const rasterMemo: { terrain: TerrainState | null; fog: unknown; key: string; blocks: ReadonlyMap<string, RasterBlock>; frame: NonNullable<ProjectionOptions['raster']> | null } = {
+  terrain: null,
+  fog: null,
+  key: '',
+  blocks: new Map(),
+  frame: null,
+};
+
+/**
+ * What of its terrain the TV may know (E-85): worked out again only when the terrain, the fog, the
+ * secret areas, the layers, the storey or the grid changed. Terrain and fog are replaced on every
+ * change, so they compare by identity; areas are changed in place, so the rest compares by content.
+ * Undiscovered secret areas count also when hidden in the scene or on an inactive layer.
+ */
+function tvRasterOf(scene: Scene): NonNullable<ProjectionOptions['raster']> | null {
+  const file = tvMapFile();
+  const terrain = state.tvMapPending && tvTerrain !== undefined ? tvTerrain : file ? terrainOf(file) : null;
+  const active = activeLayers(scene.map.layers, scene.layersOn);
+  const view = {
+    stack: scene.map.storey ?? 'map',
+    activeLayers: scene.map.layers.filter((l) => active.has(l.id)).sort((a, b) => a.height - b.height).map((l) => l.id),
+    shown: [...scene.fog.revealed, ...scene.fog.remembered],
+    hidden: lockedAreas([...scene.zones, ...scene.hidden.zones, ...scene.inactive.zones]),
+    grid: scene.map.grid,
+  };
+  const key = terrain ? JSON.stringify([view.stack, view.activeLayers, view.hidden, view.grid]) : '';
+  if (terrain === rasterMemo.terrain && scene.fog === rasterMemo.fog && key === rasterMemo.key) return rasterMemo.frame;
+  Object.assign(rasterMemo, { terrain, fog: scene.fog, key });
+  if (!terrain) {
+    rasterMemo.blocks = new Map();
+    rasterMemo.frame = null;
+    return null;
+  }
+  const r = tvRaster(terrain, view);
+  rasterMemo.blocks = new Map([...r.values()].map((v) => [v.checksum, v.block]));
+  rasterMemo.frame = { stepFt: terrain.stepFt, palette: [...terrain.biomePalette], blocks: Object.fromEntries([...r].map(([k, v]) => [k, v.checksum])) };
+  return rasterMemo.frame;
+}
+
+/** The terrain blocks the TV's last frame names, by checksum: `pushRaster` sends those it lacks. */
+export function tvRasterBlocks(): ReadonlyMap<string, RasterBlock> {
+  return rasterMemo.blocks;
+}
+
+/** The TV's frame of one view: its storey with its own fog, light and figures; the TV's own carries its terrain. */
+function frameOf(tv: TvView, now: number, activeTokenId: string | null, raster: ProjectionOptions['raster'] = null): PlayerFrame {
   // The picture the scene shows: a variant's or the map's own (E-41).
   return buildPlayerFrame(withPicture(tv.scene), {
     seq: state.frameSeq,
@@ -3190,6 +3256,7 @@ function frameOf(tv: TvView, now: number, activeTokenId: string | null): PlayerF
     assets: assetShapes(drawnPlacements(allPlacements(tv.scene), state.assetInfo, tv.scene.interiorsOn, false), state.assetInfo, tv.scene.map.grid, { effectsOn: tv.scene.effectsOn, runs: tv.runs }),
     covers: assetExtras(tv.scene).covers,
     cut: state.tvCut,
+    raster,
   });
 }
 

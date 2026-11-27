@@ -1173,11 +1173,38 @@ Branch: `feature/procedural-forge-phase-0`.
 
 **Phase 1 bis 10**
 
-- **DC-128 Gelände und Render-Pipeline** (E-46, E-49, E-52, E-60, E-70; dazu aus DC-123 der Einbau des
+- ◐ **DC-128 Gelände und Render-Pipeline** (E-46, E-49, E-52, E-60, E-70; dazu aus DC-123 der Einbau des
   Rasterzustands in Speichern, Öffnen und Rückgängig nach E-84, mit Standard-Biom nach E-78): Stufe, Feinhöhe, Böschung, Klippen (Kontur,
   Band, Lippe, Material, Module), Boden- und Biom-Raster mit Splat-Shader, Schatten und AO, Chunk-Bake und
   Detailstufen, Einweg-Sicht an steilen Stufen, Viertelfeld-Fang, Raster über Bildkarten, Katalog-Vorschau;
   Ribbon-Tab GELÄNDE (E-67).
+  Aufgeteilt in fünf Pakete, jedes vom DM einzeln abgenommen (DM 2026-11-27): a) Raster in Speichern/Öffnen/
+  Rückgängig (E-84) und TV-Anschluss (E-85); b) Tab GELÄNDE mit Stufe, Klippen bei DM und TV, Einweg-Sicht;
+  c) Boden- und Biom-Raster mit Splat-Shader, Higgsfield-Bodentexturen, Pinsel; d) Feinhöhe, Böschung, Schummerung,
+  Schatten/AO; e) Klippen-Material und Module, Chunk-Bake/Detailstufen, Raster über Bildkarten, Katalog-Vorschau.
+  ✓ **a)** `app/terrain.ts` hält je Kartendatei den dekodierten Rasterzustand: beim Öffnen aus dem Dokument
+  genommen (Ansichten, Dokumente und Rückgängig tragen nie Base64), bei jedem Schreiben der Kartendatei wieder
+  eingesetzt, kodiert werden nur geänderte Blöcke; Kopieren einer Karte nimmt es mit. Rückgängig/Wiederholen
+  führen den Zustand mit (unveränderliche Blöcke, geteilt). Ein nicht lesbares Gelände (DM 2026-11-27): Karte öffnet
+  ohne Gelände, schreibgeschützt, Hinweis im Protokoll (`log.terrainBroken`), die Datei wird nie überschrieben.
+  TV: der Frame der TV-Szene nennt Schrittweite, Biom-Palette und je erkundetem Block eine Prüfsumme, die Blöcke
+  gehen vor jedem Frame über `pushRaster` hinaus (nur fehlende). Gerechnet wird nur bei neuem Raster, neuem Nebel
+  oder geänderten geheimen Bereichen, Ebenen, Stockwerk, Raster-Einmessung (Bereiche werden an Ort und Stelle
+  geändert, daher nach Inhalt verglichen). Als geheim zählen auch ausgeblendete Bereiche und solche auf
+  inaktiven Ebenen. Wartet eine Kartenänderung auf „Auf den TV“ (E-30), bleibt auch das Gelände des TV beim alten
+  Stand. Stockwerke darunter bekommen noch kein Raster (`raster: null`). Tests (Öffnen, Speichern mit
+  unveränderten Blöcken, Rückgängig/Wiederholen mit geteilten Blöcken, kaputtes Gelände, Kopie, TV-Frame nur
+  Erkundetes samt Rand, Warten auf „Auf den TV“, ohne Gelände kein Raster). In der echten App (eigenes Profil,
+  Test-Wurzelordner) geprüft: Öffnen, Ändern, Speichern mit dem Chromium-Kompressor, Rücklesen, Rückgängig und
+  Wiederholen; TV-Raster im Renderer 9 ms beim ersten Mal, danach 0 ms aus dem Zwischenspeicher. Das TV-Fenster
+  selbst nicht (Vollbild auf einem Bildschirm des DM; sichtbar wird Gelände erst mit b). Beobachtet: der
+  Renderer der Entwickler-App hängt nach dem Wechsel in den Spielbereich mit TV-Szene bei voller CPU – ebenso
+  auf dem Stand vor a), also älter; zum Untersuchen notiert.
+  Nach dem Review: die Sperre für ein kaputtes Gelände hält jetzt, bis die Karte neu geöffnet wird (vorher hob
+  jedes erneute Lesen der Datei – Katalog, Szene laden, Export – sie auf, und das nächste Speichern hätte das
+  Gelände gelöscht); Rückgängig im Szenen-Layer lässt das Gelände in Ruhe (es hätte eine Änderung aus einem anderen
+  Tab zurückgedreht); eine neue Szene auf einer offenen Karte nimmt deren Stand samt Gelände; die Kopie einer
+  Karte mit kaputtem Gelände nimmt es so mit, wie es in der Datei steht. Tests: 10.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

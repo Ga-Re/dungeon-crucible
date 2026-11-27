@@ -1,4 +1,4 @@
-// Fails the build when the table window bundle can reach DM-side code.
+// Fails the build when the table window bundle – or a worker it starts – can reach DM-side code.
 // The table must only contain the frame renderer, never scene, store or sample data.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,6 +17,8 @@ while (queue.length) {
   const code = readFileSync(join(dist, file), 'utf8');
   for (const word of FORBIDDEN) if (code.includes(word)) problems.push(`${file} contains "${word}"`);
   for (const m of code.matchAll(/(?:from|import\()\s*["']\.\/([^"']+\.js)["']/g)) queue.push(`assets/${m[1]}`);
+  // Workers it starts (`new URL("/assets/x.js", import.meta.url)`) run its code too (E-53).
+  for (const m of code.matchAll(/new URL\(\s*[`"']\/?(assets\/[^`"']+\.js)[`"']/g)) queue.push(m[1]);
 }
 if (problems.length) {
   console.error('Table bundle check FAILED:\n  ' + problems.join('\n  '));

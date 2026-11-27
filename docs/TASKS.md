@@ -1089,8 +1089,20 @@ Branch: `feature/procedural-forge-phase-0`.
   Kartendatei. Tests: 22 Kern-Tests, Rettungskopie und Übernahme, Dateigröße. Der Einbau in Speichern/Öffnen/
   Rückgängig folgt mit DC-128 (E-84). Beobachtet beim Prüfen: ein lange verdecktes App-Fenster hängt mit voller
   CPU im nativen Teil (auch auf `main`) – zum Beobachten am Tisch notiert.
-- **DC-124 Worker-Pool und Scheduler** (E-53): Transferables, Dirty je Block mit Halo, veraltete Jobs verwerfen,
+- ✓ **DC-124 Worker-Pool und Scheduler** (E-53): Transferables, Dirty je Block mit Halo, veraltete Jobs verwerfen,
   Worker-taugliche Malbasis (OffscreenCanvas).
+  Erledigt: `core/build/derive/scheduler.ts` (Halo in Feldern → Blöcke, geänderte Blöcke mit Nachbarn auch ins
+  Negative, Reihenfolge nach Nähe zum Ausschnitt, Generationen je Block: ein veralteter Auftrag liefert nie).
+  `src/derive/` (außerhalb `app/`, weil der TV dieselbe Optik rechnet, E-61): `pool.ts` (Kerne − 1, höchstens 4;
+  Auftrag an den am wenigsten belegten Worker; Ergebnisse als Transferables, Eingaben als Kopie – die Blöcke des
+  Hauptthreads bleiben unversehrt; ein abstürzender Worker lehnt seine Aufträge ab und wird ersetzt), `jobs.ts`
+  (reine Aufträge: Patches über einen Block legen, schematische Blockvorschau; Eingaben werden an der Grenze
+  geprüft, jeder Fehler kommt als Antwort), `worker.ts`. `render/paint/surface.ts`: Zeichenfläche als
+  OffscreenCanvas ohne DOM, Bild als übertragbares ImageBitmap. Die Tisch-Bundle-Prüfung folgt jetzt auch
+  Worker-Dateien (`new URL(…, import.meta.url)`; mit einem Probe-Build in beide Richtungen geprüft). CSP und Header
+  unverändert (Modul-Worker aus `'self'`). Geprüft: Tests (Scheduler, Aufträge, Pool mit Ersatz-Worker), in der
+  echten App ein Worker mit beiden Aufträgen über die DevTools (19 ms, Bitmap 32 × 32, Fehlerfall). Genutzt ab DC-128
+  (wie E-84).
 - **DC-125 TV-Frame v6** (E-61; Version 6 hat DC-122 schon vergeben – ohne `drawn`, mit `drawnOrigin` –, die
   Raster-Blöcke kommen auf diesem Branch dazu): Raster-Blöcke nur bei Änderung mit Prüfsumme, gefiltert nach Ebene, Stockwerk und
   geheimen Bereichen; Projektionstests je neuer Absicht-Art; fail-closed.

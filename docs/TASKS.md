@@ -1207,7 +1207,7 @@ Branch: `feature/procedural-forge-phase-0`.
   Tab zurückgedreht); eine neue Szene auf einer offenen Karte nimmt deren Stand samt Gelände; die Kopie einer
   Karte mit kaputtem Gelände nimmt es so mit, wie es in der Datei steht. Tests: 10.
   **Abgenommen vom DM (2026-11-27).**
-  ◐ **b)** (E-87) Texturen je Biom (Band und Boden, Higgsfield, abgenommen per Vergleichsbild) als WebP-Slots;
+  ✓ **b)** (E-87) Texturen je Biom (Band und Boden, Higgsfield, abgenommen per Vergleichsbild) als WebP-Slots;
   Karte v15 mit `cliffPerspective` (0,2–1,0, Standard 0,45; v14 wird ohne Änderung hochgestuft), Regler in den
   Karteneinstellungen gezeichneter Karten. `core/build/terrain/cliffs.ts`: alle Stufenwechsel in einem Durchlauf je
   Block, mehrere Stufen auf einmal als eine hohe Klippe, sonst Terrassen; Linien mit Rauschen nach Weltposition
@@ -1235,6 +1235,8 @@ Branch: `feature/procedural-forge-phase-0`.
   (DM und TV verdrängen sich nicht). Am TV heißt ein nicht gesendeter Punkt ausdrücklich „unbekannt“ (Stufe −128,
   E-85 unverändert: nichts Verborgenes): sonst entstanden am Rand des Bekannten Klippen, die es nicht gibt;
   teilweise erkundete leere Blöcke teilen deshalb keine Prüfsumme mehr, ganz erkundete weiter. Tests: 808.
+  **Abgenommen vom DM (2026-11-27)**, auch die Vorschau-Wahl im Panel „Stufe“ (je Gerät) statt eines
+  Einstellungsdialogs.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

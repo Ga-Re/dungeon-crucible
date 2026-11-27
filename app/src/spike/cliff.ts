@@ -116,7 +116,8 @@ const strata = () =>
 const patches = () =>
   canvasTexture(512, 4, (g) => {
     for (let x = 0; x < 512; x++) {
-      const cap = 128 + tileNoise(x, 0, 64, 512, 201) * 127;
+      // Fine enough for small caps here and there (DM 2026-11-27: not long stretches of bare rock).
+      const cap = 128 + tileNoise(x, 0, 16, 512, 201) * 127;
       g.fillStyle = `rgb(${cap},0,0)`;
       g.fillRect(x, 0, 1, 4);
     }
@@ -213,7 +214,7 @@ out vec4 finalColor;
 void main() {
   vec3 c = texture(uTexture, SAMPLE).rgb;
   float p = texture(uPatch, vec2(vUV.x * 0.35, 0.5)).r;
-  float cap = smoothstep(0.52, 0.6, p) * (1.0 - smoothstep(0.16, 0.32, vUV.y));
+  float cap = smoothstep(0.66, 0.72, p) * (1.0 - smoothstep(0.1, 0.22, vUV.y));
   c = mix(c, vec3(0.86, 0.80, 0.66) + (c - 0.55) * 0.35, cap);
   float foot = mix(1.0, 0.55, vUV.y * vUV.y);
   finalColor = vec4(c * LIGHT * foot, 1.0);
@@ -240,7 +241,7 @@ void main() {
   vec3 c = texture(uTexture, vec2(vUV.x * 1.6, vUV.y * 0.15)).rgb;
   float tuft = texture(uTexture, vec2(vUV.x * 18.0, 0.5)).g;
   float reach = 0.25 + 0.75 * smoothstep(0.42, 0.62, tuft);
-  float bare = smoothstep(0.5, 0.58, texture(uPatch, vec2(vUV.x * 0.35, 0.5)).r);
+  float bare = smoothstep(0.62, 0.68, texture(uPatch, vec2(vUV.x * 0.35, 0.5)).r);
   float a = (1.0 - smoothstep(reach - 0.18, reach, vUV.y)) * (1.0 - bare);
   finalColor = vec4(c * (0.82 + 0.18 * (1.0 - vUV.y)) * a, a);
 }`;

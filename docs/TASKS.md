@@ -1163,6 +1163,8 @@ Branch: `feature/procedural-forge-phase-0`.
   gehalten), sanfteres Licht.
   Schritt 6 (DM: das weiche Auslaufen am Fuß sieht nicht gut aus): wieder entfernt – der Fuß ist überall eine klare
   Kante mit Fuß-AO; Steinkappen und Schichtvarianz bleiben.
+  Schritt 7 (DM: blanker Fels oben nicht so durchgängig, kleinere Flächen hier und da): feineres Fleckenmuster, höhere
+  Schwelle, Kappen reichen weniger tief.
 
 **Phase 1 bis 10**
 

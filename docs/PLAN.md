@@ -65,9 +65,10 @@ mit vergleichbaren Tools, Architekturvorschlag und Roadmap. Offene Entscheidunge
 - Hindernisse für 2D-Raycasting: Wände, Türen, Geheimtüren, Objekte (Fels, Baum, Statue als Polygon), Fenster (sichtdurchlässig, nicht passierbar) und Einweg-Wände
 - Assets platzieren (Stempel), Ebenen mit Sichtbarkeit
 - Nebel-Startzustand je Karte vorbereiten
-- Gezeichnete Karten (E-33–E-36): Mauern, Türen/Fenster, Klippen, Wasser, Böden, 2,5D; lebendige Darstellung ohne
-  sichtbare Wiederholung (Varianten, Rauschen, Splines) und ein Generator (Fläche füllen, ganze Karte: Dungeon und
-  Höhle per WFC/Cellular Automata, Live-Regler, Einbacken beim Übernehmen)
+- Gezeichnete Karten: **prozedurale Kartenschmiede** nach `docs/KARTENSCHMIEDE-PROZEDURAL.md` (E-46–E-77, DC-121 ff.)
+  – Höhenstufen mit Klippen, Wasser, Fels und Dungeons als Raster, Wandlinien, Bézier-Wege, Regel-Streuung und eine
+  neue Render-Pipeline für DM und TV. Ersetzt die gezeichneten Mauern, Klippen, Wasser, Böden, Räume und den
+  Generator aus E-33–E-36 und E-45; der Generator kommt später neu (E-66).
 
 ### 2.2 Asset-Vault (E-27)
 - Katalog aller Bibliotheksdateien außer Karten und Kreaturen: Props, Kartenteile, Texturen, Effekte (animiert), Lichtquellen, Geräusche, Handouts – Vorschau-Raster, Suche, Filter, Sammlungen, Favoriten, Mehrfachauswahl

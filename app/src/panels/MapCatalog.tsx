@@ -15,9 +15,6 @@ import {
   createDrawnMap, duplicateLibraryMap, mapIsOpen, mapUsage, openLibraryMap, refreshLibraryMaps, selectCatalogMap, setMapFilter, trashBlocked, trashLibraryMap, updateLibraryMap, type LibraryMap, type MapUsage,
 } from '../app/library';
 import { useThumbnail } from './VaultPanels';
-import { GenerateMapDialog } from '../app/GenerateMapDialog';
-import { drawingPreview } from '../render/drawnMap';
-import { buildTextures } from '../render/build/textures';
 
 function useTypeLabel() {
   const { t } = useI18n();
@@ -41,7 +38,6 @@ export function MapCatalogView() {
   const thumbPx = useStore((s) => s.vault.thumbPx);
   const shown = useShownMaps();
   const [menu, setMenu] = useState<{ mapFile: string; x: number; y: number } | null>(null);
-  const [generating, setGenerating] = useState(false);
   useEffect(() => {
     void refreshLibraryMaps();
   }, []);
@@ -51,8 +47,6 @@ export function MapCatalogView() {
         <input type="search" value={filter.query ?? ''} placeholder={t('library.search')} aria-label={t('library.search')} onChange={(e) => setMapFilter({ query: e.target.value })} />
         <span className="hint">{t('mapCatalog.count', { n: shown.length, total: maps.length })}</span>
         <button className="btn sm" onClick={() => void createDrawnMap(t('mapCatalog.drawnName'))}><Icon name="wall" />{t('mapCatalog.newDrawn')}</button>
-        <button className="btn sm" onClick={() => setGenerating(true)}><Icon name="dice" />{t('mapCatalog.generate')}</button>
-        {generating && <GenerateMapDialog onClose={() => setGenerating(false)} />}
       </div>
       {maps.length === 0 ? (
         <p className="vault-empty hint">{t('library.empty')}</p>
@@ -75,29 +69,14 @@ export function MapCatalogView() {
   );
 }
 
-/** A picture's thumbnail, or a drawn map's (E-33) preview painted from its walls. */
+/** A picture's thumbnail, or a drawn map's (E-33) sign. */
 function MapThumb({ map }: { map: LibraryMap }) {
-  return map.drawn ? <DrawnThumb map={map} /> : <PictureThumb map={map} />;
+  return map.drawn ? <DrawnThumb /> : <PictureThumb map={map} />;
 }
 
-const drawnPreviews = new Map<string, string>();
-
-function DrawnThumb({ map, className }: { map: LibraryMap; className?: string }) {
-  const key = `${map.mapFile}:${map.mtimeMs}`;
-  const [url, setUrl] = useState<string | null>(drawnPreviews.get(key) ?? null);
-  useEffect(() => {
-    if (!map.drawing || drawnPreviews.has(key)) return;
-    let live = true;
-    void buildTextures().then((tex) => {
-      const src = drawingPreview(map.drawing!, map.cellPx ?? 70, tex, 320).toDataURL('image/webp', 0.8);
-      drawnPreviews.set(key, src);
-      if (live) setUrl(src);
-    });
-    return () => {
-      live = false;
-    };
-  }, [key, map.drawing, map.cellPx]);
-  return url ? <img className={className} src={url} alt="" draggable={false} /> : <Icon name="wall" />;
+/** A drawn map: the wall sign until the new pipeline paints its preview (DC-128). */
+function DrawnThumb() {
+  return <Icon name="wall" />;
 }
 
 function PictureThumb({ map }: { map: LibraryMap }) {
@@ -245,7 +224,7 @@ export function MapDetails() {
   return (
     <div className="panel-body vault-props">
       <div className="sec">{t('panel.map')}</div>
-      {map.drawn ? <DrawnThumb map={map} className="map-catalog-preview" /> : <MapPreview map={map} />}
+      {map.drawn ? <DrawnThumb /> : <MapPreview map={map} />}
       <DetailText label={t('props.name')} value={map.name} disabled={!editable} onCommit={(v) => v.trim() && void updateLibraryMap(mapFile, { name: v.trim() })} />
       <div className="row">
         <label htmlFor="mc-type">{t('mapSettings.type')}</label>

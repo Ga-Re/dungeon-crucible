@@ -15,10 +15,8 @@ import { stairsOn } from './stairs';
 import { tokensVisibleToPlayers, type LitSource } from './vision';
 import { intersection } from 'polyclip-ts';
 import { asGeom, fromClip } from './poly/polygon-clip';
-import { drawingSchema, playerDrawing } from './build/playerDrawing';
-import { sceneMap } from './build/sceneDrawing';
 
-export const FRAME_VERSION = 5;
+export const FRAME_VERSION = 6;
 
 /** How dark unlit areas look on a dark map (darkvision sees them, dimmed). */
 export const DARKNESS = 0.45;
@@ -74,8 +72,8 @@ export const StoreyFrameSchema = z.object({
       feetPerCell: z.number().positive(),
     }),
     showGrid: z.boolean(),
-    /** A map's drawn walls (E-33), only what players may know (`playerDrawing`). */
-    drawn: drawingSchema.nullable(),
+    /** A drawn map (E-33): where its area starts (it has no picture); null for a picture or video map. */
+    drawnOrigin: z.object({ x: z.number(), y: z.number() }).nullable(),
     /** How the picture is cut and adjusted (E-42); its turn is in `rotation`. Numbers only. */
     look: z.object({ crop: z.object({ x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }).optional(), adjust: z.object({ brightness: z.number(), contrast: z.number(), saturation: z.number(), hue: z.number() }).optional() }).optional(),
   }),
@@ -192,7 +190,7 @@ export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFram
       seedKey: o.seedKey,
       grid: { type: g.type, cellWidth: g.cellWidth, cellHeight: g.cellHeight, originX: g.originX, originY: g.originY, rotationDeg: g.rotationDeg, feetPerCell: g.feetPerCell },
       showGrid: o.showGrid,
-      drawn: playerDrawing(sceneMap(scene), scene.masonryDoorsOpen, scene.layersOn, scene.zones),
+      drawnOrigin: scene.map.drawn ? { x: scene.map.origin?.x ?? 0, y: scene.map.origin?.y ?? 0 } : null,
       ...(scene.map.look?.crop || scene.map.look?.adjust ? { look: { ...(scene.map.look.crop ? { crop: { ...scene.map.look.crop } } : {}), ...(scene.map.look.adjust ? { adjust: { ...scene.map.look.adjust } } : {}) } } : {}),
     },
     fog: {

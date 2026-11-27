@@ -153,14 +153,9 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
       if (f.seq !== lastSeq) {
         lastSeq = f.seq;
         const cell = f.map.grid.cellWidth;
-        // A drawn map (E-33) has no picture: its drawing is its picture; else it lies over the picture.
-        const d = f.map.drawn;
-        r.setWater(d && d.waterAnimated && d.waters.length ? { waters: d.waters, cliffs: d.cliffs, cell } : null);
-        if (f.map.imageUrl === null && f.map.drawn) void map?.setDrawn(f.map.drawn, cell);
-        else {
-          void map?.set(f.map.imageUrl, f.map.isVideo, f.map.look);
-          void map?.setOver(f.map.drawn, cell);
-        }
+        // A drawn map (E-33) has no picture: only its area.
+        if (f.map.drawnOrigin) map?.setDrawn({ origin: f.map.drawnOrigin, width: f.map.widthPx, height: f.map.heightPx });
+        else void map?.set(f.map.imageUrl, f.map.isVideo, f.map.look);
         r.setGrid(f.map.showGrid && f.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: f.map.grid.originX, offsetYPx: f.map.grid.originY, color: '#000000', alpha: 0.35 } : null);
         // Stairs (E-44) as pictures drawn here from their place – under the fog like the assets.
         r.setAssets([...stairShapes(f.stairs ?? []), ...f.assets.map((a, i) => ({ ...a, id: `asset-${i}` }))]);

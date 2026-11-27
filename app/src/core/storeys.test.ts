@@ -12,26 +12,23 @@ function storeyMap(): MapSidecar {
   const forge = createSampleScene();
   forge.walls = [...forge.walls, { id: 'up-wall', kind: 'wall', x1: 0, y1: 0, x2: 70, y2: 0, storey: 'up' }];
   forge.map.storeys = [{ id: 'up', name: 'Upstairs', level: 1, footprint: [] }];
-  forge.map.masonry = [...forge.map.masonry, { id: 'up-tower', points: [{ x: 0, y: 0 }, { x: 140, y: 0 }, { x: 140, y: 140 }], closed: true, style: 'dungeon-stone', thickness: 14, seed: 1, storey: 'up' }];
   return MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(forge, 'builtin:crypt'))));
 }
 
 describe('storeys (DC-020)', () => {
-  it('a view shows one storey: its walls, drawing and figures; the others are put aside', () => {
+  it('a view shows one storey: its walls and figures; the others are put aside', () => {
     const map = storeyMap();
     const ground = sceneFromDocuments(map, null, null);
     expect(ground.walls.some((w) => w.id === 'up-wall')).toBe(false);
     expect(ground.inactive.walls.some((w) => w.id === 'up-wall')).toBe(true);
-    expect(ground.map.masonry.some((w) => w.id === 'up-tower')).toBe(false);
     const up = sceneFromDocuments(map, null, null, undefined, 'scene', 'up');
     expect(up.map.storey).toBe('up');
     expect(up.walls.map((w) => w.id)).toEqual(['up-wall']);
-    expect(up.map.masonry.map((w) => w.id)).toEqual(['up-tower']);
     // An unknown storey shows the map itself.
     expect(sceneFromDocuments(map, null, null, undefined, 'scene', 'gone').map.storey).toBeUndefined();
   });
 
-  it('saving from a storey keeps everything: walls, drawing, figures and fog of every storey', () => {
+  it('saving from a storey keeps everything: walls, figures and fog of every storey', () => {
     const map = storeyMap();
     const base = sceneFromDocuments(map, null, null);
     base.tokens = createSampleScene().tokens;
@@ -51,7 +48,6 @@ describe('storeys (DC-020)', () => {
     expect(back.storeyFogs!.up).toEqual(fogOver(700));
     const saved = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(up, 'builtin:crypt', 'scene', map))));
     expect(saved.walls.length).toBe(map.walls.length);
-    expect(saved.masonry.length).toBe(map.masonry.length);
   });
 
   it('the Map Forge paints a storey\'s start fog on it; the map\'s own stays', () => {
@@ -62,7 +58,6 @@ describe('storeys (DC-020)', () => {
     expect(saved.storeys[0].startFog).toEqual(fogOver(140));
     expect(saved.startFog).toEqual(map.startFog);
     expect(saved.walls.length).toBe(map.walls.length);
-    expect(saved.masonry.length).toBe(map.masonry.length);
     // A new scene starts the storey with that fog.
     expect(sceneFromDocuments(saved, null, null, undefined, 'scene', 'up').fog).toEqual(fogOver(140));
   });
@@ -80,21 +75,6 @@ describe('storeys (DC-020)', () => {
 });
 
 describe('storeys: kept across views (DC-020 review)', () => {
-  it('a drawn door opened on a storey stays open after saving from another storey', () => {
-    const forge = createSampleScene();
-    forge.map.storeys = [{ id: 'up', name: 'Up', level: 1, footprint: [] }];
-    forge.map.masonry = [{ id: 'upwall', points: [{ x: 0, y: 0 }, { x: 140, y: 0 }], closed: false, style: 'dungeon-stone', thickness: 14, seed: 1, storey: 'up' }];
-    forge.map.masonryDoors = [{ id: 'updoor', wall: 'upwall', at: 70, width: 50, secret: false, crack: false }];
-    const map = MapSidecarSchema.parse(JSON.parse(JSON.stringify(mapSidecarFromScene(forge, 'builtin:crypt'))));
-    const up = sceneFromDocuments(map, null, null, undefined, 'scene', 'up');
-    up.masonryDoorsOpen = { updoor: true };
-    const ov1 = SceneOverrideSchema.parse(JSON.parse(JSON.stringify(sceneOverrideFromScene(up, 'S', PATH, { round: 1, turn: 0 }, map))));
-    expect(ov1.doors.updoor).toBe(true);
-    const ground = sceneFromDocuments(map, ov1, null);
-    const ov2 = sceneOverrideFromScene(ground, 'S', PATH, { round: 1, turn: 0 }, map);
-    expect(ov2.doors.updoor).toBe(true);
-  });
-
   it('figures on a storey the map no longer has never show on the map itself, and are kept', () => {
     const map = storeyMap();
     const base = sceneFromDocuments(map, null, null);

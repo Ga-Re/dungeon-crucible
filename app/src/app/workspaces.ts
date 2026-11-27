@@ -41,35 +41,6 @@ export interface WorkspaceDef {
   layout: DefaultLayout;
 }
 
-/**
- * Drawn walls, doors, cliffs, water and floors (E-33): in the Map Forge they are the map's, in the
- * Game Orchestrator the scene's own (DC-107c).
- */
-const buildTools: RibbonTab = {
-  label: 'tab.build',
-  groups: [
-    {
-      label: 'group.build',
-      buttons: [
-        { id: 'tool:build-edit', icon: 'select', label: 'tool.buildEdit', tool: 'build-edit' },
-        { id: 'build:wall', icon: 'wall', label: 'tool.buildWall' },
-        { id: 'build:door', icon: 'door', label: 'tool.buildDoor' },
-        { id: 'build:cliff', icon: 'cliff', label: 'tool.buildCliff' },
-        { id: 'build:water', icon: 'water', label: 'tool.buildWater' },
-        { id: 'build:floor', icon: 'brush', label: 'tool.buildFloor' },
-        { id: 'build:generate', icon: 'dice', label: 'tool.buildGenerate' },
-      ],
-    },
-    { label: 'group.grid', buttons: [{ id: 'toggle:snap', icon: 'magnet', label: 'tool.snap' }] },
-  ],
-};
-
-/** The Map Forge's "Build" tab: rooms too (E-45) – they belong to the map, a scene has none of its own. */
-const forgeBuildTools: RibbonTab = {
-  ...buildTools,
-  groups: buildTools.groups.map((g, i) => (i === 0 ? { ...g, buttons: [...g.buttons.slice(0, 2), { id: 'build:room', icon: 'floorplan', label: 'tool.buildRoom' }, ...g.buttons.slice(2)] } : g)),
-};
-
 const view: RibbonGroup = {
   label: 'group.view',
   buttons: [
@@ -175,7 +146,6 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
           { label: 'group.check', buttons: [{ id: 'leak:check', icon: 'eye', label: 'tool.leakCheck' }] },
         ],
       },
-      forgeBuildTools,
       fogTools,
     ],
     layout: { center: 'map', left: ['browser', 'assets'], right: ['properties', 'fog'], bottom: ['log'] },
@@ -247,7 +217,6 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
           },
         ],
       },
-      buildTools,
       fogTools,
       {
         label: 'tab.spells',

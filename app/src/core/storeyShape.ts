@@ -1,22 +1,16 @@
 /**
  * Storeys (DC-020, E-40): the area a storey covers and the storeys beneath it. A storey covers
- * what its closed walls enclose, its floors and the area drawn for it by hand; outside it, the
- * storey below shows (blurred). The map itself covers everything, so nothing beneath it shows. Pure.
+ * the area drawn for it by hand (from the rasters again with DC-129); outside it, the storey below
+ * shows (blurred). The map itself covers everything, so nothing beneath it shows. Pure.
  */
 import { union, type Geom } from 'polyclip-ts';
-import type { FloorPatch } from './build/floors';
-import type { Masonry } from './build/masonry';
 import { asGeom, fromClip } from './poly/polygon-clip';
 import type { Polygon } from './poly/types';
 import type { MapStorey } from './sidecar';
 
-/** The area `storey` covers (map px), from its closed walls, floors and hand-drawn footprint. */
-export function storeyFootprint(storey: MapStorey, masonry: readonly Masonry[], floors: readonly FloorPatch[]): Polygon[] {
-  const parts: Polygon[] = [
-    ...masonry.filter((w) => w.storey === storey.id && w.closed && w.points.length >= 3).map((w) => ({ outer: w.points.map((p) => [p.x, p.y] as [number, number]), holes: [] })),
-    ...floors.filter((f) => f.storey === storey.id).flatMap((f) => f.shape),
-    ...storey.footprint,
-  ];
+/** The area `storey` covers (map px): its hand-drawn footprint, joined. */
+export function storeyFootprint(storey: MapStorey): Polygon[] {
+  const parts: Polygon[] = [...storey.footprint];
   if (!parts.length) return [];
   try {
     return fromClip(union(asGeom([parts[0]]) as Geom, ...parts.slice(1).map((p) => asGeom([p]) as Geom)) as [number, number][][][]);

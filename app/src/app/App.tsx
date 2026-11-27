@@ -16,7 +16,6 @@ import {
   clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, startCalibration, setLeakCheck, startLookCommand, cancelLookCommand, startWallCommand, redo, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { stopAll } from './soundboard';
-import { startBuildCommand } from './build';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
 import { startMapSound } from './mapSound';
 import { closeCampaign, closeTab, importMapIntoCampaign, newCreature, newSceneOnMap, putOnTv, refreshRoot, saveCampaign, setEditStart, showTab, startAutosave } from './campaign';
@@ -161,13 +160,6 @@ function Ribbon() {
     if (b.id === 'walls:draw') return tool === 'wall';
     if (b.id === 'leak:check') return flags.leakCheck;
     if (b.id === 'map:look') return flags.look;
-    if (b.id === 'build:wall') return tool === 'build-wall';
-    if (b.id === 'build:door') return tool === 'build-door';
-    if (b.id === 'build:cliff') return tool === 'build-cliff';
-    if (b.id === 'build:water') return tool === 'build-water';
-    if (b.id === 'build:floor') return tool === 'build-floor';
-    if (b.id === 'build:generate') return tool === 'build-generate';
-    if (b.id === 'build:room') return tool === 'build-room';
     if (b.id === 'grid:calibrate') return tool === 'calibrate';
     return false;
   };
@@ -198,13 +190,6 @@ function Ribbon() {
       case 'fog:revealAll': return fogAll(true);
       case 'walls:draw': return startWallCommand();
       case 'leak:check': return setLeakCheck(!state.leakCheck);
-      case 'build:wall': return startBuildCommand('wall');
-      case 'build:door': return startBuildCommand('door');
-      case 'build:cliff': return startBuildCommand('cliff');
-      case 'build:water': return startBuildCommand('water');
-      case 'build:floor': return startBuildCommand('floor');
-      case 'build:generate': return startBuildCommand('generate');
-      case 'build:room': return startBuildCommand('room');
       case 'grid:calibrate': return startCalibration();
       case 'vault:import': return void importVaultAssets();
       case 'vault:pack': return void startPackImport();

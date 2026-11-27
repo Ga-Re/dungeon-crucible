@@ -144,6 +144,7 @@ Eingetragen in `docs/TASKS.md` §1 (Nachtrag 2026-11-27). „Ersetzt“ heißt: 
 - `render/{cliffsPaint,waterPaint,detailsPaint}.ts`, der Mal-Teil von `render/drawnMap.ts`, `render/pixi/water-layer.ts`
 - `app/GenerateMapDialog.tsx`, Ribbon-Knöpfe `build:wall`, `build:door`, `build:cliff`, `build:water`, `build:floor`, `build:generate`, `build:room`
 - Weiterverwendet und nicht entfernt: `handDrawn.ts` (`noise2`), `variance.ts`, `strokes.ts`, `editing.ts` (Linien-Werkzeuge für Wandlinien), `dirty.ts`, `sight.ts`, `sceneDrawing.ts`, `playerDrawing.ts`. Die letzten drei werden umgebaut.
+- **Geändert mit E-82 (DC-122):** `dirty.ts`, `sight.ts`, `sceneDrawing.ts` und `playerDrawing.ts` sind gelöscht und kommen neu mit DC-124, DC-125 und DC-129. Von `handDrawn.ts` bleiben `noise2` und `jitterRing`, von `variance.ts` `hashNoise`, `periodicNoise`, `variantBlobs` und `lineStrips`; `editing.ts` ist generisch (Linien ohne Tür-Kopplung). Der Tab „Bauen“ entfällt bis DC-129, „Neue gezeichnete Karte“ bleibt.
 
 **Neu aufzubauen auf dem Raster** (nicht vergessen):
 

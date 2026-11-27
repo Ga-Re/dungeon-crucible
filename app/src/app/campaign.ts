@@ -31,7 +31,7 @@ import { addRecent, loadRecent, saveRecent } from './recent';
 import type { WorkspaceId } from './store';
 import { createSampleScene } from '../sample/crypt';
 import { SAMPLE_CREATURES } from '../sample/creatures';
-import { setPictureResolver, activateSession, buildHooks, checkpoint, clearTabs, subscribe, closeCreatureTab, closeSessionTab, markDirty, openCreatureTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, fadeTvIn, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
+import { setPictureResolver, activateSession, checkpoint, clearTabs, subscribe, closeCreatureTab, closeSessionTab, markDirty, openCreatureTab, commitView, emit, isSceneOpen, latestMap, layerFor, log, mapTabId, onDirty, openSceneDoc, refreshView, replaceScene, sessionSaved, fadeTvIn, setTvScene, setWorkspace, showLayer, soundScene, state, unsavedSessions } from './store';
 import { applySceneAmbience, refreshAudioFiles, stopAll } from './soundboard';
 
 const AUTOSAVE_MS = 1500;
@@ -707,21 +707,15 @@ let running: Promise<void> | null = null;
 
 export async function saveCampaign(force = false): Promise<void> {
   while (running) await running;
-  // A generator preview is parked while saving (DC-119d): it never reaches the disk.
-  const unpark = buildHooks.parkPreview?.() ?? null;
+  // The tabs are kept with every save, also when nothing else changed (a tab switched).
+  keepTabs();
+  const unsaved = unsavedSessions();
+  if (!state.campaign || (!state.dirty && !force && !unsaved.length)) return;
+  running = writeCampaign(unsaved);
   try {
-    // The tabs are kept with every save, also when nothing else changed (a tab switched).
-    keepTabs();
-    const unsaved = unsavedSessions();
-    if (!state.campaign || (!state.dirty && !force && !unsaved.length)) return;
-    running = writeCampaign(unsaved);
-    try {
-      await running;
-    } finally {
-      running = null;
-    }
+    await running;
   } finally {
-    unpark?.();
+    running = null;
   }
 }
 
@@ -855,7 +849,7 @@ async function mapOf(resource: string, sidecar: MapSidecar | null): Promise<{ ma
     url,
     map: {
       kind: 'map', schemaVersion: MAP_VERSION, name, resource, isVideo, widthPx: w, heightPx: h,
-      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], sounds: [], variants: [], storeys: [], stairs: [], rooms: [], ambient: 'dark', masonry: [], masonryDoors: [], cliffs: [], waters: [], waterAnimated: true, lightAngle: 45, autoShore: true, autoGrowth: true, floors: [],
+      tags: [], biome: '', mapType: 'dungeon', fogBiome: 'nebel', fogStrength: 1, grid: { ...DEFAULT_GRID }, layers: [], walls: [], zones: [], pois: [], assets: [], lights: [], sounds: [], variants: [], storeys: [], stairs: [], ambient: 'dark', waterAnimated: true, lightAngle: 45,
     },
   };
 }

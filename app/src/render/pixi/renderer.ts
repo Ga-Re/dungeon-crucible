@@ -13,7 +13,6 @@ import {
   Sprite,
   Text,
   Texture,
-  type TextureSource,
   UniformGroup,
   WebGLRenderer,
 } from "pixi.js";
@@ -29,7 +28,6 @@ import {
 import type { Camera, Size } from "./camera";
 import { disposeFog } from "./fog-dispose";
 import { shiftGrid, shiftLighting, shiftPolygons, ZERO, type Origin } from "./origin";
-import { buildWaterLayer, type WaterHandle, type WaterScene } from "./water-layer";
 import { easeOut, fadeProgress } from "./fog-fade";
 import { mapTiles } from "./map-tiles";
 import {
@@ -51,28 +49,19 @@ import { softFogAlpha } from "./soft-mask";
 import { createVideoGate, cssTransform, sameAspect } from "./video-layer";
 
 /** An image the browser has loaded (or drawn), ready to become the map texture. */
-export type MapImage = HTMLImageElement | HTMLCanvasElement | ImageBitmap | PaintedImage;
+export type MapImage = HTMLImageElement | HTMLCanvasElement | ImageBitmap | BlankArea;
 
 /**
- * Dungeon Crucible (E-33): a map picture that paints itself region by region (a drawn map) –
- * however large, it never exists as one canvas: each GPU tile is painted on its own.
+ * Dungeon Crucible (E-33): a drawn map's area with nothing painted on it – only its size, so
+ * grid, light, memory and fog have their place. No texture is made for it.
  */
-export interface PaintedImage {
+export interface BlankArea {
+  readonly blank: true;
   readonly width: number;
   readonly height: number;
-  /** Paints the region left…left+width × top…top+height of the picture at 0, 0 of `context`. */
-  paint(context: CanvasRenderingContext2D, left: number, top: number, width: number, height: number): void;
 }
 
-const isPainted = (image: MapImage): image is PaintedImage => "paint" in image;
-
-/** The tiles of a painted picture (E-33), kept so a change repaints only what it touched. */
-interface PaintedTiles {
-  width: number;
-  height: number;
-  tiles: { left: number; top: number; canvas: HTMLCanvasElement; source: TextureSource }[];
-}
-const paintedTiles = new WeakMap<Container, PaintedTiles>();
+const isBlank = (image: MapImage): image is BlankArea => "blank" in image;
 
 export interface FogOptions {
   /** 1 for players (opaque, the default); less for the DM, who must see what lies beneath. */
@@ -175,20 +164,6 @@ export interface AssetShape {
   readonly alpha?: number | undefined;
 }
 
-/**
- * Dungeon Crucible (E-33): a small picture over the drawn walls – a door, a crack, the DM's mark
- * of a secret door – centred at x, y and turned by `rotation` (radians). Doors change often;
- * as pictures of their own, opening one repaints nothing of the map.
- */
-export interface Decal {
-  readonly image: HTMLCanvasElement;
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-  readonly rotation: number;
-}
-
 /** Dungeon Crucible: one light's glow (map pixels), clipped to the area it lights. */
 export interface LightGlow {
   readonly x: number;
@@ -261,21 +236,6 @@ export interface Renderer {
    * E-33); the map's area – grid, light, memory and fog – is built there too.
    */
   setMap(image: MapImage | null, origin?: Origin): void;
-  /**
-   * Dungeon Crucible (E-33): walls drawn over a picture map, as an image whose top left lies at
-   * `origin` – above the map, under the grid. `null` removes it.
-   */
-  setDrawing(image: MapImage | null, origin?: Origin): void;
-  /** Dungeon Crucible (E-33): doors and cracks of drawn walls, above them; replaces those set before. */
-  setDecals(decals: readonly Decal[]): void;
-  /** Dungeon Crucible (E-35): moving water over the drawn water; `null` stills it (the painted water stays). */
-  setWater(scene: WaterScene | null): void;
-  /**
-   * Dungeon Crucible (E-33): paints only `region` (picture px) of the painted map – or of the
-   * drawing over a picture map – again, from `image` of the same size. False when that is not
-   * possible (another size, no painted picture): then set it anew.
-   */
-  repaint(layer: 'map' | 'drawing', image: PaintedImage, region: { x: number; y: number; w: number; h: number }): boolean;
   /**
    * Shows a video map (ADR-0010): `video` must lie directly under the canvas in the same
    * positioned box; the renderer sizes, transforms and shows it, the caller owns it (loading,
@@ -362,33 +322,6 @@ export async function createRenderer(
 
   const world = new Container();
   app.stage.addChild(world);
-  // Walls drawn over a picture map (E-33): right above the map (which goes in at index 0).
-  const drawingLayer = new Container();
-  world.addChild(drawingLayer);
-  // Their doors and cracks, each a sprite; a picture's texture is made once.
-  const decalLayer = new Container();
-  world.addChild(decalLayer);
-  const decalTextures = new Map<HTMLCanvasElement, Texture>();
-  // Moving water (E-35): over the drawing, under grid, assets, tokens and fog.
-  const waterHost = new Container();
-  world.addChild(waterHost);
-  // Decals and moving water stay inside the map's area, which the fog covers: nothing drawn past
-  // its edge shows uncovered (a scene's own drawing does not grow the area).
-  const decalMask = new Graphics();
-  const waterMask = new Graphics();
-  world.addChild(decalMask, waterMask);
-  decalLayer.mask = decalMask;
-  waterHost.mask = waterMask;
-  const clipToArea = () => {
-    for (const m of [decalMask, waterMask]) {
-      m.clear();
-      // No map yet: an empty mask shows nothing.
-      m.rect(origin.x, origin.y, mapSize?.width ?? 0, mapSize?.height ?? 0).fill({ color: 0xffffff });
-    }
-  };
-  let water: WaterHandle | null = null;
-  let waterKey: string | null = null;
-  const waterStart = now();
   // Grid lines (T-106b): above the map (which goes in at index 0), below the fog (added last).
   const gridLayer = new Graphics();
   world.addChild(gridLayer);
@@ -745,7 +678,6 @@ export async function createRenderer(
     gridInput = shiftGrid(rawGrid, origin);
     for (const layer of [fogHost, memoryLayer, lightLayer, gridLayer]) layer.position.set(origin.x, origin.y);
     map?.position.set(origin.x, origin.y);
-    clipToArea();
   };
   let fog: Container | null = null;
   // The last fog asked for: rebuilt when the map changes, as soft edges follow the map's size.
@@ -1107,7 +1039,6 @@ export async function createRenderer(
       try {
         stepFade();
         stepLiving();
-        water?.setTime((now() - waterStart) / 1000);
         stepOutgoing();
         stepGlides();
         stepFlicker();
@@ -1131,7 +1062,7 @@ export async function createRenderer(
         resolve();
       });
       // A fade, a glide or drifting fog draws every frame; otherwise drawing stays on demand.
-      if (fade || outgoing || glides.size > 0 || drifting() || water) requestDraw();
+      if (fade || outgoing || glides.size > 0 || drifting()) requestDraw();
     });
   };
 
@@ -1149,12 +1080,14 @@ export async function createRenderer(
         world.removeChild(map);
         map.destroy({ children: true, texture: true, textureSource: true });
         map = null;
-        mapImageSize = null;
       }
+      mapImageSize = null;
       if (image) {
-        map = mapSprites(image, maxTextureSize);
+        if (!isBlank(image)) {
+          map = mapSprites(image, maxTextureSize);
+          world.addChildAt(map, 0);
+        }
         mapImageSize = { width: image.width, height: image.height };
-        world.addChildAt(map, 0);
       }
       mapSize = mapImageSize ? mapImageSize : video ? videoSize : null;
       // A video map starts at 0, 0.
@@ -1169,77 +1102,6 @@ export async function createRenderer(
       drawMemory();
       drawLighting();
       drawGrid();
-      requestDraw();
-    },
-    setWater(scene) {
-      const key = scene ? JSON.stringify(scene) : null;
-      if (key === waterKey) return;
-      waterKey = key;
-      water?.destroy();
-      water = null;
-      if (scene && (scene.waters.length > 0)) {
-        water = buildWaterLayer(scene);
-        waterHost.addChild(water.container);
-      }
-      requestDraw();
-    },
-    setDecals(decals) {
-      for (const child of decalLayer.removeChildren()) child.destroy();
-      const used = new Set<HTMLCanvasElement>();
-      for (const d of decals) {
-        used.add(d.image);
-        let texture = decalTextures.get(d.image);
-        if (!texture) {
-          texture = Texture.from(d.image, true);
-          decalTextures.set(d.image, texture);
-        }
-        const sprite = new Sprite(texture);
-        sprite.anchor.set(0.5);
-        sprite.position.set(d.x, d.y);
-        sprite.width = d.width;
-        sprite.height = d.height;
-        sprite.rotation = d.rotation;
-        decalLayer.addChild(sprite);
-      }
-      // Pictures no longer shown go with their textures.
-      for (const [image, texture] of decalTextures)
-        if (!used.has(image)) {
-          texture.destroy(true);
-          decalTextures.delete(image);
-        }
-      requestDraw();
-    },
-    repaint(layer, image, region) {
-      const container = layer === 'map' ? map : (drawingLayer.children[0] as Container | undefined);
-      const tiles = container ? paintedTiles.get(container) : undefined;
-      if (!tiles || tiles.width !== image.width || tiles.height !== image.height) return false;
-      for (const t of tiles.tiles) {
-        const x0 = Math.max(region.x, t.left);
-        const y0 = Math.max(region.y, t.top);
-        const x1 = Math.min(region.x + region.w, t.left + t.canvas.width);
-        const y1 = Math.min(region.y + region.h, t.top + t.canvas.height);
-        if (x1 <= x0 || y1 <= y0) continue;
-        const context = t.canvas.getContext("2d");
-        if (!context) return false;
-        context.save();
-        context.beginPath();
-        context.rect(x0 - t.left, y0 - t.top, x1 - x0, y1 - y0);
-        context.clip();
-        context.clearRect(x0 - t.left, y0 - t.top, x1 - x0, y1 - y0);
-        context.translate(x0 - t.left, y0 - t.top);
-        image.paint(context, x0, y0, x1 - x0, y1 - y0);
-        context.restore();
-        t.source.update();
-      }
-      requestDraw();
-      return true;
-    },
-    setDrawing(image, at = ZERO) {
-      for (const child of drawingLayer.removeChildren()) child.destroy({ children: true, texture: true, textureSource: true });
-      if (image) {
-        drawingLayer.addChild(mapSprites(image, maxTextureSize));
-        drawingLayer.position.set(at.x, at.y);
-      }
       requestDraw();
     },
     setVideo(next) {
@@ -1266,8 +1128,7 @@ export async function createRenderer(
         mapSize = videoSize;
         origin = ZERO;
         toMapSpace();
-      } else if (!map) mapSize = null;
-      clipToArea();
+      } else mapSize = mapImageSize;
       dropFade();
       shownFog = null;
       fogBuiltFrom = null;
@@ -1378,12 +1239,6 @@ export async function createRenderer(
       glowTexture?.destroy(true);
       world.removeChild(gridLayer);
       gridLayer.destroy({ context: true });
-      for (const child of drawingLayer.removeChildren()) child.destroy({ children: true, texture: true, textureSource: true });
-      for (const child of decalLayer.removeChildren()) child.destroy();
-      for (const texture of decalTextures.values()) texture.destroy(true);
-      decalTextures.clear();
-      water?.destroy();
-      water = null;
       drawTokens([]);
       drawAssets([]);
       for (const entry of assetTextures.values()) {
@@ -1830,9 +1685,8 @@ const TILE_PAD = 2;
  * around it, and shows only its own part: when the map is scaled, the GPU samples across a tile's
  * edge into those pixels, so no seams appear. Nothing is scaled when cutting.
  */
-function mapSprites(image: MapImage, maxTextureSize: number): Container {
-  const painted = isPainted(image);
-  if (!painted && Math.max(image.width, image.height) <= maxTextureSize)
+function mapSprites(image: Exclude<MapImage, BlankArea>, maxTextureSize: number): Container {
+  if (Math.max(image.width, image.height) <= maxTextureSize)
     return new Sprite(Texture.from(image, true));
   // Room for the pixels each tile carries from its neighbours.
   const tiles = mapTiles(
@@ -1841,7 +1695,6 @@ function mapSprites(image: MapImage, maxTextureSize: number): Container {
     maxTextureSize - 2 * TILE_PAD,
   );
   const container = new Container();
-  const kept: PaintedTiles = { width: image.width, height: image.height, tiles: [] };
   try {
     for (const tile of tiles) {
       const left = Math.max(0, tile.x - TILE_PAD);
@@ -1854,21 +1707,8 @@ function mapSprites(image: MapImage, maxTextureSize: number): Container {
       const context = canvas.getContext("2d");
       if (!context)
         throw new Error("A map tile could not be drawn (no 2D canvas).");
-      if (painted) image.paint(context, left, top, canvas.width, canvas.height);
-      else
-        context.drawImage(
-          image,
-          left,
-          top,
-          canvas.width,
-          canvas.height,
-          0,
-          0,
-          canvas.width,
-          canvas.height,
-        );
+      context.drawImage(image, left, top, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
       const source = Texture.from(canvas, true).source;
-      if (painted) kept.tiles.push({ left, top, canvas, source });
       const texture = new Texture({
         source,
         frame: new Rectangle(
@@ -1887,6 +1727,5 @@ function mapSprites(image: MapImage, maxTextureSize: number): Container {
     container.destroy({ children: true, texture: true, textureSource: true });
     throw error;
   }
-  if (painted) paintedTiles.set(container, kept);
   return container;
 }

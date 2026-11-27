@@ -119,6 +119,7 @@ Roadmap: `docs/KARTENSCHMIEDE-PROZEDURAL.md` (Teil A gilt vorrangig).
 | E-79 | Umfang Karte v14 | **Alle Felder aus A.6 jetzt**, als optionale Felder; die endgültigen Namen legt DC-121 fest (`app/src/core/build/intent.ts`). Bis zum Merge von Phase 0 dürfen DC-123 bis DC-125 sie noch anpassen. | wie A.6 |
 | E-80 | Migration | Die Migration v13→v14 löscht zusätzlich `autoShore`, `autoGrowth` (E-50) und `generated` (E-66); in Szenen-Zeichnungen auch `hidden` (es verwies nur auf gelöschte Elemente). `waterAnimated`, `lightAngle` und `origin` bleiben. | ergänzt E-57 |
 | E-81 | Vorab | Die Bench-Basis mit großer alter gezeichneter Karte **entfällt** (das Bench kann nur die Videokarte, DC-126 baut die neue Szene); Vergleichsbasis ist der Lauf vom 23.11. Der DM legt den Archiv-Export an, bevor die App auf dem Branch mit dem echten Wurzelordner startet. | ändert „Vorab“ in 3.9 |
+| E-82 | Umbau ohne Bauwerkzeuge (DC-122) | Der Tab **„Bauen“ entfällt** in Kartenschmiede und Orchestrator, bis DC-129 ihn neu bringt. **„Neue gezeichnete Karte“ bleibt** im Katalog (eine leere Fläche, 20 × 20 Felder), „Karte generieren …“ entfällt (E-66). Der TV-Frame verliert seinen Teil `drawn` sofort. `dirty.ts`, `sight.ts`, `sceneDrawing.ts` und `playerDrawing.ts` werden **gelöscht** und mit DC-124, DC-125 und DC-129 neu gebaut; neutral weiterverwendet bleiben `editing.ts` (generisch, ohne Tür-Kopplung), `strokes.ts`, `noise2`/`jitterRing`, `hashNoise`/`variantBlobs`/`lineStrips` und das Textur-Slot-System (`textures.ts`, `variantSheet.ts`) samt WebP-Dateien. | ändert A.3 |
 
 ---
 
@@ -460,7 +461,8 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   `schemaVersion` 3 (Migration ohne Datenänderung: ältere App-Versionen schreiben solche Dateien nicht zurück).
   Schritt 3 (Deckung) entfällt hier – DM-Entscheidung (2026-11-25): Die Deckungsmaske gehört zum Asset und wird im
   Asset-Editor festgelegt; weiter mit DC-108.
-- **DC-107 Kontextsensitiver Karten-Editor** (DM-Wunsch 2026-11-25, `docs/KARTENEDITOR.md`): Dungeon- und
+- **DC-107 Kontextsensitiver Karten-Editor** – **entfallen mit E-57/DC-122** (neu geplant in 3.9); der Text bleibt als
+  Geschichte, die offenen Bench-Läufe DC-107a/f entfallen (E-81). (DM-Wunsch 2026-11-25, `docs/KARTENEDITOR.md`): Dungeon- und
   Wildnis-/Stadtkarten selbst zeichnen – Wände, Wege, Flüsse, Gebäude, Türen, Brücken als editierbare Absichten
   (Intent-Modell mit Seeds), Regel-Pipeline für Ecken, Kreuzungen, Durchbrüche, Übergänge, handgezeichnete Optik und
   Detailstreuung, daraus Sicht- und Bewegungsdaten. Assets bleiben frei platzierbar (DC-041). DM-Entscheidung
@@ -592,7 +594,8 @@ Verweise wie (E-1) nennen die Entscheidung aus Abschnitt 1, auf der eine Task be
   Spiel getrennt, Gegenebene schaltet mit), automatischer Auslöser beim Betreten eines Bereichs durch einen SC
   (aus beim Verlassen, wenn eingestellt), Protokolleintrag. Elemente inaktiver Ebenen fehlen in Sicht, Licht und
   TV-Projektion, werden aber nicht als ausgeblendet gespeichert; Assets werden nach Ebenenhöhe gezeichnet.
-- ✓ **DC-119 Lebendige Karten** (E-36) – Varianz und Generator, Teilpakete:
+- ✓ **DC-119 Lebendige Karten** (E-36) – Varianz und Generator, Teilpakete (Generator, Fels und Malerei **entfallen
+  mit E-57/E-66/DC-122**; Varianz-Funktionen und Texturen bleiben):
   - ✓ **DC-119a Böden**: Böden und Naturgrund wiederholen statt einer Textur einen komponierten Bogen aus 16×16
     Zellen: Flecken aus Varianten und Drehungen (`core/build/variance.ts`, deterministisch je Seed), phasengleich,
     sodass das Muster eines Fleckens in einem Stück weiterläuft – Kachelböden wechseln an Zellgrenzen in großen
@@ -1047,13 +1050,35 @@ Branch: `feature/procedural-forge-phase-0`.
   und `derived` gehen beim Schreiben verloren) und `intentOf` kopiert die ganze Absicht je Ansicht – beides mit
   DC-123 (geteilte Blöcke); abgeleitete Schlüssel mit Element-IDs müssten beim Kopieren mitgehen (Schlüssel-Schema
   in DC-131).
-- **DC-122 Alten Bau- und Mal-Code entfernen** (E-57, Plan A.3): Module, Ribbon-Knöpfe, Generator-Dialoge,
+- ✓ **DC-122 Alten Bau- und Mal-Code entfernen** (E-57, Plan A.3): Module, Ribbon-Knöpfe, Generator-Dialoge,
   i18n-Schlüssel; Tests, Typecheck und Build grün.
+  Erledigt nach E-82: entfernt sind `core/build/{masonry,cliffs,water,floors,rooms,rock,generate,sight,sceneDrawing,
+  playerDrawing,dirty}.ts` samt Tests, `render/{cliffsPaint,waterPaint,detailsPaint,drawnMap}.ts`,
+  `render/pixi/water-layer.ts`, `app/build.ts`, `app/GenerateMapDialog.tsx`, `panels/BuildCommandPanel.tsx`, der
+  Tab „Bauen“, Bau-Eigenschaften, Bau-Overlay und Geröll-Markierung im DM-Fenster, 158 Texte (en/de), die
+  Generator-Styles. Schema: Karte und Szene kennen die alten Felder nicht mehr; `readDocument` wirft sie bei jedem
+  Lesen weg (E-80), sie kommen also auch über `keepUnknown` nie zurück – in der echten App geprüft: eine v13-Karte
+  mit Mauern, Raum und Tür wird nach einer Änderung als v14 ohne ein altes Feld geschrieben, Ursprung, Lichtrichtung
+  und normale Wände bleiben. Renderer: Overlay über Bildkarten, Decals, bewegtes Wasser und kachelweise gemalte
+  Karten entfallen; neu ist eine **leere Fläche** (`BlankArea`) für gezeichnete Karten – Nebel, Raster und Licht
+  haben ihren Platz, ohne eine Textur anzulegen. TV-Frame Version 6: statt `drawn` nur `drawnOrigin` (wo die Fläche
+  einer gezeichneten Karte beginnt). Sichtwände sind bis DC-129 nur die Wände der Karte (und Asset-Türen); die
+  Stockwerk-Grundfläche ist bis dahin nur die von Hand gezeichnete. Katalog: gezeichnete Karten zeigen das
+  Mauer-Symbol, bis DC-128 die Vorschau malt. Bundles kleiner (DM 575 → 500 kB, TV 831 → 739 kB). Geprüft: 699
+  Tests, Typecheck, Build, Tisch-Bundle-Prüfung; in der App (eigenes Profil, Test-Wurzelordner): Menüband ohne
+  „Bauen“, Katalog ohne „Karte generieren“, alte gezeichnete Karte öffnet. Nicht geprüft: das Bild einer
+  gezeichneten Karte im DM-Fenster und auf dem TV – das App-Fenster lag verdeckt im Hintergrund, WebGL zeichnete
+  dort nicht; offen für den DM nach dem Archiv-Export (leere dunkle Fläche mit Raster erwartet).
+  Im Eigenschaften-Panel fehlen bis zur neuen Oberfläche Lichtrichtung und „Wasser bewegt sich“ (`lightAngle` und
+  `waterAnimated` bleiben in der Datei, E-80; wieder bedienbar mit DC-128/DC-130/DC-134). Neue Element-IDs
+  (`freshId`) meiden jetzt auch die IDs der Absicht und eigene Wege der Szene. Nach dem Review: Tests für den Wechsel
+  Bildkarte ↔ gezeichnete Fläche (fail-closed), veraltete Kommentare, ungenutztes Symbol und Text entfernt.
 - **DC-123 Raster-Blöcke** (E-55, E-56): Blockspeicher, Codec (Lauflänge + Deflate + Base64), Patches je Ebene,
   Historie mit geteilten Blöcken, Rettungskopie in IndexedDB; Größenmessung (O-A1).
 - **DC-124 Worker-Pool und Scheduler** (E-53): Transferables, Dirty je Block mit Halo, veraltete Jobs verwerfen,
   Worker-taugliche Malbasis (OffscreenCanvas).
-- **DC-125 TV-Frame v6** (E-61): Raster-Blöcke nur bei Änderung mit Prüfsumme, gefiltert nach Ebene, Stockwerk und
+- **DC-125 TV-Frame v6** (E-61; Version 6 hat DC-122 schon vergeben – ohne `drawn`, mit `drawnOrigin` –, die
+  Raster-Blöcke kommen auf diesem Branch dazu): Raster-Blöcke nur bei Änderung mit Prüfsumme, gefiltert nach Ebene, Stockwerk und
   geheimen Bereichen; Projektionstests je neuer Absicht-Art; fail-closed.
 - **DC-126 Prüfwerkzeuge** (E-73): Bench-Szene mit großer gezeichneter Karte, Wasser, Stockwerk und Streuung;
   Playwright-Bildvergleiche (Steckbrief vor dem Einführen).

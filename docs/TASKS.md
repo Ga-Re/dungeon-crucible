@@ -1346,8 +1346,8 @@ Branch: `feature/procedural-forge-phase-0`.
   vereinzelt), und der Überhang läuft dort schmal aus statt eckig abzureißen. DM 2026-11-28: weicher, ohne harte
   Schnitte, in allen Biomen – das Kappenmuster wird über ±0,3 Feld gemittelt gelesen, Überhang und Steinkappen
   blenden an ihren Enden über etwa ein Feld aus, die Unterkante des Überhangs läuft weich in die Wand. Danach (DM):
-  nur der Rand blendet aus, die Mitte bleibt deckend – zur Lücke hin wird der Überhang schmaler statt durchsichtig. Offen: Abnahme der Höhen und Module;
-  Review; dann Abschluss von DC-128.
+  nur der Rand blendet aus, die Mitte bleibt deckend – zur Lücke hin wird der Überhang schmaler statt durchsichtig.
+  **Abgenommen vom DM (2026-11-28).** Offen: Review; dann Abschluss von DC-128.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

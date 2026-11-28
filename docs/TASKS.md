@@ -1332,13 +1332,16 @@ Branch: `feature/procedural-forge-phase-0`.
   flimmerten die Schichten zu Streifen); an Außenecken läuft die Textur um die Bogenlänge in halber Bandbreite
   weiter (vorher ein Fächer aus einer Spalte). Die fünf Biom-Bänder aus b sind ersetzt.
   Bilder: Pilot **Sandstein** (14 Module) erzeugt mit Higgsfield nach dem abgenommenen Band, B/C/Riss/Vorsprung als
-  Bearbeitung von A im selben Bildformat (anders verschiebt das Modell die Schichten). Offen: Abnahme des Piloten,
-  dann die übrigen 12 Materialien je Gruppe; bis dahin zeigen sie graue Ersatzflächen.
+  Bearbeitung von A im selben Bildformat (anders verschiebt das Modell die Schichten).
   Pilot abgenommen (DM 2026-11-28). **Rauschen je Material** (`cliffNoiseAt`): wie weit die Kante wandert, richtet
   sich nach dem Material oben – natürlicher Stein 0,15 Feld wie abgenommen, Eis 0,12, Erde/Lehm/Torf 0,08, Mauerwerk
   und Holz 0 (gerade); längs der Linie über etwa ein Feld ausgeglichen. DM-Sichtwände und Bild rechnen gleich.
   **Ruhiger Fuß:** ein breites Band (ab 20 ft) hängt seinen Fuß an der über die halbe Überbreite geglätteten Linie
   (die Oberkante bleibt auf der Linie) – vorher fächerten die kleinen Wellen der Kante hohe Bänder auf.
+  **Alle 13 Materialien:** Grundbild A je Material vom DM abgenommen (2026-11-28), dann je Material die übrigen
+  Höhen und Module – zusammen 156 Bilder (11 MB WebP), alle nach demselben Verfahren; gebaute Wände an der Naht
+  nur über wenige Pixel überblendet (DM: kein Doppelbild von Pfosten und Fugen) und mit fester Bandbreite (Fels
+  wandert ±35 %). Offen: Abnahme der Höhen und Module per Vergleichsbild; Review; dann Abschluss von DC-128.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

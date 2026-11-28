@@ -409,14 +409,16 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
       const width = Math.min(MAX_BAND_CELLS, (dropFt / 10) * s.perspective) * cell;
       // A wide band hangs its foot from a calmer line, or the edge's small wiggles fan it out (low bands keep the accepted look).
       const footSmooth = Math.max(0, width - cell * 0.5) * 0.5;
-      const band = cliffBand(line.points, line.closed, width, { textureLength: cell * MODULE_CELLS, lightAngle: s.lightAngle, widthFactor, taper, runOut: line.runOut, footSmooth });
+      // A built wall keeps its width; natural faces jut out and recede.
+      const wander = BUILT.has(main) ? () => 1 : widthFactor;
+      const band = cliffBand(line.points, line.closed, width, { textureLength: cell * MODULE_CELLS, lightAngle: s.lightAngle, widthFactor: wander, taper, runOut: line.runOut, footSmooth });
       // Its materials, the strongest first: drawn whole, the others over it where they hold – where the ground above changes, about there the cliff does too.
       order.forEach((m, n) => {
         const alpha = n === 0 ? undefined : materials.map((w) => smoothRange(0.3, 0.7, w.get(m) ?? 0));
         faces.addChild(faceMesh(band, m, atlasOf(m, dropFt), bandVariant(m, dropFt), patches, seed, alpha));
       });
       // The ground hanging over the edge: per biome on top, not over built walls.
-      const lip = cliffBand(line.points, line.closed, cell * 0.22, { textureLength: cell * LIP_CELLS, lightAngle: s.lightAngle, taper, runOut: line.runOut, arcWidth: (p) => width * widthFactor(p) });
+      const lip = cliffBand(line.points, line.closed, cell * 0.22, { textureLength: cell * LIP_CELLS, lightAngle: s.lightAngle, taper, runOut: line.runOut, arcWidth: (p) => width * wander(p) });
       const built = materials.map((w) => [...w].reduce((sum, [m, x]) => sum + (BUILT.has(m) ? x : 0), 0));
       const slots = biomeSlots(biomes, s.palette, textures);
       slots.forEach((slot, n) => {

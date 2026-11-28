@@ -51,6 +51,7 @@ accepted by the DM next to a reference picture; the DM's plan allows shipping th
 The 35 ground classes of the five terrain biomes, a variant of each but paving (laid stones in two sizes look wrong
 side by side, DM 2026-11-27) and a variant of each terrain ground were generated the same way on 2026-11-27
 (DC-128c) and accepted by the DM per biome.
-The cliff band modules of sandstone (`band-sandstone-*`, E-90) were generated the same way on 2026-11-28
-(DC-128e2): the smooth face A per height after the accepted sandstone band, the other modules as edits of it; cut
-and joined to A's columns offline.
+The 156 cliff band modules (`band-*`, E-90) of all 13 materials were generated the same way on 2026-11-28
+(DC-128e2) and accepted by the DM per material: the smooth face A per material after the accepted sandstone band,
+its higher bands after its low one, the other modules as edits of A at the same aspect; cut and joined to A's
+columns offline (built walls over a few pixels only, so posts and joints do not double).

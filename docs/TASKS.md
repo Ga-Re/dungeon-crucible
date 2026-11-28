@@ -1149,7 +1149,14 @@ Branch: `feature/procedural-forge-phase-0`.
   ein Pixel weicht ab ab 32 Stufen in einem Farbkanal, eine Szene scheitert über 0,2 %; zweimal gezeichnet: 0 %
   Abweichung; ein vertauschtes Referenzbild wird erkannt. Wasser und Streuung folgen mit DC-130/131, ein Stockwerk mit
   Raster mit DC-133. Geprüft: Tests (Szene: vier Biome, Fallhöhen 1/2/4, ≥ 8 Materialien, Kamera bis unter die
-  Bake-Schwelle), Build; die Szene offscreen gezeichnet (Fern- und Nahsicht). Offen: **Messung am TV durch den DM**
+  Bake-Schwelle), Build; die Szene offscreen gezeichnet (Fern- und Nahsicht). **Hänger der Entwickler-App behoben**
+  (DM 2026-11-28: nach Anlegen oder Öffnen einer Kampagne reagierte nichts mehr; früher hier als „verdecktes Fenster“
+  notiert): React StrictMode baut die Kartenansicht zweimal auf derselben Leinwand auf; eine Leinwand hat nur einen
+  WebGL-Kontext, der abgebaute Renderer verliert ihn absichtlich, und der neue startet auf dem verlorenen Kontext, wo
+  Pixis Shader-Prüfung (`checkMaxIfStatementsInShader`) nie endet. Kartenansicht und TV-Ansicht legen jetzt je Renderer
+  eine eigene Leinwand an (`render/pixi/gl-canvas.ts`) – wichtig auch in der fertigen App, denn die TV-Ansicht baut
+  sich bei neuer Quelle (Stockwerk darunter) neu auf. Vorher hingen 7 von 9 Läufen (Kampagne mit Beispiel-Krypta
+  anlegen), danach 0 von 6, je Lauf genau eine Leinwand mit intaktem Kontext. Offen: **Messung am TV durch den DM**
   (`VITE_BENCH_SCENE=terrain npm run bench`), danach Bericht in `docs/benchmarks/`.
 - ✓ **DC-127 Look-Spike Klippenband** (E-46, E-52): Stufen-Raster → Kontur → Band mit Test-Textur, Fuß-AO und Lippe;
   Abnahme neben einer Referenzkarte.

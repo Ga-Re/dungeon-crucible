@@ -18,6 +18,7 @@ import { fogOptions, lookFromWire } from '../render/fogOptions';
 import { bindMap } from '../render/mapBinding';
 import { stairShapes } from '../render/stairPicture';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
+import { rendererCanvas } from '../render/pixi/gl-canvas';
 import { templatePath } from '../render/shared';
 
 export interface FrameSource {
@@ -36,13 +37,15 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
   const [below, setBelow] = useState(false);
   const belowRef = useRef(false);
   const hostRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** Holds the renderer's canvas, one per renderer (`gl-canvas.ts`): this view sets up again when its source changes. */
+  const glRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const cutRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const host = hostRef.current!;
-    const canvas = canvasRef.current!;
+    const gl = rendererCanvas(glRef.current!);
+    const canvas = gl.canvas;
     const overlay = overlayRef.current!;
     const cutCanvas = cutRef.current!;
     let renderer: Renderer | null = null;
@@ -197,6 +200,7 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
       cancelAnimationFrame(raf);
       map?.dispose();
       renderer?.destroy();
+      gl.remove();
     };
   }, [source, depth]);
 
@@ -209,7 +213,7 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
         </div>
       )}
       <div ref={hostRef} style={{ position: 'absolute', inset: 0, visibility: 'hidden' }}>
-        <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+        <div ref={glRef} style={{ position: 'absolute', inset: 0 }} />
         <canvas ref={overlayRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
       </div>
       <canvas ref={cutRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', visibility: 'hidden' }} />

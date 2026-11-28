@@ -42,6 +42,7 @@ import { fogOptions } from '../render/fogOptions';
 import { DARKNESS } from '../core/projection';
 import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
+import { rendererCanvas } from '../render/pixi/gl-canvas';
 import { TableView, type FrameSource } from '../table/TableView';
 import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
@@ -126,7 +127,8 @@ function DmMap() {
     },
   }), []);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** Holds the renderer's canvas, one per renderer (`gl-canvas.ts`). */
+  const glRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ zoom: 0.4, x: 20, y: 20, rot: 0 });
   const drag = useRef<Drag | null>(null);
@@ -138,7 +140,8 @@ function DmMap() {
 
   useEffect(() => {
     const wrap = wrapRef.current!;
-    const canvas = canvasRef.current!;
+    const gl = rendererCanvas(glRef.current!);
+    const canvas = gl.canvas;
     const overlay = overlayRef.current!;
     let renderer: Renderer | null = null;
     let map: ReturnType<typeof bindMap> | null = null;
@@ -277,6 +280,7 @@ function DmMap() {
       cancelAnimationFrame(raf);
       map?.dispose();
       renderer?.destroy();
+      gl.remove();
     };
   }, []);
 
@@ -454,7 +458,7 @@ function DmMap() {
   };
 
   const toWorld = (e: { clientX: number; clientY: number }): Point => {
-    const r = canvasRef.current!.getBoundingClientRect();
+    const r = glRef.current!.getBoundingClientRect();
     return toMap(view.current, { x: e.clientX - r.left, y: e.clientY - r.top });
   };
 
@@ -480,7 +484,7 @@ function DmMap() {
   const onPointerDown = (e: React.PointerEvent) => {
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const p = toWorld(e);
-    const r = canvasRef.current!.getBoundingClientRect();
+    const r = glRef.current!.getBoundingClientRect();
     // The placing mode (DC-116): a click places, a right click ends it; the middle button still pans.
     if (state.placing && !space.current && e.button !== 1) {
       if (e.button === 2) stopPlacing();
@@ -693,7 +697,7 @@ function DmMap() {
     if (state.placing && d?.kind !== 'pan') previewPlacing(p);
     if (!d) return;
     if (d.kind === 'pan') {
-      const r = canvasRef.current!.getBoundingClientRect();
+      const r = glRef.current!.getBoundingClientRect();
       view.current = { ...view.current, x: d.vx + e.clientX - r.left - d.sx, y: d.vy + e.clientY - r.top - d.sy };
     } else if (d.kind === 'token') {
       d.moved = true;
@@ -802,7 +806,7 @@ function DmMap() {
   };
 
   const onWheel = (e: React.WheelEvent) => {
-    const r = canvasRef.current!.getBoundingClientRect();
+    const r = glRef.current!.getBoundingClientRect();
     const mx = e.clientX - r.left;
     const my = e.clientY - r.top;
     const w = toWorld(e);
@@ -820,7 +824,7 @@ function DmMap() {
           <TableView source={belowSource} depth={1} />
         </div>
       )}
-      <canvas ref={canvasRef} aria-hidden="true" />
+      <div ref={glRef} className="map-gl" aria-hidden="true" />
       <canvas
         ref={overlayRef}
         onPointerDown={onPointerDown}

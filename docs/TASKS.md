@@ -1290,7 +1290,7 @@ Branch: `feature/procedural-forge-phase-0`.
   DM 2026-11-28: Gefälle zwischen gleich hohen Punkten steigt um die eingestellte Höhe (Alt: fällt), das Feld
   Höhe steht dafür auch beim Gefälle. Tests: 839.
   **Abgenommen vom DM (2026-11-28).**
-  ◐ **e1)** (E-90) **Auslauf:** wo eine Böschung eine Klippe beendet, laufen Band, Überhang, Kies und Fußschatten
+  ✓ **e1)** (E-90) **Auslauf:** wo eine Böschung eine Klippe beendet, laufen Band, Überhang, Kies und Fußschatten
   über etwa ein Feld spitz aus (Erosionskanten über ein halbes). **Ecken** (`core/build/geom/band.ts`): an
   Außenecken läuft der Fuß in Breite des Bandes um die Ecke (Bogen statt bis zu doppelt gestreckter Gehrung); an
   Innenecken keine Gehrung, Fußpunkte, die gegen die Linie zurücklaufen würden, fallen zusammen – keine Spitzen und
@@ -1318,8 +1318,9 @@ Branch: `feature/procedural-forge-phase-0`.
   wird in Gerätepixeln (vorher auf 2×-Bildschirmen halb so scharf); nah herangezoomt werden die gebackenen
   Texturen freigegeben; ein Ring bleibt an seiner Naht geschlossen, sein Fuß behält mindestens drei Punkte; die
   Vorschau liest die Kartendatei an der Buchführung einer offenen Karte vorbei und gibt nach 10 s auf. Tests: 853.
-  Offen: Vorschaubilder alter Stände bleiben im Geräte-Cache liegen (wie bei Bildern); die Mulden-AO über Bildkarten
-  ist mit der Schummerung aus (Rückfrage an den DM); `npm run bench` mit Gelände kommt mit DC-126.
+  Offen: Vorschaubilder alter Stände bleiben im Geräte-Cache liegen (wie bei Bildern); `npm run bench` mit Gelände
+  kommt mit DC-126. DM 2026-11-28: die Mulden-AO bleibt über Bildkarten mit der Schummerung aus (das Bild hat eigene
+  Schatten). **Abgenommen vom DM (2026-11-28).**
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

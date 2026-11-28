@@ -22,10 +22,16 @@ export function bandSlot(material: CliffMaterial, height: BandHeight, module: (t
 }
 
 export interface BandAtlas {
-  /** The modules stacked, in the order of `MODULES`. */
+  /** The modules stacked, in the order of `MODULES`, each with a gutter of its own edge rows above and below. */
   readonly texture: Texture;
   readonly rows: number;
+  /** A row's gutter and picture as shares of the row's height. */
+  readonly pad: number;
+  readonly inner: number;
 }
+
+/** Gutter above and below each module (px): seen from far, the mipmaps would blend in the neighbouring module's foot. */
+const PAD = 8;
 
 const loading = new Map<string, Promise<BandAtlas>>();
 
@@ -57,26 +63,33 @@ async function picture(url: string | undefined): Promise<HTMLImageElement | null
 async function build(material: CliffMaterial, height: BandHeight): Promise<BandAtlas> {
   const h = BAND_PX[height];
   const pictures = await Promise.all(MODULES.map((m) => picture(files[`./textures/${bandSlot(material, height, m)}.webp`])));
+  const row = h + 2 * PAD;
   const c = document.createElement('canvas');
   c.width = WIDTH;
-  c.height = h * MODULES.length;
+  c.height = row * MODULES.length;
   const g = c.getContext('2d');
   if (!g) throw new Error('No 2D canvas for a cliff band.');
   const [a] = pictures;
-  MODULES.forEach((_, row) => {
-    const img = pictures[row] ?? a;
-    if (img) g.drawImage(img, 0, row * h, WIDTH, h);
-    else {
+  MODULES.forEach((_, n) => {
+    const img = pictures[n] ?? a;
+    const y = n * row + PAD;
+    if (img) {
+      g.drawImage(img, 0, y, WIDTH, h);
+      // The gutters repeat the picture's first and last row.
+      g.drawImage(c, 0, y, WIDTH, 1, 0, y - PAD, WIDTH, PAD);
+      g.drawImage(c, 0, y + h - 1, WIDTH, 1, 0, y + h, WIDTH, PAD);
+    } else {
       // No picture: a plain stand-in, so the map still draws.
       g.fillStyle = '#7a7468';
-      g.fillRect(0, row * h, WIDTH, h);
+      g.fillRect(0, y - PAD, WIDTH, row);
     }
   });
   const texture = Texture.from(c);
-  texture.source.style.addressMode = 'repeat';
+  texture.source.style.addressModeU = 'repeat';
+  texture.source.style.addressModeV = 'clamp-to-edge';
   // Seen from far, a band is far narrower than its picture: without mipmaps its layers flicker into fine stripes.
   texture.source.style.mipmapFilter = 'linear';
   texture.source.autoGenerateMipmaps = true;
   texture.source.updateMipmaps();
-  return { texture, rows: MODULES.length };
+  return { texture, rows: MODULES.length, pad: PAD / row, inner: h / row };
 }

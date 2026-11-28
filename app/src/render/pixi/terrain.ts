@@ -14,7 +14,7 @@ import { bandFoot, cliffBand, type BandMesh } from '../../core/build/geom/band';
 import { chaikin, type Pt } from '../../core/build/geom/contours';
 import { noise2 } from '../../core/build/handDrawn';
 import { CLIFF_NOISE_CELLS, CliffCache, cliffLines, type CliffLine, type CliffSource } from '../../core/build/terrain/cliffs';
-import { BUILT, bandVariant, classWeightsAtPx, cliffNoiseAt, materialWeights, moduleChances, type CliffMaterial } from '../../core/build/terrain/cliffMaterial';
+import { BUILT, CLIFF_MATERIALS, bandVariant, classWeightsAtPx, materialCliffOptions, materialWeights, moduleChances, type CliffMaterial } from '../../core/build/terrain/cliffMaterial';
 import type { TerrainBiome } from '../../core/build/terrainKeys';
 import { hashNoise } from '../../core/build/variance';
 import type { GridConfig } from '../../core/grid';
@@ -134,16 +134,16 @@ uniform sampler2D uPatch;
 uniform vec4 uChances;
 uniform float uSeed;
 uniform float uRows;
+uniform float uPad;
+uniform float uInner;
 out vec4 finalColor;
 void main() {
   float r = fract(sin(floor(vUV.x) * 12.9898 + uSeed * 78.233) * 43758.5453);
   float row = r < uChances.x ? 0.0 : r < uChances.y ? 1.0 : r < uChances.z ? 2.0 : r < uChances.w ? 3.0 : 4.0;
-  // Kept off the row's edges, so the rows above and below never bleed in.
-  float v = clamp(vUV.y, 0.004, 0.996);
   // Mipmapped by the band's own gradient: the jump of fract() at a module's end picks no blurrier level.
   // A level finer than exact keeps joints and layers crisp (the pictures are calm enough not to shimmer).
-  vec2 scale = vec2(0.6, 0.6 / uRows);
-  vec3 c = textureGrad(uTexture, vec2(fract(vUV.x), (row + v) / uRows), dFdx(vUV) * scale, dFdy(vUV) * scale).rgb;
+  vec2 scale = vec2(0.6, 0.6 * uInner / uRows);
+  vec3 c = textureGrad(uTexture, vec2(fract(vUV.x), (row + uPad + vUV.y * uInner) / uRows), dFdx(vUV) * scale, dFdy(vUV) * scale).rgb;
 ${
   look.cap
     ? `  // The patches evened out over ±0.3 cell, as the overhang reads them: caps fade in and out at their sides.
@@ -215,7 +215,7 @@ function mesh(m: BandMesh, fragment: string, texture: Texture, patch?: Texture, 
   // Alpha per point of the line: a corner's vertices take their point's.
   for (let i = 0; i < a.length; i++) a[i] = alpha ? alpha[Math.min(alpha.length - 1, m.at[i >> 1]!)]! : 1;
   const geometry = new Geometry({ attributes: { aPosition: m.positions, aUV: m.uvs, aShade: { buffer: m.shade, format: 'float32' }, aAlpha: { buffer: a, format: 'float32' } }, indexBuffer: m.indices });
-  const shader = Shader.from({ gl: { vertex: VERTEX, fragment }, resources: { uTexture: texture.source, ...(patch ? { uPatch: patch.source } : {}), ...(uniforms ? { faceUniforms: uniforms } : {}) } });
+  const shader = Shader.from({ gl: { vertex: VERTEX, fragment }, resources: { uTexture: texture.source, ...(patch ? { uPatch: patch.source } : {}), ...(uniforms ? { meshUniforms: uniforms } : {}) } });
   return new Mesh({ geometry, shader, texture });
 }
 
@@ -223,7 +223,7 @@ function mesh(m: BandMesh, fragment: string, texture: Texture, patch?: Texture, 
 function faceMesh(band: BandMesh, material: CliffMaterial, atlas: BandAtlas, height: Parameters<typeof moduleChances>[1], patch: Texture, seed: number, alpha?: readonly number[]): Mesh<Geometry, Shader> {
   const c = moduleChances(material, height);
   const chances = [c.a, c.a + c.b, c.a + c.b + c.c, c.a + c.b + c.c + c.crack];
-  return mesh(band, face(MATERIAL_LOOKS[material]), atlas.texture, patch, alpha, { uChances: { value: chances, type: 'vec4<f32>' }, uSeed: { value: seed, type: 'f32' }, uRows: { value: atlas.rows, type: 'f32' } });
+  return mesh(band, face(MATERIAL_LOOKS[material]), atlas.texture, patch, alpha, { uChances: { value: chances, type: 'vec4<f32>' }, uSeed: { value: seed, type: 'f32' }, uRows: { value: atlas.rows, type: 'f32' }, uPad: { value: atlas.pad, type: 'f32' }, uInner: { value: atlas.inner, type: 'f32' } });
 }
 
 /** An irregular stone at `p`, `size` px: a soft contact shadow, a body in the biome's stone, a lit top. */
@@ -276,10 +276,32 @@ interface PlannedLine {
 
 interface CliffPlan {
   readonly key: { planes: unknown[]; look: string };
+  /** What the cliffs would show (lines, biomes, materials, rounded to 1/64), with `key.look`: equal, nothing needs building. */
+  readonly result: Float64Array;
   readonly lines: readonly PlannedLine[];
   readonly erosion: readonly PlannedLine[];
   /** The band pictures needed, as `material|height`. */
   readonly atlases: readonly string[];
+}
+
+/** What a plan's cliffs show, as numbers in order. */
+function* planValues(lines: readonly PlannedLine[]): Generator<number> {
+  for (const { line, dropFt, biomes, materials, order } of lines) {
+    yield line.points.length;
+    yield dropFt;
+    yield line.closed ? 1 : 0;
+    yield (line.runOut[0] ? 2 : 0) + (line.runOut[1] ? 1 : 0);
+    for (const p of line.points) {
+      yield p.x;
+      yield p.y;
+    }
+    for (const w of biomes) yield* w;
+    yield order.length;
+    for (const m of order) {
+      yield CLIFF_MATERIALS.indexOf(m);
+      for (const w of materials) yield w.get(m) ?? 0;
+    }
+  }
 }
 
 /** The materials present along a line, the strongest first. */
@@ -351,6 +373,9 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
 
   /** What the cliffs were built from: the blocks' step, biome and ground planes (never changed, only replaced) and the look. */
   let cliffsFrom: { planes: unknown[]; look: string } | null = null;
+  /** What they show (`CliffPlan.result`, with the look). */
+  let cliffsShow: { look: string; result: Float64Array } | null = null;
+  const showsSame = (p: CliffPlan) => !!cliffsShow && cliffsShow.look === p.key.look && cliffsShow.result.length === p.result.length && cliffsShow.result.every((v, i) => v === p.result[i]);
 
   /** What the cliffs of `s` would be built from. */
   const cliffKey = (s: TerrainShape) => ({
@@ -374,8 +399,7 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
     };
     const lines: PlannedLine[] = [];
     // The edges wander by the material on top, as the DM's walls of sight do (`store.ts`).
-    const noiseAt = (upper: Pt, drop: number) => cliffNoiseAt(s.source.blocks, s.grid, s.palette, upper, drop * s.stepFt);
-    for (const line of cliffLines(s.source, { grid: s.grid, noiseCells: CLIFF_NOISE_CELLS, noiseAt }, cache)) {
+    for (const line of cliffLines(s.source, materialCliffOptions(s.source.blocks, s.grid, s.palette, s.stepFt), cache)) {
       if (line.points.length < 2) continue;
       const pts = line.closed ? [...line.points, line.points[0]!] : [...line.points];
       const dropFt = line.drop * s.stepFt;
@@ -395,7 +419,8 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
       }
     const atlases = new Set<string>();
     for (const l of [...lines, ...erosion]) for (const m of l.order) atlases.add(`${m}|${bandVariant(m, l.dropFt)}`);
-    return { key, lines, erosion, atlases: [...atlases] };
+    const result = Float64Array.from([...planValues(lines), -1, ...planValues(erosion)], (v) => Math.round(v * 64) / 64);
+    return { key, result, lines, erosion, atlases: [...atlases] };
   };
 
   const build = (s: TerrainShape, textures: ReadonlyMap<TerrainBiome, TerrainTextures>, cliffPlan: CliffPlan | null, atlases: ReadonlyMap<string, BandAtlas>) => {
@@ -403,13 +428,16 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
     shade.set(s.overPicture ? null : { blocks: s.source.blocks, grid: s.grid, stepFt: s.stepFt, lightAngle: s.lightAngle });
     // The baked blocks (E-90) are baked again where blocks changed, all of them when the cliffs were built again.
     const toBake = () => bake.update({ blocks: s.source.blocks, grid: s.grid, area: s.area, look: JSON.stringify([s.palette, s.stepFt, s.perspective, s.lightAngle, s.erosion, s.overPicture, s.source.missingIsUnknown]), cliffs: cliffBuilds });
-    // Painting fine height or ground that leaves every cliff as it was keeps them.
-    if (!cliffPlan || sameKey(cliffsFrom, cliffPlan.key)) {
+    // Painting that leaves every cliff as it was – fine height away from erosion edges, ground away
+    // from cliff tops – keeps them, and the baked blocks away from the brush.
+    if (!cliffPlan || sameKey(cliffsFrom, cliffPlan.key) || showsSame(cliffPlan)) {
+      if (cliffPlan) cliffsFrom = cliffPlan.key;
       toBake();
       redraw();
       return;
     }
     cliffsFrom = cliffPlan.key;
+    cliffsShow = { look: cliffPlan.key.look, result: cliffPlan.result };
     cliffBuilds++;
     clearCliffs();
     const cell = s.grid.cellWidth;
@@ -508,6 +536,7 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
       if (!next) {
         shown = null;
         cliffsFrom = null;
+        cliffsShow = null;
         ground.set(null);
         shade.set(null);
         bake.update(null);

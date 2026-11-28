@@ -1177,7 +1177,7 @@ Branch: `feature/procedural-forge-phase-0`.
 
 **Phase 1 bis 10**
 
-- ◐ **DC-128 Gelände und Render-Pipeline** (E-46, E-49, E-52, E-60, E-70; dazu aus DC-123 der Einbau des
+- ✓ **DC-128 Gelände und Render-Pipeline** (E-46, E-49, E-52, E-60, E-70; dazu aus DC-123 der Einbau des
   Rasterzustands in Speichern, Öffnen und Rückgängig nach E-84, mit Standard-Biom nach E-78): Stufe, Feinhöhe, Böschung, Klippen (Kontur,
   Band, Lippe, Material, Module), Boden- und Biom-Raster mit Splat-Shader, Schatten und AO, Chunk-Bake und
   Detailstufen, Einweg-Sicht an steilen Stufen, Viertelfeld-Fang, Raster über Bildkarten, Katalog-Vorschau;
@@ -1321,7 +1321,7 @@ Branch: `feature/procedural-forge-phase-0`.
   Offen: Vorschaubilder alter Stände bleiben im Geräte-Cache liegen (wie bei Bildern); `npm run bench` mit Gelände
   kommt mit DC-126. DM 2026-11-28: die Mulden-AO bleibt über Bildkarten mit der Schummerung aus (das Bild hat eigene
   Schatten). **Abgenommen vom DM (2026-11-28).**
-  ◐ **e2)** (E-90) **Material-Regeln** (`core/build/terrain/cliffMaterial.ts`): Biom und Bodenklasse auf der Oberseite
+  ✓ **e2)** (E-90) **Material-Regeln** (`core/build/terrain/cliffMaterial.ts`): Biom und Bodenklasse auf der Oberseite
   und die Fallhöhe wählen eines von 13 Materialien; längs einer Linie wechselt es weich, wo der Boden oben wechselt
   (Boden malen baut die Klippen deshalb neu). **Bandhöhen** niedrig bis 15 ft, hoch bis 35 ft, sehr hoch darüber;
   fehlt einem Material eine Höhe, nimmt es die nächste. **Module** (`render/build/cliffTextures.ts`): je Material und
@@ -1347,7 +1347,19 @@ Branch: `feature/procedural-forge-phase-0`.
   Schnitte, in allen Biomen – das Kappenmuster wird über ±0,3 Feld gemittelt gelesen, Überhang und Steinkappen
   blenden an ihren Enden über etwa ein Feld aus, die Unterkante des Überhangs läuft weich in die Wand. Danach (DM):
   nur der Rand blendet aus, die Mitte bleibt deckend – zur Lücke hin wird der Überhang schmaler statt durchsichtig.
-  **Abgenommen vom DM (2026-11-28).** Offen: Review; dann Abschluss von DC-128.
+  **Abgenommen vom DM (2026-11-28).**
+  Nach dem Review: der ruhige Fuß spiegelt offene Linien an ihren Enden (vorher rutschten die Enden nach innen und
+  ließen dort, wo Linien anderer Fallhöhe aneinanderstoßen, eine Lücke von fast einem Feld; Ausläufe endeten nicht
+  mehr spitz) und liest Ringe höchstens halb herum; Ecken und Textur-u misst das Band an der Linie selbst, nur der
+  Fuß an der geglätteten (vorher liefen Wand und Überhang nach jeder Außenecke auseinander, Kappen und Lücken passten
+  nicht mehr übereinander); DM-Sichtwände und Bild nehmen ihre Linienoptionen aus einer Funktion
+  (`materialCliffOptions`); Boden malen baut die Klippen nur neu, wenn sich Linien, Biome oder Materialien darauf
+  wirklich ändern (sonst bleiben auch die gebackenen Blöcke); im Bildstapel hat jedes Modul einen Rand aus seinen
+  eigenen Kantenzeilen (aus der Ferne schien sonst der Fuß des Nachbarmoduls durch). Tests: 873.
+  Offen (bewusst gelassen): welches Modul wo steht, zählt vom Anfang einer Linie – ändert sich ihr Anfang, wandern
+  Riss und Vorsprung längs der Linie, am TV kann ein nur teils erkundeter Strang andere Module zeigen als beim DM
+  (nichts Verborgenes); eine gemischte Linie wählt Bandbreiten-Wandern, Randsteine und Lückenhäufigkeit nach ihrem
+  Hauptmaterial; geladene Bänder bleiben für die Sitzung im Speicher.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

@@ -8,6 +8,7 @@ import type { Point } from '../../geometry';
 import { toCellSpace, type GridConfig } from '../../grid';
 import type { TerrainBiome } from '../terrainKeys';
 import { BLOCK_POINTS, blockKeyOf, SUBDIVISIONS, type RasterBlock } from './block';
+import { CLIFF_NOISE_CELLS, type CliffOptions } from './cliffs';
 import { biomeWeightsAtPx } from './groundSample';
 import { GROUND_CLASSES, type GroundClass } from './groundTool';
 
@@ -158,4 +159,12 @@ export function cliffNoiseAt(blocks: ReadonlyMap<string, RasterBlock>, grid: Gri
   let n = 0;
   for (const [m, w] of materialWeights(biomeWeightsAtPx(blocks, grid, upper), palette, classWeightsAtPx(blocks, grid, upper), dropFt)) n += w * MATERIAL_NOISE[m];
   return n;
+}
+
+/**
+ * The options for the cliff lines of `blocks`: their edges wander by the material on top. The DM's
+ * walls of sight and the drawn edges both take them from here, so the two never part.
+ */
+export function materialCliffOptions(blocks: ReadonlyMap<string, RasterBlock>, grid: GridConfig, palette: readonly (TerrainBiome | null)[], stepFt: number): CliffOptions {
+  return { grid, noiseCells: CLIFF_NOISE_CELLS, noiseAt: (upper, drop) => cliffNoiseAt(blocks, grid, palette, upper, drop * stepFt) };
 }

@@ -113,6 +113,36 @@ describe('the band mesh', () => {
     for (const y of feetY(calm)) expect(y).toBeGreaterThan(110);
   });
 
+  it('a calmer foot leaves the ends where they are: lines of other drops meet without a gap, run-outs end in a point', () => {
+    // A wavy open line that ends without running out (another drop goes on there).
+    const wavy = Array.from({ length: 41 }, (_, i) => ({ x: i * 10, y: i % 4 < 2 ? 0 : 6 }));
+    const calm = cliffBand(wavy, false, 120, { textureLength: 200, lightAngle: 45, runOut: [false, false], footSmooth: 40 });
+    const foot = (b: typeof calm, k: number) => [b.positions[k * 4 + 2]!, b.positions[k * 4 + 3]!];
+    const last = (b: typeof calm) => b.at.length - 1;
+    // The end feet hang from the ends themselves, the width away (before, the smoothed ends slid
+    // inwards and left a gap of most of a cell at 40 ft where lines of other drops meet).
+    for (const [k, top] of [[0, wavy[0]!], [last(calm), wavy[wavy.length - 1]!]] as const) {
+      const [fx, fy] = foot(calm, k);
+      expect(Math.hypot(fx! - top.x, fy! - top.y)).toBeCloseTo(120, 0);
+    }
+    // Lying straight on, not along the line: the first foot right below the first point.
+    expect(Math.abs(foot(calm, 0)[0]! - wavy[0]!.x)).toBeLessThan(12);
+    // Running out, the foot meets the top at the end.
+    const tip = cliffBand(wavy, false, 120, { textureLength: 200, lightAngle: 45, taper: 60, footSmooth: 40 });
+    expect(foot(tip, 0)[0]).toBeCloseTo(wavy[0]!.x, 6);
+    expect(foot(tip, 0)[1]).toBeCloseTo(wavy[0]!.y, 6);
+  });
+
+  it('with a calmer foot the texture still runs round an outer corner as the overhang beside it does', () => {
+    // Densely sampled, as cliff lines are: smoothed, the corner spreads over many small turns.
+    const corner = [...Array.from({ length: 20 }, (_, i) => ({ x: i * 5, y: 0 })), ...Array.from({ length: 21 }, (_, i) => ({ x: 100, y: -i * 5 }))];
+    const face = cliffBand(corner, false, 120, { textureLength: 50, lightAngle: 45, footSmooth: 30 });
+    const lip = cliffBand(corner, false, 4, { textureLength: 50, lightAngle: 45, arcWidth: () => 120 });
+    const end = (b: typeof face) => b.uvs[(b.at.length - 1) * 4]!;
+    expect(end(face)).toBeCloseTo(end(lip), 6);
+    expect(end(face) * 50).toBeCloseTo(200 + (Math.PI / 2) * 60, 0);
+  });
+
   it('its foot never runs backwards: at inner corners the feet merge, no loops for the hems at the foot', () => {
     // A narrow notch into the lower side: the mitred feet of its inner corners cross.
     const notch = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 105, y: 8 }, { x: 110, y: 0 }, { x: 200, y: 0 }];

@@ -46,8 +46,8 @@ import { applyStroke, brushPoints, lassoPoints, snapLasso, stepAt, strokeStep, t
 import { biomeWeightsAt, brushCells, brushWeights, fillPoints, paintBiome, paintGround, supportPointAt, type GroundClass } from '../core/build/terrain/groundTool';
 import { paintRelief, paintSlope, reliefFtAt, type ReliefMode } from '../core/build/terrain/heightTool';
 import type { TerrainBiome } from '../core/build/terrainKeys';
-import { CLIFF_NOISE_CELLS, CliffCache, cliffLines, cliffWalls, reliefLines } from '../core/build/terrain/cliffs';
-import { cliffNoiseAt } from '../core/build/terrain/cliffMaterial';
+import { CliffCache, cliffLines, cliffWalls, reliefLines } from '../core/build/terrain/cliffs';
+import { materialCliffOptions } from '../core/build/terrain/cliffMaterial';
 import type { TerrainShape } from '../render/pixi/terrain';
 import { tvRaster } from '../core/build/terrain/tvRaster';
 import type { RasterBlock } from '../core/build/terrain/block';
@@ -2192,8 +2192,7 @@ function cliffWallsOf(scene: Scene, terrain: TerrainState | null): readonly Wall
   const view = JSON.stringify(terrainView(scene));
   let cache = cliffCaches.get(view);
   if (!cache) cliffCaches.set(view, (cache = new CliffCache()));
-  const noiseAt = (upper: Point, drop: number) => cliffNoiseAt(blocks, scene.map.grid, terrain.biomePalette, upper, drop * terrain.stepFt);
-  const walls = cliffWalls(cliffLines({ blocks, missingIsUnknown: false }, { grid: scene.map.grid, noiseCells: CLIFF_NOISE_CELLS, noiseAt }, cache), scene.map.grid);
+  const walls = cliffWalls(cliffLines({ blocks, missingIsUnknown: false }, materialCliffOptions(blocks, scene.map.grid, terrain.biomePalette, terrain.stepFt), cache), scene.map.grid);
   cliffMemo.set(blocks, { look, walls });
   return walls;
 }

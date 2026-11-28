@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_GRID } from '../../grid';
 import { newBlock, withPoints } from './block';
-import { BAND_HEIGHTS, bandHeight, bandVariant, CLIFF_MATERIALS, classWeightsAtPx, cliffMaterial, cliffNoiseAt, MATERIAL_HEIGHTS, materialWeights, moduleChances } from './cliffMaterial';
+import { BAND_HEIGHTS, bandHeight, bandVariant, CLIFF_MATERIALS, classWeightsAtPx, cliffMaterial, cliffNoiseAt, materialCliffOptions, MATERIAL_HEIGHTS, materialWeights, moduleChances } from './cliffMaterial';
 import { classId } from './groundTool';
+import { cliffLines } from './cliffs';
 
 /**
  * Cliff materials (E-90, Teil B §11.4): which material a cliff shows by the biome and the ground
@@ -127,5 +128,20 @@ describe('the ground above a cliff', () => {
     expect(soft).toBeGreaterThan(0);
     expect(stone).toBeCloseTo(0.15);
     expect(soft).toBeLessThan(stone);
+  });
+
+  it('the options the walls of sight and the drawn edges share: paved on top, the wall runs straight', () => {
+    const edits: [number, number, number][] = [];
+    for (let y = 8; y < 25; y++) for (let x = 8; x < 25; x++) edits.push([x, y, 1]);
+    const all: [number, number, number][] = [];
+    for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) all.push([x, y, 0]);
+    let b = withPoints(newBlock(), 'step', edits);
+    b = withPoints(b, 'ground1Class', all.map(([x, y]) => [x, y, classId('paving')]));
+    b = withPoints(b, 'ground1Weight', all.map(([x, y]) => [x, y, 255]));
+    const blocks = new Map([['0_0', b]]);
+    const source = { blocks, missingIsUnknown: false };
+    const [paved] = cliffLines(source, materialCliffOptions(blocks, grid, ['temperate'], 10));
+    const [straight] = cliffLines(source, { grid, noiseCells: 0 });
+    expect(paved!.points).toEqual(straight!.points);
   });
 });

@@ -44,22 +44,33 @@ const ARC_FROM = Math.PI / 12;
 /** The sharpest inner turn a band's foot line keeps (radians). */
 const FOOT_KINK = (50 * Math.PI) / 180;
 
-/** `pts` evened out: each point the Gaussian mean (σ = `sigma` px of arc length) of the points around it. */
+/**
+ * `pts` evened out: each point the Gaussian mean (σ = `sigma` px of arc length) of the points around
+ * it. An open line is mirrored through its ends, so they stay where they are (and a straight end
+ * stays straight); a ring is read at most half way round each way.
+ */
 function smoothed(pts: readonly Pt[], closed: boolean, sigma: number): Pt[] {
   const n = pts.length;
   // A ring repeats its first point at its end: smoothed over the n - 1 distinct ones.
   const m = closed ? n - 1 : n;
-  const at = (i: number) => pts[closed ? ((i % m) + m) % m : i]!;
+  const at = (i: number): Pt => {
+    if (closed) return pts[((i % m) + m) % m]!;
+    if (i < 0) return { x: 2 * pts[0]!.x - pts[-i]!.x, y: 2 * pts[0]!.y - pts[-i]!.y };
+    if (i >= n) return { x: 2 * pts[n - 1]!.x - pts[2 * (n - 1) - i]!.x, y: 2 * pts[n - 1]!.y - pts[2 * (n - 1) - i]!.y };
+    return pts[i]!;
+  };
   const step = (i: number) => Math.hypot(at(i + 1).x - at(i).x, at(i + 1).y - at(i).y);
   const reach = sigma * 3;
+  // How far a mirrored index may go: the line itself once more beyond each end.
+  const most = closed ? Math.floor(m / 2) : n - 1;
   const out: Pt[] = [];
   for (let i = 0; i < m; i++) {
     let [sx, sy, sw] = [at(i).x, at(i).y, 1];
     for (const dir of [-1, 1]) {
       let d = 0;
-      for (let j = i, k = 0; k < m; k++) {
+      for (let j = i, k = 0; k < most; k++) {
         const nj = j + dir;
-        if (!closed && (nj < 0 || nj >= n)) break;
+        if (!closed && (nj < -(n - 1) || nj > 2 * (n - 1))) break;
         d += step(dir < 0 ? nj : j);
         if (d > reach) break;
         j = nj;
@@ -117,16 +128,21 @@ export function cliffBand(points: readonly Pt[], closed: boolean, width: number,
   for (let i = 0; i < n; i++) {
     const p = pts[i]!;
     if (i > 0) along += Math.hypot(p.x - pts[i - 1]!.x, p.y - pts[i - 1]!.y);
-    // The segments meeting at this point (a ring's seam joins its last and first segment).
-    const prev = i > 0 ? right(base[i - 1]!, base[i]!) : closed ? right(base[n - 2]!, base[0]!) : null;
-    const next = i < n - 1 ? right(base[i]!, base[i + 1]!) : closed ? right(base[0]!, base[1]!) : null;
-    const a = prev ?? next!;
-    const b = next ?? prev!;
+    // The segments meeting at this point (a ring's seam joins its last and first segment): of the line
+    // itself for its corners and the texture, of the line the foot hangs from for the foot.
+    const segments = (line: readonly Pt[]) => [i > 0 ? right(line[i - 1]!, line[i]!) : closed ? right(line[n - 2]!, line[0]!) : null, i < n - 1 ? right(line[i]!, line[i + 1]!) : closed ? right(line[0]!, line[1]!) : null] as const;
+    const [prev, next] = segments(pts);
+    const [footPrev, footNext] = base === pts ? [prev, next] : segments(base);
+    const a = footPrev ?? footNext!;
+    const b = footNext ?? footPrev!;
     // A factor read at the point itself, never along the line: an edit at one end moves nothing at the other.
     const w = width * (opts.widthFactor?.(p) ?? 1) * runOut(along);
     const u = (along + arcs) / opts.textureLength;
     // How far the lower side's normal turns here: negative turns away from the lower side (outer corner).
-    const turn = Math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y);
+    const turnOf = (c: Pt, d: Pt) => Math.atan2(c.x * d.y - c.y * d.x, c.x * d.x + c.y * d.y);
+    const turn = prev && next ? turnOf(prev, next) : 0;
+    // The foot's normal turns as the line it hangs from does: with a calmer foot, gently.
+    const footTurn = turnOf(a, b);
     if (prev && next && turn < -ARC_FROM) {
       // An outer corner: the foot round it. A ring's seam has its arc at the start; its end only meets it.
       const steps = Math.ceil(-turn / ARC_STEP);
@@ -134,7 +150,7 @@ export function cliffBand(points: readonly Pt[], closed: boolean, width: number,
       // The arc measured half way down the band (another band beside it may measure by this one's width).
       const arc = (-turn * (opts.arcWidth ? opts.arcWidth(p) * runOut(along) : w)) / 2;
       for (let k = 0; k <= last; k++) {
-        const t = (turn * k) / steps;
+        const t = (footTurn * k) / steps;
         pair(i, p, { x: a.x * Math.cos(t) - a.y * Math.sin(t), y: a.x * Math.sin(t) + a.y * Math.cos(t) }, w, u + (arc * k) / steps / opts.textureLength);
       }
       arcs += arc;

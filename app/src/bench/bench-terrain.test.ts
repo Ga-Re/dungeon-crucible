@@ -35,7 +35,7 @@ describe('the terrain benchmark scene', () => {
   });
 
   it('fog and tokens lie on the map', () => {
-    for (const area of terrainFog()) for (const [x, y] of area.outer) expect(x <= TERRAIN_MAP.width && y <= TERRAIN_MAP.height).toBe(true);
+    for (const area of terrainFog()) for (const [x, y] of area.outer) expect(x >= 0 && y >= 0 && x <= TERRAIN_MAP.width && y <= TERRAIN_MAP.height).toBe(true);
     expect(terrainTokens()).toHaveLength(20);
   });
 

@@ -73,10 +73,12 @@ float vnoise(vec2 p) {
 }
 float fbm(vec2 p) { return 0.55 * vnoise(p) + 0.3 * vnoise(p * 2.3 + 5.1) + 0.15 * vnoise(p * 5.3 + 9.7); }
 float ragged(float w, vec2 at, float seed) {
-  // Fully out or fully in, the noise moves nothing (its reach is 0 there): skip it. Most of a layer
-  // is one or the other, and at 4K the noise of every layer in every pixel cost the TV its 60 FPS.
-  if (w <= 0.0) return 0.0;
-  if (w >= 1.0) return 1.0;
+  // Near fully out or fully in, the noise cannot move the edge: |n| <= 0.725 and its reach there is
+  // at most 0.21, so w <= 0.05 stays below 0.43 (0) and w >= 0.95 above 0.57 (1) – the same result
+  // without the noise, robust to w = x / x not coming out as exactly 1. Most of a layer is one or the
+  // other, and at 4K the noise of every layer in every pixel cost the TV its 60 FPS.
+  if (w <= 0.05) return 0.0;
+  if (w >= 0.95) return 1.0;
   // Coarse noise moves the edge into islands and tongues, fine noise frays it.
   float n = (fbm(at + seed) - 0.5) * 1.2 + (vnoise(at * 5.0 + seed * 1.7) - 0.5) * 0.25;
   return smoothstep(0.43, 0.57, w + n * smoothstep(0.0, 0.25, w) * (1.0 - smoothstep(0.75, 1.0, w)) * 2.0);

@@ -60,11 +60,17 @@ app.whenReady().then(async () => {
   let ok = true;
   try {
     const now = await shoot(scene);
-    if (update || !fs.existsSync(ref)) {
+    if (update) {
       fs.writeFileSync(ref, now.toPNG());
       console.log(`${scene}: reference written`);
     } else {
-      const { share, diff } = compare(now, nativeImage.createFromPath(ref));
+      // A missing, broken or wrongly sized reference must fail, not compare as equal.
+      if (!fs.existsSync(ref)) throw new Error(`no reference visual/${scene}.png (npm run visual -- --update ${scene})`);
+      const reference = nativeImage.createFromPath(ref);
+      const size = reference.getSize();
+      if (reference.isEmpty() || size.width !== SIZE || size.height !== SIZE)
+        throw new Error(`visual/${scene}.png is not a ${SIZE}×${SIZE} picture (npm run visual -- --update ${scene})`);
+      const { share, diff } = compare(now, reference);
       if (share > SHARE) {
         ok = false;
         fs.mkdirSync(outDir, { recursive: true });

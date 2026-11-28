@@ -19,16 +19,33 @@ const url = new URL('visual.html', server.resolvedUrls?.local[0] ?? 'http://loca
 // One Electron per scene: a window after another in one process can hang while the dev server
 // optimises its dependencies.
 const scenesFile = readFileSync(resolve(root, 'src/visual/scenes.ts'), 'utf8');
-const scenes = [...scenesFile.matchAll(/^\s+'?([a-z-]+)'?: \(\) =>/gm)].map((m) => m[1]).filter((s) => !only.length || only.includes(s));
+const known = [...scenesFile.matchAll(/^\s+'?([a-z0-9-]+)'?: \(\) =>/gm)].map((m) => m[1]);
+const unknown = only.filter((s) => !known.includes(s));
+const scenes = known.filter((s) => !only.length || only.includes(s));
+if (unknown.length || !scenes.length) {
+  console.log(unknown.length ? `Unknown scenes: ${unknown.join(', ')} (known: ${known.join(', ')})` : 'No scenes found in src/visual/scenes.ts');
+  await server.close();
+  process.exit(1);
+}
 let failed = 0;
 for (const scene of scenes) {
   const code = await new Promise((done) => {
     const child = spawn(String(electron), [resolve(import.meta.dirname, 'visual-main.cjs')], {
       cwd: root,
-      stdio: ['ignore', 'inherit', 'ignore'],
+      stdio: ['ignore', 'inherit', 'pipe'],
       env: { ...process.env, VISUAL_URL: url, VISUAL_UPDATE: update ? '1' : '', VISUAL_SCENE: scene, VISUAL_ROOT: root },
     });
-    child.on('exit', done);
+    // Electron's own output is noise while a scene passes; shown when it does not.
+    let errors = '';
+    child.stderr.on('data', (d) => (errors += d));
+    child.on('error', (error) => {
+      console.log(`${scene}: FAILED – Electron did not start (${String(error)})`);
+      done(1);
+    });
+    child.on('exit', (c) => {
+      if (c !== 0 && errors.trim()) console.log(errors.trim());
+      done(c);
+    });
   });
   if (code !== 0) failed++;
 }

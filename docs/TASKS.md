@@ -1137,7 +1137,7 @@ Branch: `feature/procedural-forge-phase-0`.
   Stockwerke darunter eigenes Raster bekommen (bis dahin `raster: null`), dass Int8/Int16-Arrays den IPC-Weg als
   solche überstehen (sonst bleibt alles schwarz), und `table:ready` fehlt ohne Electron (BroadcastChannel).
 - ✓ **DC-126 Prüfwerkzeuge** (E-73, E-91; nach E-86 erst nach DC-128): Bench-Szene mit großer gezeichneter Karte, Wasser, Stockwerk und Streuung;
-  Playwright-Bildvergleiche (Steckbrief vor dem Einführen).
+  Bildvergleiche – nach E-91 selbst geschrieben statt mit Playwright.
   Stand: **Gelände-Szene der Bench** (`src/bench/bench-terrain.ts`, `VITE_BENCH_SCENE=terrain npm run bench`):
   gezeichnete Karte 96 × 96 Felder mit vier Biomen, Klippen 10/20/40 ft und Terrassen in mindestens acht Materialien
   (gepflastert, Fels, Erde, Schnee oben), Rampe, Hügel, Rinne mit Erosionskanten, Kies; lebender Nebel mit

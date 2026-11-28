@@ -144,9 +144,8 @@ async function main() {
       overPicture: false,
     });
     await renderer.drawn();
-  }
-  if (TERRAIN) videoNote = 'none (the terrain scene has a drawn map)';
-  else
+    videoNote = 'none (the terrain scene has a drawn map)';
+  } else {
     try {
       if (!VIDEO_PATH) throw new Error('VITE_BENCH_VIDEO is not set');
       video = await createMapVideo(assetUrlFor(VIDEO_PATH));
@@ -156,6 +155,7 @@ async function main() {
     } catch (error) {
       videoNote = `none – ${VIDEO_PATH || '(no path)'} could not be played (${String(error)}); see README "Renderer benchmark"`;
     }
+  }
 
   const moveCamera = (elapsed: number) => renderer.setCamera((TERRAIN ? terrainCamera : benchCamera)(elapsed, viewSize()));
   say(`Warming up (${WARM_UP_MS / 1000} s) …`);

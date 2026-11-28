@@ -78,6 +78,36 @@ describe('cliff lines from the step raster', () => {
     expect(cliffLines(source({ '0_0': withPoints(newBlock(), 'step', edits) }, true), opts)).toEqual([]);
   });
 
+  it('where the slope mask is at least half, the cliff gives way to a ramp: the line opens there (E-89)', () => {
+    const base = plateau(8, 8, 25, 25, 1);
+    // A slope over the plateau's left edge, rows 12…20.
+    const edits: [number, number, number][] = [];
+    for (let y = 12; y <= 20; y++) for (let x = 5; x <= 11; x++) edits.push([x, y, 200]);
+    const sloped = withPoints(base, 'slope', edits);
+    const lines = cliffLines(source({ '0_0': sloped }), opts);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.closed).toBe(false);
+    // A weak slope keeps the cliff.
+    const weak = withPoints(base, 'slope', edits.map(([x, y]) => [x, y, 100]));
+    expect(cliffLines(source({ '0_0': weak }), opts)[0]!.closed).toBe(true);
+  });
+
+  it('erosion edges: every 2 ft of fine height where it is steeper than 45°, none on a gentle slope (E-89)', () => {
+    // Relief rising along x over the whole block, then level: steep (2 ft per support point, 1.25 ft
+    // apart) or gentle (0.5 ft); a missing right neighbour is level with the top.
+    const ramp = (perPoint: number) => {
+      const edits: [number, number, number][] = [];
+      for (let y = 0; y < BLOCK_POINTS; y++) for (let x = 0; x < BLOCK_POINTS; x++) edits.push([x, y, Math.round(Math.min(x, 9) * perPoint * 16)]);
+      return withPoints(newBlock(), 'relief', edits);
+    };
+    const on = (b: ReturnType<typeof ramp>) => cliffLines({ blocks: new Map([['0_0', b]]), missingIsUnknown: true }, { ...opts, erosion: true });
+    expect(on(ramp(2)).length).toBeGreaterThanOrEqual(8);
+    expect(on(ramp(0.5))).toEqual([]);
+    // Steps make no erosion edges, fine height no cliffs.
+    expect(cliffLines(source({ '0_0': plateau(8, 8, 25, 25, 1) }), { ...opts, erosion: true })).toEqual([]);
+    expect(cliffLines(source({ '0_0': ramp(2) }), opts)).toEqual([]);
+  });
+
   it('the same raster gives the same lines (DM and TV draw alike), noise sampled at the world position', () => {
     const blocks = { '0_0': plateau(8, 8, 25, 25, 1) };
     const a = cliffLines(source(blocks), { grid, noiseCells: 0.15 });

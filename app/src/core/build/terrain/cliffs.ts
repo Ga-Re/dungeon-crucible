@@ -30,6 +30,9 @@ export interface CliffLine {
   readonly drop: number;
 }
 
+/** From this slope mask on (half of 255) a step is a ramp, not a cliff (E-89, Teil B §7.2). */
+export const SLOPE_RAMP = 128;
+
 /** How far a cliff's edge wanders (cells): rock, as accepted in the look spike (DC-127, Teil B §11.1). */
 export const CLIFF_NOISE_CELLS = 0.15;
 
@@ -37,6 +40,8 @@ export interface CliffOptions {
   readonly grid: GridConfig;
   /** How far the edge wanders (cells; Teil B §11.1: rock 0.15, earth 0.08); 0: straight. */
   readonly noiseCells: number;
+  /** Erosion edges instead of cliffs: drops of the fine height in steep places (E-89); `drop` counts levels of 2 ft. */
+  readonly erosion?: boolean;
 }
 
 /** Segments [ax, ay, bx, by, drop] in global support points. */
@@ -45,6 +50,7 @@ type Segments = readonly number[];
 interface Kept {
   readonly refs: readonly (RasterBlock | undefined)[];
   readonly unknown: boolean;
+  readonly erosion: boolean;
   readonly segments: Segments;
 }
 
@@ -76,8 +82,9 @@ export function cliffLines(source: CliffSource, opts: CliffOptions, cache = new 
     const [bx, by] = parseKey(key);
     const refs = [key, `${bx + 1}_${by}`, `${bx}_${by + 1}`, `${bx + 1}_${by + 1}`].map((k) => source.blocks.get(k));
     let kept = cache.byBlock.get(key);
-    if (!kept || kept.unknown !== source.missingIsUnknown || kept.refs.some((r, i) => r !== refs[i])) {
-      kept = { refs, unknown: source.missingIsUnknown, segments: blockSegments(bx, by, refs, source.missingIsUnknown) };
+    const erosion = !!opts.erosion;
+    if (!kept || kept.unknown !== source.missingIsUnknown || kept.erosion !== erosion || kept.refs.some((r, i) => r !== refs[i])) {
+      kept = { refs, unknown: source.missingIsUnknown, erosion, segments: blockSegments(bx, by, refs, source.missingIsUnknown, opts.erosion) };
       cache.byBlock.set(key, kept);
       cache.computed++;
     }
@@ -98,26 +105,47 @@ export function cliffLines(source: CliffSource, opts: CliffOptions, cache = new 
   return out;
 }
 
-/** The segments of the cells of block (bx, by): its points and the first ones of its right and lower neighbours. */
-function blockSegments(bx: number, by: number, refs: readonly (RasterBlock | undefined)[], missingIsUnknown: boolean): number[] {
+/**
+ * The segments of the cells of block (bx, by): its points and the first ones of its right and lower
+ * neighbours. `erosion`: not the steps but the fine height in levels of 2 ft, and only in cells
+ * steeper than 45° (E-89, Teil B §7.2, S9).
+ */
+function blockSegments(bx: number, by: number, refs: readonly (RasterBlock | undefined)[], missingIsUnknown: boolean, erosion = false): number[] {
   const n = BLOCK_POINTS + 1;
   const v = new Float32Array(n * n);
+  const relief = new Float32Array(n * n);
   const missing = missingIsUnknown ? NaN : 0;
   for (let y = 0; y < n; y++)
     for (let x = 0; x < n; x++) {
       const b = refs[(x === BLOCK_POINTS ? 1 : 0) + (y === BLOCK_POINTS ? 2 : 0)];
-      const s = b ? b.planes.step[(y % BLOCK_POINTS) * BLOCK_POINTS + (x % BLOCK_POINTS)]! : missing;
-      // A point the TV was not sent is unknown like a missing block (E-85).
-      v[y * n + x] = s === UNKNOWN_STEP ? NaN : s;
+      const i = (y % BLOCK_POINTS) * BLOCK_POINTS + (x % BLOCK_POINTS);
+      const s = b ? b.planes.step[i]! : missing;
+      relief[y * n + x] = b ? b.planes.relief[i]! : 0;
+      // A point the TV was not sent is unknown like a missing block (E-85); from half a slope mask
+      // on the step runs out as a ramp there (E-89): no edge either.
+      if (erosion) v[y * n + x] = s === UNKNOWN_STEP || Number.isNaN(s) ? NaN : Math.floor(relief[y * n + x]! / EROSION_LEVEL);
+      else v[y * n + x] = s === UNKNOWN_STEP || (b && b.planes.slope[i]! >= SLOPE_RAMP) ? NaN : s;
     }
+  const steep = (x: number, y: number) => {
+    const r = [relief[y * n + x]!, relief[y * n + x + 1]!, relief[(y + 1) * n + x + 1]!, relief[(y + 1) * n + x]!];
+    return Math.max(...r.map((a, i) => Math.abs(a - r[(i + 1) % 4]!))) > EROSION_STEEP;
+  };
+  return marchLevels(v, n, bx * BLOCK_POINTS, by * BLOCK_POINTS, erosion ? steep : undefined);
+}
+
+/** Relief between two neighbouring support points (1.25 ft apart) beyond which ground is steeper than 45°. */
+const EROSION_STEEP = 1.25 * 16;
+/** Erosion edges come at every 2 ft of fine height (relief in 1/16 ft). */
+const EROSION_LEVEL = 2 * 16;
+
+/** Marching squares over levels `v` (n × n, NaN: no edge there) of cells kept by `keep`: segments [ax, ay, bx, by, levels]. */
+function marchLevels(v: Float32Array, n: number, ox: number, oy: number, keep?: (x: number, y: number) => boolean): number[] {
   const out: number[] = [];
-  const ox = bx * BLOCK_POINTS;
-  const oy = by * BLOCK_POINTS;
   const c = [0, 0, 0, 0];
   const high = [false, false, false, false];
   const pairs = new Map<number, number>();
-  for (let y = 0; y < BLOCK_POINTS; y++)
-    for (let x = 0; x < BLOCK_POINTS; x++) {
+  for (let y = 0; y < n - 1; y++)
+    for (let x = 0; x < n - 1; x++) {
       c[0] = v[y * n + x]!;
       c[1] = v[y * n + x + 1]!;
       c[2] = v[(y + 1) * n + x + 1]!;
@@ -125,7 +153,7 @@ function blockSegments(bx: number, by: number, refs: readonly (RasterBlock | und
       if (c.some(Number.isNaN)) continue;
       const lo = Math.min(c[0], c[1], c[2], c[3]);
       const hi = Math.max(c[0], c[1], c[2], c[3]);
-      if (lo === hi) continue;
+      if (lo === hi || (keep && !keep(x, y))) continue;
       pairs.clear();
       for (let k = lo; k < hi; k++) {
         const t = k + 0.5;

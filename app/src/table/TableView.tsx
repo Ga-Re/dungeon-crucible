@@ -163,9 +163,11 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
         // The terrain (E-85, E-87): blocks resolved from what was sent; one not here yet is unknown.
         const ras = f.map.raster;
         const blocks = ras && source.raster ? [...source.raster.resolve(ras.blocks)].flatMap(([k, b]) => (b ? [[k, b] as const] : [])) : [];
+        // Over a picture or video (E-60, E-90) only what is painted shows, without light and shadow.
+        const origin = f.map.drawnOrigin ?? { x: 0, y: 0 };
         r.setTerrain(
-          ras && f.map.drawnOrigin
-            ? { source: { blocks: new Map(blocks), missingIsUnknown: true }, grid: f.map.grid, palette: ras.palette, stepFt: ras.stepFt, perspective: ras.perspective, erosion: ras.erosion, lightAngle: ras.lightAngle, area: { x: f.map.drawnOrigin.x, y: f.map.drawnOrigin.y, width: f.map.widthPx, height: f.map.heightPx } }
+          ras
+            ? { source: { blocks: new Map(blocks), missingIsUnknown: true }, grid: f.map.grid, palette: ras.palette, stepFt: ras.stepFt, perspective: ras.perspective, erosion: ras.erosion, lightAngle: ras.lightAngle, area: { x: origin.x, y: origin.y, width: f.map.widthPx, height: f.map.heightPx }, overPicture: !f.map.drawnOrigin }
             : null,
         );
         // Stairs (E-44) as pictures drawn here from their place – under the fog like the assets.

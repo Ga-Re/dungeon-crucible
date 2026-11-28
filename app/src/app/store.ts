@@ -1271,9 +1271,9 @@ export function setTerrainPreview(preview: TerrainPreview): void {
   emit();
 }
 
-/** Whether the terrain tools can work here: a drawn map in the Map Forge, its terrain readable (E-87). */
+/** Whether the terrain tools can work here: a map in the Map Forge – drawn or a picture (E-60, E-90) – its terrain readable (E-87). */
 export function terrainEditable(): boolean {
-  return state.layer === 'map' && !!state.scene.map.drawn && !!state.mapFile && !terrainBroken(state.mapFile);
+  return state.layer === 'map' && !!state.mapFile && !terrainBroken(state.mapFile);
 }
 
 type TerrainOptions = Omit<TerrainCommand, 'tool' | 'picking' | 'before'>;
@@ -1348,7 +1348,7 @@ const linesMemo = new WeakMap<ReadonlyMap<string, RasterBlock>, { grid: string; 
 /** The height lines the DM's view shows (none when switched off or without terrain). */
 export function terrainHeightLines(): readonly Point[][] {
   const t = ownTerrain();
-  if (!state.heightLines || !t || !state.scene.map.drawn) return [];
+  if (!state.heightLines || !t) return [];
   const blocks = shownTerrain(state.scene, t);
   const grid = JSON.stringify(state.scene.map.grid);
   const hit = linesMemo.get(blocks);
@@ -2152,11 +2152,14 @@ function shownTerrain(scene: Scene, terrain: TerrainState): ReadonlyMap<string, 
 
 const NO_BLOCKS: ReadonlyMap<string, RasterBlock> = new Map();
 
-/** What the map view draws of the terrain (E-87): on a drawn map its biome's ground, and its cliffs once painted. */
+/**
+ * What the map view draws of the terrain (E-87): on a drawn map its biome's ground, and its cliffs
+ * once painted; over a picture or video only once there is terrain, and only what is painted (E-60).
+ */
 export function terrainShape(): TerrainShape | null {
   const sc = state.scene;
-  if (!sc.map.drawn) return null;
   const terrain = ownTerrain();
+  if (!sc.map.drawn && !terrain) return null;
   return {
     source: { blocks: terrain ? shownTerrain(sc, terrain) : NO_BLOCKS, missingIsUnknown: false },
     grid: sc.map.grid,
@@ -2166,6 +2169,7 @@ export function terrainShape(): TerrainShape | null {
     erosion: sc.map.intent?.erosionEdges ?? true,
     lightAngle: sc.map.lightAngle,
     area: { x: sc.map.origin?.x ?? 0, y: sc.map.origin?.y ?? 0, width: sc.map.widthPx, height: sc.map.heightPx },
+    overPicture: !sc.map.drawn,
   };
 }
 
@@ -3667,7 +3671,7 @@ const rasterMemo: { terrain: TerrainState | null; fog: unknown; key: string; blo
  */
 function tvRasterOf(scene: Scene): NonNullable<ProjectionOptions['raster']> | null {
   const terrain = tvTerrainNow();
-  // Terrain is drawn on drawn maps only for now (E-87): there it has its ground even before the first step.
+  // A drawn map has its ground even before the first step (E-87), a picture map terrain only once painted (E-60).
   if (!terrain && !scene.map.drawn) return null;
   const look = { perspective: scene.map.intent?.cliffPerspective ?? BAND_PER_10_FT, erosion: scene.map.intent?.erosionEdges ?? true, lightAngle: scene.map.lightAngle };
   if (!terrain) {

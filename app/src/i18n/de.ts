@@ -245,7 +245,6 @@ export const de: Partial<Record<MessageKey, string>> = {
   'group.snapping': 'Einrasten',
   'tool.terrainStep': 'Stufe',
   'tool.quarterSnap': 'Viertelfeld-Fang',
-  'tool.terrainLater': 'Gelände auf Bild- und Videokarten kommt später; auf gezeichneten Karten geht es schon.',
   'hint.terrain': 'Über die Karte malen: Ein Strich setzt den Boden auf die Stufe am Startpunkt ± 1. Alt: umgekehrt; Shift: gerade Linie.',
   'terrain.cmd.title': 'Stufe',
   'terrain.cmd.mode': 'Wirkung',

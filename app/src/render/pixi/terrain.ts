@@ -34,8 +34,10 @@ export interface TerrainShape {
   readonly lightAngle: number;
   /** Erosion edges where the fine height is steep (E-89); off per map. */
   readonly erosion: boolean;
-  /** The ground's area (map px): the drawn map's. */
+  /** The ground's area (map px): the map's. */
   readonly area: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  /** Over a picture or video map (E-60, E-90): only what is painted shows, without light and shadow (the picture has its own). */
+  readonly overPicture: boolean;
 }
 
 export interface TerrainLayer {
@@ -196,7 +198,7 @@ function smoothRange(e0: number, e1: number, v: number): number {
 /** True if `a` and `b` show the same: the same blocks (by identity) and the same look. */
 function same(a: TerrainShape | null, b: TerrainShape | null): boolean {
   if (!a || !b) return a === b;
-  if (a.palette.join() !== b.palette.join() || a.erosion !== b.erosion || a.stepFt !== b.stepFt || a.perspective !== b.perspective || a.lightAngle !== b.lightAngle) return false;
+  if (a.palette.join() !== b.palette.join() || a.overPicture !== b.overPicture || a.erosion !== b.erosion || a.stepFt !== b.stepFt || a.perspective !== b.perspective || a.lightAngle !== b.lightAngle) return false;
   if (a.source.missingIsUnknown !== b.source.missingIsUnknown || a.source.blocks.size !== b.source.blocks.size) return false;
   if (JSON.stringify([a.grid, a.area]) !== JSON.stringify([b.grid, b.area])) return false;
   for (const [k, v] of a.source.blocks) if (b.source.blocks.get(k) !== v) return false;
@@ -237,8 +239,8 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
   let cliffsFrom: { planes: unknown[]; look: string } | null = null;
 
   const build = (s: TerrainShape, textures: ReadonlyMap<TerrainBiome, TerrainTextures>) => {
-    ground.set({ blocks: s.source.blocks, grid: s.grid, palette: s.palette, textures, area: s.area });
-    shade.set({ blocks: s.source.blocks, grid: s.grid, stepFt: s.stepFt, lightAngle: s.lightAngle });
+    ground.set({ blocks: s.source.blocks, grid: s.grid, palette: s.palette, textures, area: s.area, overPicture: s.overPicture });
+    shade.set(s.overPicture ? null : { blocks: s.source.blocks, grid: s.grid, stepFt: s.stepFt, lightAngle: s.lightAngle });
     // Painting ground leaves steps and biomes as they were: the cliffs stay; fine height matters only to erosion edges.
     const planes = [...s.source.blocks].flatMap(([k, b]) => [k, b.planes.step, b.planes.slope, s.erosion ? b.planes.relief : null, b.planes.biome1, b.planes.biome2, b.planes.biome3, b.planes.biome4]);
     const look = JSON.stringify([s.palette, s.stepFt, s.perspective, s.lightAngle, s.grid, s.source.missingIsUnknown, s.erosion]);

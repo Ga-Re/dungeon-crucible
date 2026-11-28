@@ -245,7 +245,6 @@ export const en = {
   'group.snapping': 'Snapping',
   'tool.terrainStep': 'Step',
   'tool.quarterSnap': 'Quarter cells',
-  'tool.terrainLater': 'Terrain on picture and video maps comes later; it works on drawn maps.',
   'hint.terrain': 'Paint over the map: a stroke sets the ground to the step where it starts ± 1. Alt: the other way; Shift: a straight line.',
   'terrain.cmd.title': 'Step',
   'terrain.cmd.mode': 'Effect',

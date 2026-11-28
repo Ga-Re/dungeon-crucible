@@ -23,6 +23,8 @@ export interface GroundInput {
   readonly textures: ReadonlyMap<TerrainBiome, TerrainTextures>;
   /** The map's area (map px): the first biome's ground covers it. */
   readonly area: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  /** Over a picture map (E-60): only painted classes show, the biomes' own ground (Auto) is clear. */
+  readonly overPicture: boolean;
 }
 
 
@@ -186,8 +188,8 @@ export function createGroundLayer(): { readonly view: Container; set(input: Grou
     const data: Texture[] = [];
     const biomes = g.slots.size ? dataTexture(g.biomes, CELL_SIDE) : undefined;
     if (biomes) data.push(biomes);
-    // The other biomes' own ground over the first's.
-    for (const slot of [...g.slots].sort()) {
+    // The other biomes' own ground over the first's (over a picture, Auto stays clear).
+    for (const slot of input.overPicture ? [] : [...g.slots].sort()) {
       const biome = input.palette[slot];
       const tex = biome ? input.textures.get(biome) : undefined;
       if (tex) out.addChild(layer(quad(corners), tex.ground, cell, { biomes, slot, seed: 3 + slot }));
@@ -217,11 +219,11 @@ export function createGroundLayer(): { readonly view: Container; set(input: Grou
         lookKey = '';
         return;
       }
-      const key = JSON.stringify([input.grid, input.palette, input.area]);
+      const key = JSON.stringify([input.grid, input.palette, input.area, input.overPicture]);
       if (key !== lookKey) {
         clearAll();
         lookKey = key;
-        const first = input.palette[0] ? input.textures.get(input.palette[0]) : undefined;
+        const first = input.palette[0] && !input.overPicture ? input.textures.get(input.palette[0]) : undefined;
         if (first) {
           const a = input.area;
           const corners = [

@@ -133,7 +133,7 @@ function Ribbon() {
   const { t } = useI18n();
   const ws = useStore((s) => s.ws);
   const tool = useStore((s) => s.tool);
-  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart, onTv: !!s.scenePath && s.scenePath === s.tvScenePath, leakCheck: !!s.leakCheck, look: !!s.lookCommand, quarter: s.terrainQuarter, drawn: !!s.scene.map.drawn, terrainTool: s.tool === 'terrain' ? (s.terrainCommand?.tool ?? null) : null, heightLines: s.heightLines }));
+  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart, onTv: !!s.scenePath && s.scenePath === s.tvScenePath, leakCheck: !!s.leakCheck, look: !!s.lookCommand, quarter: s.terrainQuarter, terrainTool: s.tool === 'terrain' ? (s.terrainCommand?.tool ?? null) : null, heightLines: s.heightLines }));
   const [resetting, setResetting] = useState(false);
   const mapSettings = useStore((s) => s.mapSettingsOpen);
   const [tab, setTab] = useState(0);
@@ -166,10 +166,6 @@ function Ribbon() {
     if (b.id === 'grid:calibrate') return tool === 'calibrate';
     return false;
   };
-
-  /** Terrain tools work on drawn maps only for now (E-87): greyed out elsewhere, saying when they come. */
-  const isTerrain = (b: RibbonButton) => b.id.startsWith('terrain:') || b.id === 'toggle:quarter' || b.id === 'toggle:heightLines';
-  const isDisabled = (b: RibbonButton) => isTerrain(b) && !flags.drawn;
 
   const run = (b: RibbonButton, el: HTMLElement) => {
     if (b.tool) return setTool(b.tool);
@@ -251,7 +247,7 @@ function Ribbon() {
           <div key={g.label} className="r-group">
             <div className="tools">
               {g.buttons.map((b) => (
-                <button key={b.id} className={`tool ${isActive(b) ? (b.tool ? 'on' : 'active') : ''}`} title={isDisabled(b) ? t('tool.terrainLater') : t(b.label)} disabled={isDisabled(b)} onClick={(e) => run(b, e.currentTarget)}>
+                <button key={b.id} className={`tool ${isActive(b) ? (b.tool ? 'on' : 'active') : ''}`} title={t(b.label)} onClick={(e) => run(b, e.currentTarget)}>
                   <Icon name={b.icon} /><span>{t(b.label)}</span>
                 </button>
               ))}

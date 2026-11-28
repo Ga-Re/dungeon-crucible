@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DcApi } from '../platform/desktop-api';
 import { closeCampaign, newCampaign, newSceneOnMap, openMapTab, readDoc, saveCampaign } from './campaign';
 import { duplicateLibraryMap } from './library';
-import { abortTerrainStroke, applyFogArea, applyMapToTv, beginTerrainStroke, setTool, terrainStrokePath, cancelTerrainCommand, checkpoint, finishTerrainCommand, fogAll, markDirty, moveTerrainStroke, produceFrame, redo, setTerrainPreview, setTvScene, setWorkspace, sightWalls, startTerrainCommand, state, tvRasterBlocks, undo, updateTerrainCommand } from './store';
+import { abortTerrainStroke, applyFogArea, applyMapToTv, beginTerrainStroke, setTool, terrainShape, terrainStrokePath, cancelTerrainCommand, checkpoint, finishTerrainCommand, fogAll, markDirty, moveTerrainStroke, produceFrame, redo, setTerrainPreview, setTvScene, setWorkspace, sightWalls, startTerrainCommand, state, tvRasterBlocks, undo, updateTerrainCommand } from './store';
 import { terrainOf, setTerrain } from './terrain';
 import { DRAWN_RESOURCE, mapSidecarFromScene } from '../core/persistence';
 import { MapSidecarSchema } from '../core/sidecar';
@@ -368,3 +368,38 @@ describe('fine height and slope (E-89)', () => {
   });
 });
 
+
+describe('terrain over a picture map (E-60, E-90)', () => {
+  const PIC = 'library/meadow.map.json';
+  async function meadow() {
+    files.set(PIC, JSON.stringify({ ...mapSidecarFromScene(createSampleScene(), 'library/meadow.webp', 'map'), name: 'Meadow' }));
+    await newCampaign('C', false);
+    await openMapTab(PIC);
+  }
+
+  it('the tools work there; it draws only what is painted, without light and shadow', async () => {
+    await meadow();
+    expect(state.scene.map.drawn).toBeFalsy();
+    expect(terrainShape()).toBeNull();
+    startTerrainCommand();
+    updateTerrainCommand({ shape: 'square', sizeCells: 1, mode: 'raise' });
+    expect(beginTerrainStroke({ x: 10.5 * 70, y: 10.5 * 70 })).toBe(true);
+    moveTerrainStroke({ x: 13.5 * 70, y: 10.5 * 70 }, { straight: false, invert: false }, true);
+    expect(pointOf(terrainOf(PIC)!, 'map', 'step', 44, 42)).toBe(1);
+    expect(terrainShape()).toMatchObject({ overPicture: true });
+    expect(sightWalls(state.scene, terrainOf(PIC)).some((w) => w.kind === 'cliff' && w.id.startsWith('terrain:'))).toBe(true);
+  });
+
+  it('the TV gets its raster once it has terrain, none before', async () => {
+    await meadow();
+    await newSceneOnMap(PIC);
+    setWorkspace('play');
+    setTvScene(state.scenePath);
+    const g = state.scene.map.grid;
+    fogAll(false);
+    applyFogArea(rectPolygon(g.originX, g.originY, g.originX + 10 * g.cellWidth, g.originY + 10 * g.cellHeight), 'reveal');
+    expect(produceFrame(1).map.raster).toBeNull();
+    setTerrain(PIC, setPoints(emptyTerrain(['temperate']), 'map', 'step', [[2, 2, 1]]));
+    expect(Object.keys(produceFrame(2).map.raster!.blocks)).toContain('0_0');
+  });
+});

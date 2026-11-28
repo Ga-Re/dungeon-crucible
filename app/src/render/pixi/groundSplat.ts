@@ -73,17 +73,16 @@ float vnoise(vec2 p) {
 }
 float fbm(vec2 p) { return 0.55 * vnoise(p) + 0.3 * vnoise(p * 2.3 + 5.1) + 0.15 * vnoise(p * 5.3 + 9.7); }
 float ragged(float w, vec2 at, float seed) {
+  // Fully out or fully in, the noise moves nothing (its reach is 0 there): skip it. Most of a layer
+  // is one or the other, and at 4K the noise of every layer in every pixel cost the TV its 60 FPS.
+  if (w <= 0.0) return 0.0;
+  if (w >= 1.0) return 1.0;
   // Coarse noise moves the edge into islands and tongues, fine noise frays it.
   float n = (fbm(at + seed) - 0.5) * 1.2 + (vnoise(at * 5.0 + seed * 1.7) - 0.5) * 0.25;
   return smoothstep(0.43, 0.57, w + n * smoothstep(0.0, 0.25, w) * (1.0 - smoothstep(0.75, 1.0, w)) * 2.0);
 }
 void main() {
-  vec2 uv = vWorld / uTile;
-  vec3 c = texture(uTex, uv).rgb;
-  if (uHasVar > 0.5) {
-    float v = smoothstep(0.4, 0.6, fbm(vWorld / (uCell * 6.0) + uSeed * 0.37 + 17.0));
-    c = mix(c, texture(uVar, uv + vec2(0.37, 0.61)).rgb, v);
-  }
+  // The mask first: where this layer does not show, nothing else is worked out.
   float a = 1.0;
   if (uClassMask > 0.5) {
     vec4 w = texture(uWeights, (vLocal + 0.5) / ${POINT_SIDE}.0);
@@ -92,8 +91,16 @@ void main() {
   if (uBiomeMask > 0.5) {
     // Cell centres, a ring of the neighbours' cells around the block's own.
     vec4 b = texture(uBiomes, (vLocal / 4.0 + 1.0) / ${CELL_SIDE}.0);
-    a *= ragged(dot(b, uSlot) / max(dot(b, uCum), 0.001), vWorld / (uCell * 1.4), 41.0);
+    if (a > 0.0) a *= ragged(dot(b, uSlot) / max(dot(b, uCum), 0.001), vWorld / (uCell * 1.4), 41.0);
   }
+  // Textures are read in every pixel (their mip level needs the neighbours); only the noise waits for the mask.
+  vec2 uv = vWorld / uTile;
+  vec3 c = texture(uTex, uv).rgb;
+  if (uHasVar > 0.5) {
+    vec3 variant = texture(uVar, uv + vec2(0.37, 0.61)).rgb;
+    if (a > 0.0) c = mix(c, variant, smoothstep(0.4, 0.6, fbm(vWorld / (uCell * 6.0) + uSeed * 0.37 + 17.0)));
+  }
+  if (a <= 0.0) discard;
   finalColor = vec4(c * a, a);
 }`;
 

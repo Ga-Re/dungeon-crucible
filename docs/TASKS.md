@@ -1156,8 +1156,11 @@ Branch: `feature/procedural-forge-phase-0`.
   Pixis Shader-Prüfung (`checkMaxIfStatementsInShader`) nie endet. Kartenansicht und TV-Ansicht legen jetzt je Renderer
   eine eigene Leinwand an (`render/pixi/gl-canvas.ts`) – wichtig auch in der fertigen App, denn die TV-Ansicht baut
   sich bei neuer Quelle (Stockwerk darunter) neu auf. Vorher hingen 7 von 9 Läufen (Kampagne mit Beispiel-Krypta
-  anlegen), danach 0 von 6, je Lauf genau eine Leinwand mit intaktem Kontext. Offen: **Messung am TV durch den DM**
-  (`VITE_BENCH_SCENE=terrain npm run bench`), danach Bericht in `docs/benchmarks/`.
+  anlegen), danach 0 von 6, je Lauf genau eine Leinwand mit intaktem Kontext. **Erste Messung am TV** (DM 2026-11-28,
+  `docs/benchmarks/2026-11-28-terrain.md`): 36 FPS, 61 % verpasste Refreshes – nicht erfüllt. Ursache: der Boden
+  rechnete das Rauschen seines Randes in jeder Ebene (bis zu etwa 16 je Block) in jedem Pixel, auch wo es nichts
+  bewegt; jetzt nur an den Rändern, Pixel ohne Deckung verworfen – gleiches Bild (Bildvergleiche ≤ 2 Stufen), in 4K
+  offscreen bei Spielnähe 2,7 statt 17,5 ms je Bild. Offen: **zweite Messung am TV durch den DM**.
 - ✓ **DC-127 Look-Spike Klippenband** (E-46, E-52): Stufen-Raster → Kontur → Band mit Test-Textur, Fuß-AO und Lippe;
   Abnahme neben einer Referenzkarte.
   Stand: `core/build/geom/contours.ts` (Marching Squares je Stufenwechsel, Kreuzung immer mittig – zwei Stufen auf

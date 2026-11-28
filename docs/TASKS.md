@@ -1290,6 +1290,27 @@ Branch: `feature/procedural-forge-phase-0`.
   DM 2026-11-28: Gefälle zwischen gleich hohen Punkten steigt um die eingestellte Höhe (Alt: fällt), das Feld
   Höhe steht dafür auch beim Gefälle. Tests: 839.
   **Abgenommen vom DM (2026-11-28).**
+  ◐ **e1)** (E-90) **Auslauf:** wo eine Böschung eine Klippe beendet, laufen Band, Überhang, Kies und Fußschatten
+  über etwa ein Feld spitz aus (Erosionskanten über ein halbes). **Ecken** (`core/build/geom/band.ts`): an
+  Außenecken läuft der Fuß in Breite des Bandes um die Ecke (Bogen statt bis zu doppelt gestreckter Gehrung); an
+  Innenecken keine Gehrung, Fußpunkte, die gegen die Linie zurücklaufen würden, fallen zusammen – keine Spitzen und
+  keine dunklen Keile mehr aus dem Fußrand, dem Fußschatten und dem Kies (`bandFoot` glättet scharfe Innenknicke).
+  **Bild- und Videokarten** (E-60): alle Gelände-Werkzeuge frei; Stufen zeichnen Klippen und sperren die Sicht
+  einseitig, gemalte Bodenklassen liegen über dem Bild; Auto-Boden, Schummerung und Schattenwurf bleiben aus; Gelände
+  erscheint erst, wenn es gemalt ist; der TV ebenso. Bandbreite und Erosionskanten stehen in den
+  Karteneinstellungen jeder Karte. **Katalog-Vorschau:** eine gezeichnete Karte zeigt im Kartenkatalog (Karte und
+  Eigenschaften) sich selbst – vom echten Renderer unsichtbar gezeichnet (256 px, WebP), im Geräte-Cache abgelegt
+  wie die Bild-Vorschauen, neu nach dem Speichern; nicht lesbar: weiter das Symbol. **Chunk-Bake/Detailstufen**
+  (`render/pixi/terrainBake.ts`): ab Maßstab 0,25 (Bildschirm-px je Karten-px) und darunter zeichnet das Gelände
+  je Block eine gebackene Textur statt seiner Meshes, gebacken auf die nächste Zweierpotenz des Maßstabs
+  (1/4 … 1/16), neu nur für Blöcke, die sich oder deren Nachbarn sich ändern, einige je Bild; bis alle da sind,
+  zeichnet das lebende Gelände. Gemessen (128 × 128 Felder, viele Klippen, drei Biome, 1920 × 1080): ganz
+  herausgezoomt 11,4 → 4,2 ms je Bild (so viel wie ohne Gelände); gebacken und lebend sehen gleich aus, auch auf
+  gedrehtem Raster, ohne Naht an Blockgrenzen. Geprüft: 849 Tests, Build mit Tisch-Bundle-Prüfung; der echte
+  Renderer offscreen (Auslauf, Ecken, Bildkarte, Vorschau, Bake); in der echten App (eigenes Profil,
+  Test-Wurzelordner) der Kartenkatalog mit den Vorschauen dreier gezeichneter Karten. Nicht geprüft: `npm run
+  bench` (öffnet das TV-Fenster im Vollbild; seine Szene hat noch kein Gelände – das bringt DC-126) und das
+  TV-Fenster selbst.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

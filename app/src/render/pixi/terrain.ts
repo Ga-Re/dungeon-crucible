@@ -20,6 +20,7 @@ import { terrainTextures, type TerrainTextures } from '../build/terrainTextures'
 import { biomeWeightsAtPx } from '../../core/build/terrain/groundSample';
 import { createGroundLayer } from './groundSplat';
 import { createShadeLayer } from './shading';
+import { createTerrainBake } from './terrainBake';
 
 export interface TerrainShape {
   /** The blocks of the stack shown (base and active layers' patches). */
@@ -46,6 +47,8 @@ export interface TerrainLayer {
   set(shape: TerrainShape | null): void;
   /** Settles once the last shape set is built (its textures loaded) or could not be. */
   ready(): Promise<void>;
+  /** Before a frame at `scale` (screen px per map px): far out, baked blocks show (E-90). True if more baking is due. */
+  prepare(scale: number): boolean;
   destroy(): void;
 }
 
@@ -214,7 +217,12 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
   // Cliffs below the light and shadow (their feet, faces, erosion edges), the overhang and stones above it.
   const cliffs = new Container();
   const above = new Container();
-  view.addChild(ground.view, cliffs, shade.view, above);
+  // Live: every mesh drawn each frame; far out its blocks are baked into textures instead (E-90).
+  const live = new Container();
+  live.isRenderGroup = true;
+  live.addChild(ground.view, cliffs, shade.view, above);
+  const bake = createTerrainBake(renderer, live);
+  view.addChild(live, bake.view);
   const erosionCache = new CliffCache();
   const cache = new CliffCache();
   let shown: TerrainShape | null = null;
@@ -245,6 +253,8 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
   const build = (s: TerrainShape, textures: ReadonlyMap<TerrainBiome, TerrainTextures>) => {
     ground.set({ blocks: s.source.blocks, grid: s.grid, palette: s.palette, textures, area: s.area, overPicture: s.overPicture });
     shade.set(s.overPicture ? null : { blocks: s.source.blocks, grid: s.grid, stepFt: s.stepFt, lightAngle: s.lightAngle });
+    // What the baked blocks hold changes with any block and with the look: they are baked again before the next frame needs them.
+    bake.update({ blocks: s.source.blocks, grid: s.grid, area: s.area, look: JSON.stringify([s.palette, s.stepFt, s.perspective, s.lightAngle, s.erosion, s.overPicture, s.source.missingIsUnknown]) });
     // Painting ground leaves steps and biomes as they were: the cliffs stay; fine height matters only to erosion edges.
     const planes = [...s.source.blocks].flatMap(([k, b]) => [k, b.planes.step, b.planes.slope, s.erosion ? b.planes.relief : null, b.planes.biome1, b.planes.biome2, b.planes.biome3, b.planes.biome4]);
     const look = JSON.stringify([s.palette, s.stepFt, s.perspective, s.lightAngle, s.grid, s.source.missingIsUnknown, s.erosion]);
@@ -354,6 +364,7 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
         cliffsFrom = null;
         ground.set(null);
         shade.set(null);
+        bake.update(null);
         clearCliffs();
         redraw();
         building = Promise.resolve();
@@ -369,11 +380,13 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
         .catch((e: unknown) => console.error('The terrain could not be drawn.', e));
     },
     ready: () => building,
+    prepare: (scale) => bake.prepare(scale),
     destroy() {
       destroyed = true;
       clearCliffs();
       ground.destroy();
       shade.destroy();
+      bake.destroy();
       view.destroy({ children: true });
     },
   };

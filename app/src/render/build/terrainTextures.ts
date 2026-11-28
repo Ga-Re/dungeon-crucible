@@ -13,6 +13,30 @@ import { periodicNoise } from '../../core/build/variance';
 export interface Surface {
   readonly texture: Texture;
   readonly variant: Texture | null;
+  /** How many cells one tile spans on the map. */
+  readonly tileCells: number;
+}
+
+/**
+ * How many 5 ft cells one tile of a ground spans, so its stones, blades, pebbles and leaves show at
+ * their real size (DM 2026-11-28: paving was far too large): by class, and where a biome's picture
+ * has stones of another size, for that biome.
+ */
+const TILE_CELLS: Record<GroundClass | 'ground', number> = { ground: 7.3, grass: 4, tallgrass: 4, earth: 4, rock: 5, gravel: 2, moss: 3, leaves: 2.5, paving: 2, snow: 7 };
+const TILE_CELLS_IN: Partial<Record<`${TerrainBiome}-${GroundClass}`, number>> = {
+  'temperate-paving': 2,
+  'swamp-paving': 2,
+  'swamp-tallgrass': 2.5,
+  'desert-paving': 3,
+  'winter-paving': 3,
+  'dungeon-paving': 3.5,
+  'swamp-gravel': 3,
+  'desert-gravel': 6,
+  'winter-gravel': 4,
+};
+
+function tileCells(biome: TerrainBiome, cls: GroundClass | null): number {
+  return cls ? (TILE_CELLS_IN[`${biome}-${cls}`] ?? TILE_CELLS[cls]) : TILE_CELLS.ground;
 }
 
 export interface TerrainTextures {
@@ -32,10 +56,10 @@ export function groundPictureUrl(biome: TerrainBiome, cls: GroundClass | null): 
 }
 
 /** A ground slot and its variant (`<slot>.1`), made seamless. */
-async function surface(slot: string): Promise<Surface> {
+async function surface(slot: string, cells: number): Promise<Surface> {
   const variantUrl = files[`./textures/${slot}.1.webp`];
   const [texture, variant] = await Promise.all([seamless(files[`./textures/${slot}.webp`], 'xy', 512), variantUrl ? seamless(variantUrl, 'xy', 512) : null]);
-  return { texture, variant };
+  return { texture, variant, tileCells: cells };
 }
 
 const loading = new Map<TerrainBiome, Promise<TerrainTextures>>();
@@ -47,8 +71,8 @@ export function terrainTextures(biome: TerrainBiome): Promise<TerrainTextures> {
     p = (async () => {
       const [band, ground, ...classes] = await Promise.all([
         seamless(files[`./textures/cliff-band-${biome}.webp`], 'x', 1024),
-        surface(`terrain-ground-${biome}`),
-        ...BIOME_CLASSES[biome].map((c) => surface(`terrain-${biome}-${c}`)),
+        surface(`terrain-ground-${biome}`, tileCells(biome, null)),
+        ...BIOME_CLASSES[biome].map((c) => surface(`terrain-${biome}-${c}`, tileCells(biome, c))),
       ]);
       return { band, ground, classes: new Map(BIOME_CLASSES[biome].map((c, i) => [c, classes[i]!])), patches: patches() };
     })();

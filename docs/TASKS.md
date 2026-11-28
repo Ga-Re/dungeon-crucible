@@ -1260,6 +1260,9 @@ Branch: `feature/procedural-forge-phase-0`.
   Palettenplatz, den kein Feld mehr nutzt, wird für ein neues Biom wieder vergeben (so stimmt der Hinweis „zuerst
   übermalen“); Malen ohne Änderung hinterlässt keinen Rückgängig-Schritt. TV-Frame v8: der TV erfährt nur die Namen
   der Biome, die seine Blöcke nutzen – ein Biom nur in einem unentdeckten Geheimraum bleibt ungenannt. Tests: 823.
+  DM 2026-11-28 („manche Texturen viel zu groß, z. B. Pflaster“): jede Bodenklasse hat einen eigenen Maßstab nach
+  echter Größe (Kachel in Feldern: Pflaster 2–3,5 je nach Steingröße des Bildes, Kies 2, Laub 2,5, Moos 3, Gras und
+  Erde 4, Fels 5, Schnee 7, Grundboden 7,3); Kies am Klippenfuß ebenso. Musterkarte je Biom mit Raster zur Abnahme.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

@@ -25,9 +25,6 @@ export interface GroundInput {
   readonly area: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
 }
 
-/** The default grid's cell, the size the textures were made for: a 512 px tile spans about seven cells. */
-const LOOK_CELL = 70;
-const TILE = 512;
 
 const VERTEX = `in vec2 aPosition;
 in vec2 aLocal;
@@ -111,7 +108,7 @@ function quad(corners: readonly { x: number; y: number }[]): Geometry {
 
 function layer(geometry: Geometry, surface: Surface, cell: number, opts: { weights?: Texture; biomes?: Texture; slot?: number; seed: number }): Layer {
   const uniforms = new UniformGroup({
-    uTile: { value: (TILE * cell) / LOOK_CELL, type: 'f32' },
+    uTile: { value: surface.tileCells * cell, type: 'f32' },
     uCell: { value: cell, type: 'f32' },
     uSeed: { value: opts.seed, type: 'f32' },
     uHasVar: { value: surface.variant ? 1 : 0, type: 'f32' },

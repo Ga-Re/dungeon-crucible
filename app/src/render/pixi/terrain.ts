@@ -59,8 +59,6 @@ const LOOKS: Record<TerrainBiome, Look> = {
   winter: { lip: true, cap: [0.93, 0.95, 0.98], stone: [0.45, 0.47, 0.5] },
 };
 
-/** The default grid's cell, the size the look was made for. */
-const LOOK_CELL = 70;
 /** How much a band's width wanders: protrusions and niches (DC-127). */
 const WIDTH_WANDER = 0.35;
 const MAX_BAND_CELLS = 2.5;
@@ -128,12 +126,12 @@ void main() {
  * Auto at a cliff's foot (E-88): the biome's gravel running out into the lower ground in patches,
  * ragged and fading. The band's u runs over a whole texture tile, v over its width's share of one.
  */
-const SOIL = `in vec2 vUV;
+const soil = (vScale: number) => `in vec2 vUV;
 in float vAlpha;
 uniform sampler2D uTexture;
 out vec4 finalColor;
 void main() {
-  vec3 c = texture(uTexture, vUV * vec2(1.0, 0.09)).rgb;
+  vec3 c = texture(uTexture, vUV * vec2(1.0, ${vScale.toFixed(4)})).rgb;
   float edge = texture(uTexture, vec2(vUV.x * 3.0, 0.7)).r;
   float a = (1.0 - smoothstep(0.35 + 0.4 * edge, 1.0, vUV.y)) * 0.9 * vAlpha;
   finalColor = vec4(c * a, a);
@@ -280,13 +278,14 @@ export function createTerrainLayer(redraw: () => void): TerrainLayer {
       const foot = chaikin(feet, line.closed, 2);
       const hem = chaikin(feet, line.closed, 4);
       // Auto at the foot: each biome's gravel, blended along the foot like the face (its points map onto the line's in order).
-      const soilBand = cliffBand(foot, line.closed, cell * 0.6, { textureLength: (512 * cell) / LOOK_CELL, lightAngle: s.lightAngle, widthFactor: soilWidth });
-      const footPoints = soilBand.shade.length / 2;
       slots.forEach((slot, n) => {
         const tex = textures.get(s.palette[slot]!)!;
-        const gravel = tex.classes.get('gravel')?.texture ?? tex.ground.texture;
+        const gravel = tex.classes.get('gravel') ?? tex.ground;
+        // The gravel at its own size: u runs over a tile, v over the hem's share of one.
+        const soilBand = cliffBand(foot, line.closed, cell * 0.6, { textureLength: gravel.tileCells * cell, lightAngle: s.lightAngle, widthFactor: soilWidth });
+        const footPoints = soilBand.shade.length / 2;
         const alpha = n === 0 ? undefined : Array.from({ length: footPoints }, (_, j) => smoothRange(0.3, 0.7, weights[Math.round((j * (weights.length - 1)) / Math.max(1, footPoints - 1))]![slot]!));
-        soilLayer.addChild(mesh(soilBand, SOIL, gravel, undefined, alpha));
+        soilLayer.addChild(mesh(soilBand, soil(0.6 / gravel.tileCells), gravel.texture, undefined, alpha));
       });
       aoLayer.addChild(mesh(cliffBand(hem, line.closed, cell * 0.4, { textureLength: cell, lightAngle: s.lightAngle }), AO, mainTex.band));
       // Scree in a few heaps at the foot, smaller the further it rolled.

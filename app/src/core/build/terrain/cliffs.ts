@@ -29,6 +29,12 @@ export interface CliffLine {
   readonly closed: boolean;
   /** Steps it drops. */
   readonly drop: number;
+  /**
+   * Per end (start, end): whether a slope ends it there, so it runs out to a point (E-89, Teil B
+   * §11.5 „Auslauf“) – not where only the drop changes along it or the known ground ends. Erosion
+   * edges run out at both ends.
+   */
+  readonly runOut: readonly [boolean, boolean];
 }
 
 /** From this slope mask on (half of 255) a step is a ramp, not a cliff (E-89, Teil B §7.2). */
@@ -107,8 +113,24 @@ export function cliffLines(source: CliffSource, opts: CliffOptions, cache = new 
   }
   const out: CliffLine[] = [];
   for (const drop of [...byDrop.keys()].sort((a, b) => a - b))
-    for (const c of stitch(byDrop.get(drop)!)) out.push({ points: shaped(c.points, c.closed, opts), closed: c.closed, drop });
+    for (const c of stitch(byDrop.get(drop)!)) {
+      const ends = c.closed ? ([false, false] as const) : opts.erosion ? ([true, true] as const) : ([sloped(source, c.points[0]!), sloped(source, c.points[c.points.length - 1]!)] as const);
+      out.push({ points: shaped(c.points, c.closed, opts), closed: c.closed, drop, runOut: ends });
+    }
   return out;
+}
+
+/** Whether a slope mask of at least half lies at a support point next to `p` (global support points): a line ending there gives way to a ramp. */
+function sloped(source: CliffSource, p: Pt): boolean {
+  for (let y = Math.floor(p.y) - 1; y <= Math.ceil(p.y) + 1; y++)
+    for (let x = Math.floor(p.x) - 1; x <= Math.ceil(p.x) + 1; x++) {
+      const bx = Math.floor(x / BLOCK_POINTS);
+      const by = Math.floor(y / BLOCK_POINTS);
+      const b = source.blocks.get(`${bx}_${by}`);
+      const i = (y - by * BLOCK_POINTS) * BLOCK_POINTS + (x - bx * BLOCK_POINTS);
+      if (b && b.planes.step[i] !== UNKNOWN_STEP && b.planes.slope[i]! >= SLOPE_RAMP) return true;
+    }
+  return false;
 }
 
 /** The keys of block (bx, by) and its eight neighbours, row by row from the top left. */

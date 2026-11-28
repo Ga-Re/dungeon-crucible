@@ -89,7 +89,8 @@ export function thumbnailUrl(relPath: string, size: number, mtimeMs: number): Pr
  * (`mapPreview.ts`, loaded only when needed); made again when the file changes. Null if it cannot be.
  */
 export function drawnMapThumbnailUrl(mapFile: string, size: number, mtimeMs: number): Promise<string | null> {
-  return cached(mapFile, size, mtimeMs, async () => (await import('./mapPreview')).drawnMapPreview(mapFile, MAX_PX));
+  // A preview that never finishes must not hold a slot for good.
+  return cached(mapFile, size, mtimeMs, async () => withTimeout((await import('./mapPreview')).drawnMapPreview(mapFile, MAX_PX)));
 }
 
 /** The thumbnail of `relPath` from this device's cache, or made by `make` and kept there. */

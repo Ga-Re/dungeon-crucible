@@ -1054,8 +1054,8 @@ export async function createRenderer(
         stepFlicker();
         stepAssetFades();
         applyCamera();
-        // Far out, the terrain draws baked blocks (E-90): baked here a few at a time.
-        const baking = terrain.prepare(Math.abs(world.scale.x));
+        // Far out, the terrain draws baked blocks (E-90): baked here a few at a time, in device pixels.
+        const baking = terrain.prepare(Math.abs(world.scale.x) * app.renderer.resolution);
         // Looping asset videos: their frames go to the GPU, and the next draw follows.
         if (playingVideos > 0) for (const t of assetTextures.values()) if (t.video) t.ready?.source.update();
         app.render();

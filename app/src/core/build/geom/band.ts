@@ -46,7 +46,7 @@ const FOOT_KINK = (50 * Math.PI) / 180;
  * The band of a contour (higher ground on its left) of `width` map px. `lightAngle`: the direction
  * the light falls towards (degrees, map coordinates; 45: to the lower right).
  */
-export function cliffBand(points: readonly Pt[], closed: boolean, width: number, opts: { textureLength: number; lightAngle: number; widthFactor?: (p: Pt) => number; taper?: number }): BandMesh {
+export function cliffBand(points: readonly Pt[], closed: boolean, width: number, opts: { textureLength: number; lightAngle: number; widthFactor?: (p: Pt) => number; taper?: number; runOut?: readonly [boolean, boolean] }): BandMesh {
   const pts = closed ? [...points, points[0]!] : [...points];
   const n = pts.length;
   const light = { x: Math.cos((opts.lightAngle * Math.PI) / 180), y: Math.sin((opts.lightAngle * Math.PI) / 180) };
@@ -57,9 +57,10 @@ export function cliffBand(points: readonly Pt[], closed: boolean, width: number,
   };
   // An open line's ends: where a slope ends the cliff, the band runs out to a point (E-89, Teil B §11.5 „Auslauf“).
   const total = closed || !opts.taper ? 0 : pts.reduce((sum, p, i) => (i ? sum + Math.hypot(p.x - pts[i - 1]!.x, p.y - pts[i - 1]!.y) : 0), 0);
+  const [fromStart, toEnd] = opts.runOut ?? [true, true];
   const runOut = (along: number) => {
     if (!total) return 1;
-    const t = Math.min(1, Math.min(along, total - along) / opts.taper!);
+    const t = Math.min(1, Math.min(fromStart ? along : Infinity, toEnd ? total - along : Infinity) / opts.taper!);
     return t * t * (3 - 2 * t);
   };
   const pos: number[] = [];
@@ -117,6 +118,11 @@ export function cliffBand(points: readonly Pt[], closed: boolean, width: number,
     pos[k * 4 + 2] = lx;
     pos[k * 4 + 3] = ly;
   }
+  // A ring's last pair repeats its first: so does its foot, or a merge there would leave a sliver at the seam.
+  if (closed) {
+    pos[(pairs - 1) * 4 + 2] = pos[2]!;
+    pos[(pairs - 1) * 4 + 3] = pos[3]!;
+  }
   const indices = new Uint32Array((pairs - 1) * 6);
   for (let i = 0; i < pairs - 1; i++) {
     const t = i * 2;
@@ -146,9 +152,11 @@ export function bandFoot(m: BandMesh, closed: boolean): Pt[] {
     out.push(foot);
   }
   // A sharp inner kink is bridged: half-transparent strips along the foot would overlap there.
-  for (let changed = true; changed && out.length > 2; ) {
+  // A ring keeps at least three points: fewer would draw a strip across it.
+  const fewest = closed ? 3 : 2;
+  for (let changed = true; changed && out.length > fewest; ) {
     changed = false;
-    for (let k = closed ? 0 : 1; k < (closed ? out.length : out.length - 1) && out.length > 2; k++) {
+    for (let k = closed ? 0 : 1; k < (closed ? out.length : out.length - 1) && out.length > fewest; k++) {
       const p = out[(k - 1 + out.length) % out.length]!;
       const q = out[k]!;
       const r = out[(k + 1) % out.length]!;

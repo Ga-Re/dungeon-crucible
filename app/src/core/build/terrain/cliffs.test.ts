@@ -87,9 +87,23 @@ describe('cliff lines from the step raster', () => {
     const lines = cliffLines(source({ '0_0': sloped }), opts);
     expect(lines).toHaveLength(1);
     expect(lines[0]!.closed).toBe(false);
+    // Both its ends are where the slope begins: there it runs out to a point (Teil B §11.5 „Auslauf“).
+    expect(lines[0]!.runOut).toEqual([true, true]);
     // A weak slope keeps the cliff.
     const weak = withPoints(base, 'slope', edits.map(([x, y]) => [x, y, 100]));
     expect(cliffLines(source({ '0_0': weak }), opts)[0]!.closed).toBe(true);
+  });
+
+  it('a line ending where only the drop changes (a terrace meets lower ground) does not run out', () => {
+    // Two steps up over the top half; below it, level 0 on the left and level 1 on the right.
+    const edits: [number, number, number][] = [];
+    for (let y = 0; y < 40; y++) for (let x = 0; x < 80; x++) {
+      const v = y < 20 ? 2 : x >= 40 ? 1 : 0;
+      if (v) edits.push([x, y, v]);
+    }
+    const lines = cliffLines(source({ '0_0': withPoints(newBlock(), 'step', edits) }), opts);
+    expect(lines.some((l) => !l.closed)).toBe(true);
+    for (const l of lines) expect(l.runOut).toEqual([false, false]);
   });
 
   it('erosion edges: along the upper rim of fine height steeper than 45°, none on a gentle slope (E-89)', () => {

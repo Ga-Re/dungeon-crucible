@@ -1311,6 +1311,15 @@ Branch: `feature/procedural-forge-phase-0`.
   Test-Wurzelordner) der Kartenkatalog mit den Vorschauen dreier gezeichneter Karten. Nicht geprüft: `npm run
   bench` (öffnet das TV-Fenster im Vollbild; seine Szene hat noch kein Gelände – das bringt DC-126) und das
   TV-Fenster selbst.
+  Nach dem Review: der Auslauf gilt nur, wo wirklich eine Böschung die Linie beendet (vorher auch dort, wo sich nur
+  die Fallhöhe längs einer Kante ändert – Terrassen bekamen eine Einschnürung – und am TV am Rand des Bekannten);
+  gebackene Blöcke werden nach jedem Neubau der Klippen alle neu gebacken (Textur, Biom und Fuß einer Linie laufen
+  über ihre ganze Länge – vorher blieb weiter weg ein alter Stand mit Naht stehen; bis dahin zeigt der alte); gebacken
+  wird in Gerätepixeln (vorher auf 2×-Bildschirmen halb so scharf); nah herangezoomt werden die gebackenen
+  Texturen freigegeben; ein Ring bleibt an seiner Naht geschlossen, sein Fuß behält mindestens drei Punkte; die
+  Vorschau liest die Kartendatei an der Buchführung einer offenen Karte vorbei und gibt nach 10 s auf. Tests: 853.
+  Offen: Vorschaubilder alter Stände bleiben im Geräte-Cache liegen (wie bei Bildern); die Mulden-AO über Bildkarten
+  ist mit der Schummerung aus (Rückfrage an den DM); `npm run bench` mit Gelände kommt mit DC-126.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

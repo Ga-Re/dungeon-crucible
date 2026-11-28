@@ -1,10 +1,11 @@
 /**
  * Detail levels of the terrain (Teil B §22.3, E-90): seen from far, the terrain is drawn from
  * textures baked per block instead of its hundreds of meshes – one quad per block. A level is the
- * screen's scale rounded up to a power of two (1/16 … 1/4 px per map px), so the baked textures
- * together are about as large as the screen. A block is baked again when it or a neighbour changed
- * (cliffs, shadows and ragged ground reach across a block's edge) or the level changed, a few per
- * frame; until every block has its texture the live terrain shows. Shared by the DM window and the TV.
+ * screen's scale in device pixels rounded up to a power of two (1/16 … 1/4 px per map px), so the
+ * baked textures together are about as large as the screen. A block is baked again when it or a
+ * neighbour changed (shadows and ragged ground reach across a block's edge), the cliffs were built
+ * again or the level changed, a few per frame; until every block has its texture the live terrain
+ * shows. Close in they are freed. Shared by the DM window and the TV.
  */
 import { Container, Matrix, Mesh, MeshGeometry, RenderTexture, type Renderer } from 'pixi.js';
 import { BLOCK_CELLS, type RasterBlock } from '../../core/build/terrain/block';
@@ -53,11 +54,30 @@ export interface BakeInput {
   readonly area: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   /** Anything else that changes how every block looks (palette, light, band width …). */
   readonly look: string;
+  /**
+   * Rises whenever the cliff lines were built again: a line's texture, biome and foot run along all
+   * of it, so a change at one end can show blocks away – every block is then due (the old ones show
+   * until baked again).
+   */
+  readonly cliffs: number;
 }
 
-interface Baked {
-  refs: readonly unknown[];
-  level: number;
+/** What a block was baked from. */
+export interface BakedFrom {
+  readonly level: number;
+  readonly cliffs: number;
+  /** The blocks around it (`neighbourKeys`), by identity. */
+  readonly refs: readonly unknown[];
+}
+
+/** Whether a block baked from `had` is due again: at `level`, the cliffs at `cliffs`, its neighbours `around` now in `blocks`. */
+export function bakeDue(had: BakedFrom | undefined, level: number, cliffs: number, around: readonly string[], blocks: ReadonlyMap<string, RasterBlock>): boolean {
+  if (!had || had.level !== level || had.cliffs !== cliffs) return true;
+  for (let i = 0; i < around.length; i++) if (had.refs[i] !== blocks.get(around[i]!)) return true;
+  return false;
+}
+
+interface Baked extends BakedFrom {
   texture: RenderTexture;
   mesh: Mesh<MeshGeometry>;
 }
@@ -67,7 +87,10 @@ export interface TerrainBake {
   readonly view: Container;
   /** The terrain changed (after the live terrain was built): which blocks to bake again. */
   update(input: BakeInput | null): void;
-  /** Before a frame: bakes what is due within the budget, shows baked or live. True if more is due. */
+  /**
+   * Before a frame at `scale` (device px per map px): bakes what is due within the budget, shows
+   * baked or live. True if more is due.
+   */
   prepare(scale: number): boolean;
   destroy(): void;
 }
@@ -78,7 +101,8 @@ export function createTerrainBake(renderer: Renderer, live: Container): TerrainB
   view.visible = false;
   const baked = new Map<string, Baked>();
   let input: BakeInput | null = null;
-  let keys: string[] = [];
+  /** The blocks the map covers, each with the keys of the blocks around it. */
+  let keys = new Map<string, readonly string[]>();
   let look = '';
 
   const drop = (b: Baked) => {
@@ -87,13 +111,14 @@ export function createTerrainBake(renderer: Renderer, live: Container): TerrainB
     b.mesh.destroy();
     b.texture.destroy(true);
   };
-  const refsOf = (key: string, blocks: ReadonlyMap<string, RasterBlock>) => {
-    const [bx, by] = key.split('_').map(Number) as [number, number];
-    return neighbourKeys(bx, by).map((k) => blocks.get(k));
+  const dropAll = () => {
+    for (const b of baked.values()) drop(b);
+    baked.clear();
   };
 
-  const bake = (key: string, level: number, grid: GridConfig) => {
+  const bake = (key: string, level: number, now: BakeInput) => {
     const [bx, by] = key.split('_').map(Number) as [number, number];
+    const { grid } = now;
     const w = Math.max(1, Math.round(BLOCK_CELLS * grid.cellWidth * level));
     const h = Math.max(1, Math.round(BLOCK_CELLS * grid.cellHeight * level));
     const transform = bakeTransform(grid, bx, by, w, h);
@@ -103,7 +128,11 @@ export function createTerrainBake(renderer: Renderer, live: Container): TerrainB
     live.visible = true;
     renderer.render({ container: live, target: texture, transform, clear: true, clearColor: [0, 0, 0, 0] });
     live.visible = shown;
-    if (had && had.texture === texture) return;
+    const from = { level, cliffs: now.cliffs, refs: keys.get(key)!.map((k) => now.blocks.get(k)) };
+    if (had && had.texture === texture) {
+      baked.set(key, { ...had, ...from });
+      return;
+    }
     if (had) drop(had);
     const corners = [
       [0, 0],
@@ -114,7 +143,7 @@ export function createTerrainBake(renderer: Renderer, live: Container): TerrainB
     const geometry = new MeshGeometry({ positions: new Float32Array(corners.flatMap((p) => [p.x, p.y])), uvs: new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), indices: new Uint32Array([0, 1, 2, 0, 2, 3]) });
     const mesh = new Mesh({ geometry, texture });
     view.addChild(mesh);
-    baked.set(key, { refs: [], level: 0, texture, mesh });
+    baked.set(key, { ...from, texture, mesh });
   };
 
   return {
@@ -122,60 +151,52 @@ export function createTerrainBake(renderer: Renderer, live: Container): TerrainB
     update(next) {
       input = next;
       if (!next) {
-        for (const b of baked.values()) drop(b);
-        baked.clear();
-        keys = [];
+        dropAll();
+        keys = new Map();
         look = '';
         return;
       }
       const nextLook = JSON.stringify([next.look, next.grid, next.area]);
       if (nextLook !== look) {
         // Every block looks different now: none is kept (a stale one would show until baked again).
-        for (const b of baked.values()) drop(b);
-        baked.clear();
+        dropAll();
         look = nextLook;
-      }
-      keys = blocksCovering(next.grid, next.area);
-      const wanted = new Set(keys);
-      for (const [k, b] of baked) {
-        if (wanted.has(k)) continue;
-        drop(b);
-        baked.delete(k);
+        keys = new Map(
+          blocksCovering(next.grid, next.area).map((k) => {
+            const [bx, by] = k.split('_').map(Number) as [number, number];
+            return [k, neighbourKeys(bx, by)];
+          }),
+        );
       }
     },
     prepare(scale) {
       if (!input || scale > BAKE_BELOW) {
+        // Close in, the live terrain shows: the baked textures are freed (baked again when needed).
+        if (baked.size) dropAll();
         view.visible = false;
         live.visible = true;
         return false;
       }
+      const now = input;
       const level = bakeLevel(scale);
-      const due = keys.filter((k) => {
-        const b = baked.get(k);
-        if (!b || b.level !== level) return true;
-        const refs = refsOf(k, input!.blocks);
-        return refs.some((r, i) => r !== b.refs[i]);
-      });
       const start = performance.now();
-      for (const k of due) {
-        bake(k, level, input.grid);
-        const b = baked.get(k)!;
-        b.refs = refsOf(k, input.blocks);
-        b.level = level;
-        if (performance.now() - start > BUDGET_MS) break;
+      let more = false;
+      for (const [k, around] of keys) {
+        if (!bakeDue(baked.get(k), level, now.cliffs, around, now.blocks)) continue;
+        if (performance.now() - start > BUDGET_MS) {
+          more = true;
+          break;
+        }
+        bake(k, level, now);
       }
-      // Live until every block has a texture; then the baked ones, even if some are a level off.
-      const complete = keys.every((k) => baked.has(k));
+      // Live until every block has a texture; then the baked ones, even if some are still due.
+      const complete = baked.size === keys.size;
       view.visible = complete;
       live.visible = !complete;
-      return keys.some((k) => {
-        const b = baked.get(k);
-        return !b || b.level !== level || refsOf(k, input!.blocks).some((r, i) => r !== b.refs[i]);
-      });
+      return more;
     },
     destroy() {
-      for (const b of baked.values()) drop(b);
-      baked.clear();
+      dropAll();
       view.destroy({ children: true });
     },
   };

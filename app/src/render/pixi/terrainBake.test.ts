@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_GRID, fromCellSpace } from '../../core/grid';
-import { bakeLevel, bakeTransform, blocksCovering } from './terrainBake';
+import { newBlock, withPoints } from '../../core/build/terrain/block';
+import { neighbourKeys } from '../../core/build/terrain/groundSample';
+import { bakeDue, bakeLevel, bakeTransform, blocksCovering } from './terrainBake';
 
 /** Detail levels of the terrain (Teil B §22.3, E-90): baked per block at about the screen's scale. */
 const grid = { ...DEFAULT_GRID, cellWidth: 70, cellHeight: 70, originX: 0, originY: 0, rotationDeg: 0 };
@@ -32,5 +34,22 @@ describe('terrain bake', () => {
         expect(p.y).toBeCloseTo(v * 560, 3);
       }
     }
+  });
+
+  it('a block is baked again when it or a neighbour changed, the cliffs were built again or the level changed', () => {
+    const own = newBlock();
+    const right = newBlock();
+    const blocks = new Map([['0_0', own], ['1_0', right]]);
+    const around = neighbourKeys(0, 0);
+    const from = { level: 0.25, cliffs: 3, refs: around.map((k) => blocks.get(k)) };
+    expect(bakeDue(undefined, 0.25, 3, around, blocks)).toBe(true);
+    expect(bakeDue(from, 0.25, 3, around, blocks)).toBe(false);
+    expect(bakeDue(from, 0.125, 3, around, blocks)).toBe(true);
+    // Cliffs built again: a line's texture and biome run along all of it, so a far edit shows here too.
+    expect(bakeDue(from, 0.25, 4, around, blocks)).toBe(true);
+    // A neighbour painted.
+    expect(bakeDue(from, 0.25, 3, around, new Map([['0_0', own], ['1_0', withPoints(right, 'step', [[0, 0, 1]])]]))).toBe(true);
+    // A block two away changes nothing here.
+    expect(bakeDue(from, 0.25, 3, around, new Map([...blocks, ['3_0', newBlock()]]))).toBe(false);
   });
 });

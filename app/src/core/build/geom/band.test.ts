@@ -103,6 +103,24 @@ describe('the band mesh', () => {
     }
   });
 
+  it('runs out only at the ends named (where a slope ends the cliff)', () => {
+    const long = Array.from({ length: 11 }, (_, i) => ({ x: i * 20, y: 0 }));
+    const b = cliffBand(long, false, 30, { textureLength: 50, lightAngle: 45, taper: 60, runOut: [false, true] });
+    expect(b.positions[3]).toBeCloseTo(30);
+    expect(b.positions[10 * 4 + 3]).toBeCloseTo(0);
+  });
+
+  it('a ring stays closed at its seam when feet merge there, and its foot keeps at least three points', () => {
+    // A notch into the lower side right at the ring's seam (its first point).
+    const ring = [{ x: 105, y: 8 }, { x: 110, y: 0 }, { x: 200, y: 0 }, { x: 200, y: -200 }, { x: 0, y: -200 }, { x: 0, y: 0 }, { x: 100, y: 0 }];
+    const b = cliffBand(ring, true, 20, { textureLength: 50, lightAngle: 45 });
+    const last = b.at.length - 1;
+    expect([b.positions[last * 4 + 2], b.positions[last * 4 + 3]]).toEqual([b.positions[2], b.positions[3]]);
+    // A small pit (its lower side inside): the foot stays a ring, not a strip across it.
+    const pit = [{ x: 0, y: 0 }, { x: 0, y: 100 }, { x: 100, y: 100 }, { x: 100, y: 0 }];
+    expect(bandFoot(cliffBand(pit, true, 30, { textureLength: 50, lightAngle: 45 }), true).length).toBeGreaterThanOrEqual(3);
+  });
+
   it('a face turned to the light is brighter than one turned away', () => {
     // Light falls towards the lower right (45°): a face looking up-left (towards the light's source) is lit.
     const facingLight = cliffBand([{ x: 100, y: 0 }, { x: 0, y: 0 }], false, 20, { textureLength: 50, lightAngle: 45 });

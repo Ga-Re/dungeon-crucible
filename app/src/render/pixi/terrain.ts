@@ -47,7 +47,7 @@ export interface TerrainLayer {
   set(shape: TerrainShape | null): void;
   /** Settles once the last shape set is built (its textures loaded) or could not be. */
   ready(): Promise<void>;
-  /** Before a frame at `scale` (screen px per map px): far out, baked blocks show (E-90). True if more baking is due. */
+  /** Before a frame at `scale` (device px per map px): far out, baked blocks show (E-90). True if more baking is due. */
   prepare(scale: number): boolean;
   destroy(): void;
 }
@@ -227,6 +227,8 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
   const cache = new CliffCache();
   let shown: TerrainShape | null = null;
   let wanted: TerrainShape | null = null;
+  /** How often the cliffs were built: baked blocks from before are due. */
+  let cliffBuilds = 0;
   /** The build of the last shape set: its textures load first. */
   let building: Promise<void> = Promise.resolve();
   let destroyed = false;
@@ -253,16 +255,18 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
   const build = (s: TerrainShape, textures: ReadonlyMap<TerrainBiome, TerrainTextures>) => {
     ground.set({ blocks: s.source.blocks, grid: s.grid, palette: s.palette, textures, area: s.area, overPicture: s.overPicture });
     shade.set(s.overPicture ? null : { blocks: s.source.blocks, grid: s.grid, stepFt: s.stepFt, lightAngle: s.lightAngle });
-    // What the baked blocks hold changes with any block and with the look: they are baked again before the next frame needs them.
-    bake.update({ blocks: s.source.blocks, grid: s.grid, area: s.area, look: JSON.stringify([s.palette, s.stepFt, s.perspective, s.lightAngle, s.erosion, s.overPicture, s.source.missingIsUnknown]) });
+    // The baked blocks (E-90) are baked again where blocks changed, all of them when the cliffs were built again.
+    const toBake = () => bake.update({ blocks: s.source.blocks, grid: s.grid, area: s.area, look: JSON.stringify([s.palette, s.stepFt, s.perspective, s.lightAngle, s.erosion, s.overPicture, s.source.missingIsUnknown]), cliffs: cliffBuilds });
     // Painting ground leaves steps and biomes as they were: the cliffs stay; fine height matters only to erosion edges.
     const planes = [...s.source.blocks].flatMap(([k, b]) => [k, b.planes.step, b.planes.slope, s.erosion ? b.planes.relief : null, b.planes.biome1, b.planes.biome2, b.planes.biome3, b.planes.biome4]);
     const look = JSON.stringify([s.palette, s.stepFt, s.perspective, s.lightAngle, s.grid, s.source.missingIsUnknown, s.erosion]);
     if (cliffsFrom && cliffsFrom.look === look && cliffsFrom.planes.length === planes.length && cliffsFrom.planes.every((x, i) => x === planes[i])) {
+      toBake();
       redraw();
       return;
     }
     cliffsFrom = { planes, look };
+    cliffBuilds++;
     clearCliffs();
     const cell = s.grid.cellWidth;
     const soilLayer = new Container();
@@ -273,7 +277,8 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
     const rim = new Graphics();
     const widthFactor = (p: Pt) => 1 + WIDTH_WANDER * noise2(p.x / (cell * 0.9), p.y / (cell * 0.9), 17);
     const soilWidth = (p: Pt) => 0.05 + 1.1 * Math.max(0, noise2(p.x / (cell * 1.4), p.y / (cell * 1.4), 83));
-    // Where a slope ends a cliff, it runs out to a point over about a cell (E-89); its foot and hems too.
+    // Where a slope ends a cliff, it runs out to a point over about a cell (E-89); its foot and hems too –
+    // not where only its drop changes or the known ground ends.
     const taper = cell;
     for (const line of cliffLines(s.source, { grid: s.grid, noiseCells: CLIFF_NOISE_CELLS }, cache)) {
       if (line.points.length < 2) continue;
@@ -293,8 +298,8 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
       const mainLook = LOOKS[main];
       const mainTex = textures.get(main)!;
       const width = Math.min(MAX_BAND_CELLS, ((line.drop * s.stepFt) / 10) * s.perspective) * cell;
-      const band = cliffBand(line.points, line.closed, width, { textureLength: cell * 4, lightAngle: s.lightAngle, widthFactor, taper });
-      const lip = cliffBand(line.points, line.closed, cell * 0.22, { textureLength: cell * 4, lightAngle: s.lightAngle, taper });
+      const band = cliffBand(line.points, line.closed, width, { textureLength: cell * 4, lightAngle: s.lightAngle, widthFactor, taper, runOut: line.runOut });
+      const lip = cliffBand(line.points, line.closed, cell * 0.22, { textureLength: cell * 4, lightAngle: s.lightAngle, taper, runOut: line.runOut });
       slots.forEach((slot, n) => {
         const biome = s.palette[slot]!;
         const tex = textures.get(biome)!;
@@ -313,12 +318,12 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
         const tex = textures.get(s.palette[slot]!)!;
         const gravel = tex.classes.get('gravel') ?? tex.ground;
         // The gravel at its own size: u runs over a tile, v over the hem's share of one.
-        const soilBand = cliffBand(foot, line.closed, cell * 0.6, { textureLength: gravel.tileCells * cell, lightAngle: s.lightAngle, widthFactor: soilWidth, taper });
+        const soilBand = cliffBand(foot, line.closed, cell * 0.6, { textureLength: gravel.tileCells * cell, lightAngle: s.lightAngle, widthFactor: soilWidth, taper, runOut: line.runOut });
         const footPoints = line.closed ? foot.length + 1 : foot.length;
         const alpha = n === 0 ? undefined : Array.from({ length: footPoints }, (_, j) => smoothRange(0.3, 0.7, weights[Math.round((j * (weights.length - 1)) / Math.max(1, footPoints - 1))]![slot]!));
         soilLayer.addChild(mesh(soilBand, soil(0.6 / gravel.tileCells), gravel.texture, undefined, alpha));
       });
-      aoLayer.addChild(mesh(cliffBand(hem, line.closed, cell * 0.4, { textureLength: cell, lightAngle: s.lightAngle, taper }), AO, mainTex.band));
+      aoLayer.addChild(mesh(cliffBand(hem, line.closed, cell * 0.4, { textureLength: cell, lightAngle: s.lightAngle, taper, runOut: line.runOut }), AO, mainTex.band));
       // Scree in a few heaps at the foot, smaller the further it rolled.
       for (const { p, normal } of alongLine(foot, line.closed, cell * 0.1)) {
         const heap = noise2(p.x / (cell * 1.6), p.y / (cell * 1.6), 81) > 0.45;
@@ -351,6 +356,7 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
       }
     cliffs.addChild(soilLayer, aoLayer, erosion, faces);
     above.addChild(overhang, rubble, rim);
+    toBake();
     redraw();
   };
 

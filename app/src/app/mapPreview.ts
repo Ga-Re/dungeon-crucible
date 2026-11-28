@@ -5,16 +5,20 @@
  */
 import { decodeTerrain, EncodeCache } from '../core/build/terrain/state';
 import { sceneFromDocuments } from '../core/persistence';
+import { readDocument } from '../core/documents';
 import { MapSidecarSchema } from '../core/sidecar';
+import { readText } from '../platform/bridge';
 import { createRenderer } from '../render/pixi/renderer';
-import { readDoc } from './campaign';
 import { terrainShapeOf } from './store';
 
 export async function drawnMapPreview(mapFile: string, maxPx: number): Promise<Uint8Array | null> {
-  const doc = await readDoc(mapFile, 'map', MapSidecarSchema, { quiet: true });
-  if (!doc) return null;
+  // Read past the campaign's bookkeeping: the map may be open, and its tab keeps what it read.
+  let doc;
   let terrain = null;
   try {
+    const r = readDocument('map', MapSidecarSchema, await readText(mapFile));
+    if (!r.ok) return null;
+    doc = r.value;
     terrain = doc.terrain ? await decodeTerrain(doc.terrain, new EncodeCache()) : null;
   } catch {
     return null;

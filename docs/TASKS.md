@@ -1343,7 +1343,9 @@ Branch: `feature/procedural-forge-phase-0`.
   nur über wenige Pixel überblendet (DM: kein Doppelbild von Pfosten und Fugen) und mit fester Bandbreite (Fels
   wandert ±35 %). DM 2026-11-28: die kahlen Stellen oben (Lücken im Überhang, dort Steinkappen) fielen bei Lehm und
   Granit zu sehr auf – jetzt je Material seltener (Sandstein wie abgenommen; Lehm, Granit, Erde, Torf, Eis nur noch
-  vereinzelt), und der Überhang läuft dort schmal aus statt eckig abzureißen. Offen: Abnahme der Höhen und Module;
+  vereinzelt), und der Überhang läuft dort schmal aus statt eckig abzureißen. DM 2026-11-28: weicher, ohne harte
+  Schnitte, in allen Biomen – das Kappenmuster wird über ±0,3 Feld gemittelt gelesen, Überhang und Steinkappen
+  blenden an ihren Enden über etwa ein Feld aus, die Unterkante des Überhangs läuft weich in die Wand. Offen: Abnahme der Höhen und Module;
   Review; dann Abschluss von DC-128.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,

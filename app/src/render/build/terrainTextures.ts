@@ -1,6 +1,5 @@
 /**
- * Textures of the terrain (E-87, E-88): per terrain biome a cliff band (a strip seen from the front,
- * seamless along its width), its ground and each ground class it has, with their variants
+ * Textures of the terrain (E-87, E-88): per terrain biome its ground and each ground class it has, with their variants
  * (seamless both ways), shipped in `./textures`; plus a generated helper – patches read along
  * an edge, where bare stone caps show. Loaded once per biome; shared by the DM window and the TV.
  */
@@ -40,7 +39,6 @@ function tileCells(biome: TerrainBiome, cls: GroundClass | null): number {
 }
 
 export interface TerrainTextures {
-  readonly band: Texture;
   /** Auto: the biome's own ground. */
   readonly ground: Surface;
   /** The classes the biome has. */
@@ -48,7 +46,7 @@ export interface TerrainTextures {
   readonly patches: Texture;
 }
 
-const files = import.meta.glob('./textures/{cliff-band,terrain}-*.webp', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const files = import.meta.glob('./textures/terrain-*.webp', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
 /** The picture of a ground class as `biome` shows it (Auto: its own ground), for palettes in panels. */
 export function groundPictureUrl(biome: TerrainBiome, cls: GroundClass | null): string | undefined {
@@ -58,7 +56,7 @@ export function groundPictureUrl(biome: TerrainBiome, cls: GroundClass | null): 
 /** A ground slot and its variant (`<slot>.1`), made seamless. */
 async function surface(slot: string, cells: number): Promise<Surface> {
   const variantUrl = files[`./textures/${slot}.1.webp`];
-  const [texture, variant] = await Promise.all([seamless(files[`./textures/${slot}.webp`], 'xy', 512), variantUrl ? seamless(variantUrl, 'xy', 512) : null]);
+  const [texture, variant] = await Promise.all([seamless(files[`./textures/${slot}.webp`], 512), variantUrl ? seamless(variantUrl, 512) : null]);
   return { texture, variant, tileCells: cells };
 }
 
@@ -69,12 +67,11 @@ export function terrainTextures(biome: TerrainBiome): Promise<TerrainTextures> {
   let p = loading.get(biome);
   if (!p) {
     p = (async () => {
-      const [band, ground, ...classes] = await Promise.all([
-        seamless(files[`./textures/cliff-band-${biome}.webp`], 'x', 1024),
+      const [ground, ...classes] = await Promise.all([
         surface(`terrain-ground-${biome}`, tileCells(biome, null)),
         ...BIOME_CLASSES[biome].map((c) => surface(`terrain-${biome}-${c}`, tileCells(biome, c))),
       ]);
-      return { band, ground, classes: new Map(BIOME_CLASSES[biome].map((c, i) => [c, classes[i]!])), patches: patches() };
+      return { ground, classes: new Map(BIOME_CLASSES[biome].map((c, i) => [c, classes[i]!])), patches: patches() };
     })();
     loading.set(biome, p);
     // A failed load is tried again next time.
@@ -99,10 +96,10 @@ function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContex
 }
 
 /**
- * A picture made seamless along `axes`: the last part of each tiled axis is blended over the
+ * A picture made seamless both ways: the last part of each axis is blended over the
  * first, then cut off. A missing picture gives a plain grey stand-in, so the map still draws.
  */
-async function seamless(url: string | undefined, axes: 'x' | 'xy', maxWidth: number): Promise<Texture> {
+async function seamless(url: string | undefined, maxWidth: number): Promise<Texture> {
   const img = new Image();
   try {
     if (!url) throw new Error('no picture');
@@ -134,8 +131,7 @@ async function seamless(url: string | undefined, axes: 'x' | 'xy', maxWidth: num
     g.drawImage(strip, 0, 0);
     return out;
   };
-  src = blend(src, false);
-  if (axes === 'xy') src = blend(src, true);
+  src = blend(blend(src, false), true);
   return repeating(src);
 }
 

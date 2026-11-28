@@ -5,7 +5,9 @@
  * Where the line turns away from its lower side the foot runs round the corner at the band's width
  * (Teil B §11.5 „Ecke außen“); where it turns towards it, the foot keeps the band's width along
  * the corner's bisector and feet that would cross merge, so it throws out no spike („Ecke innen“). Texture
- * coordinates run along the arc length (u, seamless) and from top to foot (v); each vertex gets a
+ * coordinates run along the arc length (u, seamless; round an outer corner by its arc at half the
+ * band's width, so the texture runs on there instead of fanning out from one column) and from top
+ * to foot (v); each vertex gets a
  * shade from how its face is turned to the light. An open line may run out to a point at its ends.
  * Map px. Pure.
  */
@@ -46,7 +48,7 @@ const FOOT_KINK = (50 * Math.PI) / 180;
  * The band of a contour (higher ground on its left) of `width` map px. `lightAngle`: the direction
  * the light falls towards (degrees, map coordinates; 45: to the lower right).
  */
-export function cliffBand(points: readonly Pt[], closed: boolean, width: number, opts: { textureLength: number; lightAngle: number; widthFactor?: (p: Pt) => number; taper?: number; runOut?: readonly [boolean, boolean] }): BandMesh {
+export function cliffBand(points: readonly Pt[], closed: boolean, width: number, opts: { textureLength: number; lightAngle: number; widthFactor?: (p: Pt) => number; taper?: number; runOut?: readonly [boolean, boolean]; arcWidth?: (p: Pt) => number }): BandMesh {
   const pts = closed ? [...points, points[0]!] : [...points];
   const n = pts.length;
   const light = { x: Math.cos((opts.lightAngle * Math.PI) / 180), y: Math.sin((opts.lightAngle * Math.PI) / 180) };
@@ -75,6 +77,8 @@ export function cliffBand(points: readonly Pt[], closed: boolean, width: number,
     at.push(i);
   };
   let along = 0;
+  /** What outer corners have added to u so far (px). */
+  let arcs = 0;
   for (let i = 0; i < n; i++) {
     const p = pts[i]!;
     if (i > 0) along += Math.hypot(p.x - pts[i - 1]!.x, p.y - pts[i - 1]!.y);
@@ -85,17 +89,20 @@ export function cliffBand(points: readonly Pt[], closed: boolean, width: number,
     const b = next ?? prev!;
     // A factor read at the point itself, never along the line: an edit at one end moves nothing at the other.
     const w = width * (opts.widthFactor?.(p) ?? 1) * runOut(along);
-    const u = along / opts.textureLength;
+    const u = (along + arcs) / opts.textureLength;
     // How far the lower side's normal turns here: negative turns away from the lower side (outer corner).
     const turn = Math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y);
     if (prev && next && turn < -ARC_FROM) {
       // An outer corner: the foot round it. A ring's seam has its arc at the start; its end only meets it.
       const steps = Math.ceil(-turn / ARC_STEP);
       const last = closed && i === n - 1 ? 0 : steps;
+      // The arc measured half way down the band (another band beside it may measure by this one's width).
+      const arc = (-turn * (opts.arcWidth ? opts.arcWidth(p) * runOut(along) : w)) / 2;
       for (let k = 0; k <= last; k++) {
         const t = (turn * k) / steps;
-        pair(i, p, { x: a.x * Math.cos(t) - a.y * Math.sin(t), y: a.x * Math.sin(t) + a.y * Math.cos(t) }, w, u);
+        pair(i, p, { x: a.x * Math.cos(t) - a.y * Math.sin(t), y: a.x * Math.sin(t) + a.y * Math.cos(t) }, w, u + (arc * k) / steps / opts.textureLength);
       }
+      arcs += arc;
       continue;
     }
     const sum = { x: a.x + b.x, y: a.y + b.y };

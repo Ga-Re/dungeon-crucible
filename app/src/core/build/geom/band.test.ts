@@ -84,6 +84,20 @@ describe('the band mesh', () => {
     expect([...inner.at]).toEqual([0, 1, 2]);
   });
 
+  it('round an outer corner the texture runs on by the arc at half its width, not fanned from one column', () => {
+    const b = cliffBand([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: -100 }], false, 20, { textureLength: 50, lightAngle: 45 });
+    const u = (k: number) => b.uvs[k * 4]!;
+    const corner = [...b.at].map((src, k) => (src === 1 ? k : -1)).filter((k) => k >= 0);
+    // A quarter turn at 10 px from the top: about 15.7 px of arc.
+    expect((u(corner.at(-1)!) - u(corner[0]!)) * 50).toBeCloseTo((Math.PI / 2) * 10, 1);
+    expect(u(corner[0]!)).toBeCloseTo(2);
+    // The rest of the line is shifted alike, so the texture runs on without a jump.
+    expect(u(b.at.length - 1) * 50).toBeCloseTo(200 + (Math.PI / 2) * 10, 1);
+    // Another band beside it (the overhang) can measure the arc by the face's width, so both stay in step.
+    const lip = cliffBand([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: -100 }], false, 4, { textureLength: 50, lightAngle: 45, arcWidth: () => 20 });
+    expect(lip.uvs[(lip.at.length - 1) * 4]!).toBeCloseTo(u(b.at.length - 1));
+  });
+
   it('its foot never runs backwards: at inner corners the feet merge, no loops for the hems at the foot', () => {
     // A narrow notch into the lower side: the mitred feet of its inner corners cross.
     const notch = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 105, y: 8 }, { x: 110, y: 0 }, { x: 200, y: 0 }];

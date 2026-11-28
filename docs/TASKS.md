@@ -1136,7 +1136,7 @@ Branch: `feature/procedural-forge-phase-0`.
   Punkt-in-Polygon je Feld, Zwischenspeicher je Block und Nebelstand, ggf. im Worker), ob durchscheinende
   Stockwerke darunter eigenes Raster bekommen (bis dahin `raster: null`), dass Int8/Int16-Arrays den IPC-Weg als
   solche überstehen (sonst bleibt alles schwarz), und `table:ready` fehlt ohne Electron (BroadcastChannel).
-- ◐ **DC-126 Prüfwerkzeuge** (E-73, E-91; nach E-86 erst nach DC-128): Bench-Szene mit großer gezeichneter Karte, Wasser, Stockwerk und Streuung;
+- ✓ **DC-126 Prüfwerkzeuge** (E-73, E-91; nach E-86 erst nach DC-128): Bench-Szene mit großer gezeichneter Karte, Wasser, Stockwerk und Streuung;
   Playwright-Bildvergleiche (Steckbrief vor dem Einführen).
   Stand: **Gelände-Szene der Bench** (`src/bench/bench-terrain.ts`, `VITE_BENCH_SCENE=terrain npm run bench`):
   gezeichnete Karte 96 × 96 Felder mit vier Biomen, Klippen 10/20/40 ft und Terrassen in mindestens acht Materialien
@@ -1160,7 +1160,8 @@ Branch: `feature/procedural-forge-phase-0`.
   `docs/benchmarks/2026-11-28-terrain.md`): 36 FPS, 61 % verpasste Refreshes – nicht erfüllt. Ursache: der Boden
   rechnete das Rauschen seines Randes in jeder Ebene (bis zu etwa 16 je Block) in jedem Pixel, auch wo es nichts
   bewegt; jetzt nur an den Rändern, Pixel ohne Deckung verworfen – gleiches Bild (Bildvergleiche ≤ 2 Stufen), in 4K
-  offscreen bei Spielnähe 2,7 statt 17,5 ms je Bild. Offen: **zweite Messung am TV durch den DM**.
+  offscreen bei Spielnähe 2,7 statt 17,5 ms je Bild. **Zweite Messung am TV** (DM 2026-11-28): 60,0 FPS, 0 von 1800
+  Refreshes verpasst, längstes Bild 17,8 ms – erfüllt.
 - ✓ **DC-127 Look-Spike Klippenband** (E-46, E-52): Stufen-Raster → Kontur → Band mit Test-Textur, Fuß-AO und Lippe;
   Abnahme neben einer Referenzkarte.
   Stand: `core/build/geom/contours.ts` (Marching Squares je Stufenwechsel, Kreuzung immer mittig – zwei Stufen auf

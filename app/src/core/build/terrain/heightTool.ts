@@ -14,13 +14,13 @@ export const RELIEF_MAX = 20 * RELIEF_PER_FT;
 export type ReliefMode = 'raise' | 'lower' | 'smooth' | 'flatten' | 'roughen' | 'gradient';
 
 export interface ReliefOptions {
-  /** Raise, lower, roughen: by how many ft where the brush is full. */
+  /** Raise, lower, roughen: by how many ft where the brush is full; gradient between equal heights: how far B lies above A (negative: below). */
   readonly amountFt: number;
   /** Smooth, flatten, gradient: how far towards the goal (0…1). */
   readonly strength: number;
   /** Flatten: the height at the stroke's start (ft). */
   readonly startFt: number;
-  /** Gradient: from A to B (support points); the ramp runs from A's height to B's. */
+  /** Gradient: from A to B (support points); the ramp runs from A's height to B's, or by the amount where they are level. */
   readonly a?: readonly [number, number];
   readonly b?: readonly [number, number];
 }
@@ -56,7 +56,9 @@ export function paintRelief(t: TerrainState, stack: string, touched: readonly (r
         const [bx, by] = opts.b;
         const len = (bx - ax) ** 2 + (by - ay) ** 2;
         const k = len > 0 ? Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / len)) : 0;
-        return at(ax, ay) + (at(bx, by) - at(ax, ay)) * k;
+        // On level ground (A and B alike) the ramp rises by the amount (DM 2026-11-28).
+        const end = at(bx, by) === at(ax, ay) ? at(ax, ay) + opts.amountFt * RELIEF_PER_FT : at(bx, by);
+        return at(ax, ay) + (end - at(ax, ay)) * k;
       }
       default:
         return now;

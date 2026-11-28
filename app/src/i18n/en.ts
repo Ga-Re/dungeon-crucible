@@ -314,7 +314,7 @@ export const en = {
   'terrain.relief.smooth': 'Smooth',
   'terrain.relief.flatten': 'Flatten (to the height at the start)',
   'terrain.relief.roughen': 'Roughen',
-  'terrain.relief.gradient': 'Gradient (drag from A to B)',
+  'terrain.relief.gradient': 'Gradient (drag from A to B; on level ground by the height, Alt downhill)',
   'terrain.cmd.amount': 'Height (ft)',
   'terrain.cmd.reliefHint': 'Fine height runs ±20 ft and never makes a cliff; slopes, shadows and erosion edges show it. A stroke changes it once however often it passes.',
   'terrain.cmd.slopeHint': 'From half strength on the cliff gives way: no band, no one-way wall, a ramp instead.',

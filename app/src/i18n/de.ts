@@ -314,7 +314,7 @@ export const de: Partial<Record<MessageKey, string>> = {
   'terrain.relief.smooth': 'Glätten',
   'terrain.relief.flatten': 'Ebnen (auf die Höhe am Startpunkt)',
   'terrain.relief.roughen': 'Aufrauen',
-  'terrain.relief.gradient': 'Gefälle (von A nach B ziehen)',
+  'terrain.relief.gradient': 'Gefälle (von A nach B ziehen; auf ebenem Boden um die Höhe, Alt abwärts)',
   'terrain.cmd.amount': 'Höhe (ft)',
   'terrain.cmd.reliefHint': 'Feinhöhe reicht ±20 ft und macht nie eine Klippe; Hänge, Schatten und Erosionskanten zeigen sie. Ein Strich ändert sie einmal, wie oft er auch überstreicht.',
   'terrain.cmd.slopeHint': 'Ab halber Stärke weicht die Klippe: kein Band, keine Einweg-Wand, stattdessen eine Rampe.',

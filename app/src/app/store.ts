@@ -1474,7 +1474,9 @@ function painted(c: TerrainCommand, s: NonNullable<typeof stroke>, invert: boole
     const mode = invert && c.reliefMode === 'raise' ? 'lower' : invert && c.reliefMode === 'lower' ? 'raise' : c.reliefMode;
     const a = supportPointAt(grid, s.path[0]!);
     const b = supportPointAt(grid, s.path[s.path.length - 1]!);
-    return paintRelief(s.base, s.stack, [...s.covered.values()], mode, { amountFt: c.amountFt, strength: c.strength, startFt: s.startRelief, a, b });
+    // A gradient on level ground falls with Alt instead of rising.
+    const amountFt = invert && c.reliefMode === 'gradient' ? -c.amountFt : c.amountFt;
+    return paintRelief(s.base, s.stack, [...s.covered.values()], mode, { amountFt, strength: c.strength, startFt: s.startRelief, a, b });
   }
   if (c.tool === 'slope') return paintSlope(s.base, s.stack, scaled, invert);
   const points = c.shape === 'lasso' ? lassoPoints(s.path.map((q) => snapLasso(q, grid, state.terrainQuarter)), grid) : [...s.covered.values()].map(([x, y]) => [x, y] as const);

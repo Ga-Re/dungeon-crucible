@@ -49,6 +49,16 @@ describe('fine height', () => {
     expect(reliefFtAt(ramp, 'map', 40, 0)).toBe(8);
   });
 
+  it('gradient between A and B at the same height rises by the amount (negative: falls), DM 2026-11-28', () => {
+    const pts: [number, number, number][] = Array.from({ length: 41 }, (_, i) => [i, 0, 1]);
+    const up = paintRelief(t0(), 'map', pts, 'gradient', { ...opts, a: [0, 0], b: [40, 0] });
+    expect(reliefFtAt(up, 'map', 0, 0)).toBe(0);
+    expect(reliefFtAt(up, 'map', 20, 0)).toBeCloseTo(2, 1);
+    expect(reliefFtAt(up, 'map', 40, 0)).toBe(4);
+    const down = paintRelief(t0(), 'map', pts, 'gradient', { ...opts, amountFt: -4, a: [0, 0], b: [40, 0] });
+    expect(reliefFtAt(down, 'map', 40, 0)).toBe(-4);
+  });
+
   it('nothing to change: the same state', () => {
     const t = t0();
     expect(paintRelief(t, 'map', [[10, 10, 1]], 'flatten', opts)).toBe(t);

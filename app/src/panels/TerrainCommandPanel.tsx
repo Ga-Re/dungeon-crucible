@@ -79,7 +79,7 @@ export function TerrainCommandPanel() {
         {(c.tool === 'ground' || c.tool === 'fill') && <ClassPalette selected={c.groundClass} biome={hover ?? terrainPalette()[0]!} />}
         {c.tool === 'biome' && <BiomePalette selected={c.biome} />}
         {c.tool === 'relief' && <ReliefModes c={c} />}
-        {c.tool === 'relief' && (c.reliefMode === 'raise' || c.reliefMode === 'lower' || c.reliefMode === 'roughen') && (
+        {c.tool === 'relief' && c.reliefMode !== 'smooth' && c.reliefMode !== 'flatten' && (
           <label className="cmd-field">
             <span>{t('terrain.cmd.amount')}</span>
             <input type="number" min={0.5} max={20} step={0.5} value={c.amountFt} onChange={(e) => updateTerrainCommand({ amountFt: clamp(Number(e.target.value) || 1, 0.5, 20) })} />

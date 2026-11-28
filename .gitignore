@@ -6,3 +6,4 @@ app/release/
 .DS_Store
 app/bench-assets/
 app/bench-results/
+app/visual-out/

@@ -108,3 +108,19 @@ while the DM window is open. Budget: at most 1 % missed refreshes at 4K/60 Hz.
 
 4. After about 40 s the verdict appears on the TV and in the terminal between
    `===== BENCH RESULTS` and `===== END`; it is also saved in `app/bench-results/`.
+
+**Terrain scene** (DC-126): `VITE_BENCH_SCENE=terrain npm run bench` draws a drawn map of 96 × 96
+cells instead – four biomes, cliffs of 10 to 40 ft in many materials, ground classes, fine height,
+erosion edges and shading, under living fog with 20 tokens – while the camera zooms from the whole
+map (drawn from baked blocks) down to play distance. It needs no video. The scene is built in
+`src/bench/bench-terrain.ts`.
+
+## Image comparisons (`npm run visual`)
+
+Draws fixed terrain scenes (`src/visual/scenes.ts`) with the real renderer in invisible windows and
+compares each picture with its reference in `visual/` (own pixel comparison: a pixel differs when a
+colour channel is off by more than 32; a scene fails above 0.2 % differing pixels). Differences are
+written to `visual-out/` (git-ignored) as the new picture and a picture of the differing pixels.
+`npm run visual -- clay` checks one scene; `npm run visual -- --update` writes the references anew
+after an intended change – look at them before committing. Local only: other GPUs draw slightly
+differently, so CI does not run it.

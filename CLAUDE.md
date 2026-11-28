@@ -73,6 +73,8 @@ Run in `app/`:
 - `npm test` – unit tests (Vitest)
 - `npx tsc --noEmit -p .` – typecheck
 - `npm run build` – typecheck, Vite build, table-bundle check, Electron bundles
+- `npm run visual` – image comparisons of the terrain against `app/visual/` (local only; `-- --update` after an
+  intended change)
 - `npm start` – the app with hot reload; check visible changes in the real app (screenshots of the window, and of
   other displays with `screencapture -x -D <n>` when windows move between monitors)
 

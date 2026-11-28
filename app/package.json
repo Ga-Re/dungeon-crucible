@@ -13,6 +13,7 @@
     "test": "vitest run",
     "lint:types": "tsc -b --noEmit",
     "bench": "VITE_BENCH=1 node scripts/electron-dev.mjs",
+    "visual": "node scripts/visual.mjs",
     "bench:video": "bash bench/make-video.sh"
   },
   "devDependencies": {

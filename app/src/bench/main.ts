@@ -5,6 +5,9 @@
 //
 // Dungeon Crucible addition: the fog is drawn as living fog at the device's default quality
 // (Mittel) unless VITE_BENCH_QUALITY says "off" (Dungeon-Manager's still soft fog) or "high".
+// VITE_BENCH_SCENE=terrain draws the terrain scene instead (DC-126, `bench-terrain.ts`): a large
+// drawn map with cliffs, materials, ground classes and shading, the camera zooming from the whole
+// map (baked blocks) to play distance.
 //
 // What is measured: the intervals between animation frames (requestAnimationFrame cadence), not
 // GPU completion; and the video's dropped frames.
@@ -13,6 +16,9 @@ import { createRenderer, type FogOptions } from '../render/pixi/renderer';
 import type { Size } from '../render/pixi/camera';
 import { createMapVideo } from '../render/mapImages';
 import { BENCH_CELL, BENCH_SOFT_EDGE, benchCamera, benchFog, benchTokens } from './bench-scene';
+import { benchTerrain, TERRAIN_CELL, TERRAIN_GRID, TERRAIN_MAP, terrainCamera, terrainFog, terrainTokens } from './bench-terrain';
+import { shownStack } from '../core/build/terrain/state';
+import { BAND_PER_10_FT } from '../core/build/geom/band';
 import { MAX_MISSED_PERCENT, TARGET_FPS, summarize, verdict, type FrameStats } from './frame-stats';
 
 const WARM_UP_MS = 5_000;
@@ -22,6 +28,7 @@ const STABLE_MS = 1_500;
 /** Absolute path of the 4K video map inside the root folder's library (served through the dc-asset protocol). */
 const VIDEO_PATH: string = import.meta.env.VITE_BENCH_VIDEO ?? '';
 const QUALITY = (import.meta.env.VITE_BENCH_QUALITY ?? 'medium') as 'off' | 'medium' | 'high';
+const TERRAIN = import.meta.env.VITE_BENCH_SCENE === 'terrain';
 const TARGET_BACKING = { width: 3840, height: 2160 };
 const MISSED_LISTED = 50;
 
@@ -88,6 +95,7 @@ interface BenchReport {
   readonly canvas: string;
   readonly refreshHz: number;
   readonly measureSeconds: number;
+  readonly scene: string;
   readonly fog: string;
   readonly video: string;
   readonly frames: FrameStats;
@@ -110,16 +118,35 @@ async function main() {
   const renderer = await createRenderer({ canvas, size: viewSize(), resolution: window.devicePixelRatio });
   const onResize = () => renderer.resize(viewSize());
   window.addEventListener('resize', onResize);
+  const cell = TERRAIN ? TERRAIN_CELL : BENCH_CELL;
   const fog: FogOptions =
     QUALITY === 'off'
       ? { opacity: 1, softEdge: BENCH_SOFT_EDGE }
-      : { opacity: 1, living: { quality: QUALITY, cellSizePx: BENCH_CELL, edge: 1.2, motion: 1, biome: 'nebel', strength: 1 } };
-  // Fog first, then the video (ADR-0010: never a map without its fog).
-  renderer.setFog(benchFog(), fog);
-  renderer.setTokens(benchTokens());
+      : { opacity: 1, living: { quality: QUALITY, cellSizePx: cell, edge: 1.2, motion: 1, biome: 'nebel', strength: 1 } };
+  // Fog first, then the map (ADR-0010: never a map without its fog).
+  renderer.setFog(TERRAIN ? terrainFog() : benchFog(), fog);
+  renderer.setTokens(TERRAIN ? terrainTokens() : benchTokens());
   let video: HTMLVideoElement | null = null;
   let videoNote: string;
+  if (TERRAIN) {
+    say('Building the terrain …');
+    const terrain = benchTerrain();
+    renderer.setMap({ blank: true, ...TERRAIN_MAP });
+    renderer.setTerrain({
+      source: { blocks: shownStack(terrain, 'map', []), missingIsUnknown: false },
+      grid: TERRAIN_GRID,
+      palette: terrain.biomePalette,
+      stepFt: terrain.stepFt,
+      perspective: BAND_PER_10_FT,
+      erosion: true,
+      lightAngle: 45,
+      area: { x: 0, y: 0, ...TERRAIN_MAP },
+      overPicture: false,
+    });
+    await renderer.drawn();
+  }
   try {
+    if (TERRAIN) throw new Error('the terrain scene has a drawn map');
     if (!VIDEO_PATH) throw new Error('VITE_BENCH_VIDEO is not set');
     video = await createMapVideo(assetUrlFor(VIDEO_PATH));
     canvas.before(video);
@@ -129,7 +156,7 @@ async function main() {
     videoNote = `none – ${VIDEO_PATH || '(no path)'} could not be played (${String(error)}); see README "Renderer benchmark"`;
   }
 
-  const moveCamera = (elapsed: number) => renderer.setCamera(benchCamera(elapsed, viewSize()));
+  const moveCamera = (elapsed: number) => renderer.setCamera((TERRAIN ? terrainCamera : benchCamera)(elapsed, viewSize()));
   say(`Warming up (${WARM_UP_MS / 1000} s) …`);
   await recordFrames(WARM_UP_MS, moveCamera);
   say(`Measuring (${MEASURE_MS / 1000} s) – don't touch the windows …`);
@@ -146,7 +173,7 @@ async function main() {
   if (windowAfter !== windowBefore) warnings.push(`The window changed during the measurement (${windowBefore} → ${windowAfter}).`);
   if (canvas.width !== TARGET_BACKING.width || canvas.height !== TARGET_BACKING.height)
     warnings.push(`The picture is ${canvas.width}×${canvas.height}, not 3840×2160: the budget is for 4K.`);
-  if (!video) warnings.push('No video map: only fog, tokens and camera were measured.');
+  if (!video && !TERRAIN) warnings.push('No video map: only fog, tokens and camera were measured.');
   const result: BenchReport = {
     date: new Date().toISOString(),
     userAgent: navigator.userAgent,
@@ -155,6 +182,7 @@ async function main() {
     canvas: `${canvas.width}×${canvas.height}`,
     refreshHz,
     measureSeconds: MEASURE_MS / 1000,
+    scene: TERRAIN ? 'terrain: drawn map 96 × 96 cells, four biomes, cliffs 10–40 ft' : 'video map',
     fog: QUALITY === 'off' ? 'soft edges (still)' : `living fog, quality ${QUALITY}`,
     video: videoNote,
     frames,
@@ -172,6 +200,7 @@ async function main() {
       ...warnings.map((w) => `Warning: ${w}`),
       `Display: ${refreshHz.toFixed(1)} Hz, window ${result.window}, picture ${result.canvas}`,
       `GPU: ${result.gpu}`,
+      `Scene: ${result.scene}`,
       `Fog: ${result.fog}`,
       `Video map: ${result.video}`,
       `Frames: ${frames.frames} in ${result.measureSeconds} s, ${frames.averageFps.toFixed(1)} FPS average`,

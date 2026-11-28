@@ -8,6 +8,7 @@ import type { Point } from '../../geometry';
 import { toCellSpace, type GridConfig } from '../../grid';
 import type { TerrainBiome } from '../terrainKeys';
 import { BLOCK_POINTS, blockKeyOf, SUBDIVISIONS, type RasterBlock } from './block';
+import { biomeWeightsAtPx } from './groundSample';
 import { GROUND_CLASSES, type GroundClass } from './groundTool';
 
 export const CLIFF_MATERIALS = ['earth', 'granite', 'limestone', 'sandstone', 'desertSandstone', 'clay', 'peat', 'caveRock', 'ice', 'ashlar', 'rubble', 'brick', 'wood'] as const;
@@ -130,4 +131,31 @@ export function materialWeights(biomes: readonly number[], palette: readonly (Te
     }
   });
   return out;
+}
+
+/**
+ * How far a cliff's edge wanders (cells; Teil B §11.1): natural stone as accepted in the look spike
+ * (DC-127), ice a little less, soft ground less still, built walls not at all (straight, DM 2026-11-28).
+ */
+const MATERIAL_NOISE: Record<CliffMaterial, number> = {
+  earth: 0.08,
+  granite: 0.15,
+  limestone: 0.15,
+  sandstone: 0.15,
+  desertSandstone: 0.15,
+  clay: 0.08,
+  peat: 0.08,
+  caveRock: 0.15,
+  ice: 0.12,
+  ashlar: 0,
+  rubble: 0,
+  brick: 0,
+  wood: 0,
+};
+
+/** How far the edge of a cliff of `dropFt` wanders (cells) by the materials at `upper`, a point on its upper side. */
+export function cliffNoiseAt(blocks: ReadonlyMap<string, RasterBlock>, grid: GridConfig, palette: readonly (TerrainBiome | null)[], upper: Point, dropFt: number): number {
+  let n = 0;
+  for (const [m, w] of materialWeights(biomeWeightsAtPx(blocks, grid, upper), palette, classWeightsAtPx(blocks, grid, upper), dropFt)) n += w * MATERIAL_NOISE[m];
+  return n;
 }

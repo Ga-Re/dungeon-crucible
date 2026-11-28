@@ -47,6 +47,11 @@ export interface CliffOptions {
   readonly grid: GridConfig;
   /** How far the edge wanders (cells; Teil B §11.1: rock 0.15, earth 0.08); 0: straight. */
   readonly noiseCells: number;
+  /**
+   * Instead: how far it wanders by what lies at `upper` (map px, a little into its upper side) for
+   * a line of `drop` steps – the material there (`cliffMaterial.ts`); evened out along the line.
+   */
+  readonly noiseAt?: (upper: Pt, drop: number) => number;
   /** Erosion edges instead of cliffs: drops of the fine height in steep places (E-89); `drop` counts levels of 2 ft. */
   readonly erosion?: boolean;
 }
@@ -115,7 +120,7 @@ export function cliffLines(source: CliffSource, opts: CliffOptions, cache = new 
   for (const drop of [...byDrop.keys()].sort((a, b) => a - b))
     for (const c of stitch(byDrop.get(drop)!)) {
       const ends = c.closed ? ([false, false] as const) : opts.erosion ? ([true, true] as const) : ([sloped(source, c.points[0]!), sloped(source, c.points[c.points.length - 1]!)] as const);
-      out.push({ points: shaped(c.points, c.closed, opts), closed: c.closed, drop, runOut: ends });
+      out.push({ points: shaped(c.points, c.closed, drop, opts), closed: c.closed, drop, runOut: ends });
     }
   return out;
 }
@@ -266,17 +271,40 @@ function marchLevels(v: Float32Array, n: number, ox: number, oy: number, keep?: 
   return out;
 }
 
+/** Points either side over which the wander is evened out: a material's edge changes over about a cell, not at once. */
+const EVEN_OUT = 8;
+
 /** A line of support points in map px, smoothed and wandering by noise read at the world position. */
-function shaped(points: readonly Pt[], closed: boolean, opts: CliffOptions): Pt[] {
+function shaped(points: readonly Pt[], closed: boolean, drop: number, opts: CliffOptions): Pt[] {
   const cell = opts.grid.cellWidth;
   const px = chaikin(points.map((p) => fromCellSpace(opts.grid, { x: p.x / SUBDIVISIONS, y: p.y / SUBDIVISIONS })), closed, 2);
-  if (!opts.noiseCells) return px;
-  return px.map((p, i) => {
-    const a = px[closed ? (i - 1 + px.length) % px.length : Math.max(0, i - 1)]!;
-    const b = px[closed ? (i + 1) % px.length : Math.min(px.length - 1, i + 1)]!;
+  const at = (i: number) => px[closed ? (i + px.length) % px.length : Math.max(0, Math.min(px.length - 1, i))]!;
+  // The unit normal towards the lower side (right of the line) at each point.
+  const normals = px.map((_, i) => {
+    const a = at(i - 1);
+    const b = at(i + 1);
     const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-    const n = noise2(p.x / (cell * 0.6), p.y / (cell * 0.6), 11) * opts.noiseCells * cell;
-    return { x: p.x + (-(b.y - a.y) / len) * n, y: p.y + ((b.x - a.x) / len) * n };
+    return { x: -(b.y - a.y) / len, y: (b.x - a.x) / len };
+  });
+  let amount: number[];
+  if (opts.noiseAt) {
+    const asked = px.map((p, i) => opts.noiseAt!({ x: p.x - normals[i]!.x * cell * 0.35, y: p.y - normals[i]!.y * cell * 0.35 }, drop));
+    amount = asked.map((_, i) => {
+      let sum = 0;
+      let n = 0;
+      for (let k = -EVEN_OUT; k <= EVEN_OUT; k++) {
+        const j = closed ? (i + k + asked.length) % asked.length : i + k;
+        if (j < 0 || j >= asked.length) continue;
+        sum += asked[j]!;
+        n++;
+      }
+      return sum / n;
+    });
+  } else amount = px.map(() => opts.noiseCells);
+  if (amount.every((a) => !a)) return px;
+  return px.map((p, i) => {
+    const n = noise2(p.x / (cell * 0.6), p.y / (cell * 0.6), 11) * amount[i]! * cell;
+    return { x: p.x + normals[i]!.x * n, y: p.y + normals[i]!.y * n };
   });
 }
 

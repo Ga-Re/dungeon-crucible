@@ -98,6 +98,21 @@ describe('the band mesh', () => {
     expect(lip.uvs[(lip.at.length - 1) * 4]!).toBeCloseTo(u(b.at.length - 1));
   });
 
+  it('a wide band may take its foot from a calmer line: the top stays on the line, the foot wiggles less', () => {
+    // A wavy line: wiggles of 6 px every 20 px.
+    const wavy = Array.from({ length: 41 }, (_, i) => ({ x: i * 10, y: (i % 4 < 2 ? 0 : 6) }));
+    const plain = cliffBand(wavy, false, 120, { textureLength: 200, lightAngle: 45 });
+    const calm = cliffBand(wavy, false, 120, { textureLength: 200, lightAngle: 45, footSmooth: 40 });
+    const tops = (b: typeof plain) => [...b.at].map((src, k) => [b.positions[k * 4]!, b.positions[k * 4 + 1]!, src] as const);
+    // The top is the line itself.
+    for (const [x, y, src] of tops(calm)) expect([x, y]).toEqual([wavy[src]!.x, wavy[src]!.y]);
+    // Away from the ends, the feet lie about the width below the line and wander far less.
+    const feetY = (b: typeof plain) => [...b.at].map((_, k) => b.positions[k * 4 + 3]!).slice(8, -8);
+    const spread = (ys: number[]) => Math.max(...ys) - Math.min(...ys);
+    expect(spread(feetY(calm))).toBeLessThan(spread(feetY(plain)) / 3);
+    for (const y of feetY(calm)) expect(y).toBeGreaterThan(110);
+  });
+
   it('its foot never runs backwards: at inner corners the feet merge, no loops for the hems at the foot', () => {
     // A narrow notch into the lower side: the mitred feet of its inner corners cross.
     const notch = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 105, y: 8 }, { x: 110, y: 0 }, { x: 200, y: 0 }];

@@ -14,7 +14,7 @@ import { bandFoot, cliffBand, type BandMesh } from '../../core/build/geom/band';
 import { chaikin, type Pt } from '../../core/build/geom/contours';
 import { noise2 } from '../../core/build/handDrawn';
 import { CLIFF_NOISE_CELLS, CliffCache, cliffLines, type CliffLine, type CliffSource } from '../../core/build/terrain/cliffs';
-import { BUILT, bandVariant, classWeightsAtPx, materialWeights, moduleChances, type CliffMaterial } from '../../core/build/terrain/cliffMaterial';
+import { BUILT, bandVariant, classWeightsAtPx, cliffNoiseAt, materialWeights, moduleChances, type CliffMaterial } from '../../core/build/terrain/cliffMaterial';
 import type { TerrainBiome } from '../../core/build/terrainKeys';
 import { hashNoise } from '../../core/build/variance';
 import type { GridConfig } from '../../core/grid';
@@ -349,7 +349,9 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
       return { x: pts[i]!.x + ((b.y - a.y) / len) * cell * 0.35, y: pts[i]!.y - ((b.x - a.x) / len) * cell * 0.35 };
     };
     const lines: PlannedLine[] = [];
-    for (const line of cliffLines(s.source, { grid: s.grid, noiseCells: CLIFF_NOISE_CELLS }, cache)) {
+    // The edges wander by the material on top, as the DM's walls of sight do (`store.ts`).
+    const noiseAt = (upper: Pt, drop: number) => cliffNoiseAt(s.source.blocks, s.grid, s.palette, upper, drop * s.stepFt);
+    for (const line of cliffLines(s.source, { grid: s.grid, noiseCells: CLIFF_NOISE_CELLS, noiseAt }, cache)) {
       if (line.points.length < 2) continue;
       const pts = line.closed ? [...line.points, line.points[0]!] : [...line.points];
       const dropFt = line.drop * s.stepFt;
@@ -405,7 +407,9 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
       const main = order[0]!;
       const seed = hashNoise(line.points[0]!.x, line.points[0]!.y, 91) * 100;
       const width = Math.min(MAX_BAND_CELLS, (dropFt / 10) * s.perspective) * cell;
-      const band = cliffBand(line.points, line.closed, width, { textureLength: cell * MODULE_CELLS, lightAngle: s.lightAngle, widthFactor, taper, runOut: line.runOut });
+      // A wide band hangs its foot from a calmer line, or the edge's small wiggles fan it out (low bands keep the accepted look).
+      const footSmooth = Math.max(0, width - cell * 0.5) * 0.5;
+      const band = cliffBand(line.points, line.closed, width, { textureLength: cell * MODULE_CELLS, lightAngle: s.lightAngle, widthFactor, taper, runOut: line.runOut, footSmooth });
       // Its materials, the strongest first: drawn whole, the others over it where they hold – where the ground above changes, about there the cliff does too.
       order.forEach((m, n) => {
         const alpha = n === 0 ? undefined : materials.map((w) => smoothRange(0.3, 0.7, w.get(m) ?? 0));

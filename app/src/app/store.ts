@@ -47,6 +47,7 @@ import { biomeWeightsAt, brushCells, brushWeights, fillPoints, paintBiome, paint
 import { paintRelief, paintSlope, reliefFtAt, type ReliefMode } from '../core/build/terrain/heightTool';
 import type { TerrainBiome } from '../core/build/terrainKeys';
 import { CLIFF_NOISE_CELLS, CliffCache, cliffLines, cliffWalls, reliefLines } from '../core/build/terrain/cliffs';
+import { cliffNoiseAt } from '../core/build/terrain/cliffMaterial';
 import type { TerrainShape } from '../render/pixi/terrain';
 import { tvRaster } from '../core/build/terrain/tvRaster';
 import type { RasterBlock } from '../core/build/terrain/block';
@@ -2177,21 +2178,23 @@ export function terrainShapeOf(sc: Scene, terrain: TerrainState | null): Terrain
 }
 
 /** One-way walls per shown blocks and grid (kept with the blocks); segments per view, so storeys never push each other out. */
-const cliffMemo = new WeakMap<ReadonlyMap<string, RasterBlock>, { grid: string; walls: readonly Wall[] }>();
+const cliffMemo = new WeakMap<ReadonlyMap<string, RasterBlock>, { look: string; walls: readonly Wall[] }>();
 const cliffCaches = new Map<string, CliffCache>();
 
 /** The one-way walls of the cliffs `scene` shows of `terrain` (E-87); the same list while they stay. */
 function cliffWallsOf(scene: Scene, terrain: TerrainState | null): readonly Wall[] {
   if (!terrain) return [];
   const blocks = shownTerrain(scene, terrain);
-  const grid = JSON.stringify(scene.map.grid);
+  // The materials on top set how the edges wander (E-90): palette and step height count too.
+  const look = JSON.stringify([scene.map.grid, terrain.biomePalette, terrain.stepFt]);
   const hit = cliffMemo.get(blocks);
-  if (hit?.grid === grid) return hit.walls;
+  if (hit?.look === look) return hit.walls;
   const view = JSON.stringify(terrainView(scene));
   let cache = cliffCaches.get(view);
   if (!cache) cliffCaches.set(view, (cache = new CliffCache()));
-  const walls = cliffWalls(cliffLines({ blocks, missingIsUnknown: false }, { grid: scene.map.grid, noiseCells: CLIFF_NOISE_CELLS }, cache), scene.map.grid);
-  cliffMemo.set(blocks, { grid, walls });
+  const noiseAt = (upper: Point, drop: number) => cliffNoiseAt(blocks, scene.map.grid, terrain.biomePalette, upper, drop * terrain.stepFt);
+  const walls = cliffWalls(cliffLines({ blocks, missingIsUnknown: false }, { grid: scene.map.grid, noiseCells: CLIFF_NOISE_CELLS, noiseAt }, cache), scene.map.grid);
+  cliffMemo.set(blocks, { look, walls });
   return walls;
 }
 

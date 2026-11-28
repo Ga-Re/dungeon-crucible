@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_GRID } from '../../grid';
 import { newBlock, withPoints } from './block';
-import { BAND_HEIGHTS, bandHeight, bandVariant, CLIFF_MATERIALS, classWeightsAtPx, cliffMaterial, MATERIAL_HEIGHTS, materialWeights, moduleChances } from './cliffMaterial';
+import { BAND_HEIGHTS, bandHeight, bandVariant, CLIFF_MATERIALS, classWeightsAtPx, cliffMaterial, cliffNoiseAt, MATERIAL_HEIGHTS, materialWeights, moduleChances } from './cliffMaterial';
 import { classId } from './groundTool';
 
 /**
@@ -115,5 +115,17 @@ describe('the ground above a cliff', () => {
     // A place the palette has no biome for counts as the first one.
     const tv = materialWeights([0, 0, 1, 0], ['winter', null, null], new Map([[null, 1]]), 10);
     expect([...tv]).toEqual([['granite', 1]]);
+  });
+
+  it('built walls run straight, soft ground wanders less than stone (Teil B §11.1)', () => {
+    const paved = withPoints(withPoints(newBlock(), 'ground1Class', [[8, 8, classId('paving')]]), 'ground1Weight', [[8, 8, 255]]);
+    const at = { x: 2 * 70, y: 2 * 70 };
+    expect(cliffNoiseAt(new Map([['0_0', paved]]), grid, ['temperate'], at, 10)).toBe(0);
+    const earth = withPoints(withPoints(newBlock(), 'ground1Class', [[8, 8, classId('earth')]]), 'ground1Weight', [[8, 8, 255]]);
+    const soft = cliffNoiseAt(new Map([['0_0', earth]]), grid, ['temperate'], at, 10);
+    const stone = cliffNoiseAt(new Map(), grid, ['temperate'], at, 10);
+    expect(soft).toBeGreaterThan(0);
+    expect(stone).toBeCloseTo(0.15);
+    expect(soft).toBeLessThan(stone);
   });
 });

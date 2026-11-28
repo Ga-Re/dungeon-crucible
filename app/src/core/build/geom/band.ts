@@ -44,11 +44,42 @@ const ARC_FROM = Math.PI / 12;
 /** The sharpest inner turn a band's foot line keeps (radians). */
 const FOOT_KINK = (50 * Math.PI) / 180;
 
+/** `pts` evened out: each point the Gaussian mean (σ = `sigma` px of arc length) of the points around it. */
+function smoothed(pts: readonly Pt[], closed: boolean, sigma: number): Pt[] {
+  const n = pts.length;
+  // A ring repeats its first point at its end: smoothed over the n - 1 distinct ones.
+  const m = closed ? n - 1 : n;
+  const at = (i: number) => pts[closed ? ((i % m) + m) % m : i]!;
+  const step = (i: number) => Math.hypot(at(i + 1).x - at(i).x, at(i + 1).y - at(i).y);
+  const reach = sigma * 3;
+  const out: Pt[] = [];
+  for (let i = 0; i < m; i++) {
+    let [sx, sy, sw] = [at(i).x, at(i).y, 1];
+    for (const dir of [-1, 1]) {
+      let d = 0;
+      for (let j = i, k = 0; k < m; k++) {
+        const nj = j + dir;
+        if (!closed && (nj < 0 || nj >= n)) break;
+        d += step(dir < 0 ? nj : j);
+        if (d > reach) break;
+        j = nj;
+        const w = Math.exp(-(d * d) / (2 * sigma * sigma));
+        sx += at(j).x * w;
+        sy += at(j).y * w;
+        sw += w;
+      }
+    }
+    out.push({ x: sx / sw, y: sy / sw });
+  }
+  if (closed) out.push(out[0]!);
+  return out;
+}
+
 /**
  * The band of a contour (higher ground on its left) of `width` map px. `lightAngle`: the direction
  * the light falls towards (degrees, map coordinates; 45: to the lower right).
  */
-export function cliffBand(points: readonly Pt[], closed: boolean, width: number, opts: { textureLength: number; lightAngle: number; widthFactor?: (p: Pt) => number; taper?: number; runOut?: readonly [boolean, boolean]; arcWidth?: (p: Pt) => number }): BandMesh {
+export function cliffBand(points: readonly Pt[], closed: boolean, width: number, opts: { textureLength: number; lightAngle: number; widthFactor?: (p: Pt) => number; taper?: number; runOut?: readonly [boolean, boolean]; arcWidth?: (p: Pt) => number; footSmooth?: number }): BandMesh {
   const pts = closed ? [...points, points[0]!] : [...points];
   const n = pts.length;
   const light = { x: Math.cos((opts.lightAngle * Math.PI) / 180), y: Math.sin((opts.lightAngle * Math.PI) / 180) };
@@ -57,6 +88,9 @@ export function cliffBand(points: readonly Pt[], closed: boolean, width: number,
     const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
     return { x: -(b.y - a.y) / len, y: (b.x - a.x) / len };
   };
+  // The line the foot hangs from: the line itself, or for a wide band the line evened out over
+  // `footSmooth` px, so small wiggles of the edge do not fan its foot out (the top stays on the line).
+  const base = opts.footSmooth ? smoothed(pts, closed, opts.footSmooth) : pts;
   // An open line's ends: where a slope ends the cliff, the band runs out to a point (E-89, Teil B §11.5 „Auslauf“).
   const total = closed || !opts.taper ? 0 : pts.reduce((sum, p, i) => (i ? sum + Math.hypot(p.x - pts[i - 1]!.x, p.y - pts[i - 1]!.y) : 0), 0);
   const [fromStart, toEnd] = opts.runOut ?? [true, true];
@@ -70,7 +104,8 @@ export function cliffBand(points: readonly Pt[], closed: boolean, width: number,
   const lit: number[] = [];
   const at: number[] = [];
   const pair = (i: number, p: Pt, normal: Pt, reach: number, u: number) => {
-    pos.push(p.x, p.y, p.x + normal.x * reach, p.y + normal.y * reach);
+    const f = base[i]!;
+    pos.push(p.x, p.y, f.x + normal.x * reach, f.y + normal.y * reach);
     uv.push(u, 0, u, 1);
     const l = AMBIENT + DIFFUSE * Math.max(0, -(normal.x * light.x + normal.y * light.y));
     lit.push(l, l);
@@ -83,8 +118,8 @@ export function cliffBand(points: readonly Pt[], closed: boolean, width: number,
     const p = pts[i]!;
     if (i > 0) along += Math.hypot(p.x - pts[i - 1]!.x, p.y - pts[i - 1]!.y);
     // The segments meeting at this point (a ring's seam joins its last and first segment).
-    const prev = i > 0 ? right(pts[i - 1]!, p) : closed ? right(pts[n - 2]!, pts[0]!) : null;
-    const next = i < n - 1 ? right(p, pts[i + 1]!) : closed ? right(pts[0]!, pts[1]!) : null;
+    const prev = i > 0 ? right(base[i - 1]!, base[i]!) : closed ? right(base[n - 2]!, base[0]!) : null;
+    const next = i < n - 1 ? right(base[i]!, base[i + 1]!) : closed ? right(base[0]!, base[1]!) : null;
     const a = prev ?? next!;
     const b = next ?? prev!;
     // A factor read at the point itself, never along the line: an edit at one end moves nothing at the other.

@@ -164,6 +164,25 @@ describe('cliff lines from the step raster', () => {
     expect(b).toEqual(a);
   });
 
+  it('the edge wanders by what lies on its upper side (Teil B §11.1): straight where nothing wanders, more where more does', () => {
+    const blocks = { '0_0': plateau(8, 8, 25, 25, 1) };
+    const [still] = cliffLines(source(blocks), { grid, noiseCells: 0.15, noiseAt: () => 0 });
+    const [flat] = cliffLines(source(blocks), { grid, noiseCells: 0 });
+    expect(still!.points).toEqual(flat!.points);
+    const [rock] = cliffLines(source(blocks), { grid, noiseCells: 0, noiseAt: () => 0.15 });
+    const [same] = cliffLines(source(blocks), { grid, noiseCells: 0.15 });
+    rock!.points.forEach((p, i) => {
+      expect(p.x).toBeCloseTo(same!.points[i]!.x, 6);
+      expect(p.y).toBeCloseTo(same!.points[i]!.y, 6);
+    });
+    // Asked at points on the upper side (inside the plateau), with the line's drop.
+    const asked: { p: { x: number; y: number }; drop: number }[] = [];
+    cliffLines(source(blocks), { grid, noiseCells: 0, noiseAt: (p, drop) => (asked.push({ p, drop }), 0) });
+    const inside = (p: { x: number; y: number }) => p.x > 2 * CELL && p.x < 6.25 * CELL && p.y > 2 * CELL && p.y < 6.25 * CELL;
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.every((a) => inside(a.p) && a.drop === 1)).toBe(true);
+  });
+
   it('follows a turned and shifted grid', () => {
     const turned = { ...grid, rotationDeg: 90, originX: 1000, originY: 500 };
     const [line] = cliffLines(source({ '0_0': plateau(8, 8, 25, 25, 1) }), { grid: turned, noiseCells: 0 });

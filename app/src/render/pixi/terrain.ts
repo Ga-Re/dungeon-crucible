@@ -9,7 +9,7 @@
  * blocks shown or the look change. Above the map, under the grid. Shared by the DM window and the TV.
  */
 import { Container, Geometry, Graphics, Mesh, Shader, type Renderer, type Texture } from 'pixi.js';
-import { cliffBand, type BandMesh } from '../../core/build/geom/band';
+import { bandFoot, cliffBand, type BandMesh } from '../../core/build/geom/band';
 import { chaikin, type Pt } from '../../core/build/geom/contours';
 import { noise2 } from '../../core/build/handDrawn';
 import { CLIFF_NOISE_CELLS, CliffCache, cliffLines, type CliffSource } from '../../core/build/terrain/cliffs';
@@ -143,7 +143,8 @@ void main() {
 /** A band's mesh; `alpha` per point of its line (both its vertices), none: opaque. */
 function mesh(m: BandMesh, fragment: string, texture: Texture, patch?: Texture, alpha?: readonly number[]): Mesh<Geometry, Shader> {
   const a = new Float32Array(m.shade.length);
-  for (let i = 0; i < a.length; i++) a[i] = alpha ? alpha[Math.min(alpha.length - 1, i >> 1)]! : 1;
+  // Alpha per point of the line: a corner's vertices take their point's.
+  for (let i = 0; i < a.length; i++) a[i] = alpha ? alpha[Math.min(alpha.length - 1, m.at[i >> 1]!)]! : 1;
   const geometry = new Geometry({ attributes: { aPosition: m.positions, aUV: m.uvs, aShade: { buffer: m.shade, format: 'float32' }, aAlpha: { buffer: a, format: 'float32' } }, indexBuffer: m.indices });
   const shader = Shader.from({ gl: { vertex: VERTEX, fragment }, resources: { uTexture: texture.source, ...(patch ? { uPatch: patch.source } : {}) } });
   return new Mesh({ geometry, shader, texture });
@@ -256,6 +257,8 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
     const rim = new Graphics();
     const widthFactor = (p: Pt) => 1 + WIDTH_WANDER * noise2(p.x / (cell * 0.9), p.y / (cell * 0.9), 17);
     const soilWidth = (p: Pt) => 0.05 + 1.1 * Math.max(0, noise2(p.x / (cell * 1.4), p.y / (cell * 1.4), 83));
+    // Where a slope ends a cliff, it runs out to a point over about a cell (E-89); its foot and hems too.
+    const taper = cell;
     for (const line of cliffLines(s.source, { grid: s.grid, noiseCells: CLIFF_NOISE_CELLS }, cache)) {
       if (line.points.length < 2) continue;
       const pts = line.closed ? [...line.points, line.points[0]!] : [...line.points];
@@ -274,8 +277,8 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
       const mainLook = LOOKS[main];
       const mainTex = textures.get(main)!;
       const width = Math.min(MAX_BAND_CELLS, ((line.drop * s.stepFt) / 10) * s.perspective) * cell;
-      const band = cliffBand(line.points, line.closed, width, { textureLength: cell * 4, lightAngle: s.lightAngle, widthFactor });
-      const lip = cliffBand(line.points, line.closed, cell * 0.22, { textureLength: cell * 4, lightAngle: s.lightAngle });
+      const band = cliffBand(line.points, line.closed, width, { textureLength: cell * 4, lightAngle: s.lightAngle, widthFactor, taper });
+      const lip = cliffBand(line.points, line.closed, cell * 0.22, { textureLength: cell * 4, lightAngle: s.lightAngle, taper });
       slots.forEach((slot, n) => {
         const biome = s.palette[slot]!;
         const tex = textures.get(biome)!;
@@ -285,9 +288,7 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
         faces.addChild(mesh(band, face(LOOKS[biome]), tex.band, tex.patches, alpha));
         if (LOOKS[biome].lip) overhang.addChild(mesh(lip, OVERHANG, tex.ground.texture, tex.patches, alpha));
       });
-      const feet: Pt[] = [];
-      for (let i = 0; i < band.positions.length; i += 4) feet.push({ x: band.positions[i + 2]!, y: band.positions[i + 3]! });
-      if (line.closed) feet.pop();
+      const feet = bandFoot(band, line.closed);
       // Smoothed, so mitred corners of the foot leave no slivers in the hems; the AO smoother still.
       const foot = chaikin(feet, line.closed, 2);
       const hem = chaikin(feet, line.closed, 4);
@@ -296,12 +297,12 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
         const tex = textures.get(s.palette[slot]!)!;
         const gravel = tex.classes.get('gravel') ?? tex.ground;
         // The gravel at its own size: u runs over a tile, v over the hem's share of one.
-        const soilBand = cliffBand(foot, line.closed, cell * 0.6, { textureLength: gravel.tileCells * cell, lightAngle: s.lightAngle, widthFactor: soilWidth });
-        const footPoints = soilBand.shade.length / 2;
+        const soilBand = cliffBand(foot, line.closed, cell * 0.6, { textureLength: gravel.tileCells * cell, lightAngle: s.lightAngle, widthFactor: soilWidth, taper });
+        const footPoints = line.closed ? foot.length + 1 : foot.length;
         const alpha = n === 0 ? undefined : Array.from({ length: footPoints }, (_, j) => smoothRange(0.3, 0.7, weights[Math.round((j * (weights.length - 1)) / Math.max(1, footPoints - 1))]![slot]!));
         soilLayer.addChild(mesh(soilBand, soil(0.6 / gravel.tileCells), gravel.texture, undefined, alpha));
       });
-      aoLayer.addChild(mesh(cliffBand(hem, line.closed, cell * 0.4, { textureLength: cell, lightAngle: s.lightAngle }), AO, mainTex.band));
+      aoLayer.addChild(mesh(cliffBand(hem, line.closed, cell * 0.4, { textureLength: cell, lightAngle: s.lightAngle, taper }), AO, mainTex.band));
       // Scree in a few heaps at the foot, smaller the further it rolled.
       for (const { p, normal } of alongLine(foot, line.closed, cell * 0.1)) {
         const heap = noise2(p.x / (cell * 1.6), p.y / (cell * 1.6), 81) > 0.45;
@@ -328,8 +329,8 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
         const tex = biome ? textures.get(biome) : undefined;
         if (!biome || !tex) continue;
         const width = 0.2 * cell;
-        const band = cliffBand(line.points, line.closed, width, { textureLength: cell * 4, lightAngle: s.lightAngle, widthFactor });
-        erosion.addChild(mesh(cliffBand(line.points, line.closed, width * 1.4, { textureLength: cell, lightAngle: s.lightAngle }), AO, tex.band));
+        const band = cliffBand(line.points, line.closed, width, { textureLength: cell * 4, lightAngle: s.lightAngle, widthFactor, taper: taper * 0.5 });
+        erosion.addChild(mesh(cliffBand(line.points, line.closed, width * 1.4, { textureLength: cell, lightAngle: s.lightAngle, taper: taper * 0.5 }), AO, tex.band));
         erosion.addChild(mesh(band, face(LOOKS[biome]), tex.band, tex.patches));
       }
     cliffs.addChild(soilLayer, aoLayer, erosion, faces);

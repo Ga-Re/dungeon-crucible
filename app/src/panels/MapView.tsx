@@ -11,6 +11,8 @@ import { circleArea, ellipseArea, strokeArea } from '../core/poly/shapes';
 import { areaContains, partFromDrag, partFromPoints, vertexAt, type VertexRef } from '../core/areas';
 import { AreaCommandPanel } from './AreaCommandPanel';
 import { WallCommandPanel } from './WallCommandPanel';
+import { TerrainCommandPanel } from './TerrainCommandPanel';
+import { brushOutline, snapLasso } from '../core/build/terrain/stepTool';
 import { assetShapes, footprintOf, hitsPlacement, ROTATE_STEP } from '../core/placement';
 import { drawnPlacements } from '../core/interiors';
 import { PlacingPanel } from './PlacingPanel';
@@ -40,6 +42,7 @@ import { fogOptions } from '../render/fogOptions';
 import { DARKNESS } from '../core/projection';
 import { bindMap } from '../render/mapBinding';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
+import { rendererCanvas } from '../render/pixi/gl-canvas';
 import { TableView, type FrameSource } from '../table/TableView';
 import {
   addPing, addTemplate, applyFogArea, cancelAreaCommand, checkpoint, drawAreaPart, finishAreaCommand, moveAreaCorner, startAreaCommand, getVersion, initiativeOrder, log, moveToken,
@@ -47,6 +50,7 @@ import {
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
   editableHere, shownInForge, activateAsset, placeHere, previewPlacing, stopPlacing, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
+  terrainShape, terrainHeightLines, hoverTerrainBiome, beginTerrainStroke, moveTerrainStroke, terrainStrokePath, abortTerrainStroke, cancelTerrainCommand, finishTerrainCommand,
 } from '../app/store';
 
 /** Drag-and-drop type for creatures dragged from the browser onto the map. */
@@ -61,13 +65,14 @@ const HINTS: Partial<Record<string, MessageKey>> = {
   'fog-rect': 'hint.fogRect', 'fog-ellipse': 'hint.fogEllipse', 'fog-polygon': 'hint.fogPolygon', 'fog-lasso': 'hint.fogLasso',
   'fog-brush': 'hint.fogBrush', 'reveal-room': 'hint.revealRoom', light: 'hint.light',
   cone: 'hint.template', sphere: 'hint.template', line: 'hint.template', cube: 'hint.template',
-  stair: 'hint.stair',
+  stair: 'hint.stair', terrain: 'hint.terrain',
 };
 
 type Drag =
   | { kind: 'pan'; sx: number; sy: number; vx: number; vy: number }
   | { kind: 'token'; id: string; ox: number; oy: number; start: Point; moved: boolean }
   | { kind: 'measure'; a: Point; b: Point }
+  | { kind: 'terrain' }
   | { kind: 'area-drag'; tool: 'rect' | 'ellipse'; a: Point; b: Point }
   | { kind: 'area-path'; path: Point[] }
   | { kind: 'area-corner'; at: VertexRef }
@@ -98,6 +103,7 @@ export function MapView() {
 function DmMap() {
   const { t } = useI18n();
   const tool = useStore((s) => s.tool);
+  const terrainTool = useStore((s) => s.terrainCommand?.tool ?? 'step');
   const ws = useStore((s) => s.ws);
   const sceneVersion = useStore((s) => s.sceneVersion);
   const mapPresent = useStore((s) => hasMap(s.scene));
@@ -121,7 +127,8 @@ function DmMap() {
     },
   }), []);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** Holds the renderer's canvas, one per renderer (`gl-canvas.ts`). */
+  const glRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ zoom: 0.4, x: 20, y: 20, rot: 0 });
   const drag = useRef<Drag | null>(null);
@@ -133,7 +140,8 @@ function DmMap() {
 
   useEffect(() => {
     const wrap = wrapRef.current!;
-    const canvas = canvasRef.current!;
+    const gl = rendererCanvas(glRef.current!);
+    const canvas = gl.canvas;
     const overlay = overlayRef.current!;
     let renderer: Renderer | null = null;
     let map: ReturnType<typeof bindMap> | null = null;
@@ -189,6 +197,8 @@ function DmMap() {
         const pic = pictureOf(sc);
         void map?.set(pic.url, pic.isVideo, shownLook());
       }
+      // The terrain's ground and cliffs (E-87); the same blocks again build nothing.
+      r.setTerrain(terrainShape());
       // While calibrating, the grid is always shown: it is what is being adjusted.
       r.setGrid((state.showGrid || state.calibration) && sc.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: sc.map.grid.originX, offsetYPx: sc.map.grid.originY, alpha: 0.18 } : null);
       // Placed assets: their files' URLs are looked up once, the first time they are shown.
@@ -270,6 +280,7 @@ function DmMap() {
       cancelAnimationFrame(raf);
       map?.dispose();
       renderer?.destroy();
+      gl.remove();
     };
   }, []);
 
@@ -297,6 +308,8 @@ function DmMap() {
       if (e.key === 'Escape') {
         // A polygon being clicked goes first; then the running command.
         const drawing = polygonDraft.current.length > 0 || drag.current !== null;
+        // A stroke of "Stufe" being painted goes, the ground as before it; the command stays (E-87).
+        if (drag.current?.kind === 'terrain') abortTerrainStroke();
         drag.current = null;
         polygonDraft.current = [];
         if (state.calibration) cancelCalibration();
@@ -305,12 +318,14 @@ function DmMap() {
           if (state.wallCommand.start) endWallChain();
           else cancelWallCommand();
         } else if (!drawing && state.areaCommand) cancelAreaCommand();
+        else if (!drawing && state.terrainCommand) cancelTerrainCommand();
       }
       if (e.key === 'Enter') {
         if (polygonDraft.current.length > 0) finishPolygon(e.altKey);
         else if (state.areaCommand) finishAreaCommand();
         else if (state.wallCommand) finishWallCommand();
         else if (state.calibration) finishCalibration();
+        else if (state.terrainCommand) finishTerrainCommand();
       }
       // Calibrating: arrow keys move the grid by 1 px (Shift: 10 px).
       const arrows: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -369,6 +384,8 @@ function DmMap() {
       measure: d?.kind === 'measure' ? { a: d.a, b: d.b, ft: gridDistanceFeet(state.scene.map.grid, d.a, d.b) } : null,
       selectedWallIds: state.selectedWallIds,
       wallDraft: wallDraftOf(),
+      terrainDraft: terrainDraftOf(),
+      heightLines: state.ws === 'forge' ? terrainHeightLines() : [],
       wallEnds: d?.kind === 'wall-ends' ? d.to : null,
       brush: state.tool === 'fog-brush' ? { p: mouse.current, r: state.brushCells * cell } : null,
       calibBox: state.calibration?.box ? { box: state.calibration.box, cells: state.calibration.cells } : null,
@@ -399,6 +416,30 @@ function DmMap() {
     return { kind: c.kind, walls, next: c.start && b ? (turn ? { a: b, b: c.start } : { a: c.start, b }) : null };
   };
 
+  /** "Stufe": the brush under the pointer and, with the outline preview, the stroke so far (E-87). */
+  const terrainDraftOf = (): OverlayState['terrainDraft'] => {
+    const c = state.terrainCommand;
+    if (!c || state.tool !== 'terrain') return null;
+    const grid = state.scene.map.grid;
+    // Ground and biome: a soft round brush; filling: a click.
+    if (c.tool !== 'step') return { cursor: c.tool === 'fill' ? null : brushOutline(mouse.current, 'round', c.sizeCells, grid, false), stroke: null, path: null };
+    const path = terrainStrokePath();
+    const cursor = c.shape === 'lasso' || c.picking ? null : brushOutline(mouse.current, c.shape, c.sizeCells, grid, state.terrainQuarter);
+    if (!path || state.terrainPreview === 'live') return { cursor, stroke: null, path: null };
+    if (c.shape === 'lasso') return { cursor, stroke: null, path: path.map((q) => snapLasso(q, grid, state.terrainQuarter)) };
+    if (c.shape === 'round') {
+      const area = strokeArea(path.map((q) => [q.x, q.y] as [number, number]), (c.sizeCells * grid.cellWidth) / 2);
+      return { cursor, stroke: area ? [area] : null, path: null };
+    }
+    // The square brush: its squares along the path (as it paints), no closer than a quarter cell.
+    const squares = new Map<string, Polygon>();
+    for (const q of path) {
+      const ring = brushOutline(q, 'square', c.sizeCells, grid, state.terrainQuarter);
+      squares.set(`${ring[0]!.x},${ring[0]!.y}`, { outer: ring.map((v) => [v.x, v.y] as [number, number]), holes: [] });
+    }
+    return { cursor, stroke: [...squares.values()], path: null };
+  };
+
   /** Where a wall end goes: onto a nearby wall end, else the grid corner; exactly the pointer with Alt. */
   const wallTarget = (p: Point, free: boolean, skip?: ReadonlySet<string>): Point => {
     if (free) return p;
@@ -417,7 +458,7 @@ function DmMap() {
   };
 
   const toWorld = (e: { clientX: number; clientY: number }): Point => {
-    const r = canvasRef.current!.getBoundingClientRect();
+    const r = glRef.current!.getBoundingClientRect();
     return toMap(view.current, { x: e.clientX - r.left, y: e.clientY - r.top });
   };
 
@@ -443,7 +484,7 @@ function DmMap() {
   const onPointerDown = (e: React.PointerEvent) => {
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const p = toWorld(e);
-    const r = canvasRef.current!.getBoundingClientRect();
+    const r = glRef.current!.getBoundingClientRect();
     // The placing mode (DC-116): a click places, a right click ends it; the middle button still pans.
     if (state.placing && !space.current && e.button !== 1) {
       if (e.button === 2) stopPlacing();
@@ -455,7 +496,7 @@ function DmMap() {
       return;
     }
     // Alt pings, except where it changes a drawing tool (fog: the other mode; area, walls: no snapping).
-    if ((e.altKey && !state.tool.startsWith('fog-') && state.tool !== 'area' && state.tool !== 'wall') || state.tool === 'ping') {
+    if ((e.altKey && !state.tool.startsWith('fog-') && state.tool !== 'area' && state.tool !== 'wall' && state.tool !== 'terrain') || state.tool === 'ping') {
       addPing(p);
       return;
     }
@@ -472,6 +513,11 @@ function DmMap() {
       return;
     }
     switch (state.tool) {
+      case 'terrain': {
+        // "Stufe" (E-87): a press picks a step with the pipette, else starts a stroke.
+        if (beginTerrainStroke(p)) drag.current = { kind: 'terrain' };
+        return;
+      }
       case 'select': {
         const tk = [...state.scene.tokens].reverse().find((k) => Math.hypot(k.x - p.x, k.y - p.y) < (cell * k.size) / 2);
         if (tk) {
@@ -645,11 +691,13 @@ function DmMap() {
     const p = toWorld(e);
     mouse.current = p;
     const d = drag.current;
+    // The ground palette shows the biome under the pointer (E-88).
+    if (state.tool === 'terrain' && state.terrainCommand && state.terrainCommand.tool !== 'step') hoverTerrainBiome(p);
     // The placing mode's preview follows the pointer (not while panning).
     if (state.placing && d?.kind !== 'pan') previewPlacing(p);
     if (!d) return;
     if (d.kind === 'pan') {
-      const r = canvasRef.current!.getBoundingClientRect();
+      const r = glRef.current!.getBoundingClientRect();
       view.current = { ...view.current, x: d.vx + e.clientX - r.left - d.sx, y: d.vy + e.clientY - r.top - d.sy };
     } else if (d.kind === 'token') {
       d.moved = true;
@@ -692,6 +740,8 @@ function DmMap() {
     } else if (d.kind === 'fog-path' || d.kind === 'area-path') {
       const last = d.path[d.path.length - 1];
       if (Math.hypot(last.x - p.x, last.y - p.y) * view.current.zoom > 4) d.path.push(p);
+    } else if (d.kind === 'terrain') {
+      moveTerrainStroke(p, { straight: e.shiftKey, invert: e.altKey }, false);
     } else if (d.kind === 'fog-rect' || d.kind === 'fog-ellipse') {
       d.b = p;
       d.circle = e.shiftKey;
@@ -708,6 +758,8 @@ function DmMap() {
       const tk = state.scene.tokens.find((x) => x.id === d.id)!;
       moveToken(d.id, { x: tk.x, y: tk.y }, true);
       if (d.moved) log('log.moved', { name: tk.name, ft: gridDistanceFeet(state.scene.map.grid, d.start, tk) });
+    } else if (d.kind === 'terrain') {
+      moveTerrainStroke(toWorld(e), { straight: e.shiftKey, invert: e.altKey }, true);
     } else if (d.kind === 'area-drag') {
       drawAreaPart(partFromDrag(d.tool, d.a, d.b, areaGrid(e.altKey)));
     } else if (d.kind === 'area-path') {
@@ -754,7 +806,7 @@ function DmMap() {
   };
 
   const onWheel = (e: React.WheelEvent) => {
-    const r = canvasRef.current!.getBoundingClientRect();
+    const r = glRef.current!.getBoundingClientRect();
     const mx = e.clientX - r.left;
     const my = e.clientY - r.top;
     const w = toWorld(e);
@@ -762,7 +814,8 @@ function DmMap() {
     view.current = viewAt(w, { x: mx, y: my }, zoom, view.current.rot);
   };
 
-  const hintKey = tool === 'select' && ws === 'forge' ? 'hint.selectForge' : HINTS[tool];
+  const terrainHint: Record<string, MessageKey> = { step: 'hint.terrain', ground: 'hint.terrainGround', biome: 'hint.terrainBiome', fill: 'hint.terrainFill', relief: 'hint.terrainRelief', slope: 'hint.terrainSlope' };
+  const hintKey = tool === 'select' && ws === 'forge' ? 'hint.selectForge' : tool === 'terrain' ? terrainHint[terrainTool] : HINTS[tool];
   return (
     <div ref={wrapRef} className="map-wrap">
       {/* The storeys below the one worked on (E-40): blurred under it, everything shown. */}
@@ -771,7 +824,7 @@ function DmMap() {
           <TableView source={belowSource} depth={1} />
         </div>
       )}
-      <canvas ref={canvasRef} aria-hidden="true" />
+      <div ref={glRef} className="map-gl" aria-hidden="true" />
       <canvas
         ref={overlayRef}
         onPointerDown={onPointerDown}
@@ -823,6 +876,7 @@ function DmMap() {
       {ws === 'forge' && <AreaCommandPanel />}
       {(ws === 'forge' || ws === 'play') && <PlacingPanel />}
       {ws === 'forge' && <WallCommandPanel />}
+      {ws === 'forge' && <TerrainCommandPanel />}
       {ws === 'forge' && !otherCommand && <LeakCheckPanel />}
       {ws === 'forge' && <LookPanel />}
       {ws === 'forge' && <CalibrationPanel />}

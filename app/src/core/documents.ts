@@ -20,7 +20,7 @@ export type DocumentKind = 'campaign' | 'map' | 'scene' | 'creature' | 'asset' |
 /** Current version of each document kind. */
 export const DOCUMENT_VERSIONS: Record<DocumentKind, number> = {
   campaign: 1,
-  map: 14,
+  map: 15,
   scene: 13,
   creature: 1,
   asset: 3,
@@ -89,6 +89,8 @@ export const MIGRATIONS: Record<DocumentKind, Record<number, (doc: Raw) => Raw>>
     // Version 14, the procedural Map Forge (E-46 ff.), adds optional intent fields (none yet) and
     // deletes the old drawing, its automatic details and the old generator's note – without a backup (E-57).
     13: (doc) => omit(doc, RETIRED_OF_MAPS),
+    // Version 15 adds the cliff band's width per map (E-87): none yet, the default applies.
+    14: (doc) => doc,
   },
   // The same for the scene's own areas and its overrides of map areas.
   scene: {

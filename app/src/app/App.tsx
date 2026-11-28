@@ -13,7 +13,7 @@ import { BOTTOM_SPANS_FULL_WIDTH, PANEL_CONTENT, activateWorkspaceLayout, dock, 
 import { choosablePanels } from './panelChoice';
 import type { DocTab } from './store';
 import {
-  clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, startCalibration, setLeakCheck, startLookCommand, cancelLookCommand, startWallCommand, redo, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
+  clearTemplates, emit, fogAll, log, nextTurn, openMapSettings, placeParty, startAreaCommand, startCalibration, setLeakCheck, startLookCommand, cancelLookCommand, startWallCommand, startTerrainCommand, setTerrainQuarter, setHeightLines, redo, rotateTable, setFogMode, setTool, setWorkspace, state, toggle, toggleBlackout, toggleDmFog, undo, useStore,
 } from './store';
 import { stopAll } from './soundboard';
 import { setMasterVolume, unlockAudioOnGesture } from './audio';
@@ -133,7 +133,7 @@ function Ribbon() {
   const { t } = useI18n();
   const ws = useStore((s) => s.ws);
   const tool = useStore((s) => s.tool);
-  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart, onTv: !!s.scenePath && s.scenePath === s.tvScenePath, leakCheck: !!s.leakCheck, look: !!s.lookCommand }));
+  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart, onTv: !!s.scenePath && s.scenePath === s.tvScenePath, leakCheck: !!s.leakCheck, look: !!s.lookCommand, quarter: s.terrainQuarter, terrainTool: s.tool === 'terrain' ? (s.terrainCommand?.tool ?? null) : null, heightLines: s.heightLines }));
   const [resetting, setResetting] = useState(false);
   const mapSettings = useStore((s) => s.mapSettingsOpen);
   const [tab, setTab] = useState(0);
@@ -158,6 +158,9 @@ function Ribbon() {
     if (b.id === 'scene:toTv') return flags.onTv;
     if (b.id === 'area:create') return tool === 'area';
     if (b.id === 'walls:draw') return tool === 'wall';
+    if (b.id.startsWith('terrain:')) return flags.terrainTool === b.id.slice(8);
+    if (b.id === 'toggle:quarter') return flags.quarter;
+    if (b.id === 'toggle:heightLines') return flags.heightLines;
     if (b.id === 'leak:check') return flags.leakCheck;
     if (b.id === 'map:look') return flags.look;
     if (b.id === 'grid:calibrate') return tool === 'calibrate';
@@ -189,6 +192,14 @@ function Ribbon() {
       case 'audio:stop': return stopAll();
       case 'fog:revealAll': return fogAll(true);
       case 'walls:draw': return startWallCommand();
+      case 'terrain:step': return startTerrainCommand('step');
+      case 'terrain:ground': return startTerrainCommand('ground');
+      case 'terrain:biome': return startTerrainCommand('biome');
+      case 'terrain:fill': return startTerrainCommand('fill');
+      case 'terrain:relief': return startTerrainCommand('relief');
+      case 'terrain:slope': return startTerrainCommand('slope');
+      case 'toggle:heightLines': return setHeightLines(!flags.heightLines);
+      case 'toggle:quarter': return setTerrainQuarter(!flags.quarter);
       case 'leak:check': return setLeakCheck(!state.leakCheck);
       case 'grid:calibrate': return startCalibration();
       case 'vault:import': return void importVaultAssets();

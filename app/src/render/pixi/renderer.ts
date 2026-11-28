@@ -47,6 +47,7 @@ import {
 } from "./fog-living";
 import { softFogAlpha } from "./soft-mask";
 import { createVideoGate, cssTransform, sameAspect } from "./video-layer";
+import { createTerrainLayer, type TerrainShape } from "./terrain";
 
 /** An image the browser has loaded (or drawn), ready to become the map texture. */
 export type MapImage = HTMLImageElement | HTMLCanvasElement | ImageBitmap | BlankArea;
@@ -274,9 +275,15 @@ export interface Renderer {
    * and fog – darkness and fog cover them like the map. Videos loop; replaces those drawn before.
    */
   setAssets(assets: readonly AssetShape[]): void;
+  /**
+   * Dungeon Crucible (E-87): the terrain's ground and cliffs over the map, under the grid – fog
+   * and darkness cover them like the map. The same blocks and look again change nothing; `null`
+   * removes it.
+   */
+  setTerrain(terrain: TerrainShape | null): void;
   setCamera(camera: Camera): void;
   resize(size: Size): void;
-  /** Resolves after the next draw has been submitted (for screenshots and tests). */
+  /** Resolves after the next draw has been submitted, the terrain with its textures (for screenshots, tests and previews). */
   drawn(): Promise<void>;
   /**
    * Dungeon Crucible (DC-105): a still of what is shown now – the canvas drawn afresh and, under
@@ -322,6 +329,9 @@ export async function createRenderer(
 
   const world = new Container();
   app.stage.addChild(world);
+  // The terrain (E-87): over the map (which goes in at index 0), under the grid.
+  const terrain = createTerrainLayer(() => requestDraw(), app.renderer);
+  world.addChild(terrain.view);
   // Grid lines (T-106b): above the map (which goes in at index 0), below the fog (added last).
   const gridLayer = new Graphics();
   world.addChild(gridLayer);
@@ -1044,12 +1054,14 @@ export async function createRenderer(
         stepFlicker();
         stepAssetFades();
         applyCamera();
+        // Far out, the terrain draws baked blocks (E-90): baked here a few at a time, in device pixels.
+        const baking = terrain.prepare(Math.abs(world.scale.x) * app.renderer.resolution);
         // Looping asset videos: their frames go to the GPU, and the next draw follows.
         if (playingVideos > 0) for (const t of assetTextures.values()) if (t.video) t.ready?.source.update();
         app.render();
         gate.drawn();
         showVideo();
-        if (playingVideos > 0 || flickering.length > 0 || assetsFading()) requestDraw();
+        if (baking || playingVideos > 0 || flickering.length > 0 || assetsFading()) requestDraw();
       } catch (error) {
         // ADR-0010: on renderer errors the raw video must not stay visible.
         gate.renderFailed();
@@ -1163,6 +1175,9 @@ export async function createRenderer(
       drawAssets(next);
       requestDraw();
     },
+    setTerrain(next) {
+      terrain.set(next);
+    },
     setTokens(next, tokenOptions) {
       drawTokens(next, tokenOptions?.glide ?? 0);
       requestDraw();
@@ -1193,10 +1208,15 @@ export async function createRenderer(
     },
     drawn() {
       if (destroyed) return Promise.resolve();
-      return new Promise((resolve) => {
-        waiting.push(resolve);
-        requestDraw();
-      });
+      // The terrain's textures load first: drawn means with them (the catalog preview, E-90).
+      return terrain.ready().then(
+        () =>
+          new Promise<void>((resolve) => {
+            if (destroyed) return resolve();
+            waiting.push(resolve);
+            requestDraw();
+          }),
+      );
     },
     snapshot() {
       const out = document.createElement("canvas");
@@ -1239,6 +1259,8 @@ export async function createRenderer(
       glowTexture?.destroy(true);
       world.removeChild(gridLayer);
       gridLayer.destroy({ context: true });
+      world.removeChild(terrain.view);
+      terrain.destroy();
       drawTokens([]);
       drawAssets([]);
       for (const entry of assetTextures.values()) {

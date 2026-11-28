@@ -155,6 +155,15 @@ export function MapSettingsDialog({ onClose }: { onClose: () => void }) {
               onChange={(e) => { const v = Number(e.target.value); if (v > 0 && v <= 10) set('transition', { ...draft.transition, seconds: v }); }} />
           </label>
         </div>
+        <label className="start-field">
+          <span>{t('mapSettings.cliffWidth')}</span>
+          <input type="range" min={0.2} max={1} step={0.05} value={draft.cliffPerspective} aria-valuetext={t('mapSettings.cliffWidthHint', { n: draft.cliffPerspective.toFixed(2) })} onChange={(e) => set('cliffPerspective', Number(e.target.value))} />
+          <span className="hint">{t('mapSettings.cliffWidthHint', { n: draft.cliffPerspective.toFixed(2) })}</span>
+        </label>
+        <label className="cmd-check">
+          <input type="checkbox" checked={draft.erosionEdges} onChange={(e) => set('erosionEdges', e.target.checked)} />
+          {t('mapSettings.erosionEdges')}
+        </label>
         {picture && (
           <div className="start-field">
             <span>{t('variant.title')}</span>

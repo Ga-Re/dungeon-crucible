@@ -3,7 +3,7 @@ import { rectPolygon } from '../../fogModel';
 import { DEFAULT_GRID } from '../../grid';
 import { emptyPatch, newBlock, patchPoints, pointAt, withPoints, type RasterBlock } from './block';
 import { emptyTerrain, setPoints, type TerrainState } from './state';
-import { parseRasterBatch, RASTER_BATCH, rasterBatches, rasterChecksum, RasterCache, SentBlocks, tvRaster, type RasterView } from './tvRaster';
+import { parseRasterBatch, RASTER_BATCH, rasterBatches, rasterChecksum, RasterCache, SentBlocks, tvRaster, UNKNOWN_STEP, type RasterView } from './tvRaster';
 
 /**
  * What of the terrain the TV may know (E-61, decided 2026-11-27): only what is explored – revealed
@@ -34,6 +34,9 @@ describe('the TV raster', () => {
     expect(solidAtCell(b, 5, 5)).toBe(255);
     expect(solidAtCell(b, 6, 3)).toBe(0);
     expect(solidAtCell(b, 20, 20)).toBe(0);
+    // The step there is unknown, not flat ground (E-87: no cliff along the edge of what the TV knows).
+    expect(pointAt(b, 'step', 80, 80)).toBe(UNKNOWN_STEP);
+    expect(pointAt(b, 'step', 12, 12)).toBe(0);
   });
 
   it('nothing explored: nothing sent', () => {
@@ -97,7 +100,10 @@ describe('the TV raster', () => {
   it('an explored block nobody painted is named too: unknown and empty are never confused', () => {
     const r = tvRaster(emptyTerrain(['temperate']), view({ shown: [cells(-3, 3, 4, 6)] }));
     expect([...r.keys()].sort()).toEqual(['-1_0', '0_0']);
-    expect(r.get('-1_0')!.checksum).toBe(r.get('0_0')!.checksum);
+    // Wholly explored empty blocks are the same block: one checksum, sent once. Partly explored ones
+    // differ where their unknown part lies (E-87: unknown is marked, not flat).
+    const whole = tvRaster(emptyTerrain(['temperate']), view({ shown: [cells(-40, -8, 72, 40)] }));
+    expect(whole.get('-1_0')!.checksum).toBe(whole.get('0_0')!.checksum);
   });
 
   it('lays in the patches of active layers only', () => {
@@ -188,5 +194,29 @@ describe('checksums and sending (E-61)', () => {
     expect(cache.has(sums[0]!)).toBe(true);
     expect(cache.has(sums[1]!)).toBe(false);
     expect(cache.has(sums[2]!)).toBe(true);
+  });
+});
+
+describe('speed (review DC-125)', () => {
+  it('16 blocks under a ragged fog of 2000 points and a secret area of 200 points', () => {
+    let t = emptyTerrain(['temperate']);
+    const edits: [number, number, number][] = [];
+    for (let y = 0; y < 512; y += 3) for (let x = 0; x < 512; x += 3) edits.push([x, y, (x + y) % 3]);
+    t = setPoints(t, 'map', 'step', edits);
+    const ring = (cx: number, cy: number, r: number, n: number, wobble: number) => ({
+      outer: Array.from({ length: n }, (_, i) => {
+        const a = (i / n) * Math.PI * 2;
+        const rr = r * (1 + wobble * Math.sin(a * 37));
+        return [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr] as [number, number];
+      }),
+      holes: [],
+    });
+    const shown = [ring(64 * 70, 64 * 70, 60 * 70, 2000, 0.08)];
+    const hidden = [ring(40 * 70, 40 * 70, 6 * 70, 200, 0.2)];
+    const t0 = performance.now();
+    const r = tvRaster(t, view({ shown, hidden }));
+    const ms = performance.now() - t0;
+    expect(r.size).toBeGreaterThanOrEqual(16);
+    expect(ms).toBeLessThan(250);
   });
 });

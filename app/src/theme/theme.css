@@ -160,6 +160,8 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .tool.on { background: var(--sel-soft); box-shadow: inset 0 0 0 1px rgba(63, 157, 226, 0.55); }
 .tool.on span { color: var(--fg); }
 .tool.active, .tool.active span { color: var(--accent); }
+/* A tool that does not work here yet (E-87): greyed out by `button:disabled`, no hover. */
+.tool:disabled:hover { background: none; }
 
 /* Dock area */
 .dock-area { min-height: 0; position: relative; }
@@ -210,6 +212,7 @@ input[type='checkbox'] { accent-color: var(--accent); }
 /* Map view */
 .map-wrap { position: absolute; inset: 0; background: var(--canvas); overflow: hidden; }
 .map-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.map-gl { position: absolute; inset: 0; }
 .map-hint { position: absolute; left: 10px; top: 10px; background: var(--overlay); border: 1px solid var(--line); border-radius: 4px; padding: 6px 9px; max-width: min(380px, calc(100% - 20px)); font-size: 11.5px; color: var(--fg-dim); line-height: 1.45; pointer-events: none; }
 .map-badge { position: absolute; left: 10px; bottom: 10px; font-family: var(--font-head); font-weight: 600; letter-spacing: 0.08em; font-size: 11.5px; text-transform: uppercase; padding: 4px 8px; border-radius: 3px; background: var(--overlay); border: 1px solid var(--line); }
 .map-badge.player { color: var(--ok); }
@@ -366,6 +369,13 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .cmd-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cmd-icon { width: 32px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 3px; color: var(--fg-dim); background: var(--panel-2); }
 .cmd-icon.on { border-color: var(--accent); background: var(--accent-soft); color: var(--fg); }
+/* Ground classes and biomes as pictures (terrain tools, E-88). */
+.ground-palette { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.ground-swatch { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--panel-2); color: var(--fg-dim); font-size: 10.5px; }
+.ground-swatch img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 2px; display: block; }
+.ground-swatch:hover { border-color: var(--line); color: var(--fg); }
+.ground-swatch.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: var(--fg); }
+.ground-swatch.absent img { opacity: 0.35; filter: grayscale(0.6); }
 .cmd-icon:focus-visible, .cmd-seg button:focus-visible { outline: 2px solid var(--sel); outline-offset: 1px; }
 .cmd-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .cmd-field > span { color: var(--fg-dim); font-size: 11.5px; }

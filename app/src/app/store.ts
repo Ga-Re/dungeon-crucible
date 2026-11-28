@@ -5,8 +5,8 @@
 import type { RescueCopy } from '../core/rescue';
 import { useSyncExternalStore } from 'react';
 import type { Point } from '../core/geometry';
-import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
-import { buildPlayerFrame, type PlayerFrame, type StoreyFrame } from '../core/projection';
+import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, toCellSpace, type GridBox, type GridConfig } from '../core/grid';
+import { buildPlayerFrame, type PlayerFrame, type ProjectionOptions, type StoreyFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, SoundSource, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { isSoundRef } from '../core/sound';
 import { findLeaks, type Leak } from '../core/leaks';
@@ -40,8 +40,20 @@ import { missingPartyTokens, tokenFromCreature } from '../core/party';
 import type { MessageKey } from '../i18n/en';
 import { initialSoundboard, type SoundboardState } from './soundboard';
 import { History } from '../core/history';
+import { setTerrain, terrainBroken, terrainOf } from './terrain';
+import { emptyTerrain, shownStack, type TerrainState } from '../core/build/terrain/state';
+import { applyStroke, brushPoints, lassoPoints, snapLasso, stepAt, strokeStep, type BrushShape, type StepMode } from '../core/build/terrain/stepTool';
+import { biomeWeightsAt, brushCells, brushWeights, fillPoints, paintBiome, paintGround, supportPointAt, type GroundClass } from '../core/build/terrain/groundTool';
+import { paintRelief, paintSlope, reliefFtAt, type ReliefMode } from '../core/build/terrain/heightTool';
+import type { TerrainBiome } from '../core/build/terrainKeys';
+import { CliffCache, cliffLines, cliffWalls, reliefLines } from '../core/build/terrain/cliffs';
+import { materialCliffOptions } from '../core/build/terrain/cliffMaterial';
+import type { TerrainShape } from '../render/pixi/terrain';
+import { tvRaster } from '../core/build/terrain/tvRaster';
+import type { RasterBlock } from '../core/build/terrain/block';
 import { activeLayers, BASE_LAYER, drawOrder, triggerChanges } from '../core/layers';
-import { intentIds } from '../core/build/intent';
+import { defaultTerrainBiome, intentIds } from '../core/build/intent';
+import { BAND_PER_10_FT } from '../core/build/geom/band';
 import { allPlacements, elementsFromSidecar, resetElement, sceneChanges, sceneIssues, withoutOrphans, type ElementChange } from '../core/persistence';
 import { commitStart, layerOf, mapSidecarFromScene, mapSidecarPath, sceneFromDocuments, sceneOverrideFromScene, startOf, type ViewLayer } from '../core/persistence';
 import type { MapSidecar, SceneOverride } from '../core/sidecar';
@@ -58,7 +70,7 @@ export type ToolId =
   | 'area' | 'wall' | 'hide'
   | 'fog-rect' | 'fog-ellipse' | 'fog-polygon' | 'fog-lasso' | 'fog-brush' | 'reveal-room'
   | 'cone' | 'sphere' | 'line' | 'cube' | 'light'
-  | 'stair';
+  | 'stair' | 'terrain';
 
 export interface LogEntry {
   at: number;
@@ -111,6 +123,16 @@ export interface AppState {
   calibration: CalibrationCommand | null;
   /** "Draw walls" while it runs (Map Forge, DC-014). */
   wallCommand: WallCommand | null;
+  /** The terrain tool "Stufe" while it runs (Map Forge, E-87). */
+  terrainCommand: TerrainCommand | null;
+  /** Lasso and square brush snap to quarter cells instead of cells (E-87). */
+  terrainQuarter: boolean;
+  /** While painting: the cliffs grow along (device setting, E-87) or only an outline shows until let go. */
+  terrainPreview: TerrainPreview;
+  /** The biome under the pointer while a ground tool runs (its palette shows that biome's textures, E-88). */
+  terrainHover: TerrainBiome | null;
+  /** Height lines of the fine height every 2 ft in the DM's view (E-89). */
+  heightLines: boolean;
   /** Selected walls of the map (Map Forge): one, several (Shift) or a chain (double-click). */
   selectedWallIds: string[];
   log: LogEntry[];
@@ -254,6 +276,11 @@ function initial(): AppState {
     vision: [],
     calibration: null,
     wallCommand: null,
+    terrainCommand: null,
+    terrainQuarter: false,
+    terrainPreview: readTerrainPreview(),
+    terrainHover: null,
+    heightLines: false,
     selectedWallIds: [],
     log: [],
     rolls: [],
@@ -370,7 +397,7 @@ export function log(key: MessageKey, params?: Record<string, string | number>): 
 
 /* ---------- Undo / redo & dirty tracking ---------- */
 
-let history = new History<string>(100);
+let history = new History<Snapshot>(100);
 const dirtyListeners = new Set<() => void>();
 
 export function onDirty(fn: () => void): () => void {
@@ -395,8 +422,19 @@ function previousLayer(doc: SceneOverride | null) {
   return { ...layerOf(doc), hidden: state.layer === 'start' ? startOf(doc).hidden : doc.hidden };
 }
 
-function snapshot(): string {
-  return JSON.stringify(docsFromView());
+/**
+ * A step of undo: the documents as JSON, and on the map layer the map's terrain by reference – it
+ * never changes, so steps share every block an edit did not touch (E-56). A scene's steps leave the
+ * terrain alone, as they leave the map: it may have changed in another tab since.
+ */
+interface Snapshot {
+  docs: string;
+  terrain?: TerrainState | null;
+}
+
+function snapshot(): Snapshot {
+  const docs = JSON.stringify(docsFromView());
+  return state.layer === 'map' && state.mapFile ? { docs, terrain: terrainOf(state.mapFile) } : { docs };
 }
 
 /** Call before every undoable change. */
@@ -407,8 +445,9 @@ export function checkpoint(): void {
   markDirty();
 }
 
-function restore(snap: string): void {
-  const { map, ov } = JSON.parse(snap) as { map: MapSidecar; ov: SceneOverride | null };
+function restore(snap: Snapshot): void {
+  const { map, ov } = JSON.parse(snap.docs) as { map: MapSidecar; ov: SceneOverride | null };
+  if (state.mapFile && snap.terrain !== undefined) setTerrain(state.mapFile, snap.terrain);
   // The scene file too: it holds what the view does not show (orphaned changes, the other state).
   if (ov) state.sceneDoc = ov;
   const keepTable = state.scene.table;
@@ -497,7 +536,7 @@ export function replaceScene(scene: Scene, opts: { resource: string; fileName: s
   state.selectedStairId = null;
   state.effectRuns = {};
   // A scene of its own: its own undo history; the one before keeps its history in its tab.
-  history = new History<string>(100);
+  history = new History<Snapshot>(100);
   clearHistory();
   if (tabId && !state.tabs.some((x) => x.id === tabId)) state.tabs = [...state.tabs, { id: tabId, kind: opts.scenePath ? 'scene' : 'map', name: opts.sceneName }];
   state.sceneVersion++;
@@ -571,7 +610,7 @@ interface Session {
   round: number;
   turn: number;
   editStart: boolean;
-  history: History<string>;
+  history: History<Snapshot>;
   dirty: boolean;
   effectRuns: Record<string, number>;
   interiorAsks: { id: string; name: string }[];
@@ -643,6 +682,7 @@ export function activateSession(tabId: string): boolean {
     state.ws = 'forge';
     state.areaCommand = null;
     state.wallCommand = null;
+    state.terrainCommand = null;
     state.tool = 'select';
   }
   const mapDoc = openMaps.get(s.mapFile) ?? s.mapDoc;
@@ -660,7 +700,7 @@ export function activateSession(tabId: string): boolean {
   state.effectRuns = s.effectRuns;
   state.interiorAsks = s.interiorAsks;
   // Undo stays in the layer it was recorded in (as when switching layers): a map edit is not undone in a scene.
-  history = s.layer === state.layer ? s.history : new History<string>(100);
+  history = s.layer === state.layer ? s.history : new History<Snapshot>(100);
   state.canUndo = history.canUndo;
   state.canRedo = history.canRedo;
   const table = { ...state.scene.table, centerX: s.center.x, centerY: s.center.y };
@@ -806,6 +846,9 @@ function currentMapOf(scenePath: string): MapSidecar | null {
 function snapshotTvMap(): void {
   const map = state.tvScenePath ? currentMapOf(state.tvScenePath) : null;
   tvMap = map ? structuredClone(map) : null;
+  // Its terrain is held with it: the TV shows it until the next "on the TV" too.
+  const file = tvMapFile();
+  tvTerrain = file ? terrainOf(file) : null;
   tvMapVersion++;
   state.tvMapPending = false;
   tvCache = null;
@@ -955,6 +998,7 @@ export function setWorkspace(ws: WorkspaceId): void {
     state.ws = ws;
     state.areaCommand = null;
     state.wallCommand = null;
+    state.terrainCommand = null;
     state.tool = 'select';
     if (!(scene && activateSession(scene.id))) {
       // No scene open: nothing to show there; the map stays in its tab.
@@ -966,6 +1010,7 @@ export function setWorkspace(ws: WorkspaceId): void {
   state.ws = ws;
   state.areaCommand = null;
   state.wallCommand = null;
+  state.terrainCommand = null;
   state.tool = 'select';
   // Placing goes on in the Map Forge and the Orchestrator only (DC-116).
   if (ws !== 'forge' && ws !== 'play') state.placing = null;
@@ -982,6 +1027,7 @@ export function setTool(tool: ToolId): void {
   // One command at a time: another tool ends "create area" and "draw walls".
   if (tool !== 'area') state.areaCommand = null;
   if (tool !== 'wall') state.wallCommand = null;
+  if (tool !== 'terrain') endTerrainCommand();
   if (tool !== 'calibrate') dropCalibration();
   state.tool = tool;
   emit();
@@ -1031,7 +1077,7 @@ export function recomputeVision(final = true): void {
   if (!final && Date.now() - visionAt < visionCost * 2) return;
   const started = performance.now();
   const extras = assetExtras(state.scene);
-  const seen = withAssetDoors(state.scene);
+  const seen = withAssetDoors(state.scene, ownTerrain());
   state.vision = updateVision(seen, extras);
   state.visible = visiblePolygons(state.vision);
   state.lights = litSources(seen, extras);
@@ -1165,9 +1211,343 @@ function reversed<T extends Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>>(w: T): T {
 /** A different scene or layer is shown: running Map Forge commands and the wall selection end. */
 function clearWallEditing(): void {
   state.wallCommand = null;
+  state.terrainCommand = null;
   state.selectedWallIds = [];
   state.selectedAssetId = null;
   state.calibration = null;
+}
+
+/* ---------- The terrain tool "Stufe" (E-87) ---------- */
+
+export type TerrainPreview = 'live' | 'outline';
+export type TerrainTool = 'step' | 'ground' | 'biome' | 'fill' | 'relief' | 'slope';
+
+export interface TerrainCommand {
+  /** Which terrain tool (E-87, E-88): steps, ground classes, biomes, or filling ground. */
+  tool: TerrainTool;
+  mode: StepMode;
+  shape: BrushShape;
+  /** Brush size in cells (round: diameter; square: side). */
+  sizeCells: number;
+  /** The ground class painted or filled. */
+  groundClass: GroundClass;
+  /** The biome painted. */
+  biome: TerrainBiome;
+  /** How strongly a stroke paints (0…1). */
+  strength: number;
+  /** Share of the brush's radius that fades out (0…1). */
+  softness: number;
+  /** How different ground filling still takes (0…1). */
+  tolerance: number;
+  /** What "Feinhöhe" does (E-89). */
+  reliefMode: ReliefMode;
+  /** Raise, lower, roughen: by how many ft where the brush is full. */
+  amountFt: number;
+  /** The step "set" sets. */
+  picked: number;
+  /** The next click on the map picks `picked` from the ground there. */
+  picking: boolean;
+  /** The terrain when the command started: Cancel goes back to it. */
+  readonly before: TerrainState | null;
+}
+
+const TERRAIN_PREVIEW_KEY = 'dc.terrain.preview';
+
+function readTerrainPreview(): TerrainPreview {
+  try {
+    return localStorage.getItem(TERRAIN_PREVIEW_KEY) === 'outline' ? 'outline' : 'live';
+  } catch {
+    return 'live';
+  }
+}
+
+/** Whether painting shows the cliffs as they grow or an outline until let go – stored on this device. */
+export function setTerrainPreview(preview: TerrainPreview): void {
+  state.terrainPreview = preview;
+  try {
+    localStorage.setItem(TERRAIN_PREVIEW_KEY, preview);
+  } catch {
+    // Without storage it holds until the app closes.
+  }
+  emit();
+}
+
+/** Whether the terrain tools can work here: a map in the Map Forge – drawn or a picture (E-60, E-90) – its terrain readable (E-87). */
+export function terrainEditable(): boolean {
+  return state.layer === 'map' && !!state.mapFile && !terrainBroken(state.mapFile);
+}
+
+type TerrainOptions = Omit<TerrainCommand, 'tool' | 'picking' | 'before'>;
+const TERRAIN_OPTION_KEYS = ['mode', 'shape', 'sizeCells', 'picked', 'groundClass', 'biome', 'strength', 'softness', 'tolerance', 'reliefMode', 'amountFt'] as const;
+let lastTerrainOptions: TerrainOptions = { mode: 'raise', shape: 'round', sizeCells: 2, picked: 1, groundClass: 'grass', biome: 'temperate', strength: 1, softness: 0.5, tolerance: 0.2, reliefMode: 'raise', amountFt: 3 };
+
+/** Starts a terrain tool (one command at a time: another tool ends it). */
+export function startTerrainCommand(tool: TerrainTool = 'step'): void {
+  if (!terrainEditable()) {
+    if (state.mapFile && terrainBroken(state.mapFile)) log('log.terrainReadOnly');
+    return;
+  }
+  stroke = null;
+  // Another terrain tool while one runs: the strokes so far stay, Cancel still goes back to before them.
+  const before = state.terrainCommand ? state.terrainCommand.before : ownTerrain();
+  state.terrainCommand = { ...lastTerrainOptions, tool, picking: false, before };
+  state.wallCommand = null;
+  state.areaCommand = null;
+  dropCalibration();
+  state.tool = 'terrain';
+  emit();
+}
+
+export function updateTerrainCommand(patch: Partial<Omit<TerrainCommand, 'tool' | 'before'>>): void {
+  const c = state.terrainCommand;
+  if (!c) return;
+  const next = { ...c, ...patch };
+  state.terrainCommand = next;
+  lastTerrainOptions = Object.fromEntries(TERRAIN_OPTION_KEYS.map((k) => [k, next[k]])) as TerrainOptions;
+  emit();
+}
+
+/** The biome of the ground at map point `p` (the palette's first where none is painted). */
+export function terrainBiomeAt(p: Point): TerrainBiome {
+  const sc = state.scene;
+  const t = ownTerrain();
+  const palette = t?.biomePalette ?? [defaultTerrainBiome(sc.map.mapType, sc.map.biome)];
+  if (!t) return palette[0]!;
+  const c = toCellSpace(sc.map.grid, p);
+  const w = biomeWeightsAt(t, sc.map.storey ?? 'map', Math.floor(c.x), Math.floor(c.y));
+  return palette[w.indexOf(Math.max(...w))] ?? palette[0]!;
+}
+
+/** The pointer moved over the map with a ground tool: the palette follows the biome there. */
+export function hoverTerrainBiome(p: Point): void {
+  const biome = terrainBiomeAt(p);
+  if (biome === state.terrainHover) return;
+  state.terrainHover = biome;
+  emit();
+}
+
+/** The map's biomes (its terrain's palette; the default one before anything is painted). */
+export function terrainPalette(): readonly TerrainBiome[] {
+  return ownTerrain()?.biomePalette ?? [defaultTerrainBiome(state.scene.map.mapType, state.scene.map.biome)];
+}
+
+/** The map's area in support points (filling stays inside it). */
+function areaPoints(): { x0: number; y0: number; x1: number; y1: number } {
+  const m = state.scene.map;
+  const o = m.origin ?? { x: 0, y: 0 };
+  const corners = [o, { x: o.x + m.widthPx, y: o.y }, { x: o.x, y: o.y + m.heightPx }, { x: o.x + m.widthPx, y: o.y + m.heightPx }].map((p) => supportPointAt(m.grid, p));
+  return { x0: Math.min(...corners.map((c) => c[0])), y0: Math.min(...corners.map((c) => c[1])), x1: Math.max(...corners.map((c) => c[0])), y1: Math.max(...corners.map((c) => c[1])) };
+}
+
+export function setHeightLines(on: boolean): void {
+  state.heightLines = on;
+  emit();
+}
+
+const linesMemo = new WeakMap<ReadonlyMap<string, RasterBlock>, { grid: string; lines: Point[][] }>();
+
+/** The height lines the DM's view shows (none when switched off or without terrain). */
+export function terrainHeightLines(): readonly Point[][] {
+  const t = ownTerrain();
+  if (!state.heightLines || !t) return [];
+  const blocks = shownTerrain(state.scene, t);
+  const grid = JSON.stringify(state.scene.map.grid);
+  const hit = linesMemo.get(blocks);
+  if (hit?.grid === grid) return hit.lines;
+  const lines = reliefLines(blocks, state.scene.map.grid);
+  linesMemo.set(blocks, { grid, lines });
+  return lines;
+}
+
+export function setTerrainQuarter(on: boolean): void {
+  state.terrainQuarter = on;
+  emit();
+}
+
+/** OK: the strokes stay (each one a step of undo). */
+export function finishTerrainCommand(): void {
+  endTerrainCommand();
+  if (state.tool === 'terrain') state.tool = 'select';
+  emit();
+}
+
+/** Cancel: the terrain goes back to how it was when the command started – undoable as one step. */
+export function cancelTerrainCommand(): void {
+  const c = state.terrainCommand;
+  if (c && state.mapFile && ownTerrain() !== c.before) {
+    checkpoint();
+    setTerrain(state.mapFile, c.before);
+    terrainChanged(true);
+  }
+  finishTerrainCommand();
+}
+
+function endTerrainCommand(): void {
+  stroke = null;
+  state.terrainCommand = null;
+  state.terrainHover = null;
+}
+
+/** A stroke being painted: the terrain it started from, the stack and the step it sets. */
+let stroke: {
+  /** The map it paints: a stroke never outlives its map or its command. */
+  readonly mapFile: string;
+  /** The terrain before it (null: none yet) and the one it paints on. */
+  readonly before: TerrainState | null;
+  readonly base: TerrainState;
+  readonly stack: string;
+  readonly startStep: number;
+  /** The fine height at its start (ft): "flatten" pulls to it. */
+  readonly startRelief: number;
+  path: Point[];
+  /**
+   * What the brush covered so far, with the strongest touch: support points (biome: cells).
+   * A lasso works its points out from its path each time.
+   */
+  covered: Map<string, readonly [number, number, number]>;
+  /** Its step of undo is taken with its first change, so a stroke changing nothing leaves none. */
+  undoTaken: boolean;
+} | null = null;
+
+/** The stroke if it belongs to the command running on the map shown. */
+function liveStroke(): NonNullable<typeof stroke> | null {
+  return stroke && state.terrainCommand && stroke.mapFile === state.mapFile ? stroke : null;
+}
+
+/**
+ * A press on the map with "Stufe": with the pipette armed, picks the step there; else starts a
+ * stroke (one step of undo) – the step it sets comes from where it starts (plateau logic). True if
+ * a stroke started.
+ */
+export function beginTerrainStroke(p: Point): boolean {
+  stroke = null;
+  const c = state.terrainCommand;
+  if (!c || !terrainEditable() || !state.mapFile) return false;
+  const stack = state.scene.map.storey ?? 'map';
+  const own = ownTerrain();
+  if (c.picking) {
+    updateTerrainCommand({ picked: stepAt(own, stack, state.scene.map.grid, p), picking: false, mode: 'set' });
+    return false;
+  }
+  const base = own ?? emptyTerrain([defaultTerrainBiome(state.scene.map.mapType, state.scene.map.biome)]);
+  if (c.tool === 'fill') {
+    // One click, one step of undo: the connected ground of the same mix on the same step (E-88).
+    const [x, y] = supportPointAt(state.scene.map.grid, p);
+    const points = fillPoints(base, stack, x, y, c.tolerance, areaPoints());
+    const next = paintGround(base, stack, points.map(([px, py]) => [px, py, 1] as const), c.groundClass);
+    if (next !== base) {
+      checkpoint();
+      setTerrain(state.mapFile, next);
+      terrainChanged(true);
+    }
+    return false;
+  }
+  const [sx, sy] = supportPointAt(state.scene.map.grid, p);
+  stroke = { mapFile: state.mapFile, before: own, base, stack, startStep: stepAt(base, stack, state.scene.map.grid, p), startRelief: reliefFtAt(base, stack, sx, sy), path: [p], covered: new Map(), undoTaken: false };
+  cover(c, stroke, [p]);
+  return true;
+}
+
+/** Adds what the brush covers along `path` (map px) to the stroke, keeping each place's strongest touch. */
+function cover(c: TerrainCommand, s: NonNullable<typeof stroke>, path: readonly Point[]): void {
+  const grid = state.scene.map.grid;
+  if (c.tool === 'step' && c.shape === 'lasso') return;
+  const touched =
+    c.tool === 'ground' || c.tool === 'relief' || c.tool === 'slope' ? brushWeights(path, c.sizeCells, c.softness, grid)
+    : c.tool === 'biome' ? brushCells(path, c.sizeCells, c.softness, grid)
+    : brushPoints(path, c.shape === 'square' ? 'square' : 'round', c.sizeCells, grid, state.terrainQuarter).map(([x, y]) => [x, y, 1] as [number, number, number]);
+  for (const pt of touched) {
+    const key = `${pt[0]},${pt[1]}`;
+    const had = s.covered.get(key);
+    if (!had || had[2] < pt[2]) s.covered.set(key, pt);
+  }
+}
+
+/** The stroke's terrain: `base` painted with what it covered, the way its tool paints (null: refused). */
+function painted(c: TerrainCommand, s: NonNullable<typeof stroke>, invert: boolean): TerrainState | null {
+  const grid = state.scene.map.grid;
+  const scaled = [...s.covered.values()].map(([x, y, w]) => [x, y, w * c.strength] as const);
+  if (c.tool === 'ground') return paintGround(s.base, s.stack, scaled, invert ? 'auto' : c.groundClass);
+  // Alt takes cells back to the map's first biome.
+  if (c.tool === 'biome') return paintBiome(s.base, s.stack, scaled, invert ? s.base.biomePalette[0]! : c.biome);
+  // Fine height (E-89): Alt lowers instead of raising and the other way round; strength is the mode's own.
+  if (c.tool === 'relief') {
+    const mode = invert && c.reliefMode === 'raise' ? 'lower' : invert && c.reliefMode === 'lower' ? 'raise' : c.reliefMode;
+    const a = supportPointAt(grid, s.path[0]!);
+    const b = supportPointAt(grid, s.path[s.path.length - 1]!);
+    // A gradient on level ground falls with Alt instead of rising.
+    const amountFt = invert && c.reliefMode === 'gradient' ? -c.amountFt : c.amountFt;
+    return paintRelief(s.base, s.stack, [...s.covered.values()], mode, { amountFt, strength: c.strength, startFt: s.startRelief, a, b });
+  }
+  if (c.tool === 'slope') return paintSlope(s.base, s.stack, scaled, invert);
+  const points = c.shape === 'lasso' ? lassoPoints(s.path.map((q) => snapLasso(q, grid, state.terrainQuarter)), grid) : [...s.covered.values()].map(([x, y]) => [x, y] as const);
+  const mode = invert && c.mode !== 'set' ? (c.mode === 'raise' ? 'lower' : 'raise') : c.mode;
+  return applyStroke(s.base, s.stack, points, mode, strokeStep(mode, s.startStep, c.picked));
+}
+
+/**
+ * The stroke goes on to `p` (`straight`: only from its start to `p`; `invert`: lowering instead
+ * of raising and the other way round). Live, the terrain changes at once; with the outline
+ * preview only when `final`. Only the new piece of the path is brushed: raising and lowering
+ * give the same however often a point is covered.
+ */
+export function moveTerrainStroke(p: Point, opts: { straight: boolean; invert: boolean }, final: boolean): void {
+  const c = state.terrainCommand;
+  const s = liveStroke();
+  if (!c || !s) return;
+  // A gradient always runs straight from A to B.
+  if ((opts.straight || (c.tool === 'relief' && c.reliefMode === 'gradient')) && !(c.tool === 'step' && c.shape === 'lasso')) {
+    s.path = [s.path[0]!, p];
+    s.covered = new Map();
+    cover(c, s, s.path);
+  } else {
+    cover(c, s, [s.path[s.path.length - 1]!, p]);
+    s.path.push(p);
+  }
+  if (final) stroke = null;
+  // The outline preview is for steps (their cliffs are what costs); ground and biomes paint at once.
+  if (!final && state.terrainPreview === 'outline' && c.tool === 'step') return emit();
+  const next = painted(c, s, opts.invert);
+  if (!next) {
+    // A fifth biome: the palette holds four (E-88).
+    stroke = null;
+    log('log.biomePaletteFull');
+    if (s.undoTaken) {
+      setTerrain(s.mapFile, s.before);
+      terrainChanged(true);
+    }
+    return emit();
+  }
+  // Nothing painted yet and nothing to paint: no change, no step of undo.
+  if (next === s.base && !s.undoTaken) return emit();
+  if (!s.undoTaken) {
+    checkpoint();
+    s.undoTaken = true;
+  }
+  setTerrain(s.mapFile, next === s.base ? s.before : next);
+  terrainChanged(final);
+}
+
+/** Escape while painting: the stroke goes, the terrain is as before it. */
+export function abortTerrainStroke(): void {
+  const s = liveStroke();
+  stroke = null;
+  if (s?.undoTaken) {
+    setTerrain(s.mapFile, s.before);
+    terrainChanged(true);
+  } else emit();
+}
+
+/** The stroke being painted, for the outline preview (map px), or null. */
+export function terrainStrokePath(): readonly Point[] | null {
+  return liveStroke()?.path ?? null;
+}
+
+/** After the terrain changed: the map is unsaved, the TV's map waits (E-30), sight sees the new cliffs. */
+function terrainChanged(final: boolean): void {
+  markDirty();
+  recomputeVision(final);
+  emit();
 }
 
 /** Starts "draw walls" in the Map Forge (one command at a time: another tool ends it). */
@@ -1242,6 +1622,7 @@ export function finishWallCommand(): boolean {
     recomputeVision();
   }
   state.wallCommand = null;
+  state.terrainCommand = null;
   state.tool = 'select';
   emit();
   return true;
@@ -1250,6 +1631,7 @@ export function finishWallCommand(): boolean {
 export function cancelWallCommand(): void {
   if (!state.wallCommand) return;
   state.wallCommand = null;
+  state.terrainCommand = null;
   if (state.tool === 'wall') state.tool = 'select';
   emit();
 }
@@ -1360,6 +1742,7 @@ export function startAreaCommand(areaId?: string): void {
   if (z) state.selectedZoneId = z.id;
   state.tool = 'area';
   state.wallCommand = null;
+  state.terrainCommand = null;
   dropCalibration();
   emit();
 }
@@ -1729,17 +2112,112 @@ function applyInteriorTriggers(): void {
  * The walls sight and light use: the scene's, cut open where placed assets bring doors, plus those
  * doors (E-29). Walls from the drawing's rasters and wall lines join with DC-129.
  */
-export function sightWalls(scene: Scene): readonly Wall[] {
+export function sightWalls(scene: Scene, terrain: TerrainState | null = null): readonly Wall[] {
   const placed = allPlacements(scene);
   const inner = interiorWalls(placed, state.assetInfo, scene.map.grid, scene.interiorsOn, scene.assetDoorsOpen);
-  return wallsWithAssetDoors(scene.walls, placed, state.assetInfo, scene.map.grid, scene.assetDoorsOpen, inner);
+  return withCliffs(wallsWithAssetDoors(scene.walls, placed, state.assetInfo, scene.map.grid, scene.assetDoorsOpen, inner), cliffWallsOf(scene, terrain));
 }
 
-/** The scene with the walls sight and light use (itself if no asset brings a door). */
-export function withAssetDoors(scene: Scene): Scene {
-  const walls = sightWalls(scene);
+/**
+ * The scene with the walls sight and light use (itself if nothing adds any): drawn walls, asset
+ * doors and, with its map's `terrain`, the one-way walls of its cliffs (E-87).
+ */
+export function withAssetDoors(scene: Scene, terrain: TerrainState | null = null): Scene {
+  const walls = sightWalls(scene, terrain);
   // The list itself, not a copy: sight and light keep what they computed for the same list.
   return walls === scene.walls ? scene : { ...scene, walls: walls as Wall[] };
+}
+
+/** The stack (`map` or a storey) and the active layers, lowest first, a scene shows of its terrain. */
+function terrainView(scene: Scene): { stack: string; activeLayers: string[] } {
+  const active = activeLayers(scene.map.layers, scene.layersOn);
+  return { stack: scene.map.storey ?? 'map', activeLayers: scene.map.layers.filter((l) => active.has(l.id)).sort((a, b) => a.height - b.height).map((l) => l.id) };
+}
+
+/**
+ * The blocks of `terrain` as `scene` shows them, kept per terrain state and view: the same map
+ * while nothing changed (layers' patches make new blocks). Kept with the state itself, so the
+ * DM's view and the TV's never push each other out; gone with the state.
+ */
+const shownMemo = new WeakMap<TerrainState, Map<string, ReadonlyMap<string, RasterBlock>>>();
+
+function shownTerrain(scene: Scene, terrain: TerrainState): ReadonlyMap<string, RasterBlock> {
+  const v = terrainView(scene);
+  const key = JSON.stringify(v);
+  let views = shownMemo.get(terrain);
+  if (!views) shownMemo.set(terrain, (views = new Map()));
+  let blocks = views.get(key);
+  if (!blocks) views.set(key, (blocks = shownStack(terrain, v.stack, v.activeLayers)));
+  return blocks;
+}
+
+const NO_BLOCKS: ReadonlyMap<string, RasterBlock> = new Map();
+
+/**
+ * What the map view draws of the terrain (E-87): on a drawn map its biome's ground, and its cliffs
+ * once painted; over a picture or video only once there is terrain, and only what is painted (E-60).
+ */
+export function terrainShape(): TerrainShape | null {
+  return terrainShapeOf(state.scene, ownTerrain());
+}
+
+/** What `sc` shows of `terrain` (see `terrainShape`); the catalog preview draws a map's own so (E-90). */
+export function terrainShapeOf(sc: Scene, terrain: TerrainState | null): TerrainShape | null {
+  if (!sc.map.drawn && !terrain) return null;
+  return {
+    source: { blocks: terrain ? shownTerrain(sc, terrain) : NO_BLOCKS, missingIsUnknown: false },
+    grid: sc.map.grid,
+    palette: terrain?.biomePalette ?? [defaultTerrainBiome(sc.map.mapType, sc.map.biome)],
+    stepFt: terrain?.stepFt ?? 10,
+    perspective: sc.map.intent?.cliffPerspective ?? BAND_PER_10_FT,
+    erosion: sc.map.intent?.erosionEdges ?? true,
+    lightAngle: sc.map.lightAngle,
+    area: { x: sc.map.origin?.x ?? 0, y: sc.map.origin?.y ?? 0, width: sc.map.widthPx, height: sc.map.heightPx },
+    overPicture: !sc.map.drawn,
+  };
+}
+
+/** One-way walls per shown blocks and grid (kept with the blocks); segments per view, so storeys never push each other out. */
+const cliffMemo = new WeakMap<ReadonlyMap<string, RasterBlock>, { look: string; walls: readonly Wall[] }>();
+const cliffCaches = new Map<string, CliffCache>();
+
+/** The one-way walls of the cliffs `scene` shows of `terrain` (E-87); the same list while they stay. */
+function cliffWallsOf(scene: Scene, terrain: TerrainState | null): readonly Wall[] {
+  if (!terrain) return [];
+  const blocks = shownTerrain(scene, terrain);
+  // The materials on top set how the edges wander (E-90): palette and step height count too.
+  const look = JSON.stringify([scene.map.grid, terrain.biomePalette, terrain.stepFt]);
+  const hit = cliffMemo.get(blocks);
+  if (hit?.look === look) return hit.walls;
+  const view = JSON.stringify(terrainView(scene));
+  let cache = cliffCaches.get(view);
+  if (!cache) cliffCaches.set(view, (cache = new CliffCache()));
+  const walls = cliffWalls(cliffLines({ blocks, missingIsUnknown: false }, materialCliffOptions(blocks, scene.map.grid, terrain.biomePalette, terrain.stepFt), cache), scene.map.grid);
+  cliffMemo.set(blocks, { look, walls });
+  return walls;
+}
+
+const joined = new WeakMap<readonly Wall[], { cliffs: readonly Wall[]; all: readonly Wall[] }>();
+
+/** `walls` and `cliffs` as one list – the same list again for the same two. */
+function withCliffs(walls: readonly Wall[], cliffs: readonly Wall[]): readonly Wall[] {
+  if (!cliffs.length) return walls;
+  const hit = joined.get(walls);
+  if (hit?.cliffs === cliffs) return hit.all;
+  const all = [...walls, ...cliffs];
+  joined.set(walls, { cliffs, all });
+  return all;
+}
+
+/** The terrain of the map shown in the DM window, if any. */
+function ownTerrain(): TerrainState | null {
+  return state.mapFile ? terrainOf(state.mapFile) : null;
+}
+
+/** The terrain the TV shows: held with its map while the map's changes wait (E-30), else its map's. */
+function tvTerrainNow(): TerrainState | null {
+  const file = tvMapFile();
+  return state.tvMapPending && tvTerrain !== undefined ? tvTerrain : file ? terrainOf(file) : null;
 }
 
 /** The doors placed assets bring – door assets and shown interiors – as walls. */
@@ -1845,6 +2323,7 @@ export function startPlacing(path: string, name: string): void {
   const variants = o ? o.doc.variants.map((v) => `library/${v.file}`).filter((v) => state.vault.items.some((i) => i.relPath === v)) : [path];
   state.areaCommand = null;
   state.wallCommand = null;
+  state.terrainCommand = null;
   state.placing = { path, name, variants, random: randomChoices(path, state.vault.items, state.vault.objects), variant: variants.length > 1 ? 'random' : path, next: { path, rotation: 0, scale: 1 }, at: null };
   rollNext();
   emit();
@@ -2254,6 +2733,7 @@ export function startCalibration(): void {
   if (state.layer !== 'map') return;
   state.areaCommand = null;
   state.wallCommand = null;
+  state.terrainCommand = null;
   if (!state.calibration) state.calibration = { cells: CALIBRATION_CELLS.default, box: null, before: { ...state.scene.map.grid } };
   state.tool = 'calibrate';
   emit();
@@ -2754,6 +3234,7 @@ export function startLookCommand(): void {
   if (state.layer !== 'map') return;
   state.areaCommand = null;
   state.wallCommand = null;
+  state.terrainCommand = null;
   state.placing = null;
   state.lookCommand = { draft: structuredClone(state.scene.map.look ?? { rotation: 0 }) };
   emit();
@@ -2815,7 +3296,7 @@ let leaksCache: { walls: readonly Wall[]; cell: number; leaks: Leak[] } | null =
 
 /** The leaks of the walls sight uses (drawn walls and asset doors included); computed when they change. */
 export function currentLeaks(): Leak[] {
-  const walls = sightWalls(state.scene);
+  const walls = sightWalls(state.scene, ownTerrain());
   const cell = state.scene.map.grid.cellWidth;
   if (leaksCache?.walls !== walls || leaksCache.cell !== cell) leaksCache = { walls, cell, leaks: findLeaks(walls, cell / 2) };
   return leaksCache.leaks;
@@ -2829,10 +3310,10 @@ export function testFigureSight(): Polygon[] {
   if (!lc?.figure) return [];
   // The same while figure, walls and lights stay: the overlay asks every frame.
   const key = `${lc.figure.x},${lc.figure.y},${lc.darkvisionFt},${state.scene.ambient}`;
-  const walls = sightWalls(state.scene);
+  const walls = sightWalls(state.scene, ownTerrain());
   if (sightCache?.key === key && sightCache.walls === walls && sightCache.lights === state.scene.lights) return sightCache.sight;
   const probe: Token = { id: '__test', name: '', label: '', kind: 'pc', x: lc.figure.x, y: lc.figure.y, size: 1, ringColor: '#ffffff', visionFt: lc.darkvisionFt, hp: 1, maxHp: 1, ac: 10, initiative: 0, conditions: [] };
-  const seen = withAssetDoors(state.scene);
+  const seen = withAssetDoors(state.scene, ownTerrain());
   const sight = visiblePolygons(updateVision({ ...seen, tokens: [probe] }, assetExtras(state.scene)));
   sightCache = { key, walls, lights: state.scene.lights, sight };
   return sight;
@@ -2962,6 +3443,10 @@ export interface MapSettings {
   transition: Transition;
   /** Other pictures of the map (E-41). */
   variants: MapVariant[];
+  /** The cliff band's width, cells per 10 ft drop (E-87). */
+  cliffPerspective: number;
+  /** Erosion edges where the fine height is steep (E-89). */
+  erosionEdges: boolean;
 }
 
 export function openMapSettings(open = true): void {
@@ -2971,7 +3456,7 @@ export function openMapSettings(open = true): void {
 
 export function currentMapSettings(): MapSettings {
   const m = state.scene.map;
-  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient, ambientSound: m.ambientSound ? { ...m.ambientSound } : null, transition: { ...(m.transition ?? DEFAULT_TRANSITION) }, variants: (m.variants ?? []).map((v) => ({ ...v })) };
+  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient, ambientSound: m.ambientSound ? { ...m.ambientSound } : null, transition: { ...(m.transition ?? DEFAULT_TRANSITION) }, variants: (m.variants ?? []).map((v) => ({ ...v })), cliffPerspective: m.intent?.cliffPerspective ?? BAND_PER_10_FT, erosionEdges: m.intent?.erosionEdges ?? true };
 }
 
 /** Applies the dialog as one undoable step; only in the Map Forge (the map's data). */
@@ -2994,6 +3479,9 @@ export function applyMapSettings(s: MapSettings): boolean {
   if (plain && !m.transition) delete m.transition;
   else m.transition = { ...s.transition };
   state.scene.ambient = s.ambient;
+  // Like the transition: in the file only when it is not the default (E-87).
+  const { cliffPerspective: _old, erosionEdges: _was, ...intent } = m.intent ?? {};
+  m.intent = { ...intent, ...(s.cliffPerspective === BAND_PER_10_FT ? {} : { cliffPerspective: s.cliffPerspective }), ...(s.erosionEdges ? {} : { erosionEdges: false }) };
   recomputeVision();
   markDirty();
   emit();
@@ -3160,7 +3648,7 @@ export function produceFrame(now: number): PlayerFrame {
   state.frameSeq++;
   // No scene on the TV: black, and nothing of any scene in the frame.
   const tv = tvView() ?? { scene: emptyScene({ ...state.scene.table, blackout: true }), visible: [], lights: [], turn: 0, resource: '', runs: {} };
-  const top = frameOf(tv, now, state.ws === 'play' && tv.scene === state.scene ? initiativeOrder()[tv.turn]?.id ?? null : null);
+  const top = frameOf(tv, now, state.ws === 'play' && tv.scene === state.scene ? initiativeOrder()[tv.turn]?.id ?? null : null, tvRasterOf(tv.scene));
   // A storey on the TV (E-40): it covers its footprint; the storeys below show outside it, each
   // with its own fog only.
   const st = tv.scene.map.storey;
@@ -3169,8 +3657,62 @@ export function produceFrame(now: number): PlayerFrame {
   return state.frame;
 }
 
-/** The TV's frame of one view: its storey with its own fog, light and figures. */
-function frameOf(tv: TvView, now: number, activeTokenId: string | null): PlayerFrame {
+/** The TV's terrain while it waits for the DM to take map changes over (E-30): held with `tvMap`. */
+let tvTerrain: TerrainState | null | undefined;
+
+const rasterMemo: { terrain: TerrainState | null; fog: unknown; key: string; blocks: ReadonlyMap<string, RasterBlock>; frame: Omit<NonNullable<ProjectionOptions['raster']>, 'perspective' | 'lightAngle' | 'erosion'> | null } = {
+  terrain: null,
+  fog: null,
+  key: '',
+  blocks: new Map(),
+  frame: null,
+};
+
+/**
+ * What of its terrain the TV may know (E-85): worked out again only when the terrain, the fog, the
+ * secret areas, the layers, the storey or the grid changed. Terrain and fog are replaced on every
+ * change, so they compare by identity; areas are changed in place, so the rest compares by content.
+ * Undiscovered secret areas count also when hidden in the scene or on an inactive layer.
+ */
+function tvRasterOf(scene: Scene): NonNullable<ProjectionOptions['raster']> | null {
+  const terrain = tvTerrainNow();
+  // A drawn map has its ground even before the first step (E-87), a picture map terrain only once painted (E-60).
+  if (!terrain && !scene.map.drawn) return null;
+  const look = { perspective: scene.map.intent?.cliffPerspective ?? BAND_PER_10_FT, erosion: scene.map.intent?.erosionEdges ?? true, lightAngle: scene.map.lightAngle };
+  if (!terrain) {
+    rasterMemo.blocks = new Map();
+    Object.assign(rasterMemo, { terrain: null, fog: null, key: '', frame: null });
+    return { stepFt: 10, palette: [defaultTerrainBiome(scene.map.mapType, scene.map.biome)], ...look, blocks: {} };
+  }
+  const active = activeLayers(scene.map.layers, scene.layersOn);
+  const view = {
+    stack: scene.map.storey ?? 'map',
+    activeLayers: scene.map.layers.filter((l) => active.has(l.id)).sort((a, b) => a.height - b.height).map((l) => l.id),
+    shown: [...scene.fog.revealed, ...scene.fog.remembered],
+    hidden: lockedAreas([...scene.zones, ...scene.hidden.zones, ...scene.inactive.zones]),
+    grid: scene.map.grid,
+  };
+  const key = JSON.stringify([view.stack, view.activeLayers, view.hidden, view.grid]);
+  if (terrain !== rasterMemo.terrain || scene.fog !== rasterMemo.fog || key !== rasterMemo.key || !rasterMemo.frame) {
+    Object.assign(rasterMemo, { terrain, fog: scene.fog, key });
+    const r = tvRaster(terrain, view);
+    rasterMemo.blocks = new Map([...r.values()].map((v) => [v.checksum, v.block]));
+    // The TV learns a biome's name only if its blocks use it (E-88): one painted only where it may
+    // not look stays unnamed.
+    const used = new Set([0]);
+    for (const { block } of r.values()) (['biome2', 'biome3', 'biome4'] as const).forEach((ch, k) => block.planes[ch].some((v) => v > 0) && used.add(k + 1));
+    rasterMemo.frame = { stepFt: terrain.stepFt, palette: terrain.biomePalette.map((b, i) => (used.has(i) ? b : null)), blocks: Object.fromEntries([...r].map(([k, v]) => [k, v.checksum])) };
+  }
+  return { ...rasterMemo.frame, ...look };
+}
+
+/** The terrain blocks the TV's last frame names, by checksum: `pushRaster` sends those it lacks. */
+export function tvRasterBlocks(): ReadonlyMap<string, RasterBlock> {
+  return rasterMemo.blocks;
+}
+
+/** The TV's frame of one view: its storey with its own fog, light and figures; the TV's own carries its terrain. */
+function frameOf(tv: TvView, now: number, activeTokenId: string | null, raster: ProjectionOptions['raster'] = null): PlayerFrame {
   // The picture the scene shows: a variant's or the map's own (E-41).
   return buildPlayerFrame(withPicture(tv.scene), {
     seq: state.frameSeq,
@@ -3190,6 +3732,7 @@ function frameOf(tv: TvView, now: number, activeTokenId: string | null): PlayerF
     assets: assetShapes(drawnPlacements(allPlacements(tv.scene), state.assetInfo, tv.scene.interiorsOn, false), state.assetInfo, tv.scene.map.grid, { effectsOn: tv.scene.effectsOn, runs: tv.runs }),
     covers: assetExtras(tv.scene).covers,
     cut: state.tvCut,
+    raster,
   });
 }
 
@@ -3216,7 +3759,7 @@ function framesBelow(tv: TvView, now: number): StoreyFrame[] {
         ? ids.map((id) => {
             const scene = sceneFromDocuments(docs.map, docs.ov, tv.scene.map.imageUrl, tv.scene.table, 'scene', id);
             const extras = assetExtras(scene);
-            const seen = withAssetDoors(scene);
+            const seen = withAssetDoors(scene, tvTerrainNow());
             const vision = updateVision(seen, extras);
             return { scene, visible: visiblePolygons(vision), lights: litSources(seen, extras), turn: 0, resource: tv.resource, runs: tv.runs };
           })
@@ -3310,7 +3853,7 @@ interface TvView {
 }
 
 let tvCache: { version: string; scene: Scene; visible: Polygon[]; lights: LitSource[] } | null = null;
-let backgroundTv: { session: Session; info: Record<string, AssetInfo>; map: MapSidecar | null; view: TvView } | null = null;
+let backgroundTv: { session: Session; info: Record<string, AssetInfo>; map: MapSidecar | null; terrain: TerrainState | null; view: TvView } | null = null;
 
 /**
  * What the TV shows: the TV's scene (E-30). The scene shown in the DM window in its play state is
@@ -3342,7 +3885,7 @@ function tvView(): TvView | null {
     }
     const scene = sceneFromDocuments(map, ov, state.scene.map.imageUrl, state.scene.table, 'scene', ov?.tvStorey ?? '');
     const extras = assetExtras(scene);
-    const seen = withAssetDoors(scene);
+    const seen = withAssetDoors(scene, tvTerrainNow());
     const vision = updateVision(seen, extras);
     tvCache = { version: stamp, scene, visible: visiblePolygons(vision), lights: litSources(seen, extras) };
   }
@@ -3357,12 +3900,13 @@ function backgroundView(scenePath: string): TvView | null {
   if (!s) return null;
   const map = tvMap ?? openMaps.get(s.mapFile) ?? s.mapDoc;
   if (!map) return null;
-  if (!backgroundTv || backgroundTv.session !== s || backgroundTv.info !== state.assetInfo || backgroundTv.map !== map) {
+  const terrain = tvTerrainNow();
+  if (!backgroundTv || backgroundTv.session !== s || backgroundTv.info !== state.assetInfo || backgroundTv.map !== map || backgroundTv.terrain !== terrain) {
     const scene = sceneFromDocuments(map, s.sceneDoc, s.imageUrl, state.scene.table, 'scene', s.sceneDoc?.tvStorey ?? '');
     const extras = assetExtras(scene);
-    const seen = withAssetDoors(scene);
+    const seen = withAssetDoors(scene, terrain);
     const vision = updateVision(seen, extras);
-    backgroundTv = { session: s, info: state.assetInfo, map, view: { scene, visible: visiblePolygons(vision), lights: litSources(seen, extras), turn: s.turn, resource: s.mapResource, runs: s.effectRuns } };
+    backgroundTv = { session: s, info: state.assetInfo, map, terrain, view: { scene, visible: visiblePolygons(vision), lights: litSources(seen, extras), turn: s.turn, resource: s.mapResource, runs: s.effectRuns } };
   }
   // The TV's settings stay live; the centre is the scene's own.
   backgroundTv.view.scene.table = { ...state.scene.table, centerX: s.center.x, centerY: s.center.y };

@@ -33,6 +33,8 @@ const intent = {
   },
   mood: { sunElevation: 30, timeOfDay: 'evening' as const, season: 'autumn' as const, weather: 'rain' as const, haze: 0.4, clouds: 0.5 },
   undergrounds: [{ id: 'ug-a', storey: 'storey-cave', entrances: [{ id: 'en-a', x: 35, y: 35, area: sq, secret: true }], fade: 35, confirm: true, leaveOff: false }],
+  // Version 15 (E-87).
+  cliffPerspective: 0.6,
 };
 const INTENT_KEYS = Object.keys(intent) as (keyof typeof intent)[];
 const pickIntent = (m: Record<string, unknown>) => Object.fromEntries(INTENT_KEYS.filter((k) => m[k] !== undefined).map((k) => [k, m[k]]));
@@ -43,11 +45,32 @@ function intentMap() {
   return MapSidecarSchema.parse(JSON.parse(JSON.stringify({ ...base, storeys: [{ id: 'storey-cave', name: 'Cave', level: -1 }], layers: [{ id: 'flood', name: 'Flood' }], ...intent })));
 }
 
+describe('map file version 15: the cliff band\'s width per map (E-87)', () => {
+  const v14 = () => ({ ...mapSidecarFromScene(createSampleScene(), 'builtin:crypt', 'map'), schemaVersion: 14 });
+
+  it('a version 14 map reads as version 15, nothing else changed; without a width the default applies', () => {
+    const r = readDocument('map', MapSidecarSchema, JSON.stringify(v14()));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.schemaVersion).toBe(15);
+    expect(r.value.cliffPerspective).toBeUndefined();
+    expect({ ...r.raw, schemaVersion: 14 }).toEqual(v14());
+  });
+
+  it('the width is 0.2 to 1.0 cell per 10 ft', () => {
+    const doc = (w: number) => JSON.stringify({ ...v14(), schemaVersion: 15, cliffPerspective: w });
+    expect(readDocument('map', MapSidecarSchema, doc(0.2)).ok).toBe(true);
+    expect(readDocument('map', MapSidecarSchema, doc(1)).ok).toBe(true);
+    expect(readDocument('map', MapSidecarSchema, doc(0.1)).ok).toBe(false);
+    expect(readDocument('map', MapSidecarSchema, doc(1.5)).ok).toBe(false);
+  });
+});
+
 describe('map file version 14 (E-46 – E-77, DC-121)', () => {
-  it('map version 14, scene version 13, the same in the file rules', async () => {
+  it('map version 15, scene version 13, the same in the file rules', async () => {
     const { DOCUMENT_VERSIONS } = await import('../documents');
     const { SCENE_VERSION } = await import('../sidecar');
-    expect(MAP_VERSION).toBe(14);
+    expect(MAP_VERSION).toBe(15);
     expect(SCENE_VERSION).toBe(13);
     expect(DOCUMENT_VERSIONS.map).toBe(MAP_VERSION);
     expect(DOCUMENT_VERSIONS.scene).toBe(SCENE_VERSION);
@@ -67,7 +90,7 @@ describe('map file version 14 (E-46 – E-77, DC-121)', () => {
     if (!r.ok) return;
     for (const gone of ['masonry', 'masonryDoors', 'cliffs', 'waters', 'floors', 'rooms', 'autoShore', 'autoGrowth', 'generated']) expect(r.raw, gone).not.toHaveProperty(gone);
     expect(r.raw['future']).toEqual({ kept: true });
-    expect(r.value).toMatchObject({ schemaVersion: 14, lightAngle: 120, waterAnimated: false, origin: { x: -70, y: 0 } });
+    expect(r.value).toMatchObject({ schemaVersion: 15, lightAngle: 120, waterAnimated: false, origin: { x: -70, y: 0 } });
     expect(pickIntent(r.value)).toEqual({});
   });
 

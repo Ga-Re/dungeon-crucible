@@ -2,6 +2,7 @@
  * Thumbnails for the Asset Vault (E-27): made here from the library file (an image, or a frame of
  * a video) on a canvas, kept by the main process in this device's cache (app data folder) under a
  * key from the file's absolute path, size and time – a changed file gets a new one. Sounds have none.
+ * A drawn map's is its map file drawn by the renderer (E-90).
  */
 import { kindFromFile } from '../core/assets';
 import { absolutePath, assetUrl, readThumb, writeThumb } from '../platform/bridge';
@@ -80,6 +81,20 @@ function withTimeout<T>(p: Promise<T>, ms = 10_000): Promise<T> {
 export function thumbnailUrl(relPath: string, size: number, mtimeMs: number): Promise<string | null> {
   const kind = kindFromFile(relPath);
   if (kind !== 'prop' && kind !== 'effect') return Promise.resolve(null);
+  return cached(relPath, size, mtimeMs, async (abs) => render(await assetUrl(abs), kind === 'effect'));
+}
+
+/**
+ * An object URL of a drawn map's thumbnail (E-90): its map file drawn by the renderer, unseen
+ * (`mapPreview.ts`, loaded only when needed); made again when the file changes. Null if it cannot be.
+ */
+export function drawnMapThumbnailUrl(mapFile: string, size: number, mtimeMs: number): Promise<string | null> {
+  // A preview that never finishes must not hold a slot for good.
+  return cached(mapFile, size, mtimeMs, async () => withTimeout((await import('./mapPreview')).drawnMapPreview(mapFile, MAX_PX)));
+}
+
+/** The thumbnail of `relPath` from this device's cache, or made by `make` and kept there. */
+function cached(relPath: string, size: number, mtimeMs: number, make: (abs: string) => Promise<Uint8Array | null>): Promise<string | null> {
   const id = `${relPath}|${size}|${mtimeMs}`;
   let p = made.get(id);
   if (!p) {
@@ -89,7 +104,7 @@ export function thumbnailUrl(relPath: string, size: number, mtimeMs: number): Pr
         const key = await keyOf(abs, size, mtimeMs);
         let bytes = await readThumb(key);
         if (!bytes) {
-          bytes = await render(await assetUrl(abs), kind === 'effect');
+          bytes = await make(abs);
           // Not cached is no loss: it is made again next time.
           if (bytes) await writeThumb(key, bytes).catch(() => undefined);
         }

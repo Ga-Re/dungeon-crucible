@@ -124,6 +124,11 @@ Roadmap: `docs/KARTENSCHMIEDE-PROZEDURAL.md` (Teil A gilt vorrangig).
 | E-84 | Einbau der Raster | DC-123 liefert den reinen Kern (Blöcke, Codec, Patches, Rasterzustand mit geteilten Blöcken, Kodieren nur geänderter Blöcke) und die Rettungskopie in IndexedDB. Der **Einbau in Speichern, Öffnen und Rückgängig** kommt mit dem ersten Werkzeug in **DC-128**; bis dahin reisen die Raster kodiert mit (DC-121). | teilt DC-123 |
 | E-85 | Raster auf dem TV | Der TV bekommt Rasterdaten **nur im Erkundeten** (aufgedeckt und erinnert) plus **2 Felder Rand**, nie einen unentdeckten geheimen Bereich und nie die Felder, die ihn berühren; alles andere ist „unbekannt“. Patches aktiver Ebenen werden beim DM **fertig verrechnet**, inaktive Ebenen verlassen den DM nie; nur der Stapel des gezeigten Stockwerks. **Übertragung per Prüfsumme**: der Frame nennt je Block eine Prüfsumme, ein eigener Einweg-Kanal (`table:raster`, DM → Hauptprozess → TV) bringt nur fehlende Blöcke; nach „TV geladen/geschlossen“ alles neu. Der TV nimmt einen Block nur ganz und mit passender Prüfsumme, ein fehlender bleibt schwarz. Umfang jetzt: alles außer dem Anschluss an den Rasterzustand (der kommt mit DC-128, E-84). Nach dem Review (DM 2026-11-27): als geheim gilt jedes Feld, durch das ein Rand des Bereichs läuft oder dessen Mitte darin liegt (auch schmale und schräge Bereiche); der Ring um einen geheimen Bereich im Erkundeten wird **aus dem nächsten bekannten Feld aufgefüllt** (keine Lücke in Form des Raums, nichts von ihm). | konkretisiert E-61 |
 | E-86 | Reihenfolge Phase 0 | **DC-126 (Prüfwerkzeuge) kommt nach DC-128**: Bench-Szene und Bildvergleiche messen erst sinnvoll, wenn Gelände gemalt wird; die Bench-Szene wächst mit Wasser und Streuung. Als Nächstes DC-127; seine Referenzkarte (Klippe in Draufsicht) erzeugt Claude mit Higgsfield, abgelegt außerhalb des Repos. | ändert die Reihenfolge in 3.9 |
+| E-87 | Gelände-Paket b (DC-128b) | **Klippen je Biom schon in b** (zieht einen Teil von e vor), auf der ganzen Karte nach ihrem Standard-Biom, bis c die Biom-Raster bringt: Gemäßigt Sandstein + Grasüberhang (abgenommen, DC-127), Dungeon Höhlenfels mit blanker Kante, Sumpf dunkle Erde + Moos/Schilf, Wüste heller Sandstein + Sandkante, Winter grauer Fels + Schneekappe. Darunter ein **Boden nach Biom**, alle fünf neu und passend zu den Bändern. Texturen erzeugt Claude mit Higgsfield; sie kommen als WebP-Slots mit Herkunft ins Repo wie die Wandtexturen vom 26.11.; Abnahme per Vergleichsbild vor dem Einbau. Werkzeug **Stufe** (Tab GELÄNDE, nur gezeichnete Karten, auf Bild-/Videokarten ausgegraut): Pinsel rund, eckig (Feldraster), Lasso; **Viertelfeld-Fang** als Schalter im Tab; Befehls-Panel Heben · Senken · Auf Stufe [Zahl] mit Pipette, Alt kehrt um, Shift gerade Linie, ein Strich setzt Startstufe ± 1; malt ins Grundraster des gezeigten Stockwerks (Ebenen-Patches DC-133). Vorschau in den Geräte-Einstellungen umstellbar, ab Werk **Live-Klippen**, sonst Umriss und Klippen beim Loslassen. **Jeder Stufenwechsel** sperrt Sicht und Licht einseitig (von oben hinunter ja, von unten hinauf nein). **Bandbreite je Karte** einstellbar (0,2–1,0, Standard 0,45): Karte v15 mit optionalem Feld, ältere Karten werden beim Lesen ohne Änderung hochgestuft. | konkretisiert DC-128, E-46, E-52, E-67 |
+| E-88 | Gelände-Paket c (DC-128c) | **Alle neun Bodenklassen** (Gras, Hohes Gras, Erde, Fels, Sand/Kies, Moos, Laub, Pflaster, Schnee) nach der Tabelle in Teil B §13.1 – 35 konkrete Texturen; wo die Tabelle „–“ hat, zeigt die Palette die Klasse nicht und gemalt gilt dort Auto. **Auto** = Grundboden des Bioms, dazu Kies/Geröll in Flecken am Klippenfuß; die übrigen Regeln (Hang, Feuchte, Besonnung, Wege) mit d und DC-131. **Übergänge ausgefranst**: weiche Kante, durch Rauschen aufgebrochen (Inseln, Zungen), zwischen Bodenklassen wie zwischen Biomen. Bis zu vier Biome je Karte (Palette); an einer Klippe bestimmt das **Biom der Oberseite** Band und Kante, längs der Kante weich überblendet. Werkzeuge im Tab GELÄNDE: **Bodenklasse** (Palette mit der echten Textur des Bioms unter dem Zeiger, Stärke, Alt = zurück auf Auto), **Biom** (feldgenau, weich), **Füllen** (gleiche Fläche, Toleranz). Gegen Wiederholung je Textur ein Grundbild und **eine Variante**, in großen Flecken überblendet (auch für die fünf Grundböden). Texturen erzeugt Claude mit Higgsfield; Abnahme je Biom per Vergleichsbild vor dem Einbau. Nachtrag (DM 2026-11-27): Texturen abgenommen; **Pflaster ohne Variante** (verlegte Steine in zwei Maßstäben wirken unnatürlich). | konkretisiert DC-128, E-49, E-70 |
+| E-89 | Gelände-Paket d (DC-128d) | **Schummerung + Schattenwurf + AO**: Hänge hell und dunkel nach dem Licht, Klippen und Hügel werfen weiche Schatten auf tieferes Gelände (Raymarching über die Höhe), Mulden und Klippenfuß dunkler; Objekte werfen Schatten, wenn es sie gibt. Sonnenhöhe fest 50°, Stärke fest und per Vergleichsbild abgenommen (Regler mit DC-134). **Böschung**: ab halber Stärke wird die Klippe zum Hang – Klippe und Einweg-Sicht entfallen dort, die Enden laufen spitz aus, die Schummerung zeigt den Hang. **Feinhöhe** mit allen fünf Modi: Heben/Senken (Alt), Glätten, Ebnen (auf die Höhe am Startpunkt), Aufrauen, Gefälle (A nach B). **Erosionskanten** (S9) schon in d: an steiler Feinhöhe kleine Abbruchbänder ohne Wand, ab Werk an, je Karte abschaltbar (optionales Feld der noch nicht ausgelieferten Karte v15). **Höhenlinien** (alle 2 ft) als Schalter im Tab GELÄNDE, nur in der DM-Ansicht. Nachtrag (DM 2026-11-28): **Gefälle auf ebenem Boden** (A und B gleich hoch) steigt um die eingestellte Höhe, mit Alt fällt es. | konkretisiert DC-128, E-46, E-52 |
+| E-90 | Gelände-Paket e (DC-128e) | **Aufgeteilt in e1 (Technik) und e2 (Material)**, je einzeln abgenommen. **e1:** Raster über Bild- und Videokarten (E-60) mit **allem außer Schummerung und Schattenwurf** (das Bild hat eigene Schatten): alle Werkzeuge frei, Stufen zeichnen Klippen und sperren die Sicht einseitig, Gemaltes liegt über dem Bild, Auto-Boden durchsichtig. **Katalog-Vorschau** gezeichneter Karten als echtes Bild aus dem Renderer (256 px), abgelegt wie die Bild-Vorschauen im Geräte-Cache. Chunk-Bake und Detailstufen (Teil B §22.3). Module aus der Geometrie: **Ecken außen/innen** und **Auslauf** an Böschungen (Band verjüngt sich spitz), noch mit den heutigen Bändern. **e2:** die **volle Materialliste v1** (Teil B §11.4: Erde, Granit, Kalkstein, Sandstein, Lehm, Torf/Schlamm, Höhlenfels, Eis, Mauerwerk Quader/Bruchstein/Ziegel, Holz-Stützwand), **jedes mit einer Regel** nach Biom, Bodenklasse oben und Höhe (Vorschlag: Eis bei Winter mit Schnee oben ab 20 ft, Lehm bei Wüste mit Erde oben, Mauerwerk bei Pflaster oben mit Stil je Biom, Holz bei Sumpf mit Pflaster oder niedriger Stufe mit Laub; Feinschliff bei e2). **Drei Bandhöhen** wie Teil B §24.3 (niedrig ≤ 10 ft, hoch 20–30 ft, sehr hoch ≥ 40 ft). **Module gemischt:** Glatt A/B/C, Riss und Vorsprung (ab 20 ft) als Higgsfield-Stücke je Material und Höhe mit festen Strata-Höhen. Etwa 170 Bilder, Abnahme je Materialgruppe per Vergleichsbild. **Kein Material-Override** in e: der kommt mit DC-133. Nachtrag (DM 2026-11-28): Regeln (erste passende gilt) – **Pflaster oben**: Gemäßigt und Dungeon Quader, Wüste Ziegel, Winter Bruchstein, Sumpf Holz (Holz nur dort); **Gemäßigt**: Fels oben Kalkstein, Erde/Laub oben Erde, sonst Sandstein; **Dungeon**: Erde oben Erde, sonst Höhlenfels; **Sumpf**: bis 10 ft Torf/Schlamm, Fels oben Granit, sonst Erde; **Wüste**: Erde oben Lehm, Fels oben Granit, sonst Wüstensandstein; **Winter**: Schnee oben ab 20 ft Eis, Erde oben Erde, sonst Granit. **Wüstensandstein ist ein eigenes Material** (13 statt 12). Torf nur niedrig, Eis nur hoch/sehr hoch, Holz nicht sehr hoch. Nach dem Piloten (DM 2026-11-28): Sandstein abgenommen; **gebaute Wände laufen gerade** (Rauschen je Material nach Teil B §11.1, auch für die Sichtwand) und **hohe Klippen bekommen einen ruhigeren Fuß** – beides in e2. | konkretisiert DC-128, E-60, E-70 |
+| E-91 | Prüfwerkzeuge (DC-126) | **Bildvergleiche selbst geschrieben** statt Playwright (DM 2026-11-28): Electron zeichnet feste Szenen unsichtbar, ein eigener Pixelvergleich prüft sie gegen Referenzbilder im Repo; lokal (`npm run visual`), nicht in CI (andere GPUs zeichnen anders). **Bench-Szene groß**: gezeichnete Karte 96 × 96 Felder mit vier Biomen (mehr erlaubt die Palette nicht, E-88), Klippen 10–40 ft in vielen Materialien, Bodenklassen, Feinhöhe, Erosion, Schatten, Nebel und Tokens; die Kamera fährt und zoomt bis in die gebackene Fernsicht; die Video-Szene bleibt daneben. Wasser und Streuung kommen mit DC-130/131, ein Stockwerk mit Raster mit DC-133. **Gemessen wird vom DM** am TV (`npm run bench` öffnet das TV-Fenster im Vollbild); Claude wertet aus und legt den Bericht in `docs/benchmarks` ab. | konkretisiert E-73, ändert die Werkzeugwahl |
 
 ---
 
@@ -1131,8 +1136,32 @@ Branch: `feature/procedural-forge-phase-0`.
   Punkt-in-Polygon je Feld, Zwischenspeicher je Block und Nebelstand, ggf. im Worker), ob durchscheinende
   Stockwerke darunter eigenes Raster bekommen (bis dahin `raster: null`), dass Int8/Int16-Arrays den IPC-Weg als
   solche überstehen (sonst bleibt alles schwarz), und `table:ready` fehlt ohne Electron (BroadcastChannel).
-- **DC-126 Prüfwerkzeuge** (E-73; nach E-86 erst nach DC-128): Bench-Szene mit großer gezeichneter Karte, Wasser, Stockwerk und Streuung;
-  Playwright-Bildvergleiche (Steckbrief vor dem Einführen).
+- ✓ **DC-126 Prüfwerkzeuge** (E-73, E-91; nach E-86 erst nach DC-128): Bench-Szene mit großer gezeichneter Karte, Wasser, Stockwerk und Streuung;
+  Bildvergleiche – nach E-91 selbst geschrieben statt mit Playwright.
+  Stand: **Gelände-Szene der Bench** (`src/bench/bench-terrain.ts`, `VITE_BENCH_SCENE=terrain npm run bench`):
+  gezeichnete Karte 96 × 96 Felder mit vier Biomen, Klippen 10/20/40 ft und Terrassen in mindestens acht Materialien
+  (gepflastert, Fels, Erde, Schnee oben), Rampe, Hügel, Rinne mit Erosionskanten, Kies; lebender Nebel mit
+  aufgedeckten Gebieten und einem verborgenen Raum, 20 Tokens; die Kamera zoomt in 24 s von der ganzen Karte
+  (gebackene Blöcke) auf das 6-Fache und zurück. Die Video-Szene bleibt Standard. **Bildvergleiche** selbst
+  geschrieben (E-91, `npm run visual`, `src/visual/scenes.ts`, `scripts/visual*.mjs/cjs`): sechs feste Szenen
+  (Sandstein 10/20/40 ft, Granit und Eis, Lehm, gebaute Wände, Rampe/Schatten/Erosion, Bench-Karte aus der Ferne),
+  je Szene ein eigenes unsichtbares Electron-Fenster, Vergleich mit Referenzbildern in `app/visual/` (512 px, 2,9 MB);
+  ein Pixel weicht ab ab 32 Stufen in einem Farbkanal, eine Szene scheitert über 0,2 %; zweimal gezeichnet: 0 %
+  Abweichung; ein vertauschtes Referenzbild wird erkannt. Wasser und Streuung folgen mit DC-130/131, ein Stockwerk mit
+  Raster mit DC-133. Geprüft: Tests (Szene: vier Biome, Fallhöhen 1/2/4, ≥ 8 Materialien, Kamera bis unter die
+  Bake-Schwelle), Build; die Szene offscreen gezeichnet (Fern- und Nahsicht). **Hänger der Entwickler-App behoben**
+  (DM 2026-11-28: nach Anlegen oder Öffnen einer Kampagne reagierte nichts mehr; früher hier als „verdecktes Fenster“
+  notiert): React StrictMode baut die Kartenansicht zweimal auf derselben Leinwand auf; eine Leinwand hat nur einen
+  WebGL-Kontext, der abgebaute Renderer verliert ihn absichtlich, und der neue startet auf dem verlorenen Kontext, wo
+  Pixis Shader-Prüfung (`checkMaxIfStatementsInShader`) nie endet. Kartenansicht und TV-Ansicht legen jetzt je Renderer
+  eine eigene Leinwand an (`render/pixi/gl-canvas.ts`) – wichtig auch in der fertigen App, denn die TV-Ansicht baut
+  sich bei neuer Quelle (Stockwerk darunter) neu auf. Vorher hingen 7 von 9 Läufen (Kampagne mit Beispiel-Krypta
+  anlegen), danach 0 von 6, je Lauf genau eine Leinwand mit intaktem Kontext. **Erste Messung am TV** (DM 2026-11-28,
+  `docs/benchmarks/2026-11-28-terrain.md`): 36 FPS, 61 % verpasste Refreshes – nicht erfüllt. Ursache: der Boden
+  rechnete das Rauschen seines Randes in jeder Ebene (bis zu etwa 16 je Block) in jedem Pixel, auch wo es nichts
+  bewegt; jetzt nur an den Rändern, Pixel ohne Deckung verworfen – gleiches Bild (Bildvergleiche ≤ 2 Stufen), in 4K
+  offscreen bei Spielnähe 2,7 statt 17,5 ms je Bild. **Zweite Messung am TV** (DM 2026-11-28): 60,0 FPS, 0 von 1800
+  Refreshes verpasst, längstes Bild 17,8 ms – erfüllt.
 - ✓ **DC-127 Look-Spike Klippenband** (E-46, E-52): Stufen-Raster → Kontur → Band mit Test-Textur, Fuß-AO und Lippe;
   Abnahme neben einer Referenzkarte.
   Stand: `core/build/geom/contours.ts` (Marching Squares je Stufenwechsel, Kreuzung immer mittig – zwei Stufen auf
@@ -1173,11 +1202,189 @@ Branch: `feature/procedural-forge-phase-0`.
 
 **Phase 1 bis 10**
 
-- **DC-128 Gelände und Render-Pipeline** (E-46, E-49, E-52, E-60, E-70; dazu aus DC-123 der Einbau des
+- ✓ **DC-128 Gelände und Render-Pipeline** (E-46, E-49, E-52, E-60, E-70; dazu aus DC-123 der Einbau des
   Rasterzustands in Speichern, Öffnen und Rückgängig nach E-84, mit Standard-Biom nach E-78): Stufe, Feinhöhe, Böschung, Klippen (Kontur,
   Band, Lippe, Material, Module), Boden- und Biom-Raster mit Splat-Shader, Schatten und AO, Chunk-Bake und
   Detailstufen, Einweg-Sicht an steilen Stufen, Viertelfeld-Fang, Raster über Bildkarten, Katalog-Vorschau;
   Ribbon-Tab GELÄNDE (E-67).
+  Aufgeteilt in fünf Pakete, jedes vom DM einzeln abgenommen (DM 2026-11-27): a) Raster in Speichern/Öffnen/
+  Rückgängig (E-84) und TV-Anschluss (E-85); b) Tab GELÄNDE mit Stufe, Klippen bei DM und TV, Einweg-Sicht;
+  c) Boden- und Biom-Raster mit Splat-Shader, Higgsfield-Bodentexturen, Pinsel; d) Feinhöhe, Böschung, Schummerung,
+  Schatten/AO; e) Klippen-Material und Module, Chunk-Bake/Detailstufen, Raster über Bildkarten, Katalog-Vorschau –
+  geteilt in e1 (Bildkarten, Vorschau, Chunk-Bake/Detailstufen, Ecken und Auslauf) und e2 (Materialien, E-90).
+  ✓ **a)** `app/terrain.ts` hält je Kartendatei den dekodierten Rasterzustand: beim Öffnen aus dem Dokument
+  genommen (Ansichten, Dokumente und Rückgängig tragen nie Base64), bei jedem Schreiben der Kartendatei wieder
+  eingesetzt, kodiert werden nur geänderte Blöcke; Kopieren einer Karte nimmt es mit. Rückgängig/Wiederholen
+  führen den Zustand mit (unveränderliche Blöcke, geteilt). Ein nicht lesbares Gelände (DM 2026-11-27): Karte öffnet
+  ohne Gelände, schreibgeschützt, Hinweis im Protokoll (`log.terrainBroken`), die Datei wird nie überschrieben.
+  TV: der Frame der TV-Szene nennt Schrittweite, Biom-Palette und je erkundetem Block eine Prüfsumme, die Blöcke
+  gehen vor jedem Frame über `pushRaster` hinaus (nur fehlende). Gerechnet wird nur bei neuem Raster, neuem Nebel
+  oder geänderten geheimen Bereichen, Ebenen, Stockwerk, Raster-Einmessung (Bereiche werden an Ort und Stelle
+  geändert, daher nach Inhalt verglichen). Als geheim zählen auch ausgeblendete Bereiche und solche auf
+  inaktiven Ebenen. Wartet eine Kartenänderung auf „Auf den TV“ (E-30), bleibt auch das Gelände des TV beim alten
+  Stand. Stockwerke darunter bekommen noch kein Raster (`raster: null`). Tests (Öffnen, Speichern mit
+  unveränderten Blöcken, Rückgängig/Wiederholen mit geteilten Blöcken, kaputtes Gelände, Kopie, TV-Frame nur
+  Erkundetes samt Rand, Warten auf „Auf den TV“, ohne Gelände kein Raster). In der echten App (eigenes Profil,
+  Test-Wurzelordner) geprüft: Öffnen, Ändern, Speichern mit dem Chromium-Kompressor, Rücklesen, Rückgängig und
+  Wiederholen; TV-Raster im Renderer 9 ms beim ersten Mal, danach 0 ms aus dem Zwischenspeicher. Das TV-Fenster
+  selbst nicht (Vollbild auf einem Bildschirm des DM; sichtbar wird Gelände erst mit b). Beobachtet: der
+  Renderer der Entwickler-App hängt nach dem Wechsel in den Spielbereich mit TV-Szene bei voller CPU – ebenso
+  auf dem Stand vor a), also älter; zum Untersuchen notiert.
+  Nach dem Review: die Sperre für ein kaputtes Gelände hält jetzt, bis die Karte neu geöffnet wird (vorher hob
+  jedes erneute Lesen der Datei – Katalog, Szene laden, Export – sie auf, und das nächste Speichern hätte das
+  Gelände gelöscht); Rückgängig im Szenen-Layer lässt das Gelände in Ruhe (es hätte eine Änderung aus einem anderen
+  Tab zurückgedreht); eine neue Szene auf einer offenen Karte nimmt deren Stand samt Gelände; die Kopie einer
+  Karte mit kaputtem Gelände nimmt es so mit, wie es in der Datei steht. Tests: 10.
+  **Abgenommen vom DM (2026-11-27).**
+  ✓ **b)** (E-87) Texturen je Biom (Band und Boden, Higgsfield, abgenommen per Vergleichsbild) als WebP-Slots;
+  Karte v15 mit `cliffPerspective` (0,2–1,0, Standard 0,45; v14 wird ohne Änderung hochgestuft), Regler in den
+  Karteneinstellungen gezeichneter Karten. `core/build/terrain/cliffs.ts`: alle Stufenwechsel in einem Durchlauf je
+  Block, mehrere Stufen auf einmal als eine hohe Klippe, sonst Terrassen; Linien mit Rauschen nach Weltposition
+  (DM und TV zeichnen aus denselben Blöcken dieselben Klippen), Blöcke zwischengespeichert, bis sie oder ein
+  gelesener Nachbar sich ändern; am TV gibt ein fehlender Block keine Kante. Ihre Oberkanten sind Einweg-Wände der
+  Sicht (DM-Szene, TV-Szene auch bei wartenden Kartenänderungen, Hintergrund-Szene, Stockwerke darunter); die
+  DM-Überlagerung zeichnet sie nicht. `render/pixi/terrain.ts` im gemeinsamen Renderer: Boden des Bioms, Band mit
+  ±35 % Breite, Fuß-AO, Erdsaum in Flecken, Überhang aus dem Boden (nicht im Dungeon) mit kleinen Steinkappen,
+  Geröll in wenigen Nestern, seltene Randsteine; Farben von Kappen, Geröll und Erde je Biom; neu gebaut nur, wenn
+  sich Blöcke oder Aussehen ändern. TV-Frame v7: das Raster nennt dazu Bandbreite und Lichtrichtung; eine
+  gezeichnete Karte ohne Gelände schickt ihr Standard-Biom ohne Blöcke (der Boden). Werkzeug **Stufe** im neuen Tab
+  GELÄNDE (auf Bild-/Videokarten ausgegraut mit Hinweis): Heben, Senken, Auf Stufe setzen mit Pipette; Pinsel
+  rund, eckig, Lasso; Schalter Viertelfeld-Fang; Alt kehrt um, Shift gerade Linie; Heben senkt nie, Senken hebt
+  nie; jeder Strich ein Schritt für Rückgängig, Abbrechen nimmt alle Striche seit dem Öffnen zurück; nicht
+  lesbares Gelände sperrt das Werkzeug. Die Vorschau (Live-Klippen oder Umriss) steht im Befehls-Panel und gilt für
+  dieses Gerät – einen eigenen Einstellungsdialog gibt es noch nicht. Geprüft: 805 Tests, Build mit
+  Tisch-Bundle-Prüfung; in der echten App (eigenes Profil) Malen mit allen Pinseln, Rückgängig, 102 Einweg-Wände,
+  Panel und Ribbon im Bild; die Klippen selbst im echten Renderer offscreen je Biom (das verdeckte App-Fenster
+  zeichnet kein WebGL). Das TV-Fenster nicht (Vollbild auf einem Bildschirm des DM). Beobachtet: einmal hing der
+  Renderer der Entwickler-App kurz nach dem Start, danach nicht mehr reproduzierbar – wie vor a).
+  Nach dem Review: ein Strich gehört fest zu seiner Karte und seinem Befehl (vorher konnte ein liegengebliebener
+  Strich nach einem Tab-Wechsel auf eine andere Karte schreiben); Esc nimmt den laufenden Strich zurück, Enter
+  beendet das Werkzeug; ein Strich ohne Änderung hinterlässt keinen Rückgängig-Schritt; beim Malen wird nur das
+  neue Wegstück gepinselt; GPU-Puffer werden beim Neubau freigegeben; Zwischenspeicher hängen am Geländestand
+  (DM und TV verdrängen sich nicht). Am TV heißt ein nicht gesendeter Punkt ausdrücklich „unbekannt“ (Stufe −128,
+  E-85 unverändert: nichts Verborgenes): sonst entstanden am Rand des Bekannten Klippen, die es nicht gibt;
+  teilweise erkundete leere Blöcke teilen deshalb keine Prüfsumme mehr, ganz erkundete weiter. Tests: 808.
+  **Abgenommen vom DM (2026-11-27)**, auch die Vorschau-Wahl im Panel „Stufe“ (je Gerät) statt eines
+  Einstellungsdialogs.
+  ✓ **c)** (E-88) 75 Bodentexturen (35 Klassen je Biom, Varianten außer Pflaster, Varianten der Grundböden) als
+  WebP-Slots. `core/build/terrain/groundTool.ts`: neun Bodenklassen und welche jedes Biom hat; je Stützpunkt bis zu
+  zwei Klassen mit Gewicht, der Rest Auto; Malen hebt eine Klasse auf eine Stärke und drückt die anderen gleichmäßig,
+  „Auto“ nimmt zurück; Biome je Feld gegen die Palette (zwei mischen sich), ein neues Biom kommt in die Palette, ein
+  fünftes wird abgelehnt; weiche runde Pinsel; Füllen nimmt zusammenhängend gleichen Boden auf derselben Stufe
+  (Klippen begrenzen). Zeichnen (`render/pixi/groundSplat.ts`) für DM und TV: der Grundboden des ersten Bioms über die
+  Karte, je Block die anderen Biome und die gemalten Klassen im Biom, in dem sie liegen; Kanten durch Rauschen
+  ausgefranst (Zungen, Inseln), Varianten in großen Flecken; Gewichte als kleine Daten-Texturen je Block samt
+  Nachbarrand, neu gebaut nur bei geändertem Block. Klippen nehmen Band, Überhang und Kies am Fuß vom Biom der
+  Oberseite, längs der Kante überblendet; malt man nur Boden, bleiben die Klippen stehen. Werkzeuge im Tab GELÄNDE:
+  Bodenklasse (Bildpalette des Bioms unter dem Zeiger, fehlende Klassen blass mit Hinweis), Biom (fünf Bilder,
+  Palette der Karte), Füllen (Toleranz); Stärke, weiche Kante, Größe; Alt = zurück auf Auto bzw. das erste Biom.
+  Geprüft: 821 Tests, Build mit Tisch-Bundle-Prüfung; der echte Renderer offscreen (Klassen, Biomgrenze, Klippe über
+  die Grenze); in der echten App alle drei Werkzeuge über den Store, Panel im Bild. Das Kartenbild der App selbst
+  nicht: im verdeckten oder Offscreen-Fenster gehen die WebGL-Kontexte der App-Seite verloren und der Renderer hängt
+  gelegentlich nach dem Start – ebenso auf `main` (2026-11-28 verglichen), also älter.
+  Nach dem Review: Biomgewichte lesen einen Ring der Nachbarzellen (vorher eine Naht an jeder Blockgrenze); jede
+  Schicht deckt ihren Anteil an dem, was unter ihr liegt (Auto, dann Klassen nach Nummer; erstes Biom, dann die
+  anderen), mit demselben Rauschen – zwei Biome oder Klassen zu je einer Hälfte lassen keine Löcher mehr; ein
+  Palettenplatz, den kein Feld mehr nutzt, wird für ein neues Biom wieder vergeben (so stimmt der Hinweis „zuerst
+  übermalen“); Malen ohne Änderung hinterlässt keinen Rückgängig-Schritt. TV-Frame v8: der TV erfährt nur die Namen
+  der Biome, die seine Blöcke nutzen – ein Biom nur in einem unentdeckten Geheimraum bleibt ungenannt. Tests: 823.
+  DM 2026-11-28 („manche Texturen viel zu groß, z. B. Pflaster“): jede Bodenklasse hat einen eigenen Maßstab nach
+  echter Größe (Kachel in Feldern: Pflaster 2–3,5 je nach Steingröße des Bildes, Kies 2, Laub 2,5, Moos 3, Gras und
+  Erde 4, Fels 5, Schnee 7, Grundboden 7,3); Kies am Klippenfuß ebenso. Musterkarte je Biom mit Raster zur Abnahme.
+  **Abgenommen vom DM (2026-11-28)** – vorerst; die Texturen werden ggf. später noch einmal angepasst.
+  ✓ **d)** (E-89) `core/build/terrain/heightTool.ts`: Feinhöhe in 1/16 ft (±20 ft) mit Heben/Senken (Alt), Glätten,
+  Ebnen (Höhe am Startpunkt), Aufrauen, Gefälle (von A nach B ziehen); ein Strich wirkt einmal, egal wie oft er
+  über eine Stelle fährt. Böschung als Maske, Alt nimmt sie zurück; ab halber Stärke entfallen Klippe und
+  Einweg-Wand, die Stufe läuft als Rampe aus. `heightField.ts`: Höhe je Block samt 8 Feldern Rand für Schummerung
+  und Schatten. `render/pixi/shading.ts` (DM und TV): Hänge hell/dunkel nach dem Licht (Sonne 50° auf der Seite der
+  Lichtrichtung), weicher Schattenwurf per Raymarching über die Höhe (Halbschatten wächst mit der Entfernung), Mulden
+  dunkler (AO); der senkrechte Sprung einer Klippe zählt für die Schummerung nicht (den zeigt ihr Band), eine Rampe
+  schon. Je Block einmal in eine Textur gerechnet, ein Bild zeichnet nur die Texturen; neu nur, wenn sich Höhe,
+  Stufe oder Böschung des Blocks oder eines Nachbarn ändern. Erosionskanten: kleine Abbruchbänder ohne Wand am
+  oberen Rand von Feinhöhe steiler als 45° (nach der Feldgröße der Karte), über Blockgrenzen durchgehend; ab Werk an,
+  Schalter in den Karteneinstellungen (`erosionEdges`, optionales Feld der noch nicht ausgelieferten v15).
+  Höhenlinien alle 2 ft als Schalter im Tab GELÄNDE, nur beim DM. TV-Frame v9 (das Raster nennt Erosion an/aus).
+  Geprüft: 838 Tests, Build mit Tisch-Bundle-Prüfung; der echte Renderer offscreen (Plateau mit Rampe, höherer
+  Block, Hügel, Rinne, aufgeraute Fläche; dazu ein Hügel, eine Rinne und ein Plateau über der Ecke von vier Blöcken:
+  keine Naht). Das TV-Fenster nicht (Vollbild auf einem Bildschirm des DM).
+  Nach dem Review: Schatten je Block gebacken statt in jedem Bild neu (vorher 48 Schritte Raymarching je Pixel und
+  Bild); Schummerung und AO rechnen das Gefälle aus der vollen Höhe ohne Klippensprünge zwischen Nachbarpunkten
+  (vorher entstanden an Rampen falsche Kanten); Erosionskanten lesen die Nachbarblöcke (vorher brachen sie an jeder
+  Blockgrenze ab), ihre Schwelle folgt der Feldgröße; Feinhöhe malen baut die Klippen nicht mehr neu, solange
+  Erosionskanten aus sind; Höhenlinien zeigen keine Punkte knapp unter 0 ft.
+  DM 2026-11-28: Gefälle zwischen gleich hohen Punkten steigt um die eingestellte Höhe (Alt: fällt), das Feld
+  Höhe steht dafür auch beim Gefälle. Tests: 839.
+  **Abgenommen vom DM (2026-11-28).**
+  ✓ **e1)** (E-90) **Auslauf:** wo eine Böschung eine Klippe beendet, laufen Band, Überhang, Kies und Fußschatten
+  über etwa ein Feld spitz aus (Erosionskanten über ein halbes). **Ecken** (`core/build/geom/band.ts`): an
+  Außenecken läuft der Fuß in Breite des Bandes um die Ecke (Bogen statt bis zu doppelt gestreckter Gehrung); an
+  Innenecken keine Gehrung, Fußpunkte, die gegen die Linie zurücklaufen würden, fallen zusammen – keine Spitzen und
+  keine dunklen Keile mehr aus dem Fußrand, dem Fußschatten und dem Kies (`bandFoot` glättet scharfe Innenknicke).
+  **Bild- und Videokarten** (E-60): alle Gelände-Werkzeuge frei; Stufen zeichnen Klippen und sperren die Sicht
+  einseitig, gemalte Bodenklassen liegen über dem Bild; Auto-Boden, Schummerung und Schattenwurf bleiben aus; Gelände
+  erscheint erst, wenn es gemalt ist; der TV ebenso. Bandbreite und Erosionskanten stehen in den
+  Karteneinstellungen jeder Karte. **Katalog-Vorschau:** eine gezeichnete Karte zeigt im Kartenkatalog (Karte und
+  Eigenschaften) sich selbst – vom echten Renderer unsichtbar gezeichnet (256 px, WebP), im Geräte-Cache abgelegt
+  wie die Bild-Vorschauen, neu nach dem Speichern; nicht lesbar: weiter das Symbol. **Chunk-Bake/Detailstufen**
+  (`render/pixi/terrainBake.ts`): ab Maßstab 0,25 (Bildschirm-px je Karten-px) und darunter zeichnet das Gelände
+  je Block eine gebackene Textur statt seiner Meshes, gebacken auf die nächste Zweierpotenz des Maßstabs
+  (1/4 … 1/16), neu nur für Blöcke, die sich oder deren Nachbarn sich ändern, einige je Bild; bis alle da sind,
+  zeichnet das lebende Gelände. Gemessen (128 × 128 Felder, viele Klippen, drei Biome, 1920 × 1080): ganz
+  herausgezoomt 11,4 → 4,2 ms je Bild (so viel wie ohne Gelände); gebacken und lebend sehen gleich aus, auch auf
+  gedrehtem Raster, ohne Naht an Blockgrenzen. Geprüft: 849 Tests, Build mit Tisch-Bundle-Prüfung; der echte
+  Renderer offscreen (Auslauf, Ecken, Bildkarte, Vorschau, Bake); in der echten App (eigenes Profil,
+  Test-Wurzelordner) der Kartenkatalog mit den Vorschauen dreier gezeichneter Karten. Nicht geprüft: `npm run
+  bench` (öffnet das TV-Fenster im Vollbild; seine Szene hat noch kein Gelände – das bringt DC-126) und das
+  TV-Fenster selbst.
+  Nach dem Review: der Auslauf gilt nur, wo wirklich eine Böschung die Linie beendet (vorher auch dort, wo sich nur
+  die Fallhöhe längs einer Kante ändert – Terrassen bekamen eine Einschnürung – und am TV am Rand des Bekannten);
+  gebackene Blöcke werden nach jedem Neubau der Klippen alle neu gebacken (Textur, Biom und Fuß einer Linie laufen
+  über ihre ganze Länge – vorher blieb weiter weg ein alter Stand mit Naht stehen; bis dahin zeigt der alte); gebacken
+  wird in Gerätepixeln (vorher auf 2×-Bildschirmen halb so scharf); nah herangezoomt werden die gebackenen
+  Texturen freigegeben; ein Ring bleibt an seiner Naht geschlossen, sein Fuß behält mindestens drei Punkte; die
+  Vorschau liest die Kartendatei an der Buchführung einer offenen Karte vorbei und gibt nach 10 s auf. Tests: 853.
+  Offen: Vorschaubilder alter Stände bleiben im Geräte-Cache liegen (wie bei Bildern); `npm run bench` mit Gelände
+  kommt mit DC-126. DM 2026-11-28: die Mulden-AO bleibt über Bildkarten mit der Schummerung aus (das Bild hat eigene
+  Schatten). **Abgenommen vom DM (2026-11-28).**
+  ✓ **e2)** (E-90) **Material-Regeln** (`core/build/terrain/cliffMaterial.ts`): Biom und Bodenklasse auf der Oberseite
+  und die Fallhöhe wählen eines von 13 Materialien; längs einer Linie wechselt es weich, wo der Boden oben wechselt
+  (Boden malen baut die Klippen deshalb neu). **Bandhöhen** niedrig bis 15 ft, hoch bis 35 ft, sehr hoch darüber;
+  fehlt einem Material eine Höhe, nimmt es die nächste. **Module** (`render/build/cliffTextures.ts`): je Material und
+  Höhe Glatt A/B/C, Riss und Vorsprung (nur natürliche Wände ab „hoch“) als ein Bildstapel; der Shader wählt je
+  Bildlänge (2,5 Felder) ein Modul nach Zufall aus dem Ort, Riss in hartem Fels häufiger. Jedes Modul beginnt und
+  endet mit denselben Spalten von A, also passt jede Reihenfolge. Lippe (Überhang) je Biom oben, nicht über
+  Mauerwerk und Holz; Steinkappen nur auf natürlichem Stein; Geröllfarbe nach Material. Bänder mit Mipmaps (vorher
+  flimmerten die Schichten zu Streifen); an Außenecken läuft die Textur um die Bogenlänge in halber Bandbreite
+  weiter (vorher ein Fächer aus einer Spalte). Die fünf Biom-Bänder aus b sind ersetzt.
+  Bilder: Pilot **Sandstein** (14 Module) erzeugt mit Higgsfield nach dem abgenommenen Band, B/C/Riss/Vorsprung als
+  Bearbeitung von A im selben Bildformat (anders verschiebt das Modell die Schichten).
+  Pilot abgenommen (DM 2026-11-28). **Rauschen je Material** (`cliffNoiseAt`): wie weit die Kante wandert, richtet
+  sich nach dem Material oben – natürlicher Stein 0,15 Feld wie abgenommen, Eis 0,12, Erde/Lehm/Torf 0,08, Mauerwerk
+  und Holz 0 (gerade); längs der Linie über etwa ein Feld ausgeglichen. DM-Sichtwände und Bild rechnen gleich.
+  **Ruhiger Fuß:** ein breites Band (ab 20 ft) hängt seinen Fuß an der über die halbe Überbreite geglätteten Linie
+  (die Oberkante bleibt auf der Linie) – vorher fächerten die kleinen Wellen der Kante hohe Bänder auf.
+  **Alle 13 Materialien:** Grundbild A je Material vom DM abgenommen (2026-11-28), dann je Material die übrigen
+  Höhen und Module – zusammen 156 Bilder (11 MB WebP), alle nach demselben Verfahren; gebaute Wände an der Naht
+  nur über wenige Pixel überblendet (DM: kein Doppelbild von Pfosten und Fugen) und mit fester Bandbreite (Fels
+  wandert ±35 %). DM 2026-11-28: die kahlen Stellen oben (Lücken im Überhang, dort Steinkappen) fielen bei Lehm und
+  Granit zu sehr auf – jetzt je Material seltener (Sandstein wie abgenommen; Lehm, Granit, Erde, Torf, Eis nur noch
+  vereinzelt), und der Überhang läuft dort schmal aus statt eckig abzureißen. DM 2026-11-28: weicher, ohne harte
+  Schnitte, in allen Biomen – das Kappenmuster wird über ±0,3 Feld gemittelt gelesen, Überhang und Steinkappen
+  blenden an ihren Enden über etwa ein Feld aus, die Unterkante des Überhangs läuft weich in die Wand. Danach (DM):
+  nur der Rand blendet aus, die Mitte bleibt deckend – zur Lücke hin wird der Überhang schmaler statt durchsichtig.
+  **Abgenommen vom DM (2026-11-28).**
+  Nach dem Review: der ruhige Fuß spiegelt offene Linien an ihren Enden (vorher rutschten die Enden nach innen und
+  ließen dort, wo Linien anderer Fallhöhe aneinanderstoßen, eine Lücke von fast einem Feld; Ausläufe endeten nicht
+  mehr spitz) und liest Ringe höchstens halb herum; Ecken und Textur-u misst das Band an der Linie selbst, nur der
+  Fuß an der geglätteten (vorher liefen Wand und Überhang nach jeder Außenecke auseinander, Kappen und Lücken passten
+  nicht mehr übereinander); DM-Sichtwände und Bild nehmen ihre Linienoptionen aus einer Funktion
+  (`materialCliffOptions`); Boden malen baut die Klippen nur neu, wenn sich Linien, Biome oder Materialien darauf
+  wirklich ändern (sonst bleiben auch die gebackenen Blöcke); im Bildstapel hat jedes Modul einen Rand aus seinen
+  eigenen Kantenzeilen (aus der Ferne schien sonst der Fuß des Nachbarmoduls durch). Tests: 873.
+  Offen (bewusst gelassen): welches Modul wo steht, zählt vom Anfang einer Linie – ändert sich ihr Anfang, wandern
+  Riss und Vorsprung längs der Linie, am TV kann ein nur teils erkundeter Strang andere Module zeigen als beim DM
+  (nichts Verborgenes); eine gemischte Linie wählt Bandbreiten-Wandern, Randsteine und Lückenhäufigkeit nach ihrem
+  Hauptmaterial; geladene Bänder bleiben für die Sitzung im Speicher.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

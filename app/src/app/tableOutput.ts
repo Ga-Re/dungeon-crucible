@@ -6,7 +6,7 @@
 import { closeTableWindow, listMonitors, moveTableToMonitor, onMonitorsChanged, onTableClosed, onTableReady, openTableWindow, sendFrame, sendRaster } from '../platform/bridge';
 import { RASTER_SENT_CAPACITY, rasterBatches, SentBlocks } from '../core/build/terrain/tvRaster';
 import type { RasterBlock } from '../core/build/terrain/block';
-import { emit, log, produceFrame, state } from './store';
+import { emit, log, produceFrame, state, tvRasterBlocks } from './store';
 
 const INTERVAL_MS = 100;
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -16,7 +16,7 @@ export function startFrameLoop(): void {
   onTableReady(() => {
     // A (re)loaded TV holds no terrain blocks: they all go again.
     rasterSent.clear();
-    if (state.tableOpen) void sendFrame(produceFrame(Date.now())).catch(() => undefined);
+    if (state.tableOpen) send(produceFrame(Date.now()));
   });
   onTableClosed(() => {
     rasterSent.clear();
@@ -26,18 +26,21 @@ export function startFrameLoop(): void {
   onMonitorsChanged(() => void refreshMonitors());
   timer = setInterval(() => {
     const frame = produceFrame(Date.now());
-    if (state.tableOpen) void sendFrame(frame).catch(() => undefined);
+    if (state.tableOpen) send(frame);
   }, INTERVAL_MS);
+}
+
+/** A frame to the TV, the terrain blocks it names first: the TV finds them when the frame comes. */
+function send(frame: ReturnType<typeof produceFrame>): void {
+  pushRaster(tvRasterBlocks());
+  void sendFrame(frame).catch(() => undefined);
 }
 
 /** The terrain blocks (by checksum) the TV has been sent since it last loaded (E-61, E-85). */
 const rasterSent = new SentBlocks(RASTER_SENT_CAPACITY);
 
-/**
- * Sends the TV the terrain blocks a frame names that it does not have yet (`tvRaster` gives them,
- * by checksum): before the frame, so it finds them. Wired to the terrain with DC-128 (E-84).
- */
-export function pushRaster(blocks: ReadonlyMap<string, RasterBlock>): void {
+/** Sends the TV the terrain blocks (by checksum) a frame names that it does not have yet. */
+function pushRaster(blocks: ReadonlyMap<string, RasterBlock>): void {
   if (!state.tableOpen) return;
   for (const batch of rasterBatches(blocks, rasterSent)) sendRaster(batch);
 }

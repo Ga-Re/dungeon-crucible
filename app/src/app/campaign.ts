@@ -12,6 +12,7 @@
  */
 import { fileHash } from '../core/rescue';
 import { keepRescue, offerRescue, savedOk } from './rescue';
+import { forgetTerrains, takeTerrain, terrainBroken, withTerrain } from './terrain';
 import { manifestFromState, mapSidecarFromScene, mapSidecarPath, resetToStart, sceneFromDocuments, sceneIssues, sceneOverrideFromScene, startOf, tableFromManifest, BUILTIN_PREFIX, isDrawn } from '../core/persistence';
 import { CAMPAIGN_FILE, CampaignManifestSchema, CreatureSchema, MAP_VERSION, MapSidecarSchema, SceneOverrideSchema, type Creature, type MapSidecar, type SceneOverride } from '../core/sidecar';
 import { keepUnknown, newId, readDocument, slugId, type DocumentKind } from '../core/documents';
@@ -131,9 +132,21 @@ export async function readDoc<T>(rel: string, kind: DocumentKind, schema: z.ZodT
  */
 export const MAP_FILE_WARN_BYTES = 8 * 1024 * 1024;
 
+/**
+ * A map just read to work on: its terrain goes into the store (E-84). One that cannot be read opens
+ * without it, and the file is never written back (DM 2026-11-27).
+ */
+async function workingMap(mapFile: string, map: MapSidecar): Promise<MapSidecar> {
+  const r = await takeTerrain(mapFile, map);
+  if (!r.ok) log('log.terrainBroken', { name: map.name });
+  return r.map;
+}
+
 /** Writes a JSON document, keeping the unknown fields it had; never one from a newer version; nothing if unchanged. */
 export async function writeDoc(rel: string, schema: z.ZodType, value: unknown): Promise<void> {
-  if (readOnly.has(rel)) return;
+  if (readOnly.has(rel) || terrainBroken(rel)) return;
+  // A map's terrain lives apart while it is open (E-84): it goes back into every write of its file.
+  if (schema === MapSidecarSchema) value = await withTerrain(rel, value as MapSidecar);
   const before = originals.get(rel);
   const out = keepUnknown(schema, before, value);
   if (before !== undefined && JSON.stringify(before) === JSON.stringify(out)) return;
@@ -406,6 +419,7 @@ export async function closeCampaign({ toStart = true, save = true } = {}): Promi
     if (save) await saveCampaign(true);
     stopAll();
   }
+  forgetTerrains();
   state.campaign = null;
   state.scenes = [];
   state.creatures = [];
@@ -586,7 +600,7 @@ export async function loadScene(scenePath: string, table: Partial<Scene['table']
   const read = await readDoc(ov.mapSidecar, 'map', MapSidecarSchema);
   if (!read) return;
   // A map open in another tab may have changes newer than its file.
-  const map = latestMap(ov.mapSidecar) ?? read;
+  const map = latestMap(ov.mapSidecar) ?? (await workingMap(ov.mapSidecar, read));
   // Older scenes start where they are when first opened (E-3); saved with the next save.
   if (!ov.start) ov.start = startOf(ov);
   await showDocs(map, ov, map.resource, { scenePath, table });
@@ -840,7 +854,10 @@ export async function openMapResource(resource: string): Promise<void> {
     }
   }
   await saveCampaign();
-  await openMapInNewScene(resource, await readDoc(sidecar, 'map', MapSidecarSchema, { quiet: true }));
+  // Open in a tab already: as edited there, terrain included (E-84).
+  const open = latestMap(sidecar);
+  const read = open ? null : await readDoc(sidecar, 'map', MapSidecarSchema, { quiet: true });
+  await openMapInNewScene(resource, open ?? (read && (await workingMap(sidecar, read))));
 }
 
 /** Library map `resource` as in its sidecar, or a fresh sidecar for a picture that has none yet. */
@@ -877,7 +894,9 @@ export async function openMapTab(mapOrPicture: string): Promise<void> {
     keepTabs();
     return;
   }
-  const doc = latestMap(mapFile) ?? (await readDoc(mapFile, 'map', MapSidecarSchema, { quiet: true }));
+  const open = latestMap(mapFile);
+  const read = open ? null : await readDoc(mapFile, 'map', MapSidecarSchema, { quiet: true });
+  const doc = open ?? (read && (await workingMap(mapFile, read)));
   // A map file must be readable; a picture without a sidecar yet gets a fresh one.
   if (!doc && isMapFile(mapFile)) {
     log('log.tabNotRestored', { name: mapFile.replace(/^library\//, '') });

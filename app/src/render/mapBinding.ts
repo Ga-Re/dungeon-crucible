@@ -43,7 +43,8 @@ export interface DrawnArea {
 }
 
 /**
- * @param host positioned element the canvas lies in; a video map goes in right under the canvas
+ * @param host positioned element holding the WebGL canvas (directly or in its own holder); a video
+ *   map goes in as its first child, under the canvas
  */
 export function bindMap(renderer: Renderer, host: HTMLElement, onError?: (e: unknown) => void): MapBinding {
   let current: string | null = null;

@@ -13,6 +13,7 @@ import { isDesktop, listCampaignFolders, listFiles, listLibrary, readText, trash
 import { campaignPath, openMapTab, readDoc, saveCampaign, writeDoc } from './campaign';
 import { duplicateMap, mapFileFor } from '../core/mapCopy';
 import { intentIds } from '../core/build/intent';
+import { terrainBroken, withTerrain } from './terrain';
 import { newId } from '../core/documents';
 import { emit, latestMap, log, state } from './store';
 
@@ -246,7 +247,9 @@ export const openLibraryMap = openMapTab;
  */
 export async function duplicateLibraryMap(mapFile: string, name: string, withContent: boolean): Promise<string | null> {
   await saveCampaign();
-  const doc = latestMap(mapFile) ?? (await readDoc(mapFile, 'map', MapSidecarSchema));
+  // An open map's terrain lives apart (E-84): the copy takes it along – as in the file if it could not be read.
+  const open = terrainBroken(mapFile) ? null : latestMap(mapFile);
+  const doc = open ? await withTerrain(mapFile, open) : await readDoc(mapFile, 'map', MapSidecarSchema);
   if (!doc) return null;
   const taken = new Set([...libraryNames, ...state.libraryMaps.map((m) => m.mapFile)]);
   const ids = new Set([...[...doc.walls, ...doc.zones, ...doc.lights, ...doc.sounds, ...doc.assets, ...doc.layers, ...doc.pois, ...doc.storeys, ...doc.variants, ...doc.stairs].map((x) => x.id), ...intentIds(doc)]);

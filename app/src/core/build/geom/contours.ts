@@ -58,7 +58,7 @@ export function stepContours(step: (x: number, y: number) => number, area: { x0:
 }
 
 /** Joins oriented segments end to start into lines and rings. */
-function stitch(segments: [Pt, Pt][]): Contour[] {
+export function stitch(segments: [Pt, Pt][]): Contour[] {
   const byStart = new Map<string, number>();
   const ends = new Set<string>();
   segments.forEach(([a, b], i) => {

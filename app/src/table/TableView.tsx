@@ -18,6 +18,7 @@ import { fogOptions, lookFromWire } from '../render/fogOptions';
 import { bindMap } from '../render/mapBinding';
 import { stairShapes } from '../render/stairPicture';
 import { createRenderer, type Renderer, type TokenShape } from '../render/pixi/renderer';
+import { rendererCanvas } from '../render/pixi/gl-canvas';
 import { templatePath } from '../render/shared';
 
 export interface FrameSource {
@@ -36,13 +37,15 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
   const [below, setBelow] = useState(false);
   const belowRef = useRef(false);
   const hostRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** Holds the renderer's canvas, one per renderer (`gl-canvas.ts`): this view sets up again when its source changes. */
+  const glRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const cutRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const host = hostRef.current!;
-    const canvas = canvasRef.current!;
+    const gl = rendererCanvas(glRef.current!);
+    const canvas = gl.canvas;
     const overlay = overlayRef.current!;
     const cutCanvas = cutRef.current!;
     let renderer: Renderer | null = null;
@@ -160,6 +163,16 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
         if (f.map.drawnOrigin) map?.setDrawn({ origin: f.map.drawnOrigin, width: f.map.widthPx, height: f.map.heightPx });
         else void map?.set(f.map.imageUrl, f.map.isVideo, f.map.look);
         r.setGrid(f.map.showGrid && f.map.grid.type === 'square' ? { cellSizePx: cell, offsetXPx: f.map.grid.originX, offsetYPx: f.map.grid.originY, color: '#000000', alpha: 0.35 } : null);
+        // The terrain (E-85, E-87): blocks resolved from what was sent; one not here yet is unknown.
+        const ras = f.map.raster;
+        const blocks = ras && source.raster ? [...source.raster.resolve(ras.blocks)].flatMap(([k, b]) => (b ? [[k, b] as const] : [])) : [];
+        // Over a picture or video (E-60, E-90) only what is painted shows, without light and shadow.
+        const origin = f.map.drawnOrigin ?? { x: 0, y: 0 };
+        r.setTerrain(
+          ras
+            ? { source: { blocks: new Map(blocks), missingIsUnknown: true }, grid: f.map.grid, palette: ras.palette, stepFt: ras.stepFt, perspective: ras.perspective, erosion: ras.erosion, lightAngle: ras.lightAngle, area: { x: origin.x, y: origin.y, width: f.map.widthPx, height: f.map.heightPx }, overPicture: !f.map.drawnOrigin }
+            : null,
+        );
         // Stairs (E-44) as pictures drawn here from their place – under the fog like the assets.
         r.setAssets([...stairShapes(f.stairs ?? []), ...f.assets.map((a, i) => ({ ...a, id: `asset-${i}` }))]);
         r.setTokens(f.tokens.map((t): TokenShape => ({ id: t.id, name: t.label, x: t.x - (t.size * cell) / 2, y: t.y - (t.size * cell) / 2, width: t.size * cell, height: t.size * cell, color: t.ringColor, active: t.active })), { glide: 120 });
@@ -187,6 +200,7 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
       cancelAnimationFrame(raf);
       map?.dispose();
       renderer?.destroy();
+      gl.remove();
     };
   }, [source, depth]);
 
@@ -199,7 +213,7 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
         </div>
       )}
       <div ref={hostRef} style={{ position: 'absolute', inset: 0, visibility: 'hidden' }}>
-        <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+        <div ref={glRef} style={{ position: 'absolute', inset: 0 }} />
         <canvas ref={overlayRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
       </div>
       <canvas ref={cutRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', visibility: 'hidden' }} />

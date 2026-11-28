@@ -139,8 +139,8 @@ export const mapLayerSchema = z.object({
 });
 export type MapLayer = z.infer<typeof mapLayerSchema>;
 
-/** Version 2: areas are polygons (DC-013); version 14: the procedural Map Forge's intent (E-46 ff.). */
-export const MAP_VERSION = 14;
+/** Version 2: areas are polygons (DC-013); version 14: the procedural Map Forge's intent (E-46 ff.); version 15: the cliff band's width (E-87). */
+export const MAP_VERSION = 15;
 /** Version 2: scene overrides and own areas follow the map's area format (DC-013). */
 export const SCENE_VERSION = 13;
 

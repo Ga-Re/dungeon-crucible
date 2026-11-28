@@ -15,6 +15,7 @@ import {
   createDrawnMap, duplicateLibraryMap, mapIsOpen, mapUsage, openLibraryMap, refreshLibraryMaps, selectCatalogMap, setMapFilter, trashBlocked, trashLibraryMap, updateLibraryMap, type LibraryMap, type MapUsage,
 } from '../app/library';
 import { useThumbnail } from './VaultPanels';
+import { drawnMapThumbnailUrl } from '../app/thumbs';
 
 function useTypeLabel() {
   const { t } = useI18n();
@@ -69,14 +70,27 @@ export function MapCatalogView() {
   );
 }
 
-/** A picture's thumbnail, or a drawn map's (E-33) sign. */
+/** A picture's thumbnail, or a drawn map's (E-33) picture drawn by the renderer (E-90). */
 function MapThumb({ map }: { map: LibraryMap }) {
-  return map.drawn ? <DrawnThumb /> : <PictureThumb map={map} />;
+  return map.drawn ? <DrawnThumb map={map} /> : <PictureThumb map={map} />;
 }
 
-/** A drawn map: the wall sign until the new pipeline paints its preview (DC-128). */
-function DrawnThumb() {
-  return <Icon name="wall" />;
+/** A drawn map's picture (E-90); the wall sign while it is made or if it cannot be. */
+function DrawnThumb({ map, className }: { map: LibraryMap; className?: string }) {
+  const thumb = useDrawnThumbnail(map);
+  return thumb ? <img className={className} src={thumb} alt="" draggable={false} /> : <Icon name="wall" />;
+}
+
+function useDrawnThumbnail(map: LibraryMap): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void drawnMapThumbnailUrl(map.mapFile, map.size, map.mtimeMs).then((u) => live && setUrl(u));
+    return () => {
+      live = false;
+    };
+  }, [map.mapFile, map.size, map.mtimeMs]);
+  return url;
 }
 
 function PictureThumb({ map }: { map: LibraryMap }) {
@@ -224,7 +238,7 @@ export function MapDetails() {
   return (
     <div className="panel-body vault-props">
       <div className="sec">{t('panel.map')}</div>
-      {map.drawn ? <DrawnThumb /> : <MapPreview map={map} />}
+      {map.drawn ? <DrawnThumb map={map} className="map-catalog-preview" /> : <MapPreview map={map} />}
       <DetailText label={t('props.name')} value={map.name} disabled={!editable} onCommit={(v) => v.trim() && void updateLibraryMap(mapFile, { name: v.trim() })} />
       <div className="row">
         <label htmlFor="mc-type">{t('mapSettings.type')}</label>

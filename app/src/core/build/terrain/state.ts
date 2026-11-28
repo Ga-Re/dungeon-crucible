@@ -6,7 +6,7 @@
  * reuses the encoding of every block it has seen before – from reading or an earlier save – so a
  * save encodes only what changed. Pure apart from the platform's (de)compression streams.
  */
-import { applyPatches, blockKeyOf, localPoint, newBlock, pointAt, withPoints, type PointChannel, type RasterBlock, type RasterPatch } from './block';
+import { applyPatches, BLOCK_CELLS, blockKeyOf, cellAt, localPoint, newBlock, pointAt, SUBDIVISIONS, withCells, withPoints, type CellChannel, type PointChannel, type RasterBlock, type RasterPatch } from './block';
 import { decodeBlock, decodePatch, encodeBlock, encodePatch } from './codec';
 import type { Terrain, TerrainBiome } from '../intent';
 
@@ -62,6 +62,29 @@ export function setPoints(t: TerrainState, stack: string, ch: PointChannel, edit
   return { ...t, stacks };
 }
 
+/** A cell's value in a stack's base raster (global cells: column, row). */
+export function cellOf(t: TerrainState, stack: string, ch: CellChannel, cx: number, cy: number): number {
+  const block = t.stacks.get(stack)?.base.get(blockKeyOf(cx * SUBDIVISIONS, cy * SUBDIVISIONS)) ?? newBlock();
+  return cellAt(block, ch, cx - Math.floor(cx / BLOCK_CELLS) * BLOCK_CELLS, cy - Math.floor(cy / BLOCK_CELLS) * BLOCK_CELLS);
+}
+
+/** The state with `edits` ([column, row, value] in global cells) in a stack's base raster. */
+export function setCells(t: TerrainState, stack: string, ch: CellChannel, edits: readonly (readonly [number, number, number])[]): TerrainState {
+  const byBlock = new Map<string, [number, number, number][]>();
+  for (const [cx, cy, v] of edits) {
+    const key = blockKeyOf(cx * SUBDIVISIONS, cy * SUBDIVISIONS);
+    let list = byBlock.get(key);
+    if (!list) byBlock.set(key, (list = []));
+    list.push([cx - Math.floor(cx / BLOCK_CELLS) * BLOCK_CELLS, cy - Math.floor(cy / BLOCK_CELLS) * BLOCK_CELLS, v]);
+  }
+  const old = t.stacks.get(stack) ?? EMPTY_STACK;
+  const base = new Map(old.base);
+  for (const [key, list] of byBlock) base.set(key, withCells(base.get(key) ?? newBlock(), ch, list));
+  const stacks = new Map(t.stacks);
+  stacks.set(stack, { ...old, base });
+  return { ...t, stacks };
+}
+
 /** A block as shown: its base with the patches of `activeLayers` (lowest first) laid over it. */
 export function shownBlock(t: TerrainState, stack: string, key: string, activeLayers: readonly string[]): RasterBlock {
   const s = t.stacks.get(stack) ?? EMPTY_STACK;
@@ -70,6 +93,14 @@ export function shownBlock(t: TerrainState, stack: string, key: string, activeLa
     return p ? [p] : [];
   });
   return applyPatches(s.base.get(key) ?? newBlock(), patches);
+}
+
+/** Every block of a stack as shown: its base blocks and those only active layers' patches reach. */
+export function shownStack(t: TerrainState, stack: string, activeLayers: readonly string[]): Map<string, RasterBlock> {
+  const s = t.stacks.get(stack) ?? EMPTY_STACK;
+  const keys = new Set(s.base.keys());
+  for (const id of activeLayers) for (const key of s.layers.get(id)?.keys() ?? []) keys.add(key);
+  return new Map([...keys].map((key) => [key, shownBlock(t, stack, key, activeLayers)]));
 }
 
 /** The terrain of a map file, decoded; a broken block refuses the whole of it. */

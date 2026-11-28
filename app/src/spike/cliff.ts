@@ -18,6 +18,15 @@ const STEP_FT = 10;
 const LIGHT_ANGLE = 45;
 /** Perspective factor (Teil B §11.2: 0.45 cell per 10 ft, adjustable 0.2–1.0): `?p=0.9` to compare. */
 const PERSPECTIVE = Math.min(1, Math.max(0.2, Number(new URLSearchParams(location.search).get('p') ?? BAND_PER_10_FT)));
+/** A material colour `?name=r,g,b` (0–1) to try a biome (E-87): stone caps, scree, earth at the foot. */
+function rgb(name: string, fallback: readonly [number, number, number]): readonly [number, number, number] {
+  const v = new URLSearchParams(location.search).get(name)?.split(',').map(Number);
+  return v?.length === 3 && v.every(Number.isFinite) ? [v[0]!, v[1]!, v[2]!] : fallback;
+}
+const glsl = (c: readonly number[]) => `vec3(${c.map((x) => x.toFixed(3)).join(', ')})`;
+const CAP = rgb('cap', [0.86, 0.8, 0.66]);
+const STONE = rgb('stone', [150 / 255, 120 / 255, 88 / 255]);
+const SOIL_TINT = rgb('soil', [1, 1, 1]);
 /** Rock: a jagged edge (Teil B §11.1: 0.15 cell). */
 const NOISE_CELLS = 0.15;
 
@@ -215,14 +224,14 @@ void main() {
   vec3 c = texture(uTexture, SAMPLE).rgb;
   float p = texture(uPatch, vec2(vUV.x * 0.35, 0.5)).r;
   float cap = smoothstep(0.66, 0.72, p) * (1.0 - smoothstep(0.1, 0.22, vUV.y));
-  c = mix(c, vec3(0.86, 0.80, 0.66) + (c - 0.55) * 0.35, cap);
+  c = mix(c, CAP + (c - 0.55) * 0.35, cap);
   float foot = mix(1.0, 0.55, vUV.y * vUV.y);
   finalColor = vec4(c * LIGHT * foot, 1.0);
 }`;
 
 /** Where the face samples its texture, and how its light is applied: generated strata as they are; a painted strip (`?band=`) only a third of its height – a few thick layers, its aspect kept – and lit more gently. */
 const faceShader = (painted: boolean) =>
-  FACE.replace('SAMPLE', painted ? 'vec2(vUV.x * 1.6, 0.1 + vUV.y * 0.33)' : 'vec2(vUV.x * 0.5, vUV.y * 0.92)').replace('LIGHT', painted ? 'mix(0.85, 1.2, (vShade - 0.55) / 0.45)' : 'vShade');
+  FACE.replace('CAP', glsl(CAP)).replace('SAMPLE', painted ? 'vec2(vUV.x * 1.6, 0.1 + vUV.y * 0.33)' : 'vec2(vUV.x * 0.5, vUV.y * 0.92)').replace('LIGHT', painted ? 'mix(0.85, 1.2, (vShade - 0.55) / 0.45)' : 'vShade');
 
 /** Foot AO: a soft dark hem on the lower ground. */
 const AO = `in vec2 vUV;
@@ -254,8 +263,8 @@ void main() {
   vec3 c = texture(uTexture, vUV * vec2(1.0, 0.5)).rgb;
   float edge = texture(uTexture, vec2(vUV.x * 2.0, 0.7)).r;
   float a = (1.0 - smoothstep(0.35 + 0.4 * edge, 1.0, vUV.y)) * 0.85;
-  finalColor = vec4(c * a, a);
-}`;
+  finalColor = vec4(c * TINT * a, a);
+}`.replace('TINT', glsl(SOIL_TINT));
 
 function mesh(m: BandMesh, fragment: string, texture: Texture, patch?: Texture): Mesh<Geometry, Shader> {
   const geometry = new Geometry({ attributes: { aPosition: m.positions, aUV: m.uvs, aShade: { buffer: m.shade, format: 'float32' } }, indexBuffer: m.indices });
@@ -274,7 +283,8 @@ function stone(g: Graphics, p: Pt, size: number, seed: number): void {
     }).flat();
   // Sandstone like the face, a little varied.
   const t = hashNoise(p.x, p.y, seed + 3);
-  const color = ((150 + t * 40) << 16) | ((120 + t * 34) << 8) | (88 + t * 26);
+  const ch = (base: number, spread: number) => Math.min(255, Math.round(base * 255 + t * spread));
+  const color = (ch(STONE[0], 40) << 16) | (ch(STONE[1], 34) << 8) | ch(STONE[2], 26);
   g.poly(ring(1.15, size * 0.25, size * 0.3)).fill({ color: 0x000000, alpha: 0.3 });
   g.poly(ring(1, 0, 0)).fill({ color }).stroke({ color: 0x3a2a1a, width: 1, alpha: 0.7 });
   g.poly(ring(0.55, -size * 0.18, -size * 0.2)).fill({ color: 0xffffff, alpha: 0.18 });
@@ -312,6 +322,8 @@ async function main() {
   const params = new URLSearchParams(location.search);
   const bandUrl = params.get('band');
   const grassUrl = params.get('grass');
+  // `?lip=0`: a bare edge without the ground hanging over (cave rock, E-87).
+  const lip = params.get('lip') !== '0';
   const rock = bandUrl ? await seamless(bandUrl, 'x', 1024) : strata();
   const turf = grassUrl ? await seamless(grassUrl, 'xy', 512) : grass();
   const ground = new TilingSprite({ texture: turf, width: CELL * CELLS, height: CELL * CELLS });
@@ -338,7 +350,7 @@ async function main() {
       ao.addChild(mesh(cliffBand(hem, c.closed, CELL * 0.4, { textureLength: CELL, lightAngle: LIGHT_ANGLE }), AO, rock));
       // Face and overhang share their arc length (the same texture length), so caps and grass never overlap.
       faces.addChild(mesh(face, faceShader(!!bandUrl), rock, spots));
-      overhang.addChild(mesh(cliffBand(line, c.closed, CELL * 0.22, { textureLength: CELL * 4, lightAngle: LIGHT_ANGLE }), OVERHANG, turf, spots));
+      if (lip) overhang.addChild(mesh(cliffBand(line, c.closed, CELL * 0.22, { textureLength: CELL * 4, lightAngle: LIGHT_ANGLE }), OVERHANG, turf, spots));
       // Scree at the foot, gathered in a few heaps (as in the reference), smaller the further it rolled.
       for (const { p, normal } of alongLine(foot, c.closed, CELL * 0.1)) {
         const heap = noise2(p.x / (CELL * 1.6), p.y / (CELL * 1.6), 81) > 0.45;

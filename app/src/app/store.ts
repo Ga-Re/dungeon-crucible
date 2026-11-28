@@ -44,8 +44,9 @@ import { setTerrain, terrainBroken, terrainOf } from './terrain';
 import { emptyTerrain, shownStack, type TerrainState } from '../core/build/terrain/state';
 import { applyStroke, brushPoints, lassoPoints, snapLasso, stepAt, strokeStep, type BrushShape, type StepMode } from '../core/build/terrain/stepTool';
 import { biomeWeightsAt, brushCells, brushWeights, fillPoints, paintBiome, paintGround, supportPointAt, type GroundClass } from '../core/build/terrain/groundTool';
+import { paintRelief, paintSlope, reliefFtAt, type ReliefMode } from '../core/build/terrain/heightTool';
 import type { TerrainBiome } from '../core/build/terrainKeys';
-import { CLIFF_NOISE_CELLS, CliffCache, cliffLines, cliffWalls } from '../core/build/terrain/cliffs';
+import { CLIFF_NOISE_CELLS, CliffCache, cliffLines, cliffWalls, reliefLines } from '../core/build/terrain/cliffs';
 import type { TerrainShape } from '../render/pixi/terrain';
 import { tvRaster } from '../core/build/terrain/tvRaster';
 import type { RasterBlock } from '../core/build/terrain/block';
@@ -129,6 +130,8 @@ export interface AppState {
   terrainPreview: TerrainPreview;
   /** The biome under the pointer while a ground tool runs (its palette shows that biome's textures, E-88). */
   terrainHover: TerrainBiome | null;
+  /** Height lines of the fine height every 2 ft in the DM's view (E-89). */
+  heightLines: boolean;
   /** Selected walls of the map (Map Forge): one, several (Shift) or a chain (double-click). */
   selectedWallIds: string[];
   log: LogEntry[];
@@ -276,6 +279,7 @@ function initial(): AppState {
     terrainQuarter: false,
     terrainPreview: readTerrainPreview(),
     terrainHover: null,
+    heightLines: false,
     selectedWallIds: [],
     log: [],
     rolls: [],
@@ -1215,7 +1219,7 @@ function clearWallEditing(): void {
 /* ---------- The terrain tool "Stufe" (E-87) ---------- */
 
 export type TerrainPreview = 'live' | 'outline';
-export type TerrainTool = 'step' | 'ground' | 'biome' | 'fill';
+export type TerrainTool = 'step' | 'ground' | 'biome' | 'fill' | 'relief' | 'slope';
 
 export interface TerrainCommand {
   /** Which terrain tool (E-87, E-88): steps, ground classes, biomes, or filling ground. */
@@ -1234,6 +1238,10 @@ export interface TerrainCommand {
   softness: number;
   /** How different ground filling still takes (0…1). */
   tolerance: number;
+  /** What "Feinhöhe" does (E-89). */
+  reliefMode: ReliefMode;
+  /** Raise, lower, roughen: by how many ft where the brush is full. */
+  amountFt: number;
   /** The step "set" sets. */
   picked: number;
   /** The next click on the map picks `picked` from the ground there. */
@@ -1269,8 +1277,8 @@ export function terrainEditable(): boolean {
 }
 
 type TerrainOptions = Omit<TerrainCommand, 'tool' | 'picking' | 'before'>;
-const TERRAIN_OPTION_KEYS = ['mode', 'shape', 'sizeCells', 'picked', 'groundClass', 'biome', 'strength', 'softness', 'tolerance'] as const;
-let lastTerrainOptions: TerrainOptions = { mode: 'raise', shape: 'round', sizeCells: 2, picked: 1, groundClass: 'grass', biome: 'temperate', strength: 1, softness: 0.5, tolerance: 0.2 };
+const TERRAIN_OPTION_KEYS = ['mode', 'shape', 'sizeCells', 'picked', 'groundClass', 'biome', 'strength', 'softness', 'tolerance', 'reliefMode', 'amountFt'] as const;
+let lastTerrainOptions: TerrainOptions = { mode: 'raise', shape: 'round', sizeCells: 2, picked: 1, groundClass: 'grass', biome: 'temperate', strength: 1, softness: 0.5, tolerance: 0.2, reliefMode: 'raise', amountFt: 3 };
 
 /** Starts a terrain tool (one command at a time: another tool ends it). */
 export function startTerrainCommand(tool: TerrainTool = 'step'): void {
@@ -1330,6 +1338,26 @@ function areaPoints(): { x0: number; y0: number; x1: number; y1: number } {
   return { x0: Math.min(...corners.map((c) => c[0])), y0: Math.min(...corners.map((c) => c[1])), x1: Math.max(...corners.map((c) => c[0])), y1: Math.max(...corners.map((c) => c[1])) };
 }
 
+export function setHeightLines(on: boolean): void {
+  state.heightLines = on;
+  emit();
+}
+
+const linesMemo = new WeakMap<ReadonlyMap<string, RasterBlock>, { grid: string; lines: Point[][] }>();
+
+/** The height lines the DM's view shows (none when switched off or without terrain). */
+export function terrainHeightLines(): readonly Point[][] {
+  const t = ownTerrain();
+  if (!state.heightLines || !t || !state.scene.map.drawn) return [];
+  const blocks = shownTerrain(state.scene, t);
+  const grid = JSON.stringify(state.scene.map.grid);
+  const hit = linesMemo.get(blocks);
+  if (hit?.grid === grid) return hit.lines;
+  const lines = reliefLines(blocks, state.scene.map.grid);
+  linesMemo.set(blocks, { grid, lines });
+  return lines;
+}
+
 export function setTerrainQuarter(on: boolean): void {
   state.terrainQuarter = on;
   emit();
@@ -1368,6 +1396,8 @@ let stroke: {
   readonly base: TerrainState;
   readonly stack: string;
   readonly startStep: number;
+  /** The fine height at its start (ft): "flatten" pulls to it. */
+  readonly startRelief: number;
   path: Point[];
   /**
    * What the brush covered so far, with the strongest touch: support points (biome: cells).
@@ -1411,7 +1441,8 @@ export function beginTerrainStroke(p: Point): boolean {
     }
     return false;
   }
-  stroke = { mapFile: state.mapFile, before: own, base, stack, startStep: stepAt(base, stack, state.scene.map.grid, p), path: [p], covered: new Map(), undoTaken: false };
+  const [sx, sy] = supportPointAt(state.scene.map.grid, p);
+  stroke = { mapFile: state.mapFile, before: own, base, stack, startStep: stepAt(base, stack, state.scene.map.grid, p), startRelief: reliefFtAt(base, stack, sx, sy), path: [p], covered: new Map(), undoTaken: false };
   cover(c, stroke, [p]);
   return true;
 }
@@ -1421,7 +1452,7 @@ function cover(c: TerrainCommand, s: NonNullable<typeof stroke>, path: readonly 
   const grid = state.scene.map.grid;
   if (c.tool === 'step' && c.shape === 'lasso') return;
   const touched =
-    c.tool === 'ground' ? brushWeights(path, c.sizeCells, c.softness, grid)
+    c.tool === 'ground' || c.tool === 'relief' || c.tool === 'slope' ? brushWeights(path, c.sizeCells, c.softness, grid)
     : c.tool === 'biome' ? brushCells(path, c.sizeCells, c.softness, grid)
     : brushPoints(path, c.shape === 'square' ? 'square' : 'round', c.sizeCells, grid, state.terrainQuarter).map(([x, y]) => [x, y, 1] as [number, number, number]);
   for (const pt of touched) {
@@ -1438,6 +1469,14 @@ function painted(c: TerrainCommand, s: NonNullable<typeof stroke>, invert: boole
   if (c.tool === 'ground') return paintGround(s.base, s.stack, scaled, invert ? 'auto' : c.groundClass);
   // Alt takes cells back to the map's first biome.
   if (c.tool === 'biome') return paintBiome(s.base, s.stack, scaled, invert ? s.base.biomePalette[0]! : c.biome);
+  // Fine height (E-89): Alt lowers instead of raising and the other way round; strength is the mode's own.
+  if (c.tool === 'relief') {
+    const mode = invert && c.reliefMode === 'raise' ? 'lower' : invert && c.reliefMode === 'lower' ? 'raise' : c.reliefMode;
+    const a = supportPointAt(grid, s.path[0]!);
+    const b = supportPointAt(grid, s.path[s.path.length - 1]!);
+    return paintRelief(s.base, s.stack, [...s.covered.values()], mode, { amountFt: c.amountFt, strength: c.strength, startFt: s.startRelief, a, b });
+  }
+  if (c.tool === 'slope') return paintSlope(s.base, s.stack, scaled, invert);
   const points = c.shape === 'lasso' ? lassoPoints(s.path.map((q) => snapLasso(q, grid, state.terrainQuarter)), grid) : [...s.covered.values()].map(([x, y]) => [x, y] as const);
   const mode = invert && c.mode !== 'set' ? (c.mode === 'raise' ? 'lower' : 'raise') : c.mode;
   return applyStroke(s.base, s.stack, points, mode, strokeStep(mode, s.startStep, c.picked));
@@ -1453,7 +1492,8 @@ export function moveTerrainStroke(p: Point, opts: { straight: boolean; invert: b
   const c = state.terrainCommand;
   const s = liveStroke();
   if (!c || !s) return;
-  if (opts.straight && !(c.tool === 'step' && c.shape === 'lasso')) {
+  // A gradient always runs straight from A to B.
+  if ((opts.straight || (c.tool === 'relief' && c.reliefMode === 'gradient')) && !(c.tool === 'step' && c.shape === 'lasso')) {
     s.path = [s.path[0]!, p];
     s.covered = new Map();
     cover(c, s, s.path);
@@ -2121,6 +2161,7 @@ export function terrainShape(): TerrainShape | null {
     palette: terrain?.biomePalette ?? [defaultTerrainBiome(sc.map.mapType, sc.map.biome)],
     stepFt: terrain?.stepFt ?? 10,
     perspective: sc.map.intent?.cliffPerspective ?? BAND_PER_10_FT,
+    erosion: sc.map.intent?.erosionEdges ?? true,
     lightAngle: sc.map.lightAngle,
     area: { x: sc.map.origin?.x ?? 0, y: sc.map.origin?.y ?? 0, width: sc.map.widthPx, height: sc.map.heightPx },
   };
@@ -3393,6 +3434,8 @@ export interface MapSettings {
   variants: MapVariant[];
   /** The cliff band's width, cells per 10 ft drop (E-87). */
   cliffPerspective: number;
+  /** Erosion edges where the fine height is steep (E-89). */
+  erosionEdges: boolean;
 }
 
 export function openMapSettings(open = true): void {
@@ -3402,7 +3445,7 @@ export function openMapSettings(open = true): void {
 
 export function currentMapSettings(): MapSettings {
   const m = state.scene.map;
-  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient, ambientSound: m.ambientSound ? { ...m.ambientSound } : null, transition: { ...(m.transition ?? DEFAULT_TRANSITION) }, variants: (m.variants ?? []).map((v) => ({ ...v })), cliffPerspective: m.intent?.cliffPerspective ?? BAND_PER_10_FT };
+  return { name: m.name, mapType: m.mapType, region: m.region, tags: [...m.tags], biome: m.biome, ambient: state.scene.ambient, ambientSound: m.ambientSound ? { ...m.ambientSound } : null, transition: { ...(m.transition ?? DEFAULT_TRANSITION) }, variants: (m.variants ?? []).map((v) => ({ ...v })), cliffPerspective: m.intent?.cliffPerspective ?? BAND_PER_10_FT, erosionEdges: m.intent?.erosionEdges ?? true };
 }
 
 /** Applies the dialog as one undoable step; only in the Map Forge (the map's data). */
@@ -3426,8 +3469,8 @@ export function applyMapSettings(s: MapSettings): boolean {
   else m.transition = { ...s.transition };
   state.scene.ambient = s.ambient;
   // Like the transition: in the file only when it is not the default (E-87).
-  const { cliffPerspective: _old, ...intent } = m.intent ?? {};
-  m.intent = s.cliffPerspective === BAND_PER_10_FT ? intent : { ...intent, cliffPerspective: s.cliffPerspective };
+  const { cliffPerspective: _old, erosionEdges: _was, ...intent } = m.intent ?? {};
+  m.intent = { ...intent, ...(s.cliffPerspective === BAND_PER_10_FT ? {} : { cliffPerspective: s.cliffPerspective }), ...(s.erosionEdges ? {} : { erosionEdges: false }) };
   recomputeVision();
   markDirty();
   emit();
@@ -3606,7 +3649,7 @@ export function produceFrame(now: number): PlayerFrame {
 /** The TV's terrain while it waits for the DM to take map changes over (E-30): held with `tvMap`. */
 let tvTerrain: TerrainState | null | undefined;
 
-const rasterMemo: { terrain: TerrainState | null; fog: unknown; key: string; blocks: ReadonlyMap<string, RasterBlock>; frame: Omit<NonNullable<ProjectionOptions['raster']>, 'perspective' | 'lightAngle'> | null } = {
+const rasterMemo: { terrain: TerrainState | null; fog: unknown; key: string; blocks: ReadonlyMap<string, RasterBlock>; frame: Omit<NonNullable<ProjectionOptions['raster']>, 'perspective' | 'lightAngle' | 'erosion'> | null } = {
   terrain: null,
   fog: null,
   key: '',
@@ -3624,7 +3667,7 @@ function tvRasterOf(scene: Scene): NonNullable<ProjectionOptions['raster']> | nu
   const terrain = tvTerrainNow();
   // Terrain is drawn on drawn maps only for now (E-87): there it has its ground even before the first step.
   if (!terrain && !scene.map.drawn) return null;
-  const look = { perspective: scene.map.intent?.cliffPerspective ?? BAND_PER_10_FT, lightAngle: scene.map.lightAngle };
+  const look = { perspective: scene.map.intent?.cliffPerspective ?? BAND_PER_10_FT, erosion: scene.map.intent?.erosionEdges ?? true, lightAngle: scene.map.lightAngle };
   if (!terrain) {
     rasterMemo.blocks = new Map();
     Object.assign(rasterMemo, { terrain: null, fog: null, key: '', frame: null });

@@ -254,6 +254,8 @@ export const mapIntentSchema = z.object({
   undergrounds: z.array(undergroundSchema).optional(),
   /** The cliff band's width in cells per 10 ft drop (Teil B §11.2, version 15, E-87); none: 0.45. */
   cliffPerspective: z.number().min(0.2).max(1).optional(),
+  /** Erosion edges where the fine height is steep (S9, version 15, E-89); none: on. */
+  erosionEdges: z.boolean().optional(),
 });
 export type MapIntent = z.infer<typeof mapIntentSchema>;
 

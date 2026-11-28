@@ -1265,6 +1265,27 @@ Branch: `feature/procedural-forge-phase-0`.
   echter Größe (Kachel in Feldern: Pflaster 2–3,5 je nach Steingröße des Bildes, Kies 2, Laub 2,5, Moos 3, Gras und
   Erde 4, Fels 5, Schnee 7, Grundboden 7,3); Kies am Klippenfuß ebenso. Musterkarte je Biom mit Raster zur Abnahme.
   **Abgenommen vom DM (2026-11-28)** – vorerst; die Texturen werden ggf. später noch einmal angepasst.
+  ◐ **d)** (E-89) `core/build/terrain/heightTool.ts`: Feinhöhe in 1/16 ft (±20 ft) mit Heben/Senken (Alt), Glätten,
+  Ebnen (Höhe am Startpunkt), Aufrauen, Gefälle (von A nach B ziehen); ein Strich wirkt einmal, egal wie oft er
+  über eine Stelle fährt. Böschung als Maske, Alt nimmt sie zurück; ab halber Stärke entfallen Klippe und
+  Einweg-Wand, die Stufe läuft als Rampe aus. `heightField.ts`: Höhe je Block samt 8 Feldern Rand für Schummerung
+  und Schatten. `render/pixi/shading.ts` (DM und TV): Hänge hell/dunkel nach dem Licht (Sonne 50° auf der Seite der
+  Lichtrichtung), weicher Schattenwurf per Raymarching über die Höhe (Halbschatten wächst mit der Entfernung), Mulden
+  dunkler (AO); der senkrechte Sprung einer Klippe zählt für die Schummerung nicht (den zeigt ihr Band), eine Rampe
+  schon. Je Block einmal in eine Textur gerechnet, ein Bild zeichnet nur die Texturen; neu nur, wenn sich Höhe,
+  Stufe oder Böschung des Blocks oder eines Nachbarn ändern. Erosionskanten: kleine Abbruchbänder ohne Wand am
+  oberen Rand von Feinhöhe steiler als 45° (nach der Feldgröße der Karte), über Blockgrenzen durchgehend; ab Werk an,
+  Schalter in den Karteneinstellungen (`erosionEdges`, optionales Feld der noch nicht ausgelieferten v15).
+  Höhenlinien alle 2 ft als Schalter im Tab GELÄNDE, nur beim DM. TV-Frame v9 (das Raster nennt Erosion an/aus).
+  Geprüft: 838 Tests, Build mit Tisch-Bundle-Prüfung; der echte Renderer offscreen (Plateau mit Rampe, höherer
+  Block, Hügel, Rinne, aufgeraute Fläche; dazu ein Hügel, eine Rinne und ein Plateau über der Ecke von vier Blöcken:
+  keine Naht). Das TV-Fenster nicht (Vollbild auf einem Bildschirm des DM).
+  Nach dem Review: Schatten je Block gebacken statt in jedem Bild neu (vorher 48 Schritte Raymarching je Pixel und
+  Bild); Schummerung und AO rechnen das Gefälle aus der vollen Höhe ohne Klippensprünge zwischen Nachbarpunkten
+  (vorher entstanden an Rampen falsche Kanten); Erosionskanten lesen die Nachbarblöcke (vorher brachen sie an jeder
+  Blockgrenze ab), ihre Schwelle folgt der Feldgröße; Feinhöhe malen baut die Klippen nicht mehr neu, solange
+  Erosionskanten aus sind; Höhenlinien zeigen keine Punkte knapp unter 0 ft.
+  Offen: Abnahme des Aussehens durch den DM.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

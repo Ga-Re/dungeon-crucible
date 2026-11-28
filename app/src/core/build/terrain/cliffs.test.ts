@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_GRID } from '../../grid';
 import { belowCliff } from '../../scene';
 import { BLOCK_POINTS, newBlock, withPoints, type RasterBlock } from './block';
-import { CliffCache, cliffLines, cliffWalls, type CliffSource } from './cliffs';
+import { CliffCache, cliffLines, cliffWalls, reliefLines, type CliffSource } from './cliffs';
 import { UNKNOWN_STEP } from './tvRaster';
 
 /**
@@ -92,7 +92,7 @@ describe('cliff lines from the step raster', () => {
     expect(cliffLines(source({ '0_0': weak }), opts)[0]!.closed).toBe(true);
   });
 
-  it('erosion edges: every 2 ft of fine height where it is steeper than 45°, none on a gentle slope (E-89)', () => {
+  it('erosion edges: along the upper rim of fine height steeper than 45°, none on a gentle slope (E-89)', () => {
     // Relief rising along x over the whole block, then level: steep (2 ft per support point, 1.25 ft
     // apart) or gentle (0.5 ft); a missing right neighbour is level with the top.
     const ramp = (perPoint: number) => {
@@ -101,11 +101,46 @@ describe('cliff lines from the step raster', () => {
       return withPoints(newBlock(), 'relief', edits);
     };
     const on = (b: ReturnType<typeof ramp>) => cliffLines({ blocks: new Map([['0_0', b]]), missingIsUnknown: true }, { ...opts, erosion: true });
-    expect(on(ramp(2)).length).toBeGreaterThanOrEqual(8);
+    // The steep ramp meets its level top at x = 9: one edge there, the higher ground on its left.
+    const rims = on(ramp(2));
+    expect(rims.length).toBeGreaterThanOrEqual(1);
+    for (const l of rims) for (const p of l.points) expect(Math.abs(p.x / (70 / 4) - 9)).toBeLessThan(1.5);
     expect(on(ramp(0.5))).toEqual([]);
     // Steps make no erosion edges, fine height no cliffs.
     expect(cliffLines(source({ '0_0': plateau(8, 8, 25, 25, 1) }), { ...opts, erosion: true })).toEqual([]);
     expect(cliffLines(source({ '0_0': ramp(2) }), opts)).toEqual([]);
+  });
+
+  it('erosion edges run on across block edges, and steep is 45° for the map\'s cell size', () => {
+    // Relief rising steeply to the right edge of block -1_0, block 0_0 level with its top: the rim
+    // lies on the edge between them.
+    const edits: [number, number, number][] = [];
+    for (let y = 0; y < BLOCK_POINTS; y++) for (let x = 110; x < BLOCK_POINTS; x++) edits.push([x, y, (x - 109) * 32]);
+    const left = withPoints(newBlock(), 'relief', edits);
+    const topEdits: [number, number, number][] = [];
+    for (let y = 0; y < BLOCK_POINTS; y++) for (let x = 0; x < BLOCK_POINTS; x++) topEdits.push([x, y, 19 * 32]);
+    const right = withPoints(newBlock(), 'relief', topEdits);
+    // (Block 0_0's right edge drops to the missing level ground beyond it: a rim of its own.)
+    const atSeam = (o: typeof opts) => cliffLines(source({ '-1_0': left, '0_0': right }), { ...o, erosion: true }).filter((l) => l.points.every((p) => Math.abs(p.x / (70 / 4)) < 1.5));
+    const seam = atSeam(opts).flatMap((l) => l.points);
+    // It runs the whole height of the blocks.
+    expect(Math.max(...seam.map((p) => p.y)) - Math.min(...seam.map((p) => p.y))).toBeGreaterThan(120 * (70 / 4));
+    // 2 ft per support point is steep in 5 ft cells (1.25 ft apart), not in 10 ft cells (2.5 ft apart).
+    expect(atSeam({ ...opts, grid: { ...grid, feetPerCell: 10 } })).toEqual([]);
+  });
+
+  it('height lines leave out ground just off level (no specks at 0 ft)', () => {
+    const speck = withPoints(newBlock(), 'relief', [[20, 20, -1], [21, 20, 3]]);
+    expect(reliefLines(new Map([['0_0', speck]]), grid)).toEqual([]);
+  });
+
+  it('height lines of the fine height every 2 ft, for the DM (E-89)', () => {
+    const edits: [number, number, number][] = [];
+    for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) edits.push([x, y, Math.max(0, 6 * 16 - Math.round(Math.hypot(x - 20, y - 20) * 8))]);
+    const hill = withPoints(newBlock(), 'relief', edits);
+    // A hill of 6 ft: rings at 2 and 4 ft (and where it reaches 6).
+    expect(reliefLines(new Map([['0_0', hill]]), grid).length).toBeGreaterThanOrEqual(2);
+    expect(reliefLines(new Map([['0_0', newBlock()]]), grid)).toEqual([]);
   });
 
   it('the same raster gives the same lines (DM and TV draw alike), noise sampled at the world position', () => {

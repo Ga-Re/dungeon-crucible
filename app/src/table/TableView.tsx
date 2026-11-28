@@ -165,7 +165,7 @@ export function TableView({ source, depth = 0 }: { source: FrameSource; depth?: 
         const blocks = ras && source.raster ? [...source.raster.resolve(ras.blocks)].flatMap(([k, b]) => (b ? [[k, b] as const] : [])) : [];
         r.setTerrain(
           ras && f.map.drawnOrigin
-            ? { source: { blocks: new Map(blocks), missingIsUnknown: true }, grid: f.map.grid, palette: ras.palette, stepFt: ras.stepFt, perspective: ras.perspective, lightAngle: ras.lightAngle, area: { x: f.map.drawnOrigin.x, y: f.map.drawnOrigin.y, width: f.map.widthPx, height: f.map.heightPx } }
+            ? { source: { blocks: new Map(blocks), missingIsUnknown: true }, grid: f.map.grid, palette: ras.palette, stepFt: ras.stepFt, perspective: ras.perspective, erosion: ras.erosion, lightAngle: ras.lightAngle, area: { x: f.map.drawnOrigin.x, y: f.map.drawnOrigin.y, width: f.map.widthPx, height: f.map.heightPx } }
             : null,
         );
         // Stairs (E-44) as pictures drawn here from their place – under the fog like the assets.

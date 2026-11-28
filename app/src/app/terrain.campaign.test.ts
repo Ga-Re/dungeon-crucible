@@ -174,7 +174,7 @@ describe('terrain on the TV (E-85)', () => {
     setWorkspace('play');
     setTvScene(state.scenePath);
     const { mapType, biome } = state.scene.map;
-    expect(produceFrame(1).map.raster).toEqual({ stepFt: 10, palette: [defaultTerrainBiome(mapType, biome)], perspective: 0.45, lightAngle: state.scene.map.lightAngle, blocks: {} });
+    expect(produceFrame(1).map.raster).toEqual({ stepFt: 10, palette: [defaultTerrainBiome(mapType, biome)], perspective: 0.45, erosion: true, lightAngle: state.scene.map.lightAngle, blocks: {} });
   });
 });
 
@@ -330,6 +330,41 @@ describe('ground, biome and fill (E-88)', () => {
     expect(groundAt(t, 'map', 1, 1).size).toBe(0);
     undo();
     expect(terrainOf(MAP)).toBe(before);
+  });
+});
+
+describe('fine height and slope (E-89)', () => {
+  const stroke = (from: { x: number; y: number }, to: { x: number; y: number }, invert = false) => {
+    beginTerrainStroke(from);
+    moveTerrainStroke(to, { straight: false, invert }, false);
+    moveTerrainStroke(to, { straight: false, invert }, true);
+  };
+
+  it('a fine height stroke raises by its amount, never makes a cliff; Alt lowers', async () => {
+    await hill();
+    startTerrainCommand('relief');
+    updateTerrainCommand({ reliefMode: 'raise', amountFt: 4, softness: 0, sizeCells: 2 });
+    stroke({ x: 10.5 * 70, y: 10.5 * 70 }, { x: 12.5 * 70, y: 10.5 * 70 });
+    expect(pointOf(terrainOf(MAP)!, 'map', 'relief', 44, 42)).toBe(4 * 16);
+    expect(pointOf(terrainOf(MAP)!, 'map', 'step', 44, 42)).toBe(0);
+    stroke({ x: 20.5 * 70, y: 20.5 * 70 }, { x: 20.5 * 70, y: 20.5 * 70 }, true);
+    expect(pointOf(terrainOf(MAP)!, 'map', 'relief', 82, 82)).toBe(-4 * 16);
+  });
+
+  it('a slope over a cliff takes its one-way walls away there; Alt brings them back', async () => {
+    await hill();
+    startTerrainCommand('step');
+    updateTerrainCommand({ shape: 'square', sizeCells: 1, mode: 'raise' });
+    for (let x = 10; x <= 16; x++) stroke({ x: (x + 0.5) * 70, y: 10.5 * 70 }, { x: (x + 0.5) * 70, y: 14.5 * 70 });
+    const walls = () => sightWalls(state.scene, terrainOf(MAP)).filter((w) => w.id.startsWith('terrain:')).length;
+    const before = walls();
+    expect(before).toBeGreaterThan(0);
+    startTerrainCommand('slope');
+    updateTerrainCommand({ strength: 1, softness: 0, sizeCells: 3 });
+    stroke({ x: 10 * 70, y: 11 * 70 }, { x: 10 * 70, y: 14 * 70 });
+    expect(walls()).toBeLessThan(before);
+    stroke({ x: 10 * 70, y: 11 * 70 }, { x: 10 * 70, y: 14 * 70 }, true);
+    expect(walls()).toBe(before);
   });
 });
 

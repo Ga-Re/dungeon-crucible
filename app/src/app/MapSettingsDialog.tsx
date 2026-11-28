@@ -163,6 +163,12 @@ export function MapSettingsDialog({ onClose }: { onClose: () => void }) {
             <span className="hint">{t('mapSettings.cliffWidthHint', { n: draft.cliffPerspective.toFixed(2) })}</span>
           </label>
         )}
+        {drawn && (
+          <label className="cmd-check">
+            <input type="checkbox" checked={draft.erosionEdges} onChange={(e) => set('erosionEdges', e.target.checked)} />
+            {t('mapSettings.erosionEdges')}
+          </label>
+        )}
         {picture && (
           <div className="start-field">
             <span>{t('variant.title')}</span>

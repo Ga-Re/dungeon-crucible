@@ -21,6 +21,8 @@ export interface BlockHeights {
   readonly heights: Float32Array;
   /** Slope mask per point (0…255), the same layout. */
   readonly slope: Uint8Array;
+  /** Step per point (unknown: 0), the same layout: shading tells a cliff from steep fine height by it. */
+  readonly steps: Int8Array;
 }
 
 /** The heights of block (bx, by) of `blocks` with their halo; `stepFt`: the height of a step. */
@@ -30,6 +32,7 @@ export function blockHeights(bx: number, by: number, blocks: ReadonlyMap<string,
   const side = HEIGHT_SIDE + 2 * RAMP;
   const raw = new Float32Array(side * side);
   const slope = new Uint8Array(HEIGHT_SIDE * HEIGHT_SIDE);
+  const steps = new Int8Array(HEIGHT_SIDE * HEIGHT_SIDE);
   const x0 = bx * BLOCK_POINTS - reach;
   const y0 = by * BLOCK_POINTS - reach;
   for (let y = 0; y < side; y++) {
@@ -46,7 +49,10 @@ export function blockHeights(bx: number, by: number, blocks: ReadonlyMap<string,
       raw[y * side + x] = (step === UNKNOWN_STEP ? 0 : step * stepFt) + b.planes.relief[i]! / RELIEF_PER_FT;
       const sx = x - RAMP;
       const sy = y - RAMP;
-      if (sx >= 0 && sy >= 0 && sx < HEIGHT_SIDE && sy < HEIGHT_SIDE) slope[sy * HEIGHT_SIDE + sx] = b.planes.slope[i]!;
+      if (sx >= 0 && sy >= 0 && sx < HEIGHT_SIDE && sy < HEIGHT_SIDE) {
+        slope[sy * HEIGHT_SIDE + sx] = b.planes.slope[i]!;
+        steps[sy * HEIGHT_SIDE + sx] = step === UNKNOWN_STEP ? 0 : step;
+      }
     }
   }
   // The mean over the ramp's reach (a separable box), only where a slope asks for it.
@@ -70,5 +76,5 @@ export function blockHeights(bx: number, by: number, blocks: ReadonlyMap<string,
       for (let d = -RAMP; d <= RAMP; d++) sum += across[(y + RAMP + d) * side + x + RAMP]!;
       heights[y * HEIGHT_SIDE + x] = h + (sum / (2 * RAMP + 1) - h) * s;
     }
-  return { heights, slope };
+  return { heights, slope, steps };
 }

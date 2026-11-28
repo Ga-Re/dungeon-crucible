@@ -49,7 +49,7 @@ import {
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
   editableHere, shownInForge, activateAsset, placeHere, previewPlacing, stopPlacing, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
-  terrainShape, hoverTerrainBiome, beginTerrainStroke, moveTerrainStroke, terrainStrokePath, abortTerrainStroke, cancelTerrainCommand, finishTerrainCommand,
+  terrainShape, terrainHeightLines, hoverTerrainBiome, beginTerrainStroke, moveTerrainStroke, terrainStrokePath, abortTerrainStroke, cancelTerrainCommand, finishTerrainCommand,
 } from '../app/store';
 
 /** Drag-and-drop type for creatures dragged from the browser onto the map. */
@@ -381,6 +381,7 @@ function DmMap() {
       selectedWallIds: state.selectedWallIds,
       wallDraft: wallDraftOf(),
       terrainDraft: terrainDraftOf(),
+      heightLines: state.ws === 'forge' ? terrainHeightLines() : [],
       wallEnds: d?.kind === 'wall-ends' ? d.to : null,
       brush: state.tool === 'fog-brush' ? { p: mouse.current, r: state.brushCells * cell } : null,
       calibBox: state.calibration?.box ? { box: state.calibration.box, cells: state.calibration.cells } : null,
@@ -809,7 +810,7 @@ function DmMap() {
     view.current = viewAt(w, { x: mx, y: my }, zoom, view.current.rot);
   };
 
-  const terrainHint: Record<string, MessageKey> = { step: 'hint.terrain', ground: 'hint.terrainGround', biome: 'hint.terrainBiome', fill: 'hint.terrainFill' };
+  const terrainHint: Record<string, MessageKey> = { step: 'hint.terrain', ground: 'hint.terrainGround', biome: 'hint.terrainBiome', fill: 'hint.terrainFill', relief: 'hint.terrainRelief', slope: 'hint.terrainSlope' };
   const hintKey = tool === 'select' && ws === 'forge' ? 'hint.selectForge' : tool === 'terrain' ? terrainHint[terrainTool] : HINTS[tool];
   return (
     <div ref={wrapRef} className="map-wrap">

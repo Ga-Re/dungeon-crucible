@@ -9,6 +9,7 @@
 import type { KeyboardEvent } from 'react';
 import { BIOME_CLASSES, GROUND_CLASSES, type GroundClass } from '../core/build/terrain/groundTool';
 import type { BrushShape, StepMode } from '../core/build/terrain/stepTool';
+import type { ReliefMode } from '../core/build/terrain/heightTool';
 import { STEP_MAX, STEP_MIN } from '../core/build/terrain/stepTool';
 import { TERRAIN_BIOMES, type TerrainBiome } from '../core/build/terrainKeys';
 import type { MessageKey } from '../i18n/en';
@@ -45,7 +46,8 @@ export function TerrainCommandPanel() {
       cancelTerrainCommand();
     }
   };
-  const title: Record<TerrainCommand['tool'], MessageKey> = { step: 'terrain.cmd.title', ground: 'terrain.cmd.title.ground', biome: 'terrain.cmd.title.biome', fill: 'terrain.cmd.title.fill' };
+  const title: Record<TerrainCommand['tool'], MessageKey> = { step: 'terrain.cmd.title', ground: 'terrain.cmd.title.ground', biome: 'terrain.cmd.title.biome', fill: 'terrain.cmd.title.fill', relief: 'terrain.cmd.title.relief', slope: 'terrain.cmd.title.slope' };
+  const hint: Record<TerrainCommand['tool'], MessageKey> = { step: 'terrain.cmd.hint', ground: 'terrain.cmd.groundHint', biome: 'terrain.cmd.biomeHint', fill: 'terrain.cmd.fillHint', relief: 'terrain.cmd.reliefHint', slope: 'terrain.cmd.slopeHint' };
   const percent = (key: 'strength' | 'softness' | 'tolerance', label: MessageKey) => (
     <label className="cmd-field">
       <span>{t(label)}</span>
@@ -76,15 +78,22 @@ export function TerrainCommandPanel() {
         {c.tool === 'step' && <StepOptions c={c} />}
         {(c.tool === 'ground' || c.tool === 'fill') && <ClassPalette selected={c.groundClass} biome={hover ?? terrainPalette()[0]!} />}
         {c.tool === 'biome' && <BiomePalette selected={c.biome} />}
-        {(c.tool === 'ground' || c.tool === 'biome') && (
+        {c.tool === 'relief' && <ReliefModes c={c} />}
+        {c.tool === 'relief' && (c.reliefMode === 'raise' || c.reliefMode === 'lower' || c.reliefMode === 'roughen') && (
+          <label className="cmd-field">
+            <span>{t('terrain.cmd.amount')}</span>
+            <input type="number" min={0.5} max={20} step={0.5} value={c.amountFt} onChange={(e) => updateTerrainCommand({ amountFt: clamp(Number(e.target.value) || 1, 0.5, 20) })} />
+          </label>
+        )}
+        {(c.tool === 'ground' || c.tool === 'biome' || c.tool === 'slope' || (c.tool === 'relief' && (c.reliefMode === 'smooth' || c.reliefMode === 'flatten' || c.reliefMode === 'gradient'))) && percent('strength', 'terrain.cmd.strength')}
+        {(c.tool === 'ground' || c.tool === 'biome' || c.tool === 'relief' || c.tool === 'slope') && (
           <>
-            {percent('strength', 'terrain.cmd.strength')}
             {percent('softness', 'terrain.cmd.softness')}
             {size}
           </>
         )}
         {c.tool === 'fill' && percent('tolerance', 'terrain.cmd.tolerance')}
-        <p className="hint">{t(c.tool === 'step' ? 'terrain.cmd.hint' : c.tool === 'ground' ? 'terrain.cmd.groundHint' : c.tool === 'biome' ? 'terrain.cmd.biomeHint' : 'terrain.cmd.fillHint')}</p>
+        <p className="hint">{t(hint[c.tool])}</p>
         {c.tool === 'step' && (
           <label className="cmd-field">
             <span>{t('terrain.cmd.preview')}</span>
@@ -101,6 +110,31 @@ export function TerrainCommandPanel() {
         <button type="submit" className="btn pri">{t('area.cmd.ok')}</button>
       </div>
     </form>
+  );
+}
+
+const RELIEF_MODES: { id: ReliefMode; icon: IconName }[] = [
+  { id: 'raise', icon: 'up' },
+  { id: 'lower', icon: 'down' },
+  { id: 'smooth', icon: 'wave' },
+  { id: 'flatten', icon: 'equals' },
+  { id: 'roughen', icon: 'rough' },
+  { id: 'gradient', icon: 'ramp' },
+];
+
+function ReliefModes({ c }: { c: TerrainCommand }) {
+  const { t } = useI18n();
+  return (
+    <div className="cmd-row" role="radiogroup" aria-label={t('terrain.cmd.mode')}>
+      {RELIEF_MODES.map((m) => {
+        const label = t(`terrain.relief.${m.id}` as MessageKey);
+        return (
+          <button key={m.id} type="button" role="radio" aria-checked={c.reliefMode === m.id} className={`cmd-icon ${c.reliefMode === m.id ? 'on' : ''}`} title={label} aria-label={label} onClick={() => updateTerrainCommand({ reliefMode: m.id })}>
+            <Icon name={m.icon} />
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

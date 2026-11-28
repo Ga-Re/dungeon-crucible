@@ -72,6 +72,8 @@ export interface OverlayState {
   areaDraft: { shape: Polygon[]; part: Polygon | null; path: Point[]; color: string; subtract: boolean; editing: string | null } | null;
   /** Outline of a fog tool's shape while drawing. */
   fogDraft: { polygon: Polygon | null; path: Point[]; mode: 'reveal' | 'hide' } | null;
+  /** Height lines of the fine height every 2 ft (E-89), when switched on. */
+  heightLines?: readonly (readonly Point[])[];
   /** "Stufe" (E-87): the brush under the pointer; with the outline preview the stroke or the lasso so far. */
   terrainDraft?: { cursor: readonly Point[] | null; stroke: readonly Polygon[] | null; path: readonly Point[] | null } | null;
 }
@@ -360,6 +362,15 @@ export function drawDmOverlay(g: CanvasRenderingContext2D, scene: Scene, vision:
     g.stroke();
     g.setLineDash([]);
     label(g, `${ft} ft`, b.x + 14 * px, b.y - 14 * px, px);
+    g.restore();
+  }
+  if (o.heightLines?.length) {
+    g.save();
+    g.lineWidth = 1.2 * px;
+    g.strokeStyle = 'rgba(255,240,200,.55)';
+    g.beginPath();
+    for (const line of o.heightLines) line.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+    g.stroke();
     g.restore();
   }
   if (o.terrainDraft) {

@@ -17,7 +17,7 @@ import { intersection } from 'polyclip-ts';
 import { asGeom, fromClip } from './poly/polygon-clip';
 import { BLOCK_KEY, stepFtSchema, TERRAIN_BIOMES, type TerrainBiome } from './build/terrainKeys';
 
-export const FRAME_VERSION = 8;
+export const FRAME_VERSION = 9;
 
 /** How dark unlit areas look on a dark map (darkvision sees them, dimmed). */
 export const DARKNESS = 0.45;
@@ -90,6 +90,8 @@ export const StoreyFrameSchema = z.object({
           .max(4)
           .refine((p) => p[0] !== null && new Set(p.filter((b) => b !== null)).size === p.filter((b) => b !== null).length, 'the first known, each biome once'),
         perspective: z.number().min(0.2).max(1),
+        /** Erosion edges drawn (E-89). */
+        erosion: z.boolean(),
         lightAngle: z.number(),
         blocks: z.record(z.string().regex(BLOCK_KEY), z.string().regex(/^[0-9a-f]{16}$/)),
       })
@@ -169,7 +171,7 @@ export interface ProjectionOptions {
   /** The TV's last change of picture (DC-105); none: no transition yet. */
   cut?: { n: number; play: TransitionPlay; ms: number };
   /** The terrain the TV may know (`tvRaster`): its checksums by block; none: no terrain. */
-  raster?: { stepFt: 5 | 10 | 15 | 20; palette: readonly (TerrainBiome | null)[]; perspective: number; lightAngle: number; blocks: Readonly<Record<string, string>> } | null;
+  raster?: { stepFt: 5 | 10 | 15 | 20; palette: readonly (TerrainBiome | null)[]; perspective: number; erosion: boolean; lightAngle: number; blocks: Readonly<Record<string, string>> } | null;
 }
 
 /** Light for the players: only inside what they see now, so a light in remembered or hidden areas gives nothing away. */
@@ -213,7 +215,7 @@ export function buildPlayerFrame(scene: Scene, o: ProjectionOptions): PlayerFram
       grid: { type: g.type, cellWidth: g.cellWidth, cellHeight: g.cellHeight, originX: g.originX, originY: g.originY, rotationDeg: g.rotationDeg, feetPerCell: g.feetPerCell },
       showGrid: o.showGrid,
       drawnOrigin: scene.map.drawn ? { x: scene.map.origin?.x ?? 0, y: scene.map.origin?.y ?? 0 } : null,
-      raster: o.raster ? { stepFt: o.raster.stepFt, palette: [...o.raster.palette], perspective: o.raster.perspective, lightAngle: o.raster.lightAngle, blocks: { ...o.raster.blocks } } : null,
+      raster: o.raster ? { stepFt: o.raster.stepFt, palette: [...o.raster.palette], perspective: o.raster.perspective, erosion: o.raster.erosion, lightAngle: o.raster.lightAngle, blocks: { ...o.raster.blocks } } : null,
       ...(scene.map.look?.crop || scene.map.look?.adjust ? { look: { ...(scene.map.look.crop ? { crop: { ...scene.map.look.crop } } : {}), ...(scene.map.look.adjust ? { adjust: { ...scene.map.look.adjust } } : {}) } } : {}),
     },
     fog: {

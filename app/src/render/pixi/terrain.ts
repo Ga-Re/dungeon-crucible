@@ -8,7 +8,7 @@
  * lines as the DM's one-way walls (`core/build/terrain/cliffs.ts`); built anew only when the
  * blocks shown or the look change. Above the map, under the grid. Shared by the DM window and the TV.
  */
-import { Container, Geometry, Graphics, Mesh, Shader, type Texture } from 'pixi.js';
+import { Container, Geometry, Graphics, Mesh, Shader, type Renderer, type Texture } from 'pixi.js';
 import { cliffBand, type BandMesh } from '../../core/build/geom/band';
 import { chaikin, type Pt } from '../../core/build/geom/contours';
 import { noise2 } from '../../core/build/handDrawn';
@@ -19,6 +19,7 @@ import type { GridConfig } from '../../core/grid';
 import { terrainTextures, type TerrainTextures } from '../build/terrainTextures';
 import { biomeWeightsAtPx } from '../../core/build/terrain/groundSample';
 import { createGroundLayer } from './groundSplat';
+import { createShadeLayer } from './shading';
 
 export interface TerrainShape {
   /** The blocks of the stack shown (base and active layers' patches). */
@@ -31,6 +32,8 @@ export interface TerrainShape {
   readonly perspective: number;
   /** Where the light falls towards (degrees, map coordinates). */
   readonly lightAngle: number;
+  /** Erosion edges where the fine height is steep (E-89); off per map. */
+  readonly erosion: boolean;
   /** The ground's area (map px): the drawn map's. */
   readonly area: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
 }
@@ -178,6 +181,12 @@ function alongLine(line: readonly Pt[], closed: boolean, spacing: number): { p: 
   return out;
 }
 
+function pathLength(points: readonly Pt[]): number {
+  let sum = 0;
+  for (let i = 1; i < points.length; i++) sum += Math.hypot(points[i]!.x - points[i - 1]!.x, points[i]!.y - points[i - 1]!.y);
+  return sum;
+}
+
 function smoothRange(e0: number, e1: number, v: number): number {
   const x = Math.max(0, Math.min(1, (v - e0) / (e1 - e0)));
   return x * x * (3 - 2 * x);
@@ -186,18 +195,22 @@ function smoothRange(e0: number, e1: number, v: number): number {
 /** True if `a` and `b` show the same: the same blocks (by identity) and the same look. */
 function same(a: TerrainShape | null, b: TerrainShape | null): boolean {
   if (!a || !b) return a === b;
-  if (a.palette.join() !== b.palette.join() || a.stepFt !== b.stepFt || a.perspective !== b.perspective || a.lightAngle !== b.lightAngle) return false;
+  if (a.palette.join() !== b.palette.join() || a.erosion !== b.erosion || a.stepFt !== b.stepFt || a.perspective !== b.perspective || a.lightAngle !== b.lightAngle) return false;
   if (a.source.missingIsUnknown !== b.source.missingIsUnknown || a.source.blocks.size !== b.source.blocks.size) return false;
   if (JSON.stringify([a.grid, a.area]) !== JSON.stringify([b.grid, b.area])) return false;
   for (const [k, v] of a.source.blocks) if (b.source.blocks.get(k) !== v) return false;
   return true;
 }
 
-export function createTerrainLayer(redraw: () => void): TerrainLayer {
+export function createTerrainLayer(redraw: () => void, renderer: Renderer): TerrainLayer {
   const view = new Container();
   const ground = createGroundLayer();
+  const shade = createShadeLayer(renderer);
+  // Cliffs below the light and shadow (their feet, faces, erosion edges), the overhang and stones above it.
   const cliffs = new Container();
-  view.addChild(ground.view, cliffs);
+  const above = new Container();
+  view.addChild(ground.view, cliffs, shade.view, above);
+  const erosionCache = new CliffCache();
   const cache = new CliffCache();
   let shown: TerrainShape | null = null;
   let wanted: TerrainShape | null = null;
@@ -213,7 +226,7 @@ export function createTerrainLayer(redraw: () => void): TerrainLayer {
     }
   };
   const clearCliffs = () => {
-    for (const child of cliffs.removeChildren()) {
+    for (const child of [...cliffs.removeChildren(), ...above.removeChildren()]) {
       free(child);
       child.destroy({ children: true });
     }
@@ -224,9 +237,10 @@ export function createTerrainLayer(redraw: () => void): TerrainLayer {
 
   const build = (s: TerrainShape, textures: ReadonlyMap<TerrainBiome, TerrainTextures>) => {
     ground.set({ blocks: s.source.blocks, grid: s.grid, palette: s.palette, textures, area: s.area });
-    // Painting ground leaves steps and biomes as they were: the cliffs stay.
-    const planes = [...s.source.blocks].flatMap(([k, b]) => [k, b.planes.step, b.planes.biome1, b.planes.biome2, b.planes.biome3, b.planes.biome4]);
-    const look = JSON.stringify([s.palette, s.stepFt, s.perspective, s.lightAngle, s.grid, s.source.missingIsUnknown]);
+    shade.set({ blocks: s.source.blocks, grid: s.grid, stepFt: s.stepFt, lightAngle: s.lightAngle });
+    // Painting ground leaves steps and biomes as they were: the cliffs stay; fine height matters only to erosion edges.
+    const planes = [...s.source.blocks].flatMap(([k, b]) => [k, b.planes.step, b.planes.slope, s.erosion ? b.planes.relief : null, b.planes.biome1, b.planes.biome2, b.planes.biome3, b.planes.biome4]);
+    const look = JSON.stringify([s.palette, s.stepFt, s.perspective, s.lightAngle, s.grid, s.source.missingIsUnknown, s.erosion]);
     if (cliffsFrom && cliffsFrom.look === look && cliffsFrom.planes.length === planes.length && cliffsFrom.planes.every((x, i) => x === planes[i])) {
       redraw();
       return;
@@ -303,7 +317,23 @@ export function createTerrainLayer(redraw: () => void): TerrainLayer {
         stone(rim, { x: p.x + normal.x * off, y: p.y + normal.y * off }, cell * (0.04 + hashNoise(p.x, p.y, 65) * 0.05), 71, mainLook.stone);
       }
     }
-    cliffs.addChild(soilLayer, aoLayer, faces, overhang, rubble, rim);
+    // Erosion edges (E-89): low bands of the biome's rock where the fine height is steep, no walls, no overhang.
+    const erosion = new Container();
+    if (s.erosion)
+      for (const line of cliffLines(s.source, { grid: s.grid, noiseCells: CLIFF_NOISE_CELLS * 0.6, erosion: true }, erosionCache)) {
+        // Only edges of some length: rough ground gives specks, not edges.
+        if (line.points.length < 2 || pathLength(line.points) < cell * 1.5) continue;
+        const w = biomeWeightsAtPx(s.source.blocks, s.grid, line.points[0]!);
+        const biome = s.palette[w.indexOf(Math.max(...w))] ?? s.palette[0];
+        const tex = biome ? textures.get(biome) : undefined;
+        if (!biome || !tex) continue;
+        const width = 0.2 * cell;
+        const band = cliffBand(line.points, line.closed, width, { textureLength: cell * 4, lightAngle: s.lightAngle, widthFactor });
+        erosion.addChild(mesh(cliffBand(line.points, line.closed, width * 1.4, { textureLength: cell, lightAngle: s.lightAngle }), AO, tex.band));
+        erosion.addChild(mesh(band, face(LOOKS[biome]), tex.band, tex.patches));
+      }
+    cliffs.addChild(soilLayer, aoLayer, erosion, faces);
+    above.addChild(overhang, rubble, rim);
     redraw();
   };
 
@@ -316,6 +346,7 @@ export function createTerrainLayer(redraw: () => void): TerrainLayer {
         shown = null;
         cliffsFrom = null;
         ground.set(null);
+        shade.set(null);
         clearCliffs();
         redraw();
         return;
@@ -333,6 +364,7 @@ export function createTerrainLayer(redraw: () => void): TerrainLayer {
       destroyed = true;
       clearCliffs();
       ground.destroy();
+      shade.destroy();
       view.destroy({ children: true });
     },
   };

@@ -330,7 +330,7 @@ export async function createRenderer(
   const world = new Container();
   app.stage.addChild(world);
   // The terrain (E-87): over the map (which goes in at index 0), under the grid.
-  const terrain = createTerrainLayer(() => requestDraw());
+  const terrain = createTerrainLayer(() => requestDraw(), app.renderer);
   world.addChild(terrain.view);
   // Grid lines (T-106b): above the map (which goes in at index 0), below the fog (added last).
   const gridLayer = new Graphics();

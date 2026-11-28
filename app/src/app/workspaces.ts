@@ -138,9 +138,17 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
               { id: 'terrain:ground', icon: 'ground', label: 'tool.terrainGround' },
               { id: 'terrain:biome', icon: 'leaf', label: 'tool.terrainBiome' },
               { id: 'terrain:fill', icon: 'bucket', label: 'tool.terrainFill' },
+              { id: 'terrain:relief', icon: 'hill', label: 'tool.terrainRelief' },
+              { id: 'terrain:slope', icon: 'ramp', label: 'tool.terrainSlope' },
             ],
           },
-          { label: 'group.snapping', buttons: [{ id: 'toggle:quarter', icon: 'quarter', label: 'tool.quarterSnap' }] },
+          {
+            label: 'group.snapping',
+            buttons: [
+              { id: 'toggle:quarter', icon: 'quarter', label: 'tool.quarterSnap' },
+              { id: 'toggle:heightLines', icon: 'contour', label: 'tool.heightLines' },
+            ],
+          },
         ],
       },
       {

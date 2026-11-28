@@ -151,7 +151,7 @@ ${
   float p = 0.0;
   for (int i = -3; i <= 3; i++) p += texture(uPatch, vec2(pu + float(i) * ${PATCH_STEP}, 0.5)).r;
   p /= 7.0;
-  float cap = smoothstep(${look.bare.toFixed(3)}, ${(look.bare + 0.12).toFixed(3)}, p) * (1.0 - smoothstep(0.08, 0.24, vUV.y));
+  float cap = smoothstep(${(look.bare + 0.02).toFixed(3)}, ${(look.bare + 0.08).toFixed(3)}, p) * (1.0 - smoothstep(0.12, 0.24, vUV.y));
   c = mix(c, ${glsl(look.cap)} + (c - 0.55) * 0.35, cap);`
     : ''
 }
@@ -168,10 +168,10 @@ void main() {
 }`;
 
 /**
- * The ground hanging over the edge, its lower rim ragged and fading into the face; towards the bare
- * spots (from `uBare` on, where a stone cap may show) it thins and fades out over about a cell
- * instead of ending square – the patches are read evened out over ±0.3 cell for that (DM
- * 2026-11-28: no hard cuts).
+ * The ground hanging over the edge, opaque, only its ragged lower rim fading into the face; towards
+ * the bare spots (from `uBare` on, where a stone cap may show) it narrows to nothing over about a
+ * cell instead of ending square – the patches are read evened out over ±0.3 cell for that (DM
+ * 2026-11-28: no hard cuts, nothing see-through).
  */
 const OVERHANG = `in vec2 vUV;
 in float vAlpha;
@@ -188,8 +188,9 @@ void main() {
   for (int i = -3; i <= 3; i++) p += texture(uPatch, vec2(pu + float(i) * ${PATCH_STEP}, 0.5)).r;
   p /= 7.0;
   float keep = 1.0 - smoothstep(uBare - 0.04, uBare + 0.1, p);
-  float reach = (0.25 + 0.75 * smoothstep(0.42, 0.62, tuft)) * mix(0.3, 1.0, keep);
-  float a = (1.0 - smoothstep(reach * 0.35, reach, vUV.y)) * smoothstep(0.0, 0.6, keep) * vAlpha;
+  // Towards a bare spot it gets narrower, not see-through; only its outermost rim fades (DM 2026-11-28).
+  float reach = (0.25 + 0.75 * smoothstep(0.42, 0.62, tuft)) * smoothstep(0.0, 1.0, keep);
+  float a = (1.0 - smoothstep(reach - 0.2, reach, vUV.y)) * smoothstep(0.0, 0.15, keep) * vAlpha;
   finalColor = vec4(c * (0.82 + 0.18 * (1.0 - vUV.y)) * a, a);
 }`;
 

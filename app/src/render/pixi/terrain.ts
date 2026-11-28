@@ -60,26 +60,32 @@ type Rgb = readonly [number, number, number];
 /** Whether a biome's ground hangs over its cliffs' edge (E-87): not in caves. */
 const LIPS: Record<TerrainBiome, boolean> = { temperate: true, dungeon: false, swamp: true, desert: true, winter: true };
 
-/** How a material's cliffs look besides its picture (E-90): bare stone caps on top (natural stone only), the colour of its scree. */
+/**
+ * How a material's cliffs look besides its picture (E-90): bare stone caps on top (natural stone
+ * only), from which patch value the overhang leaves the edge bare (higher: rarer; sandstone as
+ * accepted in DC-127, others rarer – DM 2026-11-28: bare spots on clay and granite stood out), the
+ * colour of its scree.
+ */
 interface MaterialLook {
   readonly cap: Rgb | null;
+  readonly bare: number;
   readonly stone: Rgb;
 }
 
 const MATERIAL_LOOKS: Record<CliffMaterial, MaterialLook> = {
-  earth: { cap: null, stone: [0.45, 0.36, 0.27] },
-  granite: { cap: [0.7, 0.71, 0.72], stone: [0.45, 0.47, 0.5] },
-  limestone: { cap: [0.9, 0.88, 0.82], stone: [0.7, 0.68, 0.62] },
-  sandstone: { cap: [0.86, 0.8, 0.66], stone: [0.59, 0.47, 0.35] },
-  desertSandstone: { cap: [0.95, 0.89, 0.76], stone: [0.8, 0.68, 0.5] },
-  clay: { cap: null, stone: [0.62, 0.45, 0.32] },
-  peat: { cap: null, stone: [0.33, 0.27, 0.2] },
-  caveRock: { cap: [0.58, 0.6, 0.63], stone: [0.4, 0.41, 0.44] },
-  ice: { cap: null, stone: [0.72, 0.8, 0.86] },
-  ashlar: { cap: null, stone: [0.55, 0.53, 0.5] },
-  rubble: { cap: null, stone: [0.5, 0.49, 0.47] },
-  brick: { cap: null, stone: [0.62, 0.42, 0.3] },
-  wood: { cap: null, stone: [0.4, 0.3, 0.2] },
+  earth: { cap: null, bare: 0.9, stone: [0.45, 0.36, 0.27] },
+  granite: { cap: [0.62, 0.63, 0.64], bare: 0.9, stone: [0.45, 0.47, 0.5] },
+  limestone: { cap: [0.9, 0.88, 0.82], bare: 0.8, stone: [0.7, 0.68, 0.62] },
+  sandstone: { cap: [0.86, 0.8, 0.66], bare: 0.62, stone: [0.59, 0.47, 0.35] },
+  desertSandstone: { cap: [0.95, 0.89, 0.76], bare: 0.72, stone: [0.8, 0.68, 0.5] },
+  clay: { cap: null, bare: 0.9, stone: [0.62, 0.45, 0.32] },
+  peat: { cap: null, bare: 0.92, stone: [0.33, 0.27, 0.2] },
+  caveRock: { cap: [0.58, 0.6, 0.63], bare: 0.66, stone: [0.4, 0.41, 0.44] },
+  ice: { cap: null, bare: 0.9, stone: [0.72, 0.8, 0.86] },
+  ashlar: { cap: null, bare: 1, stone: [0.55, 0.53, 0.5] },
+  rubble: { cap: null, bare: 1, stone: [0.5, 0.49, 0.47] },
+  brick: { cap: null, bare: 1, stone: [0.62, 0.42, 0.3] },
+  wood: { cap: null, bare: 1, stone: [0.4, 0.3, 0.2] },
 };
 
 /** Map px along a band per module picture (all 1024 px wide): 2.5 cells, the scale of the accepted look. */
@@ -139,7 +145,7 @@ void main() {
 ${
   look.cap
     ? `  float p = texture(uPatch, vec2(vUV.x * ${((0.35 * MODULE_CELLS) / LIP_CELLS).toFixed(4)}, 0.5)).r;
-  float cap = smoothstep(0.66, 0.72, p) * (1.0 - smoothstep(0.1, 0.22, vUV.y));
+  float cap = smoothstep(${(look.bare + 0.04).toFixed(3)}, ${(look.bare + 0.1).toFixed(3)}, p) * (1.0 - smoothstep(0.1, 0.22, vUV.y));
   c = mix(c, ${glsl(look.cap)} + (c - 0.55) * 0.35, cap);`
     : ''
 }
@@ -155,18 +161,22 @@ void main() {
   finalColor = vec4(0.0, 0.0, 0.0, a);
 }`;
 
-/** The ground hanging over the edge, its lower rim ragged; none where a stone cap shows. */
+/**
+ * The ground hanging over the edge, its lower rim ragged; it thins out towards the bare spots
+ * (from `uBare` on, where a stone cap may show) instead of ending square.
+ */
 const OVERHANG = `in vec2 vUV;
 in float vAlpha;
 uniform sampler2D uTexture;
 uniform sampler2D uPatch;
+uniform float uBare;
 out vec4 finalColor;
 void main() {
   vec3 c = texture(uTexture, vec2(vUV.x * 1.6, vUV.y * 0.15)).rgb;
   float tuft = texture(uTexture, vec2(vUV.x * 18.0, 0.5)).g;
-  float reach = 0.25 + 0.75 * smoothstep(0.42, 0.62, tuft);
-  float bare = smoothstep(0.62, 0.68, texture(uPatch, vec2(vUV.x * 0.35, 0.5)).r);
-  float a = (1.0 - smoothstep(reach - 0.18, reach, vUV.y)) * (1.0 - bare) * vAlpha;
+  float thin = 1.0 - smoothstep(uBare - 0.06, uBare + 0.04, texture(uPatch, vec2(vUV.x * 0.35, 0.5)).r);
+  float reach = (0.25 + 0.75 * smoothstep(0.42, 0.62, tuft)) * thin;
+  float a = (1.0 - smoothstep(reach - 0.18, reach, vUV.y)) * smoothstep(0.0, 0.3, thin) * vAlpha;
   finalColor = vec4(c * (0.82 + 0.18 * (1.0 - vUV.y)) * a, a);
 }`;
 
@@ -426,7 +436,7 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
         if (!LIPS[biome]) return;
         const alpha = biomes.map((w, i) => (n === 0 ? 1 : smoothRange(0.3, 0.7, w[slot]!)) * (1 - smoothRange(0.3, 0.7, built[i]!)));
         if (alpha.every((a) => a <= 0)) return;
-        overhang.addChild(mesh(lip, OVERHANG, textures.get(biome)!.ground.texture, patches, alpha));
+        overhang.addChild(mesh(lip, OVERHANG, textures.get(biome)!.ground.texture, patches, alpha, { uBare: { value: MATERIAL_LOOKS[main].bare, type: 'f32' } }));
       });
       const feet = bandFoot(band, line.closed);
       // Smoothed, so mitred corners of the foot leave no slivers in the hems; the AO smoother still.

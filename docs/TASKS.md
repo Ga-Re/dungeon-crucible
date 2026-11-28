@@ -1341,7 +1341,10 @@ Branch: `feature/procedural-forge-phase-0`.
   **Alle 13 Materialien:** Grundbild A je Material vom DM abgenommen (2026-11-28), dann je Material die übrigen
   Höhen und Module – zusammen 156 Bilder (11 MB WebP), alle nach demselben Verfahren; gebaute Wände an der Naht
   nur über wenige Pixel überblendet (DM: kein Doppelbild von Pfosten und Fugen) und mit fester Bandbreite (Fels
-  wandert ±35 %). Offen: Abnahme der Höhen und Module per Vergleichsbild; Review; dann Abschluss von DC-128.
+  wandert ±35 %). DM 2026-11-28: die kahlen Stellen oben (Lücken im Überhang, dort Steinkappen) fielen bei Lehm und
+  Granit zu sehr auf – jetzt je Material seltener (Sandstein wie abgenommen; Lehm, Granit, Erde, Torf, Eis nur noch
+  vereinzelt), und der Überhang läuft dort schmal aus statt eckig abzureißen. Offen: Abnahme der Höhen und Module;
+  Review; dann Abschluss von DC-128.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

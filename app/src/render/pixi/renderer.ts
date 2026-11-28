@@ -283,7 +283,7 @@ export interface Renderer {
   setTerrain(terrain: TerrainShape | null): void;
   setCamera(camera: Camera): void;
   resize(size: Size): void;
-  /** Resolves after the next draw has been submitted (for screenshots and tests). */
+  /** Resolves after the next draw has been submitted, the terrain with its textures (for screenshots, tests and previews). */
   drawn(): Promise<void>;
   /**
    * Dungeon Crucible (DC-105): a still of what is shown now – the canvas drawn afresh and, under
@@ -1206,10 +1206,15 @@ export async function createRenderer(
     },
     drawn() {
       if (destroyed) return Promise.resolve();
-      return new Promise((resolve) => {
-        waiting.push(resolve);
-        requestDraw();
-      });
+      // The terrain's textures load first: drawn means with them (the catalog preview, E-90).
+      return terrain.ready().then(
+        () =>
+          new Promise<void>((resolve) => {
+            if (destroyed) return resolve();
+            waiting.push(resolve);
+            requestDraw();
+          }),
+      );
     },
     snapshot() {
       const out = document.createElement("canvas");

@@ -2157,8 +2157,11 @@ const NO_BLOCKS: ReadonlyMap<string, RasterBlock> = new Map();
  * once painted; over a picture or video only once there is terrain, and only what is painted (E-60).
  */
 export function terrainShape(): TerrainShape | null {
-  const sc = state.scene;
-  const terrain = ownTerrain();
+  return terrainShapeOf(state.scene, ownTerrain());
+}
+
+/** What `sc` shows of `terrain` (see `terrainShape`); the catalog preview draws a map's own so (E-90). */
+export function terrainShapeOf(sc: Scene, terrain: TerrainState | null): TerrainShape | null {
   if (!sc.map.drawn && !terrain) return null;
   return {
     source: { blocks: terrain ? shownTerrain(sc, terrain) : NO_BLOCKS, missingIsUnknown: false },

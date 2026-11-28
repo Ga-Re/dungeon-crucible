@@ -44,6 +44,8 @@ export interface TerrainLayer {
   readonly view: Container;
   /** Shows the terrain (`null`: none); the same blocks and look again change nothing. */
   set(shape: TerrainShape | null): void;
+  /** Settles once the last shape set is built (its textures loaded) or could not be. */
+  ready(): Promise<void>;
   destroy(): void;
 }
 
@@ -217,6 +219,8 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
   const cache = new CliffCache();
   let shown: TerrainShape | null = null;
   let wanted: TerrainShape | null = null;
+  /** The build of the last shape set: its textures load first. */
+  let building: Promise<void> = Promise.resolve();
   let destroyed = false;
 
   // A mesh leaves its geometry and shader behind when destroyed (Pixi 8): freed here, every rebuild.
@@ -352,9 +356,10 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
         shade.set(null);
         clearCliffs();
         redraw();
+        building = Promise.resolve();
         return;
       }
-      Promise.all(next.palette.flatMap((b) => (b ? [terrainTextures(b).then((t) => [b, t] as const)] : [])))
+      building = Promise.all(next.palette.flatMap((b) => (b ? [terrainTextures(b).then((t) => [b, t] as const)] : [])))
         .then((loaded) => {
           // A newer shape may have come while the textures loaded.
           if (destroyed || wanted !== next || same(next, shown)) return;
@@ -363,6 +368,7 @@ export function createTerrainLayer(redraw: () => void, renderer: Renderer): Terr
         })
         .catch((e: unknown) => console.error('The terrain could not be drawn.', e));
     },
+    ready: () => building,
     destroy() {
       destroyed = true;
       clearCliffs();

@@ -1238,7 +1238,7 @@ Branch: `feature/procedural-forge-phase-0`.
   teilweise erkundete leere Blöcke teilen deshalb keine Prüfsumme mehr, ganz erkundete weiter. Tests: 808.
   **Abgenommen vom DM (2026-11-27)**, auch die Vorschau-Wahl im Panel „Stufe“ (je Gerät) statt eines
   Einstellungsdialogs.
-  ◐ **c)** (E-88) 75 Bodentexturen (35 Klassen je Biom, Varianten außer Pflaster, Varianten der Grundböden) als
+  ✓ **c)** (E-88) 75 Bodentexturen (35 Klassen je Biom, Varianten außer Pflaster, Varianten der Grundböden) als
   WebP-Slots. `core/build/terrain/groundTool.ts`: neun Bodenklassen und welche jedes Biom hat; je Stützpunkt bis zu
   zwei Klassen mit Gewicht, der Rest Auto; Malen hebt eine Klasse auf eine Stärke und drückt die anderen gleichmäßig,
   „Auto“ nimmt zurück; Biome je Feld gegen die Palette (zwei mischen sich), ein neues Biom kommt in die Palette, ein
@@ -1263,6 +1263,7 @@ Branch: `feature/procedural-forge-phase-0`.
   DM 2026-11-28 („manche Texturen viel zu groß, z. B. Pflaster“): jede Bodenklasse hat einen eigenen Maßstab nach
   echter Größe (Kachel in Feldern: Pflaster 2–3,5 je nach Steingröße des Bildes, Kies 2, Laub 2,5, Moos 3, Gras und
   Erde 4, Fels 5, Schnee 7, Grundboden 7,3); Kies am Klippenfuß ebenso. Musterkarte je Biom mit Raster zur Abnahme.
+  **Abgenommen vom DM (2026-11-28)** – vorerst; die Texturen werden ggf. später noch einmal angepasst.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

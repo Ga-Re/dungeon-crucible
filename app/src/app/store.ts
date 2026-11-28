@@ -5,7 +5,7 @@
 import type { RescueCopy } from '../core/rescue';
 import { useSyncExternalStore } from 'react';
 import type { Point } from '../core/geometry';
-import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, type GridBox, type GridConfig } from '../core/grid';
+import { gridFromBox, shiftGrid, snapToCell, tableZoomForPhysicalGrid, toCellSpace, type GridBox, type GridConfig } from '../core/grid';
 import { buildPlayerFrame, type PlayerFrame, type ProjectionOptions, type StoreyFrame } from '../core/projection';
 import type { AreaTemplate, FogBiome, MapAssetPlacement, MapType, Scene, SoundSource, TableRotation, TemplateShape, Token, Wall, WallKind } from '../core/scene';
 import { isSoundRef } from '../core/sound';
@@ -43,6 +43,8 @@ import { History } from '../core/history';
 import { setTerrain, terrainBroken, terrainOf } from './terrain';
 import { emptyTerrain, shownStack, type TerrainState } from '../core/build/terrain/state';
 import { applyStroke, brushPoints, lassoPoints, snapLasso, stepAt, strokeStep, type BrushShape, type StepMode } from '../core/build/terrain/stepTool';
+import { biomeWeightsAt, brushCells, brushWeights, fillPoints, paintBiome, paintGround, supportPointAt, type GroundClass } from '../core/build/terrain/groundTool';
+import type { TerrainBiome } from '../core/build/terrainKeys';
 import { CLIFF_NOISE_CELLS, CliffCache, cliffLines, cliffWalls } from '../core/build/terrain/cliffs';
 import type { TerrainShape } from '../render/pixi/terrain';
 import { tvRaster } from '../core/build/terrain/tvRaster';
@@ -125,6 +127,8 @@ export interface AppState {
   terrainQuarter: boolean;
   /** While painting: the cliffs grow along (device setting, E-87) or only an outline shows until let go. */
   terrainPreview: TerrainPreview;
+  /** The biome under the pointer while a ground tool runs (its palette shows that biome's textures, E-88). */
+  terrainHover: TerrainBiome | null;
   /** Selected walls of the map (Map Forge): one, several (Shift) or a chain (double-click). */
   selectedWallIds: string[];
   log: LogEntry[];
@@ -271,6 +275,7 @@ function initial(): AppState {
     terrainCommand: null,
     terrainQuarter: false,
     terrainPreview: readTerrainPreview(),
+    terrainHover: null,
     selectedWallIds: [],
     log: [],
     rolls: [],
@@ -1210,12 +1215,25 @@ function clearWallEditing(): void {
 /* ---------- The terrain tool "Stufe" (E-87) ---------- */
 
 export type TerrainPreview = 'live' | 'outline';
+export type TerrainTool = 'step' | 'ground' | 'biome' | 'fill';
 
 export interface TerrainCommand {
+  /** Which terrain tool (E-87, E-88): steps, ground classes, biomes, or filling ground. */
+  tool: TerrainTool;
   mode: StepMode;
   shape: BrushShape;
   /** Brush size in cells (round: diameter; square: side). */
   sizeCells: number;
+  /** The ground class painted or filled. */
+  groundClass: GroundClass;
+  /** The biome painted. */
+  biome: TerrainBiome;
+  /** How strongly a stroke paints (0…1). */
+  strength: number;
+  /** Share of the brush's radius that fades out (0…1). */
+  softness: number;
+  /** How different ground filling still takes (0…1). */
+  tolerance: number;
   /** The step "set" sets. */
   picked: number;
   /** The next click on the map picks `picked` from the ground there. */
@@ -1250,16 +1268,20 @@ export function terrainEditable(): boolean {
   return state.layer === 'map' && !!state.scene.map.drawn && !!state.mapFile && !terrainBroken(state.mapFile);
 }
 
-let lastTerrainOptions: Pick<TerrainCommand, 'mode' | 'shape' | 'sizeCells' | 'picked'> = { mode: 'raise', shape: 'round', sizeCells: 2, picked: 1 };
+type TerrainOptions = Omit<TerrainCommand, 'tool' | 'picking' | 'before'>;
+const TERRAIN_OPTION_KEYS = ['mode', 'shape', 'sizeCells', 'picked', 'groundClass', 'biome', 'strength', 'softness', 'tolerance'] as const;
+let lastTerrainOptions: TerrainOptions = { mode: 'raise', shape: 'round', sizeCells: 2, picked: 1, groundClass: 'grass', biome: 'temperate', strength: 1, softness: 0.5, tolerance: 0.2 };
 
-/** Starts "Stufe" (one command at a time: another tool ends it). */
-export function startTerrainCommand(): void {
+/** Starts a terrain tool (one command at a time: another tool ends it). */
+export function startTerrainCommand(tool: TerrainTool = 'step'): void {
   if (!terrainEditable()) {
     if (state.mapFile && terrainBroken(state.mapFile)) log('log.terrainReadOnly');
     return;
   }
   stroke = null;
-  state.terrainCommand = { ...lastTerrainOptions, picking: false, before: ownTerrain() };
+  // Another terrain tool while one runs: the strokes so far stay, Cancel still goes back to before them.
+  const before = state.terrainCommand ? state.terrainCommand.before : ownTerrain();
+  state.terrainCommand = { ...lastTerrainOptions, tool, picking: false, before };
   state.wallCommand = null;
   state.areaCommand = null;
   dropCalibration();
@@ -1267,13 +1289,45 @@ export function startTerrainCommand(): void {
   emit();
 }
 
-export function updateTerrainCommand(patch: Partial<Pick<TerrainCommand, 'mode' | 'shape' | 'sizeCells' | 'picked' | 'picking'>>): void {
+export function updateTerrainCommand(patch: Partial<Omit<TerrainCommand, 'tool' | 'before'>>): void {
   const c = state.terrainCommand;
   if (!c) return;
-  state.terrainCommand = { ...c, ...patch };
-  const { mode, shape, sizeCells, picked } = state.terrainCommand;
-  lastTerrainOptions = { mode, shape, sizeCells, picked };
+  const next = { ...c, ...patch };
+  state.terrainCommand = next;
+  lastTerrainOptions = Object.fromEntries(TERRAIN_OPTION_KEYS.map((k) => [k, next[k]])) as TerrainOptions;
   emit();
+}
+
+/** The biome of the ground at map point `p` (the palette's first where none is painted). */
+export function terrainBiomeAt(p: Point): TerrainBiome {
+  const sc = state.scene;
+  const t = ownTerrain();
+  const palette = t?.biomePalette ?? [defaultTerrainBiome(sc.map.mapType, sc.map.biome)];
+  if (!t) return palette[0]!;
+  const c = toCellSpace(sc.map.grid, p);
+  const w = biomeWeightsAt(t, sc.map.storey ?? 'map', Math.floor(c.x), Math.floor(c.y));
+  return palette[w.indexOf(Math.max(...w))] ?? palette[0]!;
+}
+
+/** The pointer moved over the map with a ground tool: the palette follows the biome there. */
+export function hoverTerrainBiome(p: Point): void {
+  const biome = terrainBiomeAt(p);
+  if (biome === state.terrainHover) return;
+  state.terrainHover = biome;
+  emit();
+}
+
+/** The map's biomes (its terrain's palette; the default one before anything is painted). */
+export function terrainPalette(): readonly TerrainBiome[] {
+  return ownTerrain()?.biomePalette ?? [defaultTerrainBiome(state.scene.map.mapType, state.scene.map.biome)];
+}
+
+/** The map's area in support points (filling stays inside it). */
+function areaPoints(): { x0: number; y0: number; x1: number; y1: number } {
+  const m = state.scene.map;
+  const o = m.origin ?? { x: 0, y: 0 };
+  const corners = [o, { x: o.x + m.widthPx, y: o.y }, { x: o.x, y: o.y + m.heightPx }, { x: o.x + m.widthPx, y: o.y + m.heightPx }].map((p) => supportPointAt(m.grid, p));
+  return { x0: Math.min(...corners.map((c) => c[0])), y0: Math.min(...corners.map((c) => c[1])), x1: Math.max(...corners.map((c) => c[0])), y1: Math.max(...corners.map((c) => c[1])) };
 }
 
 export function setTerrainQuarter(on: boolean): void {
@@ -1302,6 +1356,7 @@ export function cancelTerrainCommand(): void {
 function endTerrainCommand(): void {
   stroke = null;
   state.terrainCommand = null;
+  state.terrainHover = null;
 }
 
 /** A stroke being painted: the terrain it started from, the stack and the step it sets. */
@@ -1314,8 +1369,11 @@ let stroke: {
   readonly stack: string;
   readonly startStep: number;
   path: Point[];
-  /** Support points the brush covered so far (lasso: worked out from its path each time). */
-  covered: Map<string, readonly [number, number]>;
+  /**
+   * What the brush covered so far, with the strongest touch: support points (biome: cells).
+   * A lasso works its points out from its path each time.
+   */
+  covered: Map<string, readonly [number, number, number]>;
   /** Its step of undo is taken with its first change, so a stroke changing nothing leaves none. */
   undoTaken: boolean;
 } | null = null;
@@ -1341,15 +1399,48 @@ export function beginTerrainStroke(p: Point): boolean {
     return false;
   }
   const base = own ?? emptyTerrain([defaultTerrainBiome(state.scene.map.mapType, state.scene.map.biome)]);
+  if (c.tool === 'fill') {
+    // One click, one step of undo: the connected ground of the same mix on the same step (E-88).
+    const [x, y] = supportPointAt(state.scene.map.grid, p);
+    const points = fillPoints(base, stack, x, y, c.tolerance, areaPoints());
+    const next = paintGround(base, stack, points.map(([px, py]) => [px, py, 1] as const), c.groundClass);
+    if (next !== base) {
+      checkpoint();
+      setTerrain(state.mapFile, next);
+      terrainChanged(true);
+    }
+    return false;
+  }
   stroke = { mapFile: state.mapFile, before: own, base, stack, startStep: stepAt(base, stack, state.scene.map.grid, p), path: [p], covered: new Map(), undoTaken: false };
   cover(c, stroke, [p]);
   return true;
 }
 
-/** Adds what the brush covers along `path` (map px) to the stroke. */
+/** Adds what the brush covers along `path` (map px) to the stroke, keeping each place's strongest touch. */
 function cover(c: TerrainCommand, s: NonNullable<typeof stroke>, path: readonly Point[]): void {
-  if (c.shape === 'lasso') return;
-  for (const pt of brushPoints(path, c.shape, c.sizeCells, state.scene.map.grid, state.terrainQuarter)) s.covered.set(`${pt[0]},${pt[1]}`, pt);
+  const grid = state.scene.map.grid;
+  if (c.tool === 'step' && c.shape === 'lasso') return;
+  const touched =
+    c.tool === 'ground' ? brushWeights(path, c.sizeCells, c.softness, grid)
+    : c.tool === 'biome' ? brushCells(path, c.sizeCells, c.softness, grid)
+    : brushPoints(path, c.shape === 'square' ? 'square' : 'round', c.sizeCells, grid, state.terrainQuarter).map(([x, y]) => [x, y, 1] as [number, number, number]);
+  for (const pt of touched) {
+    const key = `${pt[0]},${pt[1]}`;
+    const had = s.covered.get(key);
+    if (!had || had[2] < pt[2]) s.covered.set(key, pt);
+  }
+}
+
+/** The stroke's terrain: `base` painted with what it covered, the way its tool paints (null: refused). */
+function painted(c: TerrainCommand, s: NonNullable<typeof stroke>, invert: boolean): TerrainState | null {
+  const grid = state.scene.map.grid;
+  const scaled = [...s.covered.values()].map(([x, y, w]) => [x, y, w * c.strength] as const);
+  if (c.tool === 'ground') return paintGround(s.base, s.stack, scaled, invert ? 'auto' : c.groundClass);
+  // Alt takes cells back to the map's first biome.
+  if (c.tool === 'biome') return paintBiome(s.base, s.stack, scaled, invert ? s.base.biomePalette[0]! : c.biome);
+  const points = c.shape === 'lasso' ? lassoPoints(s.path.map((q) => snapLasso(q, grid, state.terrainQuarter)), grid) : [...s.covered.values()].map(([x, y]) => [x, y] as const);
+  const mode = invert && c.mode !== 'set' ? (c.mode === 'raise' ? 'lower' : 'raise') : c.mode;
+  return applyStroke(s.base, s.stack, points, mode, strokeStep(mode, s.startStep, c.picked));
 }
 
 /**
@@ -1362,8 +1453,7 @@ export function moveTerrainStroke(p: Point, opts: { straight: boolean; invert: b
   const c = state.terrainCommand;
   const s = liveStroke();
   if (!c || !s) return;
-  const grid = state.scene.map.grid;
-  if (opts.straight && c.shape !== 'lasso') {
+  if (opts.straight && !(c.tool === 'step' && c.shape === 'lasso')) {
     s.path = [s.path[0]!, p];
     s.covered = new Map();
     cover(c, s, s.path);
@@ -1372,10 +1462,19 @@ export function moveTerrainStroke(p: Point, opts: { straight: boolean; invert: b
     s.path.push(p);
   }
   if (final) stroke = null;
-  if (!final && state.terrainPreview === 'outline') return emit();
-  const points = c.shape === 'lasso' ? lassoPoints(s.path.map((q) => snapLasso(q, grid, state.terrainQuarter)), grid) : [...s.covered.values()];
-  const mode = opts.invert && c.mode !== 'set' ? (c.mode === 'raise' ? 'lower' : 'raise') : c.mode;
-  const next = applyStroke(s.base, s.stack, points, mode, strokeStep(mode, s.startStep, c.picked));
+  // The outline preview is for steps (their cliffs are what costs); ground and biomes paint at once.
+  if (!final && state.terrainPreview === 'outline' && c.tool === 'step') return emit();
+  const next = painted(c, s, opts.invert);
+  if (!next) {
+    // A fifth biome: the palette holds four (E-88).
+    stroke = null;
+    log('log.biomePaletteFull');
+    if (s.undoTaken) {
+      setTerrain(s.mapFile, s.before);
+      terrainChanged(true);
+    }
+    return emit();
+  }
   // Nothing painted yet and nothing to paint: no change, no step of undo.
   if (next === s.base && !s.undoTaken) return emit();
   if (!s.undoTaken) {
@@ -2019,7 +2118,7 @@ export function terrainShape(): TerrainShape | null {
   return {
     source: { blocks: terrain ? shownTerrain(sc, terrain) : NO_BLOCKS, missingIsUnknown: false },
     grid: sc.map.grid,
-    biome: terrain?.biomePalette[0] ?? defaultTerrainBiome(sc.map.mapType, sc.map.biome),
+    palette: terrain?.biomePalette ?? [defaultTerrainBiome(sc.map.mapType, sc.map.biome)],
     stepFt: terrain?.stepFt ?? 10,
     perspective: sc.map.intent?.cliffPerspective ?? BAND_PER_10_FT,
     lightAngle: sc.map.lightAngle,
@@ -3544,7 +3643,11 @@ function tvRasterOf(scene: Scene): NonNullable<ProjectionOptions['raster']> | nu
     Object.assign(rasterMemo, { terrain, fog: scene.fog, key });
     const r = tvRaster(terrain, view);
     rasterMemo.blocks = new Map([...r.values()].map((v) => [v.checksum, v.block]));
-    rasterMemo.frame = { stepFt: terrain.stepFt, palette: [...terrain.biomePalette], blocks: Object.fromEntries([...r].map(([k, v]) => [k, v.checksum])) };
+    // The TV learns a biome's name only if its blocks use it (E-88): one painted only where it may
+    // not look stays unnamed.
+    const used = new Set([0]);
+    for (const { block } of r.values()) (['biome2', 'biome3', 'biome4'] as const).forEach((ch, k) => block.planes[ch].some((v) => v > 0) && used.add(k + 1));
+    rasterMemo.frame = { stepFt: terrain.stepFt, palette: terrain.biomePalette.map((b, i) => (used.has(i) ? b : null)), blocks: Object.fromEntries([...r].map(([k, v]) => [k, v.checksum])) };
   }
   return { ...rasterMemo.frame, ...look };
 }

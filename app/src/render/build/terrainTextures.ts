@@ -1,21 +1,42 @@
 /**
- * Textures of the terrain (E-87): per terrain biome a cliff band (a strip seen from the front,
- * seamless along its width) and a ground (seamless both ways), shipped in `./textures`; plus two
- * generated helpers – patches read along an edge (where bare stone caps show) and crumbly earth
- * for the hem below a cliff's foot. Loaded once per biome; shared by the DM window and the TV.
+ * Textures of the terrain (E-87, E-88): per terrain biome a cliff band (a strip seen from the front,
+ * seamless along its width), its ground and each ground class it has, with their variants
+ * (seamless both ways), shipped in `./textures`; plus a generated helper – patches read along
+ * an edge, where bare stone caps show. Loaded once per biome; shared by the DM window and the TV.
  */
 import { Texture } from 'pixi.js';
 import type { TerrainBiome } from '../../core/build/terrainKeys';
+import { BIOME_CLASSES, type GroundClass } from '../../core/build/terrain/groundTool';
 import { periodicNoise } from '../../core/build/variance';
+
+/** A ground and its variant, if it has one (laid in large patches against repetition). */
+export interface Surface {
+  readonly texture: Texture;
+  readonly variant: Texture | null;
+}
 
 export interface TerrainTextures {
   readonly band: Texture;
-  readonly ground: Texture;
+  /** Auto: the biome's own ground. */
+  readonly ground: Surface;
+  /** The classes the biome has. */
+  readonly classes: ReadonlyMap<GroundClass, Surface>;
   readonly patches: Texture;
-  readonly earth: Texture;
 }
 
-const files = import.meta.glob('./textures/{cliff-band,terrain-ground}-*.webp', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const files = import.meta.glob('./textures/{cliff-band,terrain}-*.webp', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+
+/** The picture of a ground class as `biome` shows it (Auto: its own ground), for palettes in panels. */
+export function groundPictureUrl(biome: TerrainBiome, cls: GroundClass | null): string | undefined {
+  return files[cls ? `./textures/terrain-${biome}-${cls}.webp` : `./textures/terrain-ground-${biome}.webp`];
+}
+
+/** A ground slot and its variant (`<slot>.1`), made seamless. */
+async function surface(slot: string): Promise<Surface> {
+  const variantUrl = files[`./textures/${slot}.1.webp`];
+  const [texture, variant] = await Promise.all([seamless(files[`./textures/${slot}.webp`], 'xy', 512), variantUrl ? seamless(variantUrl, 'xy', 512) : null]);
+  return { texture, variant };
+}
 
 const loading = new Map<TerrainBiome, Promise<TerrainTextures>>();
 
@@ -24,8 +45,12 @@ export function terrainTextures(biome: TerrainBiome): Promise<TerrainTextures> {
   let p = loading.get(biome);
   if (!p) {
     p = (async () => {
-      const [band, ground] = await Promise.all([seamless(files[`./textures/cliff-band-${biome}.webp`], 'x', 1024), seamless(files[`./textures/terrain-ground-${biome}.webp`], 'xy', 512)]);
-      return { band, ground, patches: patches(), earth: earth() };
+      const [band, ground, ...classes] = await Promise.all([
+        seamless(files[`./textures/cliff-band-${biome}.webp`], 'x', 1024),
+        surface(`terrain-ground-${biome}`),
+        ...BIOME_CLASSES[biome].map((c) => surface(`terrain-${biome}-${c}`)),
+      ]);
+      return { band, ground, classes: new Map(BIOME_CLASSES[biome].map((c, i) => [c, classes[i]!])), patches: patches() };
     })();
     loading.set(biome, p);
     // A failed load is tried again next time.
@@ -100,17 +125,5 @@ function patches(): Texture {
     g.fillStyle = `rgb(${128 + tileNoise(x, 0, 16, 512, 201) * 127},0,0)`;
     g.fillRect(x, 0, 1, 4);
   }
-  return repeating(c);
-}
-
-/** Earth for the hem below the foot: brown, crumbly; tinted per biome. */
-function earth(): Texture {
-  const [c, g] = canvas(256, 256);
-  for (let y = 0; y < 256; y += 2)
-    for (let x = 0; x < 256; x += 2) {
-      const n = tileNoise(x, y, 16, 256, 31) * 20 + tileNoise(x, y, 4, 256, 33) * 12;
-      g.fillStyle = `rgb(${112 + n},${88 + n},${62 + n * 0.8})`;
-      g.fillRect(x, y, 2, 2);
-    }
   return repeating(c);
 }

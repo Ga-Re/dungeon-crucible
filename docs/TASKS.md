@@ -1238,6 +1238,28 @@ Branch: `feature/procedural-forge-phase-0`.
   teilweise erkundete leere Blöcke teilen deshalb keine Prüfsumme mehr, ganz erkundete weiter. Tests: 808.
   **Abgenommen vom DM (2026-11-27)**, auch die Vorschau-Wahl im Panel „Stufe“ (je Gerät) statt eines
   Einstellungsdialogs.
+  ◐ **c)** (E-88) 75 Bodentexturen (35 Klassen je Biom, Varianten außer Pflaster, Varianten der Grundböden) als
+  WebP-Slots. `core/build/terrain/groundTool.ts`: neun Bodenklassen und welche jedes Biom hat; je Stützpunkt bis zu
+  zwei Klassen mit Gewicht, der Rest Auto; Malen hebt eine Klasse auf eine Stärke und drückt die anderen gleichmäßig,
+  „Auto“ nimmt zurück; Biome je Feld gegen die Palette (zwei mischen sich), ein neues Biom kommt in die Palette, ein
+  fünftes wird abgelehnt; weiche runde Pinsel; Füllen nimmt zusammenhängend gleichen Boden auf derselben Stufe
+  (Klippen begrenzen). Zeichnen (`render/pixi/groundSplat.ts`) für DM und TV: der Grundboden des ersten Bioms über die
+  Karte, je Block die anderen Biome und die gemalten Klassen im Biom, in dem sie liegen; Kanten durch Rauschen
+  ausgefranst (Zungen, Inseln), Varianten in großen Flecken; Gewichte als kleine Daten-Texturen je Block samt
+  Nachbarrand, neu gebaut nur bei geändertem Block. Klippen nehmen Band, Überhang und Kies am Fuß vom Biom der
+  Oberseite, längs der Kante überblendet; malt man nur Boden, bleiben die Klippen stehen. Werkzeuge im Tab GELÄNDE:
+  Bodenklasse (Bildpalette des Bioms unter dem Zeiger, fehlende Klassen blass mit Hinweis), Biom (fünf Bilder,
+  Palette der Karte), Füllen (Toleranz); Stärke, weiche Kante, Größe; Alt = zurück auf Auto bzw. das erste Biom.
+  Geprüft: 821 Tests, Build mit Tisch-Bundle-Prüfung; der echte Renderer offscreen (Klassen, Biomgrenze, Klippe über
+  die Grenze); in der echten App alle drei Werkzeuge über den Store, Panel im Bild. Das Kartenbild der App selbst
+  nicht: im verdeckten oder Offscreen-Fenster gehen die WebGL-Kontexte der App-Seite verloren und der Renderer hängt
+  gelegentlich nach dem Start – ebenso auf `main` (2026-11-28 verglichen), also älter.
+  Nach dem Review: Biomgewichte lesen einen Ring der Nachbarzellen (vorher eine Naht an jeder Blockgrenze); jede
+  Schicht deckt ihren Anteil an dem, was unter ihr liegt (Auto, dann Klassen nach Nummer; erstes Biom, dann die
+  anderen), mit demselben Rauschen – zwei Biome oder Klassen zu je einer Hälfte lassen keine Löcher mehr; ein
+  Palettenplatz, den kein Feld mehr nutzt, wird für ein neues Biom wieder vergeben (so stimmt der Hinweis „zuerst
+  übermalen“); Malen ohne Änderung hinterlässt keinen Rückgängig-Schritt. TV-Frame v8: der TV erfährt nur die Namen
+  der Biome, die seine Blöcke nutzen – ein Biom nur in einem unentdeckten Geheimraum bleibt ungenannt. Tests: 823.
 - **DC-129 Fels, Dungeon, Wandlinien** (E-48, E-62, E-64): Aushöhlen, Füllen, Raum, Wandlinien mit Linienbau-Stilen
   und Wehrmauer, Öffnungen (O-A2), Sicht- und Bewegungs-Wände, Leck-Prüfung, Stockwerk-Grundfläche, Raumerkennung,
   Bodenplatten per WFC, Untergrund mit Eingängen (O-A3).

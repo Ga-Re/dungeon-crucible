@@ -49,7 +49,7 @@ import {
   cancelCalibration, finishCalibration, moveCalibration, setCalibrationBox,
   editableHere, shownInForge, activateAsset, placeHere, previewPlacing, stopPlacing, placedFootprint, placedPivot, turnPlacedAssetTo, answerInteriorAsk, answerTvAsk, applyMapToTv, assetDoors, sightWalls, withAssetDoors, anyAssetAt, assetExtras, currentChanges, editableAssets, toggleHidden, cycleAssetVariant, deletePlacedAsset, moveAssetTo, placeAsset, placedAssetAt, rotatePlacedAsset, scalePlacedAsset, selectPlacedAsset,
   addWallPoint, cancelWallCommand, deleteSelectedWalls, endWallChain, finishWallCommand, moveWallEnds, selectWall, selectWallChain, undoWallPoint,
-  terrainShape, beginTerrainStroke, moveTerrainStroke, terrainStrokePath, abortTerrainStroke, cancelTerrainCommand, finishTerrainCommand,
+  terrainShape, hoverTerrainBiome, beginTerrainStroke, moveTerrainStroke, terrainStrokePath, abortTerrainStroke, cancelTerrainCommand, finishTerrainCommand,
 } from '../app/store';
 
 /** Drag-and-drop type for creatures dragged from the browser onto the map. */
@@ -102,6 +102,7 @@ export function MapView() {
 function DmMap() {
   const { t } = useI18n();
   const tool = useStore((s) => s.tool);
+  const terrainTool = useStore((s) => s.terrainCommand?.tool ?? 'step');
   const ws = useStore((s) => s.ws);
   const sceneVersion = useStore((s) => s.sceneVersion);
   const mapPresent = useStore((s) => hasMap(s.scene));
@@ -415,6 +416,8 @@ function DmMap() {
     const c = state.terrainCommand;
     if (!c || state.tool !== 'terrain') return null;
     const grid = state.scene.map.grid;
+    // Ground and biome: a soft round brush; filling: a click.
+    if (c.tool !== 'step') return { cursor: c.tool === 'fill' ? null : brushOutline(mouse.current, 'round', c.sizeCells, grid, false), stroke: null, path: null };
     const path = terrainStrokePath();
     const cursor = c.shape === 'lasso' || c.picking ? null : brushOutline(mouse.current, c.shape, c.sizeCells, grid, state.terrainQuarter);
     if (!path || state.terrainPreview === 'live') return { cursor, stroke: null, path: null };
@@ -683,6 +686,8 @@ function DmMap() {
     const p = toWorld(e);
     mouse.current = p;
     const d = drag.current;
+    // The ground palette shows the biome under the pointer (E-88).
+    if (state.tool === 'terrain' && state.terrainCommand && state.terrainCommand.tool !== 'step') hoverTerrainBiome(p);
     // The placing mode's preview follows the pointer (not while panning).
     if (state.placing && d?.kind !== 'pan') previewPlacing(p);
     if (!d) return;
@@ -804,7 +809,8 @@ function DmMap() {
     view.current = viewAt(w, { x: mx, y: my }, zoom, view.current.rot);
   };
 
-  const hintKey = tool === 'select' && ws === 'forge' ? 'hint.selectForge' : HINTS[tool];
+  const terrainHint: Record<string, MessageKey> = { step: 'hint.terrain', ground: 'hint.terrainGround', biome: 'hint.terrainBiome', fill: 'hint.terrainFill' };
+  const hintKey = tool === 'select' && ws === 'forge' ? 'hint.selectForge' : tool === 'terrain' ? terrainHint[terrainTool] : HINTS[tool];
   return (
     <div ref={wrapRef} className="map-wrap">
       {/* The storeys below the one worked on (E-40): blurred under it, everything shown. */}

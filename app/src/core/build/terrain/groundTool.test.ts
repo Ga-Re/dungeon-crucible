@@ -70,11 +70,24 @@ describe('painting a biome', () => {
     expect(cellOf(three, 'map', 'biome1', 9, 9)).toBe(255);
   });
 
-  it('a fifth biome is refused: the palette holds four', () => {
+  it('a fifth biome is refused while all four are on the map; a place no cell uses any more is taken again', () => {
     let t = t0();
-    for (const b of ['desert', 'winter', 'swamp'] as const) t = paintBiome(t, 'map', [[0, 0, 1]], b)!;
+    for (const [i, b] of (['desert', 'winter', 'swamp'] as const).entries()) t = paintBiome(t, 'map', [[i * 2, 0, 1]], b)!;
     expect(t.biomePalette).toHaveLength(4);
-    expect(paintBiome(t, 'map', [[0, 0, 1]], 'dungeon')).toBeNull();
+    expect(paintBiome(t, 'map', [[9, 9, 1]], 'dungeon')).toBeNull();
+    // Winter painted over with the first biome: its place is free for the new one.
+    const over = paintBiome(t, 'map', [[2, 0, 1]], 'temperate')!;
+    const next = paintBiome(over, 'map', [[9, 9, 1]], 'dungeon')!;
+    expect(next.biomePalette).toEqual(['temperate', 'desert', 'dungeon', 'swamp']);
+    expect(biomeWeightsAt(next, 'map', 9, 9)).toEqual([0, 0, 1, 0]);
+  });
+
+  it('painting what is there already changes nothing: the same state', () => {
+    const t = paintGround(t0(), 'map', point(10, 10), 'rock');
+    expect(paintGround(t, 'map', point(10, 10), 'rock')).toBe(t);
+    const empty = t0();
+    expect(paintGround(empty, 'map', point(10, 10), 'auto')).toBe(empty);
+    expect(paintBiome(empty, 'map', [[3, 3, 1]], 'temperate')).toBe(empty);
   });
 });
 

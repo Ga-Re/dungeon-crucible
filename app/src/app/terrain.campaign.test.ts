@@ -9,6 +9,7 @@ import { MapSidecarSchema } from '../core/sidecar';
 import { createSampleScene } from '../sample/crypt';
 import { rectPolygon } from '../core/fogModel';
 import { rasterChecksum } from '../core/build/terrain/tvRaster';
+import { biomeWeightsAt, classId, groundAt, paintBiome } from '../core/build/terrain/groundTool';
 import { defaultTerrainBiome } from '../core/build/intent';
 import { emptyTerrain, encodeTerrain, EncodeCache, pointOf, setPoints } from '../core/build/terrain/state';
 
@@ -145,6 +146,14 @@ describe('terrain on the TV (E-85)', () => {
     expect(rasterChecksum(block)).toBe(raster.blocks['0_0']);
   });
 
+  it('the TV learns the names only of the biomes in the blocks it gets (a biome in unexplored ground stays unnamed)', async () => {
+    await onTv();
+    const t = paintBiome(paintBiome(terrainOf(MAP)!, 'map', [[3, 3, 1]], 'desert')!, 'map', [[60, 60, 1]], 'winter')!;
+    setTerrain(MAP, t);
+    const raster = produceFrame(1).map.raster!;
+    expect(raster.palette).toEqual(['temperate', 'desert', null]);
+  });
+
   it('a change of the terrain waits with the map for the DM, then reaches the TV', async () => {
     await onTv();
     const before = produceFrame(1).map.raster!.blocks['0_0'];
@@ -266,6 +275,61 @@ describe('the tool "Stufe" (E-87)', () => {
     startTerrainCommand();
     expect(state.terrainCommand).toBeNull();
     expect(state.log.some((l) => l.key === 'log.terrainReadOnly')).toBe(true);
+  });
+});
+
+describe('ground, biome and fill (E-88)', () => {
+  const stroke = (from: { x: number; y: number }, to: { x: number; y: number }, invert = false) => {
+    beginTerrainStroke(from);
+    moveTerrainStroke(to, { straight: false, invert }, false);
+    moveTerrainStroke(to, { straight: false, invert }, true);
+  };
+
+  it('a ground stroke paints its class at its strength, one step of undo; Alt takes it back to Auto', async () => {
+    await hill();
+    startTerrainCommand('ground');
+    updateTerrainCommand({ groundClass: 'rock', strength: 1, softness: 0, sizeCells: 1 });
+    stroke({ x: 10.5 * 70, y: 10.5 * 70 }, { x: 12.5 * 70, y: 10.5 * 70 });
+    expect(groundAt(terrainOf(MAP)!, 'map', 44, 42).get(classId('rock'))).toBe(1);
+    // The steps are untouched: no cliff came from painting ground.
+    expect(pointOf(terrainOf(MAP)!, 'map', 'step', 44, 42)).toBe(0);
+    stroke({ x: 10.5 * 70, y: 10.5 * 70 }, { x: 12.5 * 70, y: 10.5 * 70 }, true);
+    expect(groundAt(terrainOf(MAP)!, 'map', 44, 42).size).toBe(0);
+    undo();
+    expect(groundAt(terrainOf(MAP)!, 'map', 44, 42).get(classId('rock'))).toBe(1);
+  });
+
+  it('a biome stroke brings the biome into the palette; a fifth is refused with a note', async () => {
+    await hill();
+    startTerrainCommand('biome');
+    updateTerrainCommand({ biome: 'desert', strength: 1, softness: 0, sizeCells: 2 });
+    stroke({ x: 10.5 * 70, y: 10.5 * 70 }, { x: 11.5 * 70, y: 10.5 * 70 });
+    expect(terrainOf(MAP)!.biomePalette).toEqual(['temperate', 'desert']);
+    expect(biomeWeightsAt(terrainOf(MAP)!, 'map', 10, 10)).toEqual([0, 1, 0, 0]);
+    for (const [i, b] of (['winter', 'swamp'] as const).entries()) {
+      updateTerrainCommand({ biome: b });
+      stroke({ x: (20.5 + i * 5) * 70, y: 20.5 * 70 }, { x: (20.5 + i * 5) * 70, y: 20.5 * 70 });
+    }
+    const full = terrainOf(MAP);
+    updateTerrainCommand({ biome: 'dungeon' });
+    stroke({ x: 30.5 * 70, y: 30.5 * 70 }, { x: 30.5 * 70, y: 30.5 * 70 });
+    expect(terrainOf(MAP)).toBe(full);
+    expect(state.log.some((l) => l.key === 'log.biomePaletteFull')).toBe(true);
+  });
+
+  it('a fill click gives the connected ground its class, inside the map, as one step of undo', async () => {
+    await hill();
+    startTerrainCommand('fill');
+    updateTerrainCommand({ groundClass: 'gravel', tolerance: 0.1 });
+    const before = terrainOf(MAP);
+    expect(beginTerrainStroke({ x: 5.5 * 70, y: 5.5 * 70 })).toBe(false);
+    const t = terrainOf(MAP)!;
+    expect(t).not.toBe(before);
+    expect(groundAt(t, 'map', 22, 22).get(classId('gravel'))).toBe(1);
+    // The hill's raised point is on another step: not filled.
+    expect(groundAt(t, 'map', 1, 1).size).toBe(0);
+    undo();
+    expect(terrainOf(MAP)).toBe(before);
   });
 });
 

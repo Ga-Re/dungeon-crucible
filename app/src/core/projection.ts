@@ -15,9 +15,9 @@ import { stairsOn } from './stairs';
 import { tokensVisibleToPlayers, type LitSource } from './vision';
 import { intersection } from 'polyclip-ts';
 import { asGeom, fromClip } from './poly/polygon-clip';
-import { BLOCK_KEY, biomePaletteSchema, stepFtSchema, type TerrainBiome } from './build/terrainKeys';
+import { BLOCK_KEY, stepFtSchema, TERRAIN_BIOMES, type TerrainBiome } from './build/terrainKeys';
 
-export const FRAME_VERSION = 7;
+export const FRAME_VERSION = 8;
 
 /** How dark unlit areas look on a dark map (darkvision sees them, dimmed). */
 export const DARKNESS = 0.45;
@@ -83,7 +83,12 @@ export const StoreyFrameSchema = z.object({
     raster: z
       .object({
         stepFt: stepFtSchema,
-        palette: biomePaletteSchema,
+        /** The biomes by palette place; a place the TV's blocks do not use is null – it never learns its name (E-88). */
+        palette: z
+          .array(z.enum(TERRAIN_BIOMES).nullable())
+          .min(1)
+          .max(4)
+          .refine((p) => p[0] !== null && new Set(p.filter((b) => b !== null)).size === p.filter((b) => b !== null).length, 'the first known, each biome once'),
         perspective: z.number().min(0.2).max(1),
         lightAngle: z.number(),
         blocks: z.record(z.string().regex(BLOCK_KEY), z.string().regex(/^[0-9a-f]{16}$/)),
@@ -164,7 +169,7 @@ export interface ProjectionOptions {
   /** The TV's last change of picture (DC-105); none: no transition yet. */
   cut?: { n: number; play: TransitionPlay; ms: number };
   /** The terrain the TV may know (`tvRaster`): its checksums by block; none: no terrain. */
-  raster?: { stepFt: 5 | 10 | 15 | 20; palette: readonly TerrainBiome[]; perspective: number; lightAngle: number; blocks: Readonly<Record<string, string>> } | null;
+  raster?: { stepFt: 5 | 10 | 15 | 20; palette: readonly (TerrainBiome | null)[]; perspective: number; lightAngle: number; blocks: Readonly<Record<string, string>> } | null;
 }
 
 /** Light for the players: only inside what they see now, so a light in remembered or hidden areas gives nothing away. */

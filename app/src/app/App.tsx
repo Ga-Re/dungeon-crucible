@@ -133,7 +133,7 @@ function Ribbon() {
   const { t } = useI18n();
   const ws = useStore((s) => s.ws);
   const tool = useStore((s) => s.tool);
-  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart, onTv: !!s.scenePath && s.scenePath === s.tvScenePath, leakCheck: !!s.leakCheck, look: !!s.lookCommand, quarter: s.terrainQuarter, drawn: !!s.scene.map.drawn }));
+  const flags = useStore((s) => ({ snap: s.snap, viewAsPlayer: s.viewAsPlayer, moveLock: s.moveLock, blackout: s.scene.table.blackout, fogMode: s.fogMode, dmFogHidden: s.dmFogHidden, editStart: s.editStart, onTv: !!s.scenePath && s.scenePath === s.tvScenePath, leakCheck: !!s.leakCheck, look: !!s.lookCommand, quarter: s.terrainQuarter, drawn: !!s.scene.map.drawn, terrainTool: s.tool === 'terrain' ? (s.terrainCommand?.tool ?? null) : null }));
   const [resetting, setResetting] = useState(false);
   const mapSettings = useStore((s) => s.mapSettingsOpen);
   const [tab, setTab] = useState(0);
@@ -158,7 +158,7 @@ function Ribbon() {
     if (b.id === 'scene:toTv') return flags.onTv;
     if (b.id === 'area:create') return tool === 'area';
     if (b.id === 'walls:draw') return tool === 'wall';
-    if (b.id === 'terrain:step') return tool === 'terrain';
+    if (b.id.startsWith('terrain:')) return flags.terrainTool === b.id.slice(8);
     if (b.id === 'toggle:quarter') return flags.quarter;
     if (b.id === 'leak:check') return flags.leakCheck;
     if (b.id === 'map:look') return flags.look;
@@ -167,7 +167,7 @@ function Ribbon() {
   };
 
   /** Terrain tools work on drawn maps only for now (E-87): greyed out elsewhere, saying when they come. */
-  const isTerrain = (b: RibbonButton) => b.id === 'terrain:step' || b.id === 'toggle:quarter';
+  const isTerrain = (b: RibbonButton) => b.id.startsWith('terrain:') || b.id === 'toggle:quarter';
   const isDisabled = (b: RibbonButton) => isTerrain(b) && !flags.drawn;
 
   const run = (b: RibbonButton, el: HTMLElement) => {
@@ -195,7 +195,10 @@ function Ribbon() {
       case 'audio:stop': return stopAll();
       case 'fog:revealAll': return fogAll(true);
       case 'walls:draw': return startWallCommand();
-      case 'terrain:step': return startTerrainCommand();
+      case 'terrain:step': return startTerrainCommand('step');
+      case 'terrain:ground': return startTerrainCommand('ground');
+      case 'terrain:biome': return startTerrainCommand('biome');
+      case 'terrain:fill': return startTerrainCommand('fill');
       case 'toggle:quarter': return setTerrainQuarter(!flags.quarter);
       case 'leak:check': return setLeakCheck(!state.leakCheck);
       case 'grid:calibrate': return startCalibration();

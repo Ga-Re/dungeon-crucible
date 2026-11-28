@@ -131,7 +131,15 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceDef> = {
         // E-87: on drawn maps only for now; greyed out on picture and video maps.
         label: 'tab.terrain',
         groups: [
-          { label: 'group.terrain', buttons: [{ id: 'terrain:step', icon: 'terrain', label: 'tool.terrainStep' }] },
+          {
+            label: 'group.terrain',
+            buttons: [
+              { id: 'terrain:step', icon: 'terrain', label: 'tool.terrainStep' },
+              { id: 'terrain:ground', icon: 'ground', label: 'tool.terrainGround' },
+              { id: 'terrain:biome', icon: 'leaf', label: 'tool.terrainBiome' },
+              { id: 'terrain:fill', icon: 'bucket', label: 'tool.terrainFill' },
+            ],
+          },
           { label: 'group.snapping', buttons: [{ id: 'toggle:quarter', icon: 'quarter', label: 'tool.quarterSnap' }] },
         ],
       },

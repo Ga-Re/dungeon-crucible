@@ -75,11 +75,15 @@ export function paintGround(t: TerrainState, stack: string, points: readonly (re
   for (const [x, y, a] of points) {
     if (a <= 0) continue;
     const [first, second] = topTwo(lifted(groundAt(t, stack, x, y), id, Math.min(1, a)));
-    edits.ground1Class.push([x, y, first?.[0] ?? 0]);
-    edits.ground1Weight.push([x, y, first?.[1] ?? 0]);
     // Rounding may not make the two more than the whole.
-    edits.ground2Class.push([x, y, second?.[0] ?? 0]);
-    edits.ground2Weight.push([x, y, second ? Math.min(second[1], 255 - first![1]) : 0]);
+    const next = [first?.[0] ?? 0, first?.[1] ?? 0, second?.[0] ?? 0, second ? Math.min(second[1], 255 - first![1]) : 0];
+    const now = (['ground1Class', 'ground1Weight', 'ground2Class', 'ground2Weight'] as const).map((ch) => pointOf(t, stack, ch, x, y));
+    // Unchanged: left as it is, so painting what is there gives the same state (no step of undo).
+    if (next.every((v, i) => v === now[i])) continue;
+    edits.ground1Class.push([x, y, next[0]!]);
+    edits.ground1Weight.push([x, y, next[1]!]);
+    edits.ground2Class.push([x, y, next[2]!]);
+    edits.ground2Weight.push([x, y, next[3]!]);
   }
   let out = t;
   for (const ch of ['ground1Class', 'ground1Weight', 'ground2Class', 'ground2Weight'] as const) if (edits[ch].length) out = setPoints(out, stack, ch, edits[ch]);
@@ -91,17 +95,37 @@ export function biomeWeightsAt(t: TerrainState, stack: string, cx: number, cy: n
   return BIOME_CHANNELS.map((ch) => cellOf(t, stack, ch, cx, cy) / 255);
 }
 
+/** A palette place (not the first) no cell of any stack or layer uses any more, or −1. */
+function unusedPlace(t: TerrainState): number {
+  for (let k = 1; k < t.biomePalette.length; k++) {
+    const ch = BIOME_CHANNELS[k]!;
+    let used = false;
+    for (const s of t.stacks.values()) {
+      for (const b of s.base.values()) if (b.planes[ch].some((v) => v > 0)) used = true;
+      for (const patches of s.layers.values()) for (const p of patches.values()) if (p.values.planes[ch].some((v, i) => v > 0 && p.cellMask[i])) used = true;
+      if (used) break;
+    }
+    if (!used) return k;
+  }
+  return -1;
+}
+
 /**
- * `t` with `biome` painted at cells [column, row, strength 0…1]: it joins the palette if new.
- * Null if the palette has four biomes already (E-88).
+ * `t` with `biome` painted at cells [column, row, strength 0…1]: it joins the palette if new – in a
+ * place no cell uses any more if the palette is full. Null if all four places are in use (E-88).
  */
 export function paintBiome(t: TerrainState, stack: string, cells: readonly (readonly [number, number, number])[], biome: TerrainBiome): TerrainState | null {
   let palette = t.biomePalette;
   let slot = palette.indexOf(biome);
   if (slot < 0) {
-    if (palette.length >= BIOME_CHANNELS.length) return null;
-    palette = [...palette, biome];
-    slot = palette.length - 1;
+    if (palette.length < BIOME_CHANNELS.length) {
+      palette = [...palette, biome];
+      slot = palette.length - 1;
+    } else {
+      slot = unusedPlace(t);
+      if (slot < 0) return null;
+      palette = palette.map((b, i) => (i === slot ? biome : b));
+    }
   }
   const edits: [number, number, number][][] = BIOME_CHANNELS.map(() => []);
   for (const [cx, cy, a] of cells) {
@@ -112,8 +136,11 @@ export function paintBiome(t: TerrainState, stack: string, cells: readonly (read
     const out = [0, 0, 0, 0];
     if (first) out[first[0]] = second ? first[1] : 255;
     if (second) out[second[0]] = 255 - first![1];
+    if (out.every((v, i) => v === Math.round(weights.get(i)! * 255))) continue;
     out.forEach((v, i) => edits[i]!.push([cx, cy, v]));
   }
+  // Nothing painted: the palette stays as it was too.
+  if (edits.every((e) => !e.length)) return t;
   let out: TerrainState = palette === t.biomePalette ? t : { ...t, biomePalette: palette };
   BIOME_CHANNELS.forEach((ch, i) => {
     if (edits[i]!.length) out = setCells(out, stack, ch, edits[i]!);
